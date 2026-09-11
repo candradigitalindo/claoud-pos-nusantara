@@ -192,6 +192,9 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/discount-report", middleware.RequirePermission("reports.discount.view"), handlers.GetDiscountReport)
 	// Export Excel memakai permission & scope outlet yang sama dengan laporan di layar.
 	admin.Get("/discount-report/export", middleware.RequirePermission("reports.discount.view"), handlers.ExportDiscountReport)
+	// Analisa Bisnis — RGI/anti-alibi lintas outlet (Laporan → Analisa Bisnis)
+	admin.Get("/business-analysis", middleware.RequirePermission("reports.business_analysis.view"), handlers.GetBusinessAnalysis)
+	admin.Get("/business-analysis/export", middleware.RequirePermission("reports.business_analysis.view"), handlers.ExportBusinessAnalysisExcel)
 
 	// Products & Categories — CRUD granular
 	admin.Get("/products", middleware.RequirePermission("products.view"), handlers.AdminGetProducts)
@@ -224,6 +227,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/payment-stats", middleware.RequirePermission("finance.payments.view"), handlers.GetPaymentStats)
 	// Export Excel memakai permission & scope yang sama dengan halaman Pembayaran.
 	admin.Get("/procurement-payments/export", middleware.RequirePermission("finance.payments.view"), handlers.ExportProcurementPayments)
+	// Projek (pembangunan/renovasi) — payung RAB di atas pengadaan.
+	// Lihat dibuka juga untuk pemegang izin pengadaan: form pengajuan perlu
+	// memuat daftar projek untuk dipilih. Ubah/hapus tetap terkunci di manage.
+	admin.Get("/projects", middleware.RequireAnyPermission("procurement.projects.view", "procurement.requests.submit", "procurement.requests.view"), handlers.ListProjects)
+	admin.Get("/projects/:id", middleware.RequirePermission("procurement.projects.view"), handlers.GetProject)
+	admin.Post("/projects", middleware.RequirePermission("procurement.projects.manage"), handlers.CreateProject)
+	admin.Put("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), handlers.UpdateProject)
+	admin.Delete("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), handlers.DeleteProject)
+
 	admin.Get("/purchase-requests", middleware.RequirePermission("procurement.requests.view"), handlers.ListPurchaseRequests)
 	admin.Get("/purchase-requests/:id", middleware.RequirePermission("procurement.requests.view"), handlers.GetPurchaseRequest)
 	admin.Get("/purchase-requests/:id/payment-histories", middleware.RequirePermission("finance.payments.view"), handlers.GetPaymentHistories)

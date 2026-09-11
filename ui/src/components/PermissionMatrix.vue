@@ -170,11 +170,18 @@ const CATEGORIES = [
           { key: 'reports.void.view',          label: 'Void (Transaksi & Item)' },
           { key: 'reports.titipan.view',       label: 'Titipan' },
           { key: 'reports.discount.view',      label: 'Diskon & Komplimen' },
+          { key: 'reports.business_analysis.view', label: 'Analisa Bisnis' },
         ],
       },
       { type: 'single', key: 'cashier_shifts.view', label: 'Laporan Shift Kasir', icon: IC.report },
       { type: 'single', key: 'shift_reconciliation.view', label: 'Rekonsiliasi Shift', icon: IC.report },
-      { type: 'single', key: 'finance.payments.view', label: 'Pembayaran', icon: IC.wallet },
+      {
+        type: 'toggles', label: 'Pembayaran Pengadaan', icon: IC.wallet,
+        toggles: [
+          { key: 'finance.payments.view', label: 'Lihat' },
+          { key: 'finance.payments.pay',  label: 'Bayar' },
+        ],
+      },
       { type: 'crud', module: 'finance.bank', label: 'Data Rekening', icon: IC.bank },
     ],
   },
@@ -189,6 +196,13 @@ const CATEGORIES = [
           { key: 'procurement.requests.submit',     label: 'Buat/Hapus' },
           { key: 'procurement.requests.approve',    label: 'Approval' },
           { key: 'procurement.requests.purchasing', label: 'Isi Harga' },
+        ],
+      },
+      {
+        type: 'toggles', label: 'Projek (Pembangunan/Renovasi)', icon: IC.workunit,
+        toggles: [
+          { key: 'procurement.projects.view',   label: 'Lihat' },
+          { key: 'procurement.projects.manage', label: 'Kelola & Tetapkan RAB' },
         ],
       },
       { type: 'crud', module: 'vendors', label: 'Vendor', icon: IC.vendor },

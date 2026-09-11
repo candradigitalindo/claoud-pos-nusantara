@@ -62,6 +62,7 @@ const ProfitLossReport    = () => import('@/pages/ProfitLossReport.vue')
 const GeneralLedger       = () => import('@/pages/GeneralLedger.vue')
 const VoidReport          = () => import('@/pages/VoidReport.vue')
 const DiscountReport      = () => import('@/pages/DiscountReport.vue')
+const BusinessAnalysis    = () => import('@/pages/BusinessAnalysis.vue')
 const PurchaseGoods       = () => import('@/pages/PurchaseGoods.vue')
 const PurchaseServices    = () => import('@/pages/PurchaseServices.vue')
 const ProcurementDashboardPage = () => import('@/pages/ProcurementDashboard.vue')
@@ -69,6 +70,8 @@ const ProcurementPayments     = () => import('@/pages/ProcurementPayments.vue')
 const WorkUnits           = () => import('@/pages/WorkUnits.vue')
 const Vendors             = () => import('@/pages/Vendors.vue')
 const VendorDetail        = () => import('@/pages/VendorDetail.vue')
+const Projects            = () => import('@/pages/Projects.vue')
+const ProjectDetail       = () => import('@/pages/ProjectDetail.vue')
 const Admins              = () => import('@/pages/Admins.vue')
 const Roles          = () => import('@/pages/Roles.vue')
 const AppPos         = () => import('@/pages/AppPos.vue')
@@ -303,6 +306,12 @@ const routes = [
         meta: { title: 'Laporan Diskon & Komplimen — Cloud POS', requiresAuth: true, permission: 'reports.discount.view' },
       },
       {
+        path: 'business-analysis',
+        name: 'BusinessAnalysis',
+        component: BusinessAnalysis,
+        meta: { title: 'Analisa Bisnis — Cloud POS', requiresAuth: true, permission: 'reports.business_analysis.view' },
+      },
+      {
         path: 'procurement-payments',
         name: 'ProcurementPayments',
         component: ProcurementPayments,
@@ -337,6 +346,18 @@ const routes = [
         name: 'WorkUnits',
         component: WorkUnits,
         meta: { title: 'Unit Kerja — Cloud POS', requiresAuth: true, permission: 'workunits.view' },
+      },
+      {
+        path: 'projects',
+        name: 'Projects',
+        component: Projects,
+        meta: { title: 'Projek — Cloud POS', requiresAuth: true, permission: 'procurement.projects.view' },
+      },
+      {
+        path: 'projects/:id',
+        name: 'ProjectDetail',
+        component: ProjectDetail,
+        meta: { title: 'Detail Projek — Cloud POS', requiresAuth: true, permission: 'procurement.projects.view' },
       },
       {
         path: 'vendors',

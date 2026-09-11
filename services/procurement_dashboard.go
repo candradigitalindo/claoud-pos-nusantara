@@ -70,6 +70,19 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 	}
 	// else: no scope (all access) — no WHERE clause
 
+	// Master yang seluruh itemnya sudah dipecah tinggal cangkang kosong. Dulu
+	// hanya blok Hutang Usaha yang menyaringnya, sehingga ringkasan, split tipe,
+	// per unit kerja, dan tren menghitung master bernilai penuh sekaligus semua
+	// pecahannya — setiap pengadaan yang di-split terhitung dua kali.
+	excludeShell := "NOT " + fullySplitMasterCond("")
+	excludeShellJoin := "NOT " + fullySplitMasterCond("pr")
+	andWhere := func(clause, extra string) string {
+		if clause == "" {
+			return "WHERE " + extra
+		}
+		return clause + " AND " + extra
+	}
+
 	// ── 1) Summary counts & amounts by status ──
 	summaryQ := fmt.Sprintf(`
 		SELECT
@@ -83,7 +96,7 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 			COUNT(*) FILTER (WHERE status = 'rejected')          AS rejected,
 			COUNT(*) FILTER (WHERE status = 'cancelled')         AS cancelled
 		FROM purchase_requests
-		%s`, scopeClause)
+		%s`, andWhere(scopeClause, excludeShell))
 
 	err := database.DB.QueryRow(summaryQ, args...).Scan(
 		&resp.TotalRequests, &resp.TotalAmount,
@@ -104,7 +117,7 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 			COUNT(*) FILTER (WHERE request_type = 'jasa') AS jasa,
 			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'jasa'), 0) AS jasa_total
 		FROM purchase_requests
-		%s`, scopeClause)
+		%s`, andWhere(scopeClause, excludeShell))
 
 	err = database.DB.QueryRow(typeQ, args...).Scan(
 		&resp.TypeSplit.Barang, &resp.TypeSplit.BarangTotal,
@@ -132,7 +145,7 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
 		%s
 		GROUP BY pr.work_unit_id, wu.name
-		ORDER BY total_amount DESC`, scopeClauseJoin)
+		ORDER BY total_amount DESC`, andWhere(scopeClauseJoin, excludeShellJoin))
 
 	rows, err := database.DB.Query(wuQ, args...)
 	if err != nil {
@@ -155,16 +168,13 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 	}
 
 	// ── 4) Accounts Payable (Hutang Usaha) ──
-	// Items approved/payment_requested/partial but not yet fully paid, excluding split masters
-	apExtra := "status IN ('approved', 'payment_requested', 'partial') AND (split_status IS NULL OR split_status != 'master')"
-	var apWhere string
-	if scopeClause == "" {
-		apWhere = "WHERE " + apExtra
-	} else {
-		apWhere = scopeClause + " AND " + apExtra
-	}
+	// Sisa kewajiban dihitung dari (total_final - paid_amount) untuk semua
+	// status yang masih berjalan, bukan dari daftar nama status. Dengan begitu
+	// pengajuan yang sudah diterima tapi belum lunas tetap tercatat sebagai
+	// hutang, bukan menghilang begitu statusnya berubah jadi 'received'.
+	apWhere := andWhere(scopeClause, excludeShell+" AND "+outstandingCond)
 	apQ := fmt.Sprintf(`
-		SELECT COUNT(*), COALESCE(SUM(CASE WHEN status = 'partial' THEN total_final - paid_amount ELSE total_final END), 0)
+		SELECT COUNT(*), COALESCE(SUM(total_final - paid_amount), 0)
 		FROM purchase_requests %s`, apWhere)
 	err = database.DB.QueryRow(apQ, args...).Scan(&resp.AccountsPayable.Count, &resp.AccountsPayable.TotalAmount)
 	if err != nil {
@@ -173,12 +183,7 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 
 	// ── 5) Monthly trend (last 12 months) ──
 	trendExtra := "created_at >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'"
-	var trendWhere string
-	if scopeClause == "" {
-		trendWhere = "WHERE " + trendExtra
-	} else {
-		trendWhere = scopeClause + " AND " + trendExtra
-	}
+	trendWhere := andWhere(scopeClause, excludeShell+" AND "+trendExtra)
 	trendQ := fmt.Sprintf(`
 		SELECT
 			TO_CHAR(created_at, 'YYYY-MM') AS month,
@@ -245,12 +250,15 @@ func GetPaymentStats(scopeIDs []string, wuScopeIDs []string) (*models.PaymentSta
 			COUNT(*) FILTER (WHERE status = 'payment_requested') AS waiting,
 			COALESCE(SUM(total_final) FILTER (WHERE status = 'payment_requested'), 0) AS total_waiting,
 			COUNT(*) FILTER (WHERE status IN ('paid', 'partial')) AS paid,
-			COALESCE(SUM(total_final) FILTER (WHERE status IN ('paid', 'partial')), 0) AS total_paid,
+			-- uang yang benar-benar keluar; menjumlah total_final untuk baris
+			-- 'partial' akan melaporkan tagihan penuh sebagai sudah dibayar.
+			COALESCE(SUM(paid_amount), 0) AS total_paid,
 			COUNT(*) FILTER (WHERE status = 'received') AS received,
-			COUNT(*) FILTER (WHERE status IN ('approved', 'payment_requested', 'partial')) AS ap_count,
-			COALESCE(SUM(CASE WHEN status = 'partial' THEN total_final - paid_amount ELSE total_final END) FILTER (WHERE status IN ('approved', 'payment_requested', 'partial')), 0) AS ap_total
+			COUNT(*) FILTER (WHERE `+outstandingCond+`) AS ap_count,
+			COALESCE(SUM(total_final - paid_amount) FILTER (WHERE `+outstandingCond+`), 0) AS ap_total
 		FROM purchase_requests
-		%s (split_status IS NULL OR split_status != 'master')`, scopeClause)
+		%s NOT `+fullySplitMasterCond("")+`
+	`, scopeClause)
 
 	var apCount int
 	var apTotal float64

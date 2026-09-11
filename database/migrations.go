@@ -1841,6 +1841,44 @@ func RunMigrations() error {
 		}
 	}
 
+	// ── Projek (pembangunan / renovasi) ─────────────────────────────────────
+	// Payung tipis di atas pengadaan: projek hanya memegang RAB (satu angka
+	// total) + identitas, sedangkan tiap belanja tahap tetap berupa
+	// purchase_requests biasa dengan seluruh alur setujui/bayar/terima yang
+	// sudah ada. Sengaja TIDAK memakai parent_id/split_status — kolom itu sudah
+	// dipakai untuk pecahan vendor, dan cascade status-nya (lihat
+	// services/purchase.go) akan salah kalau dipinjam untuk projek.
+	//
+	// project_id nullable: seluruh pengadaan lama tetap valid tanpa backfill.
+	projectMigrations := []string{
+		`CREATE TABLE IF NOT EXISTS projects (
+			id CHAR(26) PRIMARY KEY,
+			project_number VARCHAR(20) NOT NULL DEFAULT '',
+			name VARCHAR(200) NOT NULL,
+			outlet_id CHAR(26) REFERENCES outlets(id) ON DELETE SET NULL,
+			work_unit_id CHAR(26) REFERENCES work_units(id) ON DELETE SET NULL,
+			pic VARCHAR(150) NOT NULL DEFAULT '',
+			budget DECIMAL(15,2) NOT NULL DEFAULT 0,
+			start_date DATE,
+			target_date DATE,
+			status VARCHAR(20) NOT NULL DEFAULT 'berjalan',
+			notes TEXT NOT NULL DEFAULT '',
+			created_by VARCHAR(150) NOT NULL DEFAULT '',
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_projects_number ON projects(project_number) WHERE project_number <> ''`,
+		`CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_projects_work_unit ON projects(work_unit_id)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS project_id CHAR(26) REFERENCES projects(id) ON DELETE SET NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_purchase_requests_project ON purchase_requests(project_id)`,
+	}
+	for _, m := range projectMigrations {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Project migration skipped: %v", err)
+		}
+	}
+
 	// ── Split izin laporan: Titipan ⟂ Void, Rekonsiliasi ⟂ Shift Kasir ──────
 	// One-shot (marker di app_settings): role yang punya izin lama otomatis
 	// diberi izin baru SEKALI supaya tidak ada yang kehilangan akses saat
@@ -1928,6 +1966,56 @@ func RunMigrations() error {
 			ON CONFLICT DO NOTHING`)
 		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_customers_perm', 'done') ON CONFLICT (key) DO NOTHING`)
 		log.Printf("Permission customers.view di-seed ke role pemegang reservations.view")
+	}
+
+	// ── Seed izin Analisa Bisnis (one-shot, marker) ─────────────────────────
+	// Halaman ini menampilkan perbandingan antar-outlet (RGI), jadi TIDAK
+	// diturunkan dari izin laporan lain: hanya role 'admin' yang diberi akses
+	// saat deploy (superadmin lolos lewat bypass middleware). Pemberian ke role
+	// lain dilakukan manual lewat halaman Role.
+	var bizSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_business_analysis_perm'").Scan(&bizSeeded)
+	if bizSeeded == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			VALUES ('admin', 'reports.business_analysis.view') ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_business_analysis_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Permission reports.business_analysis.view di-seed ke role admin")
+	}
+
+
+	// ── Seed izin Bayar Pengadaan (one-shot, marker) ────────────────────────
+	// Aksi 'pay' dulu diguard oleh finance.payments.view, sehingga siapa pun
+	// yang boleh MELIHAT halaman Pembayaran otomatis boleh MENCAIRKAN uang.
+	// Izin baru finance.payments.pay diberikan sekali saat deploy ke role yang
+	// hari ini sudah memegang finance.payments.view, supaya perilaku berjalan
+	// tidak berubah mendadak; pencabutan per role dilakukan lewat halaman Role.
+	var paySeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_finance_payments_pay'").Scan(&paySeeded)
+	if paySeeded == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'finance.payments.pay' FROM role_permissions WHERE permission = 'finance.payments.view'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_finance_payments_pay', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Permission finance.payments.pay di-seed ke role pemegang finance.payments.view")
+	}
+
+
+	// ── Seed izin Projek (one-shot, marker) ─────────────────────────────────
+	// Lihat: diturunkan ke role yang hari ini boleh melihat pengadaan, supaya
+	// payung projeknya langsung terlihat oleh orang yang sama. Kelola (buat/
+	// ubah/hapus projek + menetapkan RAB) sengaja TIDAK diturunkan otomatis —
+	// itu keputusan anggaran, jadi hanya 'admin' yang diberi saat deploy dan
+	// pemberian ke role lain dilakukan manual lewat halaman Role.
+	var projSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_procurement_projects_perm'").Scan(&projSeeded)
+	if projSeeded == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'procurement.projects.view' FROM role_permissions WHERE permission = 'procurement.requests.view'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			VALUES ('admin', 'procurement.projects.manage') ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_procurement_projects_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Permission Projek di-seed (view ke pemegang procurement.requests.view, manage ke admin)")
 	}
 
 	return nil

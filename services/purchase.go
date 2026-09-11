@@ -3,6 +3,7 @@ package services
 import (
 	"cloud-pos/database"
 	"cloud-pos/models"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -13,7 +14,7 @@ import (
 )
 
 // Valid status transitions:
-//   pending → approved → payment_requested → paid → received
+//   pending → approved → payment_requested → paid/partial → received
 //   pending → rejected
 //   pending/approved → cancelled
 var validTransitions = map[string]map[string]string{
@@ -21,8 +22,27 @@ var validTransitions = map[string]map[string]string{
 	"reject":          {"pending": "rejected"},
 	"request_payment": {"approved": "payment_requested"},
 	"pay":             {"payment_requested": "paid", "partial": "paid"},
-	"receive":         {"paid": "received"},
-	"cancel":          {"pending": "cancelled", "approved": "cancelled"},
+	// 'partial' ikut boleh diterima: barang yang baru dilunasi sebagian tetap
+	// datang secara fisik. Sisa hutangnya tidak hilang karena perhitungan
+	// hutang usaha memakai (total_final - paid_amount), bukan nama status.
+	"receive": {"paid": "received", "partial": "received"},
+	"cancel":  {"pending": "cancelled", "approved": "cancelled"},
+}
+
+// outstandingCond memilih baris yang masih menyisakan kewajiban bayar. Berbasis
+// nominal, bukan nama status, supaya pengajuan yang sudah diterima tapi belum
+// lunas tetap terhitung sebagai hutang.
+const outstandingCond = "status NOT IN ('pending','rejected','cancelled') AND total_final > paid_amount"
+
+// fullySplitMasterCond cocok untuk baris master yang seluruh itemnya sudah
+// dipindah ke pecahan. Dokumen semacam itu tinggal cangkang: tidak boleh ikut
+// dijumlahkan (dobel hitung dengan pecahannya) dan tidak boleh dibayar.
+func fullySplitMasterCond(alias string) string {
+	p := ""
+	if alias != "" {
+		p = alias + "."
+	}
+	return fmt.Sprintf("(%[1]ssplit_status = 'master' AND COALESCE(jsonb_array_length(%[1]sitems), 0) = 0)", p)
 }
 
 func nilIfEmpty(s string) interface{} {
@@ -30,6 +50,62 @@ func nilIfEmpty(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+// recalcItems menghitung ulang seluruh subtotal dan total grup di tempat, lalu
+// mengembalikan total dokumen. Satu-satunya tempat rumus ini hidup — Create,
+// Update, dan Split memakainya supaya hasilnya tidak mungkin berbeda.
+func recalcItems(items []models.PurchaseRequestItem) (totalHps, totalFinal float64) {
+	for i := range items {
+		var groupHps, groupFinal float64
+		for j := range items[i].Items {
+			sub := &items[i].Items[j]
+			sub.HpsSubtotal = float64(sub.Qty) * sub.HpsPrice
+			sub.FinalSubtotal = float64(sub.Qty) * sub.FinalPrice
+			groupHps += sub.HpsSubtotal
+			groupFinal += sub.FinalSubtotal
+		}
+		items[i].HpsTotal = groupHps
+		items[i].FinalTotal = groupFinal
+		totalHps += groupHps
+		totalFinal += groupFinal
+	}
+	return totalHps, totalFinal
+}
+
+// amountOf memilih nilai untuk total_amount: harga final bila sudah diisi,
+// selain itu jatuh kembali ke HPS.
+func amountOf(totalHps, totalFinal float64) float64 {
+	if totalFinal == 0 {
+		return totalHps
+	}
+	return totalFinal
+}
+
+// validateItems menolak dokumen pengadaan yang tidak masuk akal. Dipakai saat
+// membuat maupun mengubah item — sebelumnya hanya jalur Create yang memvalidasi,
+// sehingga qty 0/negatif dan harga negatif bisa masuk lewat endpoint update.
+func validateItems(items []models.PurchaseRequestItem) error {
+	if len(items) == 0 {
+		return fmt.Errorf("minimal 1 pengadaan harus diisi")
+	}
+	for _, g := range items {
+		if strings.TrimSpace(g.Name) == "" || len(g.Items) == 0 {
+			return fmt.Errorf("setiap pengadaan harus memiliki nama dan minimal 1 item")
+		}
+		for _, s := range g.Items {
+			if strings.TrimSpace(s.Name) == "" {
+				return fmt.Errorf("nama item pada pengadaan %q wajib diisi", g.Name)
+			}
+			if s.Qty <= 0 {
+				return fmt.Errorf("qty item %q harus lebih dari 0", s.Name)
+			}
+			if s.HpsPrice < 0 || s.FinalPrice < 0 {
+				return fmt.Errorf("harga item %q tidak boleh negatif", s.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // generateRequestNumber creates a sequential number in the format ddmmYYnnn.
@@ -47,7 +123,32 @@ func generateRequestNumber(t time.Time) (string, error) {
 	return fmt.Sprintf("%s%03d", prefix, maxSeq+1), nil
 }
 
-func ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID string, excludeMasters bool, search string, scopeIDs []string, wuScopeIDs []string, page, limit int) (*models.PurchaseRequestListResponse, error) {
+// insertWithRequestNumber menjalankan insert memakai nomor pengajuan baru dan
+// mengulang bila unique index menolaknya. Nomor dihitung dari MAX() tanpa lock,
+// jadi dua pengajuan bersamaan bisa memperoleh nomor yang sama.
+//
+// insert dipanggil berkali-kali, jadi pemanggil yang bekerja di dalam transaksi
+// wajib membungkus statement-nya dengan SAVEPOINT — di Postgres satu statement
+// gagal membuat seluruh transaksi abort.
+func insertWithRequestNumber(now time.Time, insert func(reqNumber string) error) error {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		reqNumber, err := generateRequestNumber(now)
+		if err != nil {
+			return fmt.Errorf("gagal generate nomor pengajuan: %w", err)
+		}
+		lastErr = insert(reqNumber)
+		if lastErr == nil {
+			return nil
+		}
+		if !strings.Contains(lastErr.Error(), "uq_purchase_requests_number") {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, parentID string, excludeMasters bool, search string, scopeIDs []string, wuScopeIDs []string, page, limit int) (*models.PurchaseRequestListResponse, error) {
 	// Normalize outlet filter
 	var filterIDs []string
 	if outletID != "" {
@@ -96,6 +197,11 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID st
 		args = append(args, status)
 		idx++
 	}
+	if projectID != "" {
+		where += fmt.Sprintf(" AND pr.project_id = $%d", idx)
+		args = append(args, projectID)
+		idx++
+	}
 
 	// Default: only show main requests (not children) unless explicitly filtering for children or parents
 	if parentID == "" {
@@ -107,12 +213,22 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID st
 	}
 
 	if excludeMasters {
-		// Exclude all masters — children are shown individually on the payment page
-		where += " AND (pr.split_status IS NULL OR pr.split_status != 'master')"
+		// Halaman Pembayaran menampilkan tiap pecahan sendiri-sendiri, jadi
+		// master tidak boleh ikut muncul dan menggandakan nominal. Master yang
+		// masih memegang sisa item tetap ditampilkan — sisa itu tagihan nyata
+		// yang kalau disembunyikan tak akan pernah bisa dibayar.
+		where += " AND NOT " + fullySplitMasterCond("pr")
 	}
 
 	if search != "" {
-		where += fmt.Sprintf(" AND (pr.request_number ILIKE $%d OR pr.vendor_name ILIKE $%d OR EXISTS (SELECT 1 FROM jsonb_array_elements(pr.items) AS item WHERE item->>'name' ILIKE $%d))", idx, idx, idx)
+		// Kata kunci dicocokkan sampai ke nama sub-item; sebelumnya hanya nama
+		// grup pengadaan yang dicari sehingga mencari nama barang tidak ketemu.
+		where += fmt.Sprintf(` AND (pr.request_number ILIKE $%d OR pr.vendor_name ILIKE $%d
+			OR EXISTS (
+				SELECT 1 FROM jsonb_array_elements(pr.items) AS grp
+				LEFT JOIN LATERAL jsonb_array_elements(COALESCE(grp->'items', '[]'::jsonb)) AS sub ON TRUE
+				WHERE grp->>'name' ILIKE $%d OR sub->>'name' ILIKE $%d
+			))`, idx, idx, idx, idx)
 		args = append(args, "%"+search+"%")
 		idx++
 	}
@@ -128,18 +244,20 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID st
 	offset := (page - 1) * limit
 
 	// Fetch
-	// When excludeMasters is true (payment page), show master's own values because children display separately.
-	// Otherwise aggregate child totals for the master row.
-	var totalAmountExpr, totalHpsExpr, totalFinalExpr string
-	if excludeMasters {
-		totalAmountExpr = "pr.total_amount"
-		totalHpsExpr = "pr.total_hps"
-		totalFinalExpr = "pr.total_final"
-	} else {
-		totalAmountExpr = "CASE WHEN pr.split_status = 'master' THEN COALESCE((SELECT SUM(c.total_amount) FROM purchase_requests c WHERE c.parent_id = pr.id), pr.total_amount) ELSE pr.total_amount END"
-		totalHpsExpr = "CASE WHEN pr.split_status = 'master' THEN COALESCE((SELECT SUM(c.total_hps) FROM purchase_requests c WHERE c.parent_id = pr.id), pr.total_hps) ELSE pr.total_hps END"
-		totalFinalExpr = "CASE WHEN pr.split_status = 'master' THEN COALESCE((SELECT SUM(c.total_final) FROM purchase_requests c WHERE c.parent_id = pr.id), pr.total_final) ELSE pr.total_final END"
+	// Halaman Pembayaran (excludeMasters) menagih baris per baris, jadi master
+	// hanya boleh menunjukkan sisa miliknya sendiri. Di daftar pengajuan biasa
+	// master mewakili seluruh dokumen: sisa sendiri + semua pecahan.
+	totalExpr := func(col string) string {
+		if excludeMasters {
+			return "pr." + col
+		}
+		return fmt.Sprintf(
+			"pr.%[1]s + CASE WHEN pr.split_status = 'master' THEN COALESCE((SELECT SUM(c.%[1]s) FROM purchase_requests c WHERE c.parent_id = pr.id), 0) ELSE 0 END",
+			col)
 	}
+	totalAmountExpr := totalExpr("total_amount")
+	totalHpsExpr := totalExpr("total_hps")
+	totalFinalExpr := totalExpr("total_final")
 	query := fmt.Sprintf(`
 		SELECT pr.id, pr.request_number, pr.outlet_id, o.name, pr.work_unit_id, COALESCE(wu.name,''),
 		       pr.request_type, pr.requested_by, pr.vendor_id, pr.vendor_name, pr.status,
@@ -154,11 +272,13 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID st
 		       pr.paid_amount,
 		       pr.received_by, pr.received_at,
 		       pr.parent_id, COALESCE(ppr.request_number,''), pr.split_status,
+		       pr.project_id, COALESCE(prj.name,''),
 		       pr.created_at, pr.updated_at
 		FROM purchase_requests pr
 		LEFT JOIN outlets o ON o.id = pr.outlet_id
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
 		LEFT JOIN purchase_requests ppr ON ppr.id = pr.parent_id
+		LEFT JOIN projects prj ON prj.id = pr.project_id
 		%s
 		ORDER BY pr.created_at DESC
 		LIMIT $%d OFFSET $%d
@@ -189,6 +309,7 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID st
 			&r.PaidAmount,
 			&r.ReceivedBy, &receivedAt,
 			&r.ParentID, &r.ParentNumber, &r.SplitStatus,
+			&r.ProjectID, &r.ProjectName,
 			&createdAt, &updatedAt,
 		); err != nil {
 			return nil, err
@@ -230,28 +351,12 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID st
 }
 
 func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.PurchaseRequest, error) {
-	id := NewULID()
+	if err := validateItems(input.Items); err != nil {
+		return nil, err
+	}
 
-	// Calculate totals
-	var totalHps, totalFinal float64
-	for i := range input.Items {
-		var itemHps, itemFinal float64
-		for j := range input.Items[i].Items {
-			input.Items[i].Items[j].HpsSubtotal = float64(input.Items[i].Items[j].Qty) * input.Items[i].Items[j].HpsPrice
-			input.Items[i].Items[j].FinalSubtotal = float64(input.Items[i].Items[j].Qty) * input.Items[i].Items[j].FinalPrice
-			itemHps += input.Items[i].Items[j].HpsSubtotal
-			itemFinal += input.Items[i].Items[j].FinalSubtotal
-		}
-		input.Items[i].HpsTotal = itemHps
-		input.Items[i].FinalTotal = itemFinal
-		totalHps += itemHps
-		totalFinal += itemFinal
-	}
-	// total_amount = final if set, otherwise hps
-	total := totalFinal
-	if total == 0 {
-		total = totalHps
-	}
+	id := NewULID()
+	totalHps, totalFinal := recalcItems(input.Items)
 
 	itemsJSON, err := json.Marshal(input.Items)
 	if err != nil {
@@ -259,23 +364,16 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 	}
 
 	now := time.Now().UTC()
-	// Nomor dihitung dari MAX() tanpa lock — dua pengajuan bersamaan bisa dapat
-	// nomor sama. Unique index menolak duplikatnya; retry dengan nomor baru.
-	for attempt := 0; ; attempt++ {
-		reqNumber, err := generateRequestNumber(now)
-		if err != nil {
-			return nil, fmt.Errorf("gagal generate nomor pengajuan: %w", err)
-		}
-		_, err = database.DB.Exec(`
-			INSERT INTO purchase_requests (id, request_number, outlet_id, work_unit_id, request_type, requested_by, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, $14, $14)
-		`, id, reqNumber, nilIfEmpty(input.OutletID), nilIfEmpty(input.WorkUnitID), input.RequestType, input.RequestedBy, nilIfEmpty(input.VendorID), input.VendorName, itemsJSON, total, totalHps, totalFinal, input.Notes, now)
-		if err == nil {
-			break
-		}
-		if attempt < 3 && strings.Contains(err.Error(), "uq_purchase_requests_number") {
-			continue
-		}
+	err = insertWithRequestNumber(now, func(reqNumber string) error {
+		_, err := database.DB.Exec(`
+			INSERT INTO purchase_requests (id, request_number, outlet_id, work_unit_id, request_type, requested_by, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, project_id, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, $14, $15, $15)
+		`, id, reqNumber, nilIfEmpty(input.OutletID), nilIfEmpty(input.WorkUnitID), input.RequestType, input.RequestedBy,
+			nilIfEmpty(input.VendorID), input.VendorName, itemsJSON,
+			amountOf(totalHps, totalFinal), totalHps, totalFinal, input.Notes, nilIfEmpty(input.ProjectID), now)
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -299,11 +397,13 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 		       pr.paid_amount,
 		       pr.received_by, pr.received_at,
 		       pr.parent_id, COALESCE(ppr.request_number,''), pr.split_status,
+		       pr.project_id, COALESCE(prj.name,''),
 		       pr.created_at, pr.updated_at
 		FROM purchase_requests pr
 		LEFT JOIN outlets o ON o.id = pr.outlet_id
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
 		LEFT JOIN purchase_requests ppr ON ppr.id = pr.parent_id
+		LEFT JOIN projects prj ON prj.id = pr.project_id
 		WHERE pr.id = $1
 	`, id).Scan(
 		&r.ID, &r.RequestNumber, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
@@ -316,6 +416,7 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 		&r.PaidAmount,
 		&r.ReceivedBy, &receivedAt,
 		&r.ParentID, &r.ParentNumber, &r.SplitStatus,
+		&r.ProjectID, &r.ProjectName,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -327,22 +428,17 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 		r.Items = []models.PurchaseRequestItem{}
 	}
 
-	// If this is a master, fetch children and recalc totals from children
+	// Master menampilkan nilai seluruh dokumen: sisa item yang masih dipegang
+	// sendiri ditambah semua pecahannya. Dulu total master ditimpa mentah oleh
+	// SUM(pecahan), sehingga item yang belum di-split hilang dari angka.
 	if r.SplitStatus != nil && *r.SplitStatus == "master" {
 		children, err := getPurchaseChildren(id)
 		if err == nil {
 			r.Children = children
-			if len(children) > 0 {
-				// Totals = sum of all children (master items are the original document)
-				var sumAmount, sumHps, sumFinal float64
-				for _, ch := range children {
-					sumAmount += ch.TotalAmount
-					sumHps += ch.TotalHps
-					sumFinal += ch.TotalFinal
-				}
-				r.TotalAmount = sumAmount
-				r.TotalHps = sumHps
-				r.TotalFinal = sumFinal
+			for _, ch := range children {
+				r.TotalAmount += ch.TotalAmount
+				r.TotalHps += ch.TotalHps
+				r.TotalFinal += ch.TotalFinal
 			}
 		}
 	}
@@ -378,11 +474,13 @@ func getPurchaseChildren(parentID string) ([]models.PurchaseRequest, error) {
 		       pr.paid_amount,
 		       pr.received_by, pr.received_at,
 		       pr.parent_id, COALESCE(ppr.request_number,''), pr.split_status,
+		       pr.project_id, COALESCE(prj.name,''),
 		       pr.created_at, pr.updated_at
 		FROM purchase_requests pr
 		LEFT JOIN outlets o ON o.id = pr.outlet_id
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
 		LEFT JOIN purchase_requests ppr ON ppr.id = pr.parent_id
+		LEFT JOIN projects prj ON prj.id = pr.project_id
 		WHERE pr.parent_id = $1
 		ORDER BY pr.created_at ASC
 	`, parentID)
@@ -409,6 +507,7 @@ func getPurchaseChildren(parentID string) ([]models.PurchaseRequest, error) {
 			&r.PaidAmount,
 			&r.ReceivedBy, &receivedAt,
 			&r.ParentID, &r.ParentNumber, &r.SplitStatus,
+			&r.ProjectID, &r.ProjectName,
 			&createdAt, &updatedAt,
 		); err != nil {
 			return nil, err
@@ -452,9 +551,9 @@ func SplitPurchaseRequest(parentID string, input models.SplitPurchaseRequestInpu
 	var p models.PurchaseRequest
 	var itemsJSON []byte
 	err = tx.QueryRow(`
-		SELECT outlet_id, work_unit_id, request_type, requested_by, items, total_hps, total_final, status, request_number
+		SELECT outlet_id, work_unit_id, request_type, requested_by, items, total_hps, total_final, status, request_number, project_id
 		FROM purchase_requests WHERE id = $1
-	`, parentID).Scan(&p.OutletID, &p.WorkUnitID, &p.RequestType, &p.RequestedBy, &itemsJSON, &p.TotalHps, &p.TotalFinal, &p.Status, &p.RequestNumber)
+	`, parentID).Scan(&p.OutletID, &p.WorkUnitID, &p.RequestType, &p.RequestedBy, &itemsJSON, &p.TotalHps, &p.TotalFinal, &p.Status, &p.RequestNumber, &p.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("pengajuan induk tidak ditemukan")
 	}
@@ -466,65 +565,42 @@ func SplitPurchaseRequest(parentID string, input models.SplitPurchaseRequestInpu
 	var parentItems []models.PurchaseRequestItem
 	json.Unmarshal(itemsJSON, &parentItems)
 
-	// 2. Identify items to move and remaining items (Sub-item level)
+	// 2. Pisahkan sub-item yang pindah ke pecahan dari yang tetap di master.
+	// Pencocokan memakai kuota per (nama grup, nama item) yang dikonsumsi sekali
+	// pakai: dua baris item bernama sama dalam satu grup dulu ikut terbawa
+	// semuanya walau pengguna hanya memilih salah satu.
+	quota := map[string]int{}
+	for _, g := range input.Items {
+		for _, s := range g.Items {
+			quota[g.Name+"\x00"+s.Name]++
+		}
+	}
+
 	var groupsToMove []models.PurchaseRequestItem
-	var groupsRemaining []models.PurchaseRequestItem
+	groupsRemaining := []models.PurchaseRequestItem{}
 
 	for _, pGroup := range parentItems {
-		var subItemsToMove []models.PurchaseSubItem
-		var subItemsRemaining []models.PurchaseSubItem
+		var subItemsToMove, subItemsRemaining []models.PurchaseSubItem
 
 		for _, pSub := range pGroup.Items {
-			foundInInput := false
-			// Check if this specific sub-item is in the input to be moved
-			for _, inputGroup := range input.Items {
-				if inputGroup.Name == pGroup.Name {
-					for _, inputSub := range inputGroup.Items {
-						if inputSub.Name == pSub.Name {
-							subItemsToMove = append(subItemsToMove, pSub)
-							foundInInput = true
-							break
-						}
-					}
-				}
-				if foundInInput {
-					break
-				}
-			}
-
-			if !foundInInput {
+			key := pGroup.Name + "\x00" + pSub.Name
+			if quota[key] > 0 {
+				quota[key]--
+				subItemsToMove = append(subItemsToMove, pSub)
+			} else {
 				subItemsRemaining = append(subItemsRemaining, pSub)
 			}
 		}
 
-		// If we found sub-items to move in this group, create a group for child PR
 		if len(subItemsToMove) > 0 {
-			newGroup := pGroup
-			newGroup.Items = subItemsToMove
-			// Recalculate group totals for the moved group
-			var hps, final float64
-			for _, s := range subItemsToMove {
-				hps += float64(s.Qty) * s.HpsPrice
-				final += float64(s.Qty) * s.FinalPrice
-			}
-			newGroup.HpsTotal = hps
-			newGroup.FinalTotal = final
-			groupsToMove = append(groupsToMove, newGroup)
+			g := pGroup
+			g.Items = subItemsToMove
+			groupsToMove = append(groupsToMove, g)
 		}
-
-		// If there are sub-items left in this group, keep them in parent PR
 		if len(subItemsRemaining) > 0 {
-			remGroup := pGroup
-			remGroup.Items = subItemsRemaining
-			// Recalculate group totals for the remaining group
-			var hps, final float64
-			for _, s := range subItemsRemaining {
-				hps += float64(s.Qty) * s.HpsPrice
-				final += float64(s.Qty) * s.FinalPrice
-			}
-			remGroup.HpsTotal = hps
-			remGroup.FinalTotal = final
-			groupsRemaining = append(groupsRemaining, remGroup)
+			g := pGroup
+			g.Items = subItemsRemaining
+			groupsRemaining = append(groupsRemaining, g)
 		}
 	}
 
@@ -532,37 +608,51 @@ func SplitPurchaseRequest(parentID string, input models.SplitPurchaseRequestInpu
 		return nil, fmt.Errorf("tidak ada item valid yang dipilih untuk di-split")
 	}
 
-	// 3. Create Child PR
+	// 3. Buat PR pecahan berisi item yang dipindah.
 	childID := NewULID()
-	var childHps, childFinal float64
-	for _, g := range groupsToMove {
-		childHps += g.HpsTotal
-		childFinal += g.FinalTotal
-	}
-	childTotal := childFinal
-	if childTotal == 0 {
-		childTotal = childHps
-	}
-
-	childItemsJSON, _ := json.Marshal(groupsToMove)
-	childNumber, err := generateRequestNumber(now)
+	childHps, childFinal := recalcItems(groupsToMove)
+	childItemsJSON, err := json.Marshal(groupsToMove)
 	if err != nil {
-		return nil, fmt.Errorf("gagal generate nomor pengajuan: %w", err)
+		return nil, fmt.Errorf("gagal menyusun item pecahan: %w", err)
 	}
-	_, err = tx.Exec(`
-		INSERT INTO purchase_requests (id, request_number, parent_id, outlet_id, work_unit_id, request_type, requested_by, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16)
-	`, childID, childNumber, parentID, p.OutletID, p.WorkUnitID, p.RequestType, p.RequestedBy, nilIfEmpty(input.VendorID), input.VendorName, p.Status, childItemsJSON, childTotal, childHps, childFinal, "", now)
+	err = insertWithRequestNumber(now, func(reqNumber string) error {
+		// SAVEPOINT: nomor kembar membuat INSERT gagal dan — tanpa ini —
+		// seluruh transaksi split ikut abort sehingga retry tidak ada gunanya.
+		if _, err := tx.Exec("SAVEPOINT split_child"); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`
+			INSERT INTO purchase_requests (id, request_number, parent_id, outlet_id, work_unit_id, request_type, requested_by, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, project_id, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
+		`, childID, reqNumber, parentID, p.OutletID, p.WorkUnitID, p.RequestType, p.RequestedBy,
+			nilIfEmpty(input.VendorID), input.VendorName, p.Status, childItemsJSON,
+			amountOf(childHps, childFinal), childHps, childFinal, "", p.ProjectID, now)
+		if err != nil {
+			tx.Exec("ROLLBACK TO SAVEPOINT split_child")
+			return err
+		}
+		_, err = tx.Exec("RELEASE SAVEPOINT split_child")
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuat pengajuan pecahan: %w", err)
 	}
 
-	// 4. Update Parent PR: keep all original items, just set master status
-	// Items stay in master as the "original document". Children have copies.
-	masterStatus := "master"
+	// 4. Item yang dipindah benar-benar keluar dari master — master hanya
+	// menyisakan bagian yang belum diserahkan ke vendor mana pun, dan sisa itu
+	// tetap bisa dibayar atas nama master sendiri. Master yang habis ter-split
+	// menjadi dokumen kosong bertotal 0, lalu otomatis lenyap dari halaman
+	// Pembayaran dan dari semua penjumlahan (lihat fullySplitMasterCond).
+	remainingHps, remainingFinal := recalcItems(groupsRemaining)
+	remainingJSON, err := json.Marshal(groupsRemaining)
+	if err != nil {
+		return nil, fmt.Errorf("gagal menyusun item induk: %w", err)
+	}
 	_, err = tx.Exec(`
-		UPDATE purchase_requests SET split_status=$1, updated_at=$2 WHERE id=$3
-	`, masterStatus, now, parentID)
+		UPDATE purchase_requests
+		SET split_status='master', items=$1, total_amount=$2, total_hps=$3, total_final=$4, updated_at=$5
+		WHERE id=$6
+	`, remainingJSON, amountOf(remainingHps, remainingFinal), remainingHps, remainingFinal, now, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("gagal memperbarui pengajuan induk: %w", err)
 	}
@@ -593,14 +683,24 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 	if isMaster {
 		switch input.Action {
 		case "pay":
-			// Allow pay on master only if it still has its own items (not fully split)
-			var totalFinal float64
-			database.DB.QueryRow("SELECT COALESCE(total_final, 0) FROM purchase_requests WHERE id = $1", id).Scan(&totalFinal)
-			if totalFinal <= 0 {
-				return nil, fmt.Errorf("pembayaran master tidak diizinkan, bayar per vendor melalui halaman Pembayaran")
+			// Master hanya boleh dibayar sebatas sisa item yang masih dipegang
+			// sendiri. Cek jumlah item, bukan total_final: master yang itemnya
+			// sudah habis pindah ke pecahan tidak punya tagihan apa pun, dan
+			// membayarnya berarti membayar dua kali atas barang yang sama.
+			var ownItems int
+			if scanErr := database.DB.QueryRow(
+				"SELECT COALESCE(jsonb_array_length(items), 0) FROM purchase_requests WHERE id = $1", id,
+			).Scan(&ownItems); scanErr != nil {
+				return nil, fmt.Errorf("gagal memeriksa item pengajuan")
+			}
+			if ownItems == 0 {
+				return nil, fmt.Errorf("seluruh item sudah dipecah ke vendor, bayar per vendor melalui halaman Pembayaran")
 			}
 			// Fall through to normal pay flow for this master's own items
-		case "request_payment", "approve", "cancel":
+		case "request_payment", "approve", "cancel", "reject", "receive":
+			// reject & receive dulu tidak ikut cascade: master ditolak tapi
+			// pecahannya tertinggal 'pending', atau master tercatat diterima
+			// sementara pecahannya masih 'paid'.
 			return cascadeStatusToChildren(id, currentStatus, input)
 		}
 	}
@@ -688,9 +788,13 @@ func applyStatusUpdate(id, newStatus string, input models.UpdatePurchaseStatusIn
 		if scanErr := database.DB.QueryRow("SELECT COALESCE(total_final, 0), split_status FROM purchase_requests WHERE id = $1", id).Scan(&totalFinal, &splitStatus); scanErr != nil {
 			return nil, fmt.Errorf("gagal memeriksa total harga")
 		}
-		// For masters, check sum of children's total_final
+		// Master dinilai dari seluruh dokumen: sisa miliknya sendiri ditambah
+		// semua pecahan. Dulu hanya pecahan yang dihitung, sehingga sisa item
+		// milik master tidak pernah ikut diajukan.
 		if splitStatus != nil && *splitStatus == "master" {
-			database.DB.QueryRow("SELECT COALESCE(SUM(total_final), 0) FROM purchase_requests WHERE parent_id = $1", id).Scan(&totalFinal)
+			var childFinal float64
+			database.DB.QueryRow("SELECT COALESCE(SUM(total_final), 0) FROM purchase_requests WHERE parent_id = $1", id).Scan(&childFinal)
+			totalFinal += childFinal
 		}
 		if totalFinal <= 0 {
 			return nil, fmt.Errorf("harga final belum diisi, tidak bisa mengajukan pembayaran")
@@ -792,33 +896,31 @@ func syncMasterStatusFromChild(childID string) {
 		return
 	}
 
-	// Count children by status
-	var total, paidOrReceived, partial int
-	rows, err := database.DB.Query("SELECT status FROM purchase_requests WHERE parent_id = $1", *parentID)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var s string
-		rows.Scan(&s)
-		total++
-		if s == "paid" || s == "received" {
-			paidOrReceived++
-		} else if s == "partial" {
-			partial++
-		}
-	}
-	if total == 0 {
+	// Pelunasan dinilai dari nominal, bukan nama status: pecahan berstatus
+	// 'received' yang masih kurang bayar dulu terhitung lunas dan ikut
+	// menandai master lunas padahal uangnya belum keluar penuh.
+	var total, settled int
+	var sumPaid float64
+	if err := database.DB.QueryRow(`
+		SELECT COUNT(*),
+		       COUNT(*) FILTER (WHERE total_final > 0 AND paid_amount >= total_final),
+		       COALESCE(SUM(paid_amount), 0)
+		FROM purchase_requests WHERE parent_id = $1`, *parentID).Scan(&total, &settled, &sumPaid); err != nil || total == 0 {
 		return
 	}
 
+	// Sisa item yang tidak ikut dipecah tetap tanggungan master sendiri, jadi
+	// master belum lunas selama bagiannya sendiri masih kurang bayar.
+	var ownOutstanding float64
+	database.DB.QueryRow(
+		"SELECT GREATEST(COALESCE(total_final,0) - COALESCE(paid_amount,0), 0) FROM purchase_requests WHERE id = $1",
+		*parentID).Scan(&ownOutstanding)
+
 	now := time.Now().UTC()
-	if paidOrReceived == total {
-		// All children fully paid/received → master = paid
+	switch {
+	case settled == total && ownOutstanding == 0:
 		database.DB.Exec("UPDATE purchase_requests SET status = 'paid', updated_at = $1 WHERE id = $2 AND status NOT IN ('paid','received')", now, *parentID)
-	} else if paidOrReceived+partial > 0 && paidOrReceived+partial == total {
-		// All children are at least partial → master = partial
+	case sumPaid > 0:
 		database.DB.Exec("UPDATE purchase_requests SET status = 'partial', updated_at = $1 WHERE id = $2 AND status NOT IN ('paid','received','partial')", now, *parentID)
 	}
 }
@@ -832,34 +934,46 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	if currentStatus != "pending" && currentStatus != "approved" {
 		return nil, fmt.Errorf("hanya bisa update item pada status pending/approved")
 	}
+	if err := validateItems(input.Items); err != nil {
+		return nil, err
+	}
 
-	var totalHps, totalFinal float64
-	for i := range input.Items {
-		var itemHps, itemFinal float64
-		for j := range input.Items[i].Items {
-			input.Items[i].Items[j].HpsSubtotal = float64(input.Items[i].Items[j].Qty) * input.Items[i].Items[j].HpsPrice
-			input.Items[i].Items[j].FinalSubtotal = float64(input.Items[i].Items[j].Qty) * input.Items[i].Items[j].FinalPrice
-			itemHps += input.Items[i].Items[j].HpsSubtotal
-			itemFinal += input.Items[i].Items[j].FinalSubtotal
-		}
-		input.Items[i].HpsTotal = itemHps
-		input.Items[i].FinalTotal = itemFinal
-		totalHps += itemHps
-		totalFinal += itemFinal
-	}
-	total := totalFinal
-	if total == 0 {
-		total = totalHps
-	}
+	totalHps, totalFinal := recalcItems(input.Items)
 
 	itemsJSON, err := json.Marshal(input.Items)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal items: %w", err)
 	}
 
+	// COALESCE dengan nilai lama: kolom yang tidak dikirim pemanggil tidak
+	// tersentuh. Vendor id dan nama diperlakukan satu paket supaya tidak pernah
+	// tersisa id tanpa nama atau sebaliknya.
+	var vendorID, vendorName, invoice interface{}
+	if input.VendorID != nil || input.VendorName != nil {
+		if input.VendorID != nil {
+			vendorID = nilIfEmpty(*input.VendorID)
+		}
+		if input.VendorName != nil {
+			vendorName = *input.VendorName
+		} else {
+			vendorName = ""
+		}
+	}
+	if input.InvoiceNumber != nil {
+		invoice = *input.InvoiceNumber
+	}
+
 	_, err = database.DB.Exec(`
-		UPDATE purchase_requests SET items=$1, total_amount=$2, total_hps=$3, total_final=$4, vendor_id=$5, vendor_name=$6, invoice_number=$7, updated_at=NOW() WHERE id=$8
-	`, itemsJSON, total, totalHps, totalFinal, nilIfEmpty(input.VendorID), input.VendorName, input.InvoiceNumber, id)
+		UPDATE purchase_requests SET
+			items=$1, total_amount=$2, total_hps=$3, total_final=$4,
+			vendor_id   = CASE WHEN $9::bool THEN $5::char(26) ELSE vendor_id END,
+			vendor_name = CASE WHEN $9::bool THEN COALESCE($6::varchar, '') ELSE vendor_name END,
+			invoice_number = COALESCE($7::text, invoice_number),
+			updated_at=NOW()
+		WHERE id=$8
+	`, itemsJSON, amountOf(totalHps, totalFinal), totalHps, totalFinal,
+		vendorID, vendorName, invoice, id,
+		input.VendorID != nil || input.VendorName != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -868,31 +982,43 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 }
 
 func DeletePurchaseRequest(id string, isAdmin bool) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	var status string
-	var splitStatus *string
-	err := database.DB.QueryRow("SELECT status, split_status FROM purchase_requests WHERE id = $1", id).Scan(&status, &splitStatus)
+	var splitStatus, parentID *string
+	var paidAmount float64
+	var itemsJSON []byte
+	err = tx.QueryRow(
+		"SELECT status, split_status, parent_id, COALESCE(paid_amount,0), items FROM purchase_requests WHERE id = $1 FOR UPDATE", id,
+	).Scan(&status, &splitStatus, &parentID, &paidAmount, &itemsJSON)
 	if err != nil {
 		return fmt.Errorf("pengajuan tidak ditemukan")
 	}
 
 	if isAdmin {
-		// Admin bisa hapus semua kecuali yang sudah dibayar
-		if status == "paid" {
-			return fmt.Errorf("tidak bisa menghapus pengajuan yang sudah dibayar")
+		// Patokannya uang yang sudah keluar, bukan nama status. Cek lama hanya
+		// menahan status 'paid', sehingga pengajuan 'partial' — yang sudah ada
+		// pembayarannya — bisa terhapus berikut histori pembayarannya (FK
+		// payment_histories ON DELETE CASCADE).
+		if paidAmount > 0 || status == "paid" || status == "received" {
+			return fmt.Errorf("tidak bisa menghapus pengajuan yang sudah ada pembayarannya")
 		}
-		// Jika master, cek apakah ada anak yang sudah dibayar
 		if splitStatus != nil && *splitStatus == "master" {
-			var paidCount int
-			err = database.DB.QueryRow("SELECT COUNT(*) FROM purchase_requests WHERE parent_id = $1 AND status = 'paid'", id).Scan(&paidCount)
-			if err != nil {
+			var blocked int
+			if err := tx.QueryRow(
+				`SELECT COUNT(*) FROM purchase_requests
+				 WHERE parent_id = $1 AND (paid_amount > 0 OR status IN ('paid','received'))`, id,
+			).Scan(&blocked); err != nil {
 				return fmt.Errorf("gagal memeriksa status pecahan")
 			}
-			if paidCount > 0 {
-				return fmt.Errorf("tidak bisa menghapus pengajuan induk karena ada pecahan yang sudah dibayar")
+			if blocked > 0 {
+				return fmt.Errorf("tidak bisa menghapus pengajuan induk karena ada pecahan yang sudah ada pembayarannya")
 			}
-			// Hapus semua anak dulu
-			_, err = database.DB.Exec("DELETE FROM purchase_requests WHERE parent_id = $1", id)
-			if err != nil {
+			if _, err := tx.Exec("DELETE FROM purchase_requests WHERE parent_id = $1", id); err != nil {
 				return fmt.Errorf("gagal menghapus pecahan: %w", err)
 			}
 		}
@@ -900,10 +1026,79 @@ func DeletePurchaseRequest(id string, isAdmin bool) error {
 		if status != "pending" && status != "rejected" && status != "cancelled" {
 			return fmt.Errorf("hanya bisa menghapus pengajuan berstatus pending/rejected/cancelled")
 		}
+		if paidAmount > 0 {
+			return fmt.Errorf("tidak bisa menghapus pengajuan yang sudah ada pembayarannya")
+		}
 	}
 
-	_, err = database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1", id)
-	return err
+	// Menghapus pecahan mengembalikan itemnya ke induk. Sejak split benar-benar
+	// memindahkan item, tanpa langkah ini item tersebut akan hilang selamanya.
+	if parentID != nil && *parentID != "" {
+		if err := returnItemsToParent(tx, *parentID, itemsJSON); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.Exec("DELETE FROM purchase_requests WHERE id = $1", id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// returnItemsToParent menggabungkan kembali item milik pecahan ke induknya dan
+// menghitung ulang total induk. Bila setelah ini induk tidak punya pecahan lagi,
+// penanda 'master' dilepas supaya kembali menjadi pengajuan biasa.
+func returnItemsToParent(tx *sql.Tx, parentID string, childItemsJSON []byte) error {
+	var parentJSON []byte
+	if err := tx.QueryRow("SELECT items FROM purchase_requests WHERE id = $1 FOR UPDATE", parentID).Scan(&parentJSON); err != nil {
+		if err == sql.ErrNoRows {
+			return nil // induk sudah tidak ada, tidak ada yang perlu dikembalikan
+		}
+		return fmt.Errorf("gagal memuat pengajuan induk: %w", err)
+	}
+
+	var parentItems, childItems []models.PurchaseRequestItem
+	json.Unmarshal(parentJSON, &parentItems)
+	json.Unmarshal(childItemsJSON, &childItems)
+
+	// Item dikembalikan ke grup bernama sama bila ada, agar dokumen induk pulih
+	// seperti sebelum di-split alih-alih memunculkan grup kembar.
+	for _, cg := range childItems {
+		merged := false
+		for i := range parentItems {
+			if parentItems[i].Name == cg.Name {
+				parentItems[i].Items = append(parentItems[i].Items, cg.Items...)
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			parentItems = append(parentItems, cg)
+		}
+	}
+	if parentItems == nil {
+		parentItems = []models.PurchaseRequestItem{}
+	}
+
+	totalHps, totalFinal := recalcItems(parentItems)
+	mergedJSON, err := json.Marshal(parentItems)
+	if err != nil {
+		return fmt.Errorf("gagal menyusun item induk: %w", err)
+	}
+
+	_, err = tx.Exec(`
+		UPDATE purchase_requests SET
+			items=$1, total_amount=$2, total_hps=$3, total_final=$4,
+			split_status = CASE
+				WHEN (SELECT COUNT(*) FROM purchase_requests c WHERE c.parent_id = $5) <= 1
+				THEN NULL ELSE split_status END,
+			updated_at=$6
+		WHERE id=$5
+	`, mergedJSON, amountOf(totalHps, totalFinal), totalHps, totalFinal, parentID, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("gagal mengembalikan item ke induk: %w", err)
+	}
+	return nil
 }
 
 // GetPaymentHistories returns all payment history entries for a purchase request.

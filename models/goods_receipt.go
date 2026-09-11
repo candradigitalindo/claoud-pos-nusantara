@@ -37,16 +37,21 @@ type GoodsReceiptItem struct {
 
 // GoodsReceipt — dokumen penerimaan.
 type GoodsReceipt struct {
-	ID            string             `json:"id"`
-	GRNNumber     string             `json:"grn_number"`
-	WarehouseID   string             `json:"warehouse_id"`
-	WarehouseName string             `json:"warehouse_name"`
-	VendorName    string             `json:"vendor_name"`
-	PORef         string             `json:"po_ref"`
-	Notes         string             `json:"notes"`
-	TotalCost     float64            `json:"total_cost"`
-	ItemCount     int                `json:"item_count"`
-	ReceivedBy    string             `json:"received_by"`
-	ReceivedAt    string             `json:"received_at"`
-	Items         []GoodsReceiptItem `json:"items,omitempty"`
+	ID            string `json:"id"`
+	GRNNumber     string `json:"grn_number"`
+	WarehouseID   string `json:"warehouse_id"`
+	WarehouseName string `json:"warehouse_name"`
+	VendorName    string `json:"vendor_name"`
+	PORef         string `json:"po_ref"`
+	// Tautan ke pengajuan pengadaan. Kolomnya sudah lama ada dan ikut tersimpan,
+	// tapi tidak pernah dibaca balik sehingga dokumen GRN terputus dari alur
+	// pengadaan yang memicunya.
+	PurchaseRequestID     string             `json:"purchase_request_id,omitempty"`
+	PurchaseRequestNumber string             `json:"purchase_request_number,omitempty"`
+	Notes                 string             `json:"notes"`
+	TotalCost             float64            `json:"total_cost"`
+	ItemCount             int                `json:"item_count"`
+	ReceivedBy            string             `json:"received_by"`
+	ReceivedAt            string             `json:"received_at"`
+	Items                 []GoodsReceiptItem `json:"items,omitempty"`
 }

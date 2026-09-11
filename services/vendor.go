@@ -162,8 +162,11 @@ func GetVendorDetail(id string, outletIDs, wuIDs []string) (*models.VendorDetail
 		SELECT
 			COUNT(*),
 			COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN total_final ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status IN ('paid','received') THEN total_final ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status IN ('approved','payment_requested') THEN total_final ELSE 0 END), 0),
+			-- Dibayar & hutang dihitung dari nominal, bukan nama status.
+			-- Sebelumnya 'partial' tidak masuk keduanya, sehingga pengajuan yang
+			-- baru dilunasi sebagian lenyap dari kedua angka sekaligus.
+			COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN paid_amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN `+outstandingCond+` THEN total_final - paid_amount ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'pending' THEN total_final ELSE 0 END), 0)
 		FROM purchase_requests WHERE vendor_id = $1`+aggCond,
 		append([]interface{}{id}, aggArgs...)...).

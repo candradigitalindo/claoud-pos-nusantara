@@ -117,7 +117,7 @@
         </div>
         <div class="flex items-center gap-2">
           <button class="bar-btn bar-cancel" @click="clearSelection">Batal</button>
-          <button class="bar-btn bar-pay" @click="openBatchPay">Bayar {{ selectedIds.size }} Pengajuan</button>
+          <button v-if="canPay" class="bar-btn bar-pay" @click="openBatchPay">Bayar {{ selectedIds.size }} Pengajuan</button>
         </div>
       </div>
     </Transition>
@@ -183,7 +183,7 @@
                     <button class="act-view" @click="viewDetail(row)" title="Lihat Detail">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
-                    <button v-if="row.status === 'payment_requested' || row.status === 'partial'" class="act-pay" @click="openPayModal(row)" title="Bayar">
+                    <button v-if="canPay && (row.status === 'payment_requested' || row.status === 'partial')" class="act-pay" @click="openPayModal(row)" title="Bayar">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                     </button>
                   </div>
@@ -429,7 +429,7 @@
         </div>
       </div>
       <template #footer>
-        <AppButton v-if="detail && (detail.status === 'payment_requested' || detail.status === 'partial')" variant="primary" @click="showDetail = false; openPayModal(detail)">Bayar</AppButton>
+        <AppButton v-if="canPay && detail && (detail.status === 'payment_requested' || detail.status === 'partial')" variant="primary" @click="showDetail = false; openPayModal(detail)">Bayar</AppButton>
         <AppButton variant="secondary" @click="showDetail = false">Tutup</AppButton>
       </template>
     </AppModal>
@@ -600,6 +600,8 @@ import { bankAccountsApi } from '@/api/bankAccounts.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
+// Melihat daftar tagihan dan mencairkannya kini izin terpisah.
+const canPay = computed(() => authStore.hasPermission('finance.payments.pay'))
 
 const loading = ref(false)
 const errorMsg = ref('')

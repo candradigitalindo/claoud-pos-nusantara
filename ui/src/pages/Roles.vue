@@ -396,6 +396,7 @@ const REDIRECT_GROUPS = [
     { value: '/procurement-dashboard', label: 'Dashboard Pengadaan', perm: 'procurement.dashboard.view' },
     { value: '/purchase-goods',        label: 'Pengadaan Barang',    perm: 'procurement.requests.view' },
     { value: '/purchase-services',     label: 'Pengadaan Jasa',      perm: 'procurement.requests.view' },
+    { value: '/projects',              label: 'Projek',              perm: 'procurement.projects.view' },
     { value: '/vendors',               label: 'Vendor',              perm: 'vendors.view' },
   ]},
   { category: 'PPIC', options: [

@@ -84,6 +84,12 @@
         <div v-if="myWorkUnit" class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm">
           <p class="text-emerald-800"><strong>Unit Kerja:</strong> {{ myWorkUnit.name }} — <strong>Pengaju:</strong> {{ form.requested_by }}</p>
         </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-gray-700">Projek <span class="font-normal text-gray-400">(opsional)</span></label>
+          <SearchSelect v-model="form.project_id" :options="projectOptions"
+            placeholder="Tanpa projek" searchPlaceholder="Cari projek…" />
+          <p class="text-xs text-gray-400">Isi bila belanja ini bagian dari projek pembangunan/renovasi — nilainya ikut terhitung ke RAB projek.</p>
+        </div>
         <div>
           <label class="text-sm font-medium text-gray-700 mb-2 block">Daftar Pengadaan Jasa</label>
           <div class="space-y-3">
@@ -159,6 +165,10 @@
                 <template v-if="detail.work_unit_name">
                   <dt class="text-gray-400">Unit</dt>
                   <dd class="font-medium text-gray-900">{{ detail.work_unit_name }}</dd>
+                </template>
+                <template v-if="detail.project_name">
+                  <dt class="text-gray-400">Projek</dt>
+                  <dd class="font-medium text-gray-900">{{ detail.project_name }}</dd>
                 </template>
                 <template v-if="!detail.children?.length">
                   <dt class="text-gray-400">Vendor</dt>
@@ -574,6 +584,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
@@ -590,6 +601,7 @@ import AppAlert      from '@/components/ui/AppAlert.vue'
 import AppPagination from '@/components/ui/AppPagination.vue'
 import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
+import { projectsApi } from '@/api/projects.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
@@ -625,28 +637,12 @@ const detailRejectMode = ref(false)
 const detailRejectReason = ref('')
 
 // Compute unsplit items for master: remove sub-items already assigned to children
+// Item yang masih dipegang pengajuan ini. Sejak split benar-benar memindahkan
+// item ke pecahan, `items` dari server sudah berisi sisa yang tepat — dulu di
+// sini item pecahan disaring lagi berdasarkan nama, sehingga dua baris bernama
+// sama dalam satu grup ikut hilang semuanya.
 function getUnsplitItems(d) {
-  const items = d.items || []
-  if (!d.children?.length) return items.map(it => ({ ...it, selected: false }))
-  const splitNames = new Set()
-  for (const child of d.children) {
-    for (const group of (child.items || [])) {
-      for (const sub of (group.items || [])) {
-        splitNames.add(group.name + '::' + sub.name)
-      }
-    }
-  }
-  const result = []
-  for (const group of items) {
-    const remaining = (group.items || []).filter(sub => !splitNames.has(group.name + '::' + sub.name))
-    if (remaining.length > 0) {
-      const g = { ...group, items: remaining, selected: false }
-      g.hps_total = remaining.reduce((s, sub) => s + (sub.qty || 0) * (sub.hps_price || 0), 0)
-      g.final_total = remaining.reduce((s, sub) => s + (sub.qty || 0) * (sub.final_price || 0), 0)
-      result.push(g)
-    }
-  }
-  return result
+  return (d.items || []).map(it => ({ ...it, selected: false }))
 }
 
 const detailHpsTotal = computed(() =>
@@ -808,7 +804,7 @@ function canDelete(s) {
 function canEditFinal(s) { return s === 'approved' }
 function emptyForm() {
   return {
-    outlet_id: '', work_unit_id: '', requested_by: '', vendor_id: '', vendor_name: '',
+    outlet_id: '', work_unit_id: '', requested_by: '', vendor_id: '', vendor_name: '', project_id: '',
     items: [{ name: '', items: [{ name: '', qty: 1, unit: 'paket', hps_price: 0 }] }],
     notes: '',
   }
@@ -821,7 +817,35 @@ function addSubItem(i) { form.value.items[i].items.push({ name: '', qty: 1, unit
 function removeSubItem(i, j) { if (form.value.items[i].items.length > 1) form.value.items[i].items.splice(j, 1) }
 function adminName() { return authStore.admin?.name || 'Admin' }
 
-onMounted(async () => { await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors()]) })
+const route = useRoute()
+const projects = ref([])
+
+// Hanya projek yang masih bisa dibelanjai yang boleh dipilih; yang sudah
+// selesai/batal tetap memegang pengajuan lamanya tapi tidak menerima yang baru.
+const projectOptions = computed(() => [
+  { id: '', name: 'Tanpa projek' },
+  ...projects.value
+    .filter(p => p.status === 'berjalan' || p.status === 'draft')
+    .map(p => ({ id: p.id, name: p.project_number ? `${p.name} — ${p.project_number}` : p.name })),
+])
+
+async function fetchProjects() {
+  try {
+    const data = await projectsApi.list()
+    projects.value = Array.isArray(data) ? data : (data?.data || [])
+  } catch { projects.value = [] }
+}
+
+onMounted(async () => {
+  await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors(), fetchProjects()])
+  // Datang lewat tombol "Belanja Tahap Baru" di halaman Projek: buka form
+  // pengajuan dengan projeknya sudah terpilih.
+  const pid = route.query.project_id
+  if (pid) {
+    openCreate()
+    form.value.project_id = String(pid)
+  }
+})
 
 async function fetchVendors() {
   try {
@@ -881,6 +905,7 @@ async function submitCreate() {
     await purchaseApi.create({
       outlet_id: form.value.outlet_id || '',
       work_unit_id: form.value.work_unit_id || '',
+      project_id: form.value.project_id || '',
       request_type: REQUEST_TYPE,
       requested_by: form.value.requested_by.trim(),
       vendor_id: form.value.vendor_id || '',
@@ -1042,7 +1067,7 @@ async function submitDelete() {
 function openEditFinal() {
   editFinalVendorId.value = detail.value?.vendor_id || ''
   editFinalInvoice.value = detail.value?.invoice_number || ''
-  const items = detail.value?.children?.length ? getUnsplitItems(detail.value) : (detail.value?.items || [])
+  const items = getUnsplitItems(detail.value || {})
   editFinalItems.value = items.map(it => ({
     ...it,
     items: (it.items || []).map(sub => ({ ...sub }))

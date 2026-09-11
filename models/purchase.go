@@ -50,6 +50,8 @@ type PurchaseRequest struct {
 	PaidAmount           float64               `json:"paid_amount"`
 	ReceivedBy           *string               `json:"received_by"`
 	ReceivedAt           *string               `json:"received_at"`
+	ProjectID            *string               `json:"project_id"`
+	ProjectName          string                `json:"project_name,omitempty"`
 	ParentID             *string               `json:"parent_id"`
 	ParentNumber         string                `json:"parent_number,omitempty"`
 	SplitStatus          *string               `json:"split_status"` // 'master' or nil
@@ -73,7 +75,10 @@ type CreatePurchaseRequestInput struct {
 	RequestedBy string                `json:"requested_by" validate:"required"`
 	VendorID    string                `json:"vendor_id"`
 	VendorName  string                `json:"vendor_name"`
-	Items       []PurchaseRequestItem `json:"items" validate:"required"`
+	// ProjectID opsional: mengikat pengajuan ini sebagai satu belanja tahap
+	// dari sebuah projek pembangunan/renovasi.
+	ProjectID string                `json:"project_id"`
+	Items     []PurchaseRequestItem `json:"items" validate:"required"`
 	Notes       string                `json:"notes"`
 }
 
@@ -90,11 +95,16 @@ type UpdatePurchaseStatusInput struct {
 }
 
 // UpdatePurchaseItemsInput is the payload for updating items (e.g. setting final prices).
+//
+// Vendor dan nomor invoice sengaja berupa pointer: field yang tidak dikirim
+// (nil) berarti "biarkan apa adanya", sedangkan string kosong berarti pengguna
+// memang mengosongkannya. Sebelumnya bertipe string biasa, sehingga pengaju
+// yang sekadar mengubah qty diam-diam menghapus vendor dan nomor invoice.
 type UpdatePurchaseItemsInput struct {
 	Items         []PurchaseRequestItem `json:"items" validate:"required"`
-	VendorID      string                `json:"vendor_id,omitempty"`
-	VendorName    string                `json:"vendor_name,omitempty"`
-	InvoiceNumber string                `json:"invoice_number,omitempty"`
+	VendorID      *string               `json:"vendor_id,omitempty"`
+	VendorName    *string               `json:"vendor_name,omitempty"`
+	InvoiceNumber *string               `json:"invoice_number,omitempty"`
 }
 
 // PurchaseRequestListResponse wraps paginated purchase requests.

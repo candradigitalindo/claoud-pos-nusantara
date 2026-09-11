@@ -18,6 +18,7 @@ func ListPurchaseRequests(c *fiber.Ctx) error {
 	workUnitID := c.Query("work_unit_id", "")
 	status := c.Query("status", "")
 	requestType := c.Query("type", "")
+	projectID := c.Query("project_id", "")
 	parentID := c.Query("parent_id", "")
 	excludeMasters := c.Query("exclude_masters", "") == "true"
 	search := strings.TrimSpace(c.Query("search", ""))
@@ -25,7 +26,7 @@ func ListPurchaseRequests(c *fiber.Ctx) error {
 	scopeIDs := getOutletScope(c)
 	wuScopeIDs := getWorkUnitScope(c)
 
-	result, err := services.ListPurchaseRequests(outletID, workUnitID, status, requestType, parentID, excludeMasters, search, scopeIDs, wuScopeIDs, page, limit)
+	result, err := services.ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, parentID, excludeMasters, search, scopeIDs, wuScopeIDs, page, limit)
 	if err != nil {
 		log.Printf("ListPurchaseRequests error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
@@ -188,7 +189,10 @@ func UpdatePurchaseStatus(c *fiber.Ctx) error {
 	case "request_payment":
 		requiredPerm = "procurement.requests.purchasing"
 	case "pay":
-		requiredPerm = "finance.payments.view"
+		// Mencairkan uang butuh izin sendiri. Sebelumnya cukup
+		// finance.payments.view — izin membaca halaman Pembayaran — sehingga
+		// siapa pun yang boleh melihat daftar tagihan juga boleh membayarnya.
+		requiredPerm = "finance.payments.pay"
 	case "receive", "cancel":
 		requiredPerm = "procurement.requests.submit"
 	default:
@@ -197,24 +201,28 @@ func UpdatePurchaseStatus(c *fiber.Ctx) error {
 		})
 	}
 
+	// Bypass superadmin disamakan dengan handler lain di file ini; tanpa itu
+	// izin per-aksi bergantung pada berhasilnya seeding role_permissions.
 	roleName, _ := c.Locals("admin_role").(string)
-	perms, err := services.GetRolePermissions(roleName)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
-			Success: false, Error: "Gagal memuat permission.",
-		})
-	}
-	hasPermission := false
-	for _, p := range perms {
-		if p == requiredPerm {
-			hasPermission = true
-			break
+	if roleName != "superadmin" {
+		perms, err := services.GetRolePermissions(roleName)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+				Success: false, Error: "Gagal memuat permission.",
+			})
 		}
-	}
-	if !hasPermission {
-		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
-			Success: false, Error: "Anda tidak memiliki akses untuk aksi ini.",
-		})
+		hasPermission := false
+		for _, p := range perms {
+			if p == requiredPerm {
+				hasPermission = true
+				break
+			}
+		}
+		if !hasPermission {
+			return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
+				Success: false, Error: "Anda tidak memiliki akses untuk aksi ini.",
+			})
+		}
 	}
 
 	result, err := services.UpdatePurchaseStatus(id, input)

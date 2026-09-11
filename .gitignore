@@ -19,6 +19,9 @@ uploads/
 # ── Data exports / logs ────────────────────────
 *.xlsx
 *.log
+# Hasil ekspor laporan lokal — berisi data transaksi & nama pelanggan asli,
+# tidak boleh ikut ter-push ke repositori.
+laporan/
 
 # ── OS / editor ────────────────────────────────
 .DS_Store

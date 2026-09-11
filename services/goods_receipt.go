@@ -37,6 +37,17 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 	}
 	defer tx.Rollback()
 
+	// Tanpa foreign key, id pengajuan yang salah ketik dulu tersimpan diam-diam
+	// dan menghasilkan tautan yang menunjuk ke mana-mana.
+	if strings.TrimSpace(req.PurchaseRequestID) != "" {
+		var exists bool
+		if err := database.DB.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM purchase_requests WHERE id = $1)`, req.PurchaseRequestID,
+		).Scan(&exists); err != nil || !exists {
+			return nil, fmt.Errorf("pengajuan pengadaan yang ditautkan tidak ditemukan")
+		}
+	}
+
 	grnID := NewULID()
 	grnNumber, err := generateGRNNumber(tx)
 	if err != nil {
@@ -117,12 +128,16 @@ func GetGoodsReceipt(id string) (*models.GoodsReceipt, error) {
 	var g models.GoodsReceipt
 	err := database.DB.QueryRow(`
 		SELECT g.id, g.grn_number, g.warehouse_id, COALESCE(w.name,''), COALESCE(g.vendor_name,''),
-			COALESCE(g.po_ref,''), COALESCE(g.notes,''), g.total_cost, COALESCE(g.received_by,''),
+			COALESCE(g.po_ref,''), COALESCE(g.purchase_request_id,''), COALESCE(pr.request_number,''),
+			COALESCE(g.notes,''), g.total_cost, COALESCE(g.received_by,''),
 			to_char(g.received_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		FROM goods_receipts g JOIN warehouses w ON w.id=g.warehouse_id
+		FROM goods_receipts g
+		JOIN warehouses w ON w.id=g.warehouse_id
+		LEFT JOIN purchase_requests pr ON pr.id = g.purchase_request_id
 		WHERE g.id=$1`, id,
 	).Scan(&g.ID, &g.GRNNumber, &g.WarehouseID, &g.WarehouseName, &g.VendorName,
-		&g.PORef, &g.Notes, &g.TotalCost, &g.ReceivedBy, &g.ReceivedAt)
+		&g.PORef, &g.PurchaseRequestID, &g.PurchaseRequestNumber,
+		&g.Notes, &g.TotalCost, &g.ReceivedBy, &g.ReceivedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -173,10 +188,12 @@ func ListGoodsReceipts(warehouseID string, outletIDs []string, page, limit int) 
 	offset := (page - 1) * limit
 	q := fmt.Sprintf(`
 		SELECT g.id, g.grn_number, g.warehouse_id, COALESCE(w.name,''), COALESCE(g.vendor_name,''),
-			COALESCE(g.po_ref,''), g.total_cost, COALESCE(g.received_by,''),
+			COALESCE(g.po_ref,''), COALESCE(pr.request_number,''), g.total_cost, COALESCE(g.received_by,''),
 			to_char(g.received_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 			(SELECT COUNT(*) FROM goods_receipt_items gi WHERE gi.receipt_id=g.id)
-		FROM goods_receipts g JOIN warehouses w ON w.id=g.warehouse_id
+		FROM goods_receipts g
+		JOIN warehouses w ON w.id=g.warehouse_id
+		LEFT JOIN purchase_requests pr ON pr.id = g.purchase_request_id
 		WHERE %s ORDER BY g.received_at DESC LIMIT $%d OFFSET $%d`, where, idx, idx+1)
 	args = append(args, limit, offset)
 
@@ -189,7 +206,7 @@ func ListGoodsReceipts(warehouseID string, outletIDs []string, page, limit int) 
 	for rows.Next() {
 		var g models.GoodsReceipt
 		if err := rows.Scan(&g.ID, &g.GRNNumber, &g.WarehouseID, &g.WarehouseName, &g.VendorName,
-			&g.PORef, &g.TotalCost, &g.ReceivedBy, &g.ReceivedAt, &g.ItemCount); err != nil {
+			&g.PORef, &g.PurchaseRequestNumber, &g.TotalCost, &g.ReceivedBy, &g.ReceivedAt, &g.ItemCount); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, g)

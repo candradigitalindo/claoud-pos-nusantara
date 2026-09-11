@@ -45,15 +45,22 @@ var AllPermissions = []string{
 	// Titipan dipisah dari void: halaman sama (tab), izin berbeda.
 	"reports.titipan.view",
 	"reports.discount.view",
+	// Analisa Bisnis (RGI): lintas outlet, tidak bisa di-scope per outlet.
+	"reports.business_analysis.view",
 	"cashier_shifts.view",
 	// Rekonsiliasi shift dipisah dari laporan shift kasir.
 	"shift_reconciliation.view",
 	"finance.payments.view",
+	// Mencairkan uang dipisah dari sekadar melihat halaman Pembayaran.
+	"finance.payments.pay",
 	"finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete",
 
 	// Pengadaan
 	"procurement.dashboard.view",
 	"procurement.requests.view", "procurement.requests.submit", "procurement.requests.approve", "procurement.requests.purchasing",
+	// Projek pembangunan/renovasi: payung RAB di atas pengadaan.
+	// .manage = buat/ubah/hapus projek dan menetapkan RAB-nya.
+	"procurement.projects.view", "procurement.projects.manage",
 	"vendors.view", "vendors.create", "vendors.update", "vendors.delete",
 
 	// Pengguna & Role

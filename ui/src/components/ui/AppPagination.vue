@@ -19,15 +19,15 @@
   for reacting to the emitted page number and calling the API.
 -->
 <template>
-  <div v-if="pageCount > 1" class="flex items-center justify-between text-sm text-gray-600 mt-4">
+  <div v-if="pageCount > 1" class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-gray-600 mt-4">
     <!-- Info -->
-    <span>
+    <span class="text-center sm:text-left">
       Halaman {{ current }} dari {{ pageCount }}
       <span v-if="total > 0" class="text-gray-400">({{ total }} data)</span>
     </span>
 
     <!-- Buttons -->
-    <div class="flex items-center gap-1">
+    <div class="flex flex-wrap items-center justify-center gap-1 sm:justify-end">
       <button
         :disabled="current <= 1"
         class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"

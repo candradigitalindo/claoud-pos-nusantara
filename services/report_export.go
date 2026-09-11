@@ -1132,7 +1132,7 @@ func splitPaymentProof(proof string) string {
 func BuildProcurementPaymentsExcel(status, requestType, search string, scopeIDs, wuScopeIDs []string) ([]byte, string, error) {
 	// parent_id="all" + excludeMasters=true meniru halaman Pembayaran: baris
 	// split ditampilkan satu-satu, baris master disembunyikan.
-	result, err := ListPurchaseRequests("", "", status, requestType, "all", true, search, scopeIDs, wuScopeIDs, 1, exportTxLimit)
+	result, err := ListPurchaseRequests("", "", status, requestType, "", "all", true, search, scopeIDs, wuScopeIDs, 1, exportTxLimit)
 	if err != nil {
 		return nil, "", err
 	}

@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-5">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-bold text-gray-900">Pengadaan Barang</h1>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan Barang</h1>
       <AppButton v-if="authStore.hasPermission('procurement.requests.submit')" @click="openCreate">+ Buat Pengajuan</AppButton>
     </div>
 
@@ -9,8 +9,8 @@
 
     <!-- Filters -->
     <AppCard>
-      <div class="flex flex-wrap items-end gap-4">
-        <div class="flex flex-col gap-1" style="min-width:200px">
+      <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+        <div class="flex w-full flex-col gap-1 sm:w-auto sm:min-w-[200px]">
           <label class="text-sm font-medium text-gray-700">Unit Kerja</label>
           <SearchSelect
             v-model="filterWorkUnit"
@@ -19,16 +19,16 @@
             searchPlaceholder="Cari unit kerja…"
           />
         </div>
-        <div class="flex flex-col gap-1">
+        <div class="flex w-full flex-col gap-1 sm:w-auto">
           <label class="text-sm font-medium text-gray-700">Status</label>
           <select v-model="filterStatus"
-            class="rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            class="w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="">Semua Status</option>
             <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
           </select>
         </div>
         <button @click="page = 1; fetchList()"
-          class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
+          class="w-full sm:w-auto px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
           Tampilkan
         </button>
       </div>
@@ -36,7 +36,50 @@
 
     <!-- List -->
     <AppCard :padding="false">
-      <AppTable :columns="COLUMNS" :rows="requests" :loading="loading" emptyText="Belum ada pengajuan barang.">
+      <!-- Mobile: daftar kartu (tabel disembunyikan di bawah sm) -->
+      <div class="sm:hidden">
+        <div v-if="loading" class="p-6 text-center text-sm text-gray-400">Memuat…</div>
+        <div v-else-if="!requests.length" class="p-6 text-center text-sm text-gray-400">Belum ada pengajuan barang.</div>
+        <ul v-else class="divide-y divide-gray-100">
+          <li v-for="row in requests" :key="row.id" class="p-4">
+            <div class="flex items-start justify-between gap-2">
+              <button @click="viewDetail(row)" class="min-w-0 flex-1 text-left">
+                <p class="font-mono text-[11px] text-gray-500">{{ row.request_number || '-' }}</p>
+                <p class="mt-0.5 text-sm font-medium text-gray-900 break-words">{{ (row.items || []).map(i => i.name).join(', ') || '-' }}</p>
+              </button>
+              <span :class="statusBadge(row.status)" class="shrink-0">{{ statusLabel(row.status) }}</span>
+            </div>
+            <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dt class="text-gray-400">Unit</dt>
+              <dd class="font-medium text-gray-800">{{ row.work_unit_name || '-' }}</dd>
+              <dt class="text-gray-400">Pengaju</dt>
+              <dd class="text-gray-700">{{ row.requested_by || '-' }}</dd>
+              <dt class="text-gray-400">Tanggal</dt>
+              <dd class="text-gray-600">{{ formatDateTime(row.created_at) }}</dd>
+            </dl>
+            <div class="mt-2 flex items-end justify-between gap-2 border-t border-gray-100 pt-2">
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-gray-900">{{ formatRupiah(row.total_amount) }}</p>
+                <p v-if="row.status === 'partial' && row.paid_amount > 0" class="text-[10px] text-amber-600">
+                  Sisa: {{ formatRupiah((row.total_final || row.total_amount || 0) - (row.paid_amount || 0)) }}
+                </p>
+              </div>
+              <div class="action-btns shrink-0">
+                <button class="act-view" @click="viewDetail(row)" title="Lihat">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button v-if="row.status === 'pending' && authStore.hasPermission('procurement.requests.submit')" class="act-edit" @click="viewDetail(row)" title="Edit">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button v-if="canDelete(row.status) && authStore.hasPermission('procurement.requests.submit')" class="act-del" @click="confirmDelete(row)" title="Hapus">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <AppTable class="hidden sm:block" :columns="COLUMNS" :rows="requests" :loading="loading" emptyText="Belum ada pengajuan barang.">
         <template #cell-request_number="{ row }">
           <span class="font-mono text-xs text-gray-700">{{ row.request_number || '-' }}</span>
         </template>
@@ -84,12 +127,18 @@
         <div v-if="myWorkUnit" class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm">
           <p class="text-emerald-800"><strong>Unit Kerja:</strong> {{ myWorkUnit.name }} — <strong>Pengaju:</strong> {{ form.requested_by }}</p>
         </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-gray-700">Projek <span class="font-normal text-gray-400">(opsional)</span></label>
+          <SearchSelect v-model="form.project_id" :options="projectOptions"
+            placeholder="Tanpa projek" searchPlaceholder="Cari projek…" />
+          <p class="text-xs text-gray-400">Isi bila belanja ini bagian dari projek pembangunan/renovasi — nilainya ikut terhitung ke RAB projek.</p>
+        </div>
 
         <!-- Items List -->
         <div>
           <label class="text-sm font-medium text-gray-700 mb-2 block">Daftar Pengadaan</label>
           <div class="space-y-3">
-            <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
               <div class="flex items-start gap-2">
                 <div class="flex-1 space-y-3">
                   <div class="flex items-center gap-2">
@@ -100,15 +149,16 @@
                   </div>
                   <input v-model="item.name" placeholder="Nama Pengadaan" class="input-sm w-full" />
                   <!-- Sub-items table -->
-                  <div class="ml-2 pl-3 border-l-2 border-emerald-200 space-y-2">
+                  <div class="pl-2 sm:ml-2 sm:pl-3 border-l-2 border-emerald-200 space-y-2">
                     <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Detail Item</p>
-                    <div v-for="(sub, j) in item.items" :key="j" class="grid grid-cols-12 gap-1.5 items-center">
-                      <input v-model="sub.name" placeholder="Nama item" class="input-sm col-span-4" />
-                      <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm col-span-2" />
-                      <input v-model="sub.unit" placeholder="Satuan" class="input-sm col-span-1" />
+                    <div v-for="(sub, j) in item.items" :key="j"
+                      class="grid grid-cols-2 gap-1.5 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+                      <input v-model="sub.name" placeholder="Nama item" class="input-sm col-span-2 sm:col-span-4" />
+                      <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm sm:col-span-2" />
+                      <input v-model="sub.unit" placeholder="Satuan" class="input-sm sm:col-span-1" />
                       <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" class="col-span-2" />
-                      <p class="col-span-2 text-xs text-gray-500 text-right">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
-                      <button type="button" @click="removeSubItem(i, j)" class="col-span-1 text-red-400 hover:text-red-600 justify-self-center" :disabled="item.items.length <= 1">
+                      <p class="col-span-1 self-center text-right text-xs text-gray-500 sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
+                      <button type="button" @click="removeSubItem(i, j)" class="col-span-1 justify-self-end self-center text-red-400 hover:text-red-600 sm:col-span-1 sm:justify-self-center" :disabled="item.items.length <= 1">
                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                       </button>
                     </div>
@@ -161,6 +211,10 @@
                 <template v-if="detail.work_unit_name">
                   <dt class="text-gray-400">Unit</dt>
                   <dd class="font-medium text-gray-900">{{ detail.work_unit_name }}</dd>
+                </template>
+                <template v-if="detail.project_name">
+                  <dt class="text-gray-400">Projek</dt>
+                  <dd class="font-medium text-gray-900">{{ detail.project_name }}</dd>
                 </template>
                 <template v-if="detail.vendor_name && !detail.children?.length">
                   <dt class="text-gray-400">Supplier</dt>
@@ -291,14 +345,50 @@
           </p>
           <div class="space-y-4">
             <div v-for="(item, i) in detailItems" :key="i" class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div class="flex items-center justify-between mb-2">
-                <p class="text-sm font-semibold text-gray-900">{{ i + 1 }}. {{ item.name }}</p>
-                <div class="flex items-center gap-4 text-xs">
+              <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
+                <p class="min-w-0 break-words text-sm font-semibold text-gray-900">{{ i + 1 }}. {{ item.name }}</p>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                   <span v-if="showHps" class="text-gray-500">HPS: <strong>{{ formatRupiah(detail.status === 'pending' ? calcDetailItemHps(item) : item.hps_total) }}</strong></span>
                   <span class="text-emerald-700">Harga: <strong>{{ item.final_total != null && item.final_total > 0 ? formatRupiah(item.final_total) : '-' }}</strong></span>
                 </div>
               </div>
-              <div class="overflow-x-auto">
+              <!-- Mobile: satu kartu per item -->
+              <div class="space-y-2 sm:hidden">
+                <div v-for="(sub, j) in item.items" :key="j" class="rounded-lg border border-gray-200 bg-white p-2.5">
+                  <div class="flex items-start justify-between gap-2">
+                    <p class="min-w-0 break-words text-xs font-medium text-gray-800">{{ j + 1 }}. {{ sub.name }}</p>
+                    <button v-if="detail.status === 'pending'" class="act-del shrink-0" @click="removeDetailSubItem(i, j)" title="Hapus item">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                    </button>
+                  </div>
+                  <dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+                    <dt class="text-gray-400">Qty</dt>
+                    <dd class="text-gray-800">
+                      <span v-if="detail.status === 'pending'" class="inline-flex items-center gap-1">
+                        <input v-model.number="sub.qty" type="number" min="1" class="w-20 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
+                        <span>{{ sub.unit }}</span>
+                      </span>
+                      <span v-else>{{ sub.qty }} {{ sub.unit }}</span>
+                    </dd>
+                    <template v-if="showHps">
+                      <dt class="text-gray-400">HPS</dt>
+                      <dd class="text-gray-700">
+                        {{ formatRupiah(sub.hps_price) }}<span class="text-gray-400"> × {{ sub.qty }} = </span>
+                        <strong>{{ formatRupiah(detail.status === 'pending' ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</strong>
+                      </dd>
+                    </template>
+                    <dt class="text-gray-400">Harga</dt>
+                    <dd class="text-gray-700">
+                      <template v-if="sub.final_price">
+                        {{ formatRupiah(sub.final_price) }}<span class="text-gray-400"> × {{ sub.qty }} = </span>
+                        <strong class="text-emerald-700">{{ formatRupiah((sub.qty || 0) * sub.final_price) }}</strong>
+                      </template>
+                      <template v-else>-</template>
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+              <div class="hidden sm:block overflow-x-auto">
                 <table class="w-full text-xs">
                   <thead>
                     <tr class="border-b border-gray-200 text-left text-gray-500 uppercase">
@@ -339,21 +429,21 @@
           </div>
 
           <!-- Totals -->
-          <div class="flex justify-end gap-6 mt-3 text-sm">
+          <div class="flex flex-wrap justify-end gap-x-6 gap-y-1 mt-3 text-sm">
             <span v-if="showHps" class="text-gray-700">Total HPS: <strong>{{ formatRupiah(detail.status === 'pending' ? detailHpsTotal : detail.total_hps) }}</strong></span>
             <span class="text-emerald-700">Total Harga: <strong>{{ detail.total_final ? formatRupiah(detail.total_final) : '-' }}</strong></span>
           </div>
 
           <!-- Purchasing Workflow Selection (Only for Main/Master requests) -->
           <div v-if="detail.status === 'approved' && authStore.hasPermission('procurement.requests.purchasing')" class="mt-6">
-            <div v-if="!detail.parent_id && (!detail.children?.length || detailItems.length > 0)" class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 shadow-sm">
+            <div v-if="!detail.parent_id && (!detail.children?.length || detailItems.length > 0)" class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 sm:p-5 shadow-sm">
               <p class="text-sm font-bold text-emerald-900 mb-4 flex items-center gap-2 uppercase tracking-tight">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h12a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V11a2 2 0 012-2z"/></svg>
                 Proses Pembelian (Purchasing)
               </p>
               <div :class="detail.children?.length ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-4'">
                 <!-- Option 1: Single Vendor (only if no split yet) -->
-                <button v-if="!detail.children?.length" @click="openEditFinal" class="flex flex-col items-center gap-3 p-5 bg-white border-2 border-emerald-100 hover:border-emerald-500 rounded-2xl transition-all group text-left shadow-sm">
+                <button v-if="!detail.children?.length" @click="openEditFinal" class="flex flex-col items-center gap-3 p-4 sm:p-5 bg-white border-2 border-emerald-100 hover:border-emerald-500 rounded-2xl transition-all group text-left shadow-sm">
                   <div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
                   </div>
@@ -364,7 +454,7 @@
                 </button>
 
                 <!-- Option 2: Split Vendor -->
-                <button @click="openSplitVendor" class="flex flex-col items-center gap-3 p-5 bg-white border-2 border-blue-50 hover:border-blue-500 rounded-2xl transition-all group text-left shadow-sm">
+                <button @click="openSplitVendor" class="flex flex-col items-center gap-3 p-4 sm:p-5 bg-white border-2 border-blue-50 hover:border-blue-500 rounded-2xl transition-all group text-left shadow-sm">
                   <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                   </div>
@@ -377,7 +467,7 @@
             </div>
             
             <!-- For Child requests (already split) -->
-            <div v-else class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+            <div v-else class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
@@ -387,7 +477,7 @@
                   <p class="text-xs text-blue-700">Silakan lengkapi harga final untuk vendor ini.</p>
                 </div>
               </div>
-              <button @click="openEditFinal" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm">
+              <button @click="openEditFinal" class="w-full sm:w-auto shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm">
                 Isi Harga Sekarang
               </button>
             </div>
@@ -396,16 +486,18 @@
           <!-- Action bar: inline under items when pending (approval permission required) -->
           <div v-if="detail.status === 'pending' && authStore.hasPermission('procurement.requests.approve')" class="mt-4 border-t border-gray-200 pt-4">
             <!-- Reject reason input -->
-            <div v-if="detailRejectMode" class="flex items-end gap-2">
-              <div class="flex-1">
+            <div v-if="detailRejectMode" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div class="min-w-0 flex-1">
                 <label class="text-xs font-medium text-red-600 mb-1 block">Alasan Penolakan</label>
                 <input v-model="detailRejectReason" placeholder="Masukkan alasan penolakan..." class="input-sm w-full border-red-300 focus:ring-red-500 focus:border-red-500" />
               </div>
-              <button @click="detailRejectMode = false" class="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">Batal</button>
-              <button @click="submitDetailReject" :disabled="actionLoading" class="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium disabled:opacity-50">Konfirmasi Tolak</button>
+              <div class="flex items-center justify-end gap-2">
+                <button @click="detailRejectMode = false" class="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">Batal</button>
+                <button @click="submitDetailReject" :disabled="actionLoading" class="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium disabled:opacity-50">Konfirmasi Tolak</button>
+              </div>
             </div>
             <!-- Action buttons -->
-            <div v-else class="flex items-center justify-end gap-2">
+            <div v-else class="flex flex-wrap items-center justify-end gap-2">
               <button @click="detailRejectMode = true" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Tolak
@@ -419,7 +511,7 @@
         </div>
       </div>
       <template #footer>
-        <div v-if="!parentDetailId" class="flex items-center gap-2 mr-auto">
+        <div v-if="!parentDetailId" class="flex flex-wrap items-center gap-2 mr-auto">
           <AppButton v-if="detail && detail.status === 'approved' && authStore.hasPermission('procurement.requests.purchasing') && detail.total_final > 0" variant="primary" @click="confirmDetailAction('request_payment')">Ajukan Pembayaran</AppButton>
           <AppButton v-if="detail && detail.status === 'paid' && authStore.hasPermission('procurement.requests.submit')" variant="primary" @click="confirmDetailAction('receive')">Serah Terima</AppButton>
           <AppButton v-if="detail && ['pending','approved'].includes(detail.status) && authStore.hasPermission('procurement.requests.submit')" variant="danger" @click="confirmDetailAction('cancel')">Batalkan</AppButton>
@@ -431,7 +523,7 @@
     <!-- Edit Final Price Modal -->
     <AppModal v-model="showEditFinal" title="Isi Harga (Purchasing)" size="2xl">
       <AppAlert type="error" :message="editFinalError" />
-      <div class="mb-4 bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+      <div class="mb-4 bg-emerald-50 p-3 sm:p-4 rounded-xl border border-emerald-100">
         <label class="text-sm font-bold text-emerald-900 mb-1.5 block">Vendor / Supplier Utama</label>
         <select v-model="editFinalVendorId"
           class="w-full rounded-lg border border-emerald-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
@@ -448,15 +540,16 @@
       <div class="space-y-4">
         <div v-for="(item, i) in editFinalItems" :key="i" class="bg-gray-50 rounded-lg p-3 border border-gray-200">
           <p class="text-sm font-semibold text-gray-900 mb-2">{{ item.name }}</p>
-          <div class="space-y-1.5">
-            <div v-for="(sub, j) in item.items" :key="j" class="grid grid-cols-12 gap-2 items-center">
-              <p class="col-span-4 text-sm text-gray-700">{{ sub.name }}</p>
-              <p class="col-span-2 text-xs text-gray-500 text-right">{{ sub.qty }} {{ sub.unit }}</p>
-              <div class="col-span-1"></div>
-              <div class="col-span-3">
+          <div class="space-y-2 sm:space-y-1.5">
+            <div v-for="(sub, j) in item.items" :key="j"
+              class="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+              <p class="col-span-2 break-words text-sm text-gray-700 sm:col-span-4">{{ sub.name }}</p>
+              <p class="self-center text-xs text-gray-500 sm:col-span-2 sm:text-right">{{ sub.qty }} {{ sub.unit }}</p>
+              <div class="hidden sm:block sm:col-span-1"></div>
+              <div class="col-span-2 order-last sm:order-none sm:col-span-3">
                 <RupiahInput v-model="sub.final_price" placeholder="Harga/satuan" />
               </div>
-              <p class="col-span-2 text-xs text-emerald-700 text-right font-medium">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</p>
+              <p class="self-center text-xs text-emerald-700 text-right font-medium sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</p>
             </div>
           </div>
           <p class="text-xs text-right mt-2 text-gray-500">Harga pengadaan: <strong class="text-emerald-700">{{ formatRupiah(calcEditItemFinal(item)) }}</strong></p>
@@ -484,12 +577,12 @@
             @click="sub.selected = !sub.selected">
             <input type="checkbox" v-model="sub.selected" @click.stop class="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
             <div class="flex-1 min-w-0">
-              <div class="flex justify-between items-start">
-                <div>
-                  <p class="text-sm font-bold text-gray-900 truncate">{{ sub.name }}</p>
-                  <p class="text-[10px] text-gray-400 uppercase font-semibold">{{ sub.groupName }}</p>
+              <div class="flex justify-between items-start gap-2">
+                <div class="min-w-0">
+                  <p class="text-sm font-bold text-gray-900 break-words">{{ sub.name }}</p>
+                  <p class="text-[10px] text-gray-400 uppercase font-semibold break-words">{{ sub.groupName }}</p>
                 </div>
-                <div class="text-right">
+                <div class="text-right shrink-0">
                   <p class="text-xs font-bold text-emerald-700">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</p>
                   <p class="text-[10px] text-gray-500">{{ sub.qty }} {{ sub.unit }}</p>
                 </div>
@@ -498,7 +591,7 @@
           </div>
         </div>
 
-        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+        <div class="bg-gray-50 p-3 sm:p-4 rounded-xl border border-gray-200 space-y-3">
           <div>
             <label class="text-sm font-bold text-gray-700 mb-1.5 block">Vendor Tujuan</label>
             <select v-model="splitVendorId"
@@ -507,7 +600,7 @@
               <option v-for="v in vendorList" :key="v.id" :value="v.id">{{ v.name }}</option>
             </select>
           </div>
-          <div class="flex justify-between items-center pt-2 border-t border-gray-200">
+          <div class="flex flex-wrap justify-between items-center gap-x-3 gap-y-1 pt-2 border-t border-gray-200">
             <p class="text-sm text-gray-600 font-medium">Total Harga Dipindah:</p>
             <p class="text-lg font-bold text-emerald-700">{{ formatRupiah(splitTotal) }}</p>
           </div>
@@ -577,6 +670,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
@@ -592,6 +686,7 @@ import AppAlert      from '@/components/ui/AppAlert.vue'
 import AppPagination from '@/components/ui/AppPagination.vue'
 import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
+import { projectsApi } from '@/api/projects.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
@@ -625,31 +720,12 @@ const savingDetailQty = ref(false)
 const detailRejectMode = ref(false)
 const detailRejectReason = ref('')
 
-// Compute unsplit items for master: remove sub-items already assigned to children
+// Item yang masih dipegang pengajuan ini. Sejak split benar-benar memindahkan
+// item ke pecahan, `items` dari server sudah berisi sisa yang tepat — dulu di
+// sini item pecahan disaring lagi berdasarkan nama, sehingga dua baris bernama
+// sama dalam satu grup ikut hilang semuanya.
 function getUnsplitItems(d) {
-  const items = d.items || []
-  if (!d.children?.length) return items.map(it => ({ ...it, selected: false }))
-  // Collect all sub-item names from children
-  const splitNames = new Set()
-  for (const child of d.children) {
-    for (const group of (child.items || [])) {
-      for (const sub of (group.items || [])) {
-        splitNames.add(group.name + '::' + sub.name)
-      }
-    }
-  }
-  // Filter out split sub-items from master
-  const result = []
-  for (const group of items) {
-    const remaining = (group.items || []).filter(sub => !splitNames.has(group.name + '::' + sub.name))
-    if (remaining.length > 0) {
-      const g = { ...group, items: remaining, selected: false }
-      g.hps_total = remaining.reduce((s, sub) => s + (sub.qty || 0) * (sub.hps_price || 0), 0)
-      g.final_total = remaining.reduce((s, sub) => s + (sub.qty || 0) * (sub.final_price || 0), 0)
-      result.push(g)
-    }
-  }
-  return result
+  return (d.items || []).map(it => ({ ...it, selected: false }))
 }
 
 const detailHpsTotal = computed(() =>
@@ -812,7 +888,7 @@ function canDelete(s) {
 }
 function emptyForm() {
   return {
-    outlet_id: '', work_unit_id: '', requested_by: '', vendor_id: '', vendor_name: '',
+    outlet_id: '', work_unit_id: '', requested_by: '', vendor_id: '', vendor_name: '', project_id: '',
     items: [{ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0 }] }],
     notes: '',
   }
@@ -825,7 +901,35 @@ function addSubItem(i) { form.value.items[i].items.push({ name: '', qty: 1, unit
 function removeSubItem(i, j) { if (form.value.items[i].items.length > 1) form.value.items[i].items.splice(j, 1) }
 function adminName() { return authStore.admin?.name || 'Admin' }
 
-onMounted(async () => { await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors()]) })
+const route = useRoute()
+const projects = ref([])
+
+// Hanya projek yang masih bisa dibelanjai yang boleh dipilih; yang sudah
+// selesai/batal tetap memegang pengajuan lamanya tapi tidak menerima yang baru.
+const projectOptions = computed(() => [
+  { id: '', name: 'Tanpa projek' },
+  ...projects.value
+    .filter(p => p.status === 'berjalan' || p.status === 'draft')
+    .map(p => ({ id: p.id, name: p.project_number ? `${p.name} — ${p.project_number}` : p.name })),
+])
+
+async function fetchProjects() {
+  try {
+    const data = await projectsApi.list()
+    projects.value = Array.isArray(data) ? data : (data?.data || [])
+  } catch { projects.value = [] }
+}
+
+onMounted(async () => {
+  await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors(), fetchProjects()])
+  // Datang lewat tombol "Belanja Tahap Baru" di halaman Projek: buka form
+  // pengajuan dengan projeknya sudah terpilih.
+  const pid = route.query.project_id
+  if (pid) {
+    openCreate()
+    form.value.project_id = String(pid)
+  }
+})
 
 async function fetchVendors() {
   try {
@@ -885,6 +989,7 @@ async function submitCreate() {
     await purchaseApi.create({
       outlet_id: form.value.outlet_id || '',
       work_unit_id: form.value.work_unit_id || '',
+      project_id: form.value.project_id || '',
       request_type: REQUEST_TYPE,
       requested_by: form.value.requested_by.trim(),
       items: validItems,
@@ -1040,7 +1145,7 @@ function openEditFinal() {
   editFinalVendorId.value = detail.value?.vendor_id || ''
   editFinalInvoice.value = detail.value?.invoice_number || ''
   // For masters, only show unsplit items for editing
-  const items = detail.value?.children?.length ? getUnsplitItems(detail.value) : (detail.value?.items || [])
+  const items = getUnsplitItems(detail.value || {})
   editFinalItems.value = items.map(it => ({
     ...it,
     items: (it.items || []).map(sub => ({ ...sub }))
@@ -1080,6 +1185,9 @@ async function submitEditFinal() {
   @apply rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500;
 }
 .action-btns { display: flex; gap: .35rem; }
+/* Nama item / nomor invoice tanpa spasi tidak boleh memaksa halaman
+   melebar di layar sempit — pecah di mana pun saat perlu. */
+dl dd, dl dt { min-width: 0; overflow-wrap: anywhere; }
 .act-view, .act-edit, .act-del {
   width: 28px; height: 28px; border-radius: .45rem; border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center; transition: all .12s;

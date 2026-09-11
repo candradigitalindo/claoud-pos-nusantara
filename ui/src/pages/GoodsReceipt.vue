@@ -122,6 +122,7 @@
           <div class="kv"><span>Waktu</span><b>{{ fmtDateTime(active.received_at) }}</b></div>
           <div class="kv"><span>Vendor</span><b>{{ active.vendor_name || '—' }}</b></div>
           <div class="kv"><span>No. PO</span><b>{{ active.po_ref || '—' }}</b></div>
+          <div v-if="active.purchase_request_number" class="kv"><span>No. Pengajuan</span><b>{{ active.purchase_request_number }}</b></div>
           <div class="kv"><span>Diterima oleh</span><b>{{ active.received_by || '—' }}</b></div>
           <div class="kv"><span>Total</span><b class="text-emerald-700">{{ formatRupiah(active.total_cost) }}</b></div>
         </div>

@@ -31,7 +31,7 @@
     >
       <div
         v-if="modelValue"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
       >
         <!-- Backdrop -->
         <div
@@ -46,14 +46,14 @@
           aria-modal="true"
           :aria-labelledby="titleId"
           :class="[
-            'relative bg-white rounded-xl shadow-xl w-full flex flex-col max-h-[90vh]',
+            'relative bg-white rounded-xl shadow-xl w-full min-w-0 flex flex-col max-h-[92vh] sm:max-h-[90vh]',
             SIZES[size],
           ]"
           @keydown.esc="close"
         >
           <!-- Header -->
-          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-            <h2 :id="titleId" class="text-lg font-semibold text-gray-900">
+          <div class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0">
+            <h2 :id="titleId" class="text-base sm:text-lg font-semibold text-gray-900">
               {{ title }}
             </h2>
             <button
@@ -68,14 +68,14 @@
           </div>
 
           <!-- Body -->
-          <div class="overflow-y-auto px-6 py-4 flex-1">
+          <div class="overflow-y-auto px-4 sm:px-6 py-4 flex-1">
             <slot />
           </div>
 
           <!-- Footer -->
           <div
             v-if="$slots.footer"
-            class="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-200 flex-shrink-0"
+            class="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex-shrink-0"
           >
             <slot name="footer" />
           </div>
