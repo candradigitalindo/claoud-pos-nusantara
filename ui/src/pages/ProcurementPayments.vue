@@ -86,6 +86,15 @@
             labelKey="label"
           />
         </div>
+        <div class="flex flex-col gap-1 min-w-[200px]">
+          <label class="text-sm font-medium text-gray-700">Projek</label>
+          <SearchSelect
+            v-model="filterProject"
+            :options="projectFilterOptions"
+            placeholder="Semua Projek"
+            searchPlaceholder="Cari projek…"
+          />
+        </div>
         <div class="flex flex-col gap-1 min-w-[130px]">
           <label class="text-sm font-medium text-gray-700">Tipe</label>
           <select v-model="filterType" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white/85 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all">
@@ -162,7 +171,12 @@
                     {{ row.request_type === 'barang' ? 'Barang' : 'Jasa' }}
                   </span>
                 </td>
-                <td class="px-4 py-3 align-middle text-gray-800">{{ (row.items || []).map(i => i.name).join(', ') || '-' }}</td>
+                <td class="px-4 py-3 align-middle text-gray-800">
+                  {{ (row.items || []).map(i => i.name).join(', ') || '-' }}
+                  <div v-if="row.project_name" class="mt-0.5">
+                    <span class="project-badge">{{ row.project_name }}</span>
+                  </div>
+                </td>
                 <td class="px-4 py-3 align-middle">
                   <div class="font-medium text-gray-900">{{ row.vendor_name || '-' }}</div>
                   <div v-if="row.parent_id" class="mt-0.5">
@@ -597,6 +611,7 @@ import AppPagination from '@/components/ui/AppPagination.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import { bankAccountsApi } from '@/api/bankAccounts.js'
+import { projectsApi } from '@/api/projects.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
@@ -610,6 +625,22 @@ const page = ref(1)
 const totalPages = ref(1)
 const filterStatus = ref('')
 const filterType = ref('')
+const filterProject = ref('')
+const projects = ref([])
+
+// Keuangan perlu tahu sebuah tagihan bagian dari projek mana, dan perlu bisa
+// menyaring "tampilkan semua tagihan projek X" saat menyiapkan pembayaran.
+const projectFilterOptions = computed(() => [
+  { id: '', name: 'Semua Projek' },
+  ...projects.value.map(p => ({ id: p.id, name: p.project_number ? `${p.name} — ${p.project_number}` : p.name })),
+])
+
+async function fetchProjects() {
+  try {
+    const data = await projectsApi.list()
+    projects.value = Array.isArray(data) ? data : (data?.data || [])
+  } catch { projects.value = [] }
+}
 const searchQuery = ref('')
 
 const statusFilterOptions = [
@@ -736,7 +767,7 @@ function statusBadge(s) {
 function statusLabel(s) { return (statusMap[s] || { label: s }).label }
 function adminName() { return authStore.admin?.name || 'Admin' }
 
-onMounted(() => { fetchList(); fetchStats(); fetchBankAccounts() })
+onMounted(() => { fetchList(); fetchStats(); fetchBankAccounts(); fetchProjects() })
 
 async function fetchBankAccounts() {
   try {
@@ -764,6 +795,7 @@ async function fetchList() {
     const params = { page: page.value, limit: 20, parent_id: 'all', exclude_masters: 'true' }
     if (filterStatus.value) params.status = filterStatus.value
     if (filterType.value) params.type = filterType.value
+    if (filterProject.value) params.project_id = filterProject.value
     if (searchQuery.value.trim()) params.search = searchQuery.value.trim()
     const data = await purchaseApi.list(params)
     requests.value = data.requests || []
@@ -785,6 +817,7 @@ async function downloadExcel() {
     const params = {}
     if (filterStatus.value) params.status = filterStatus.value
     if (filterType.value) params.type = filterType.value
+    if (filterProject.value) params.project_id = filterProject.value
     if (searchQuery.value.trim()) params.search = searchQuery.value.trim()
     const blob = await purchaseApi.exportPayments(params)
 
@@ -996,6 +1029,11 @@ async function submitPay() {
 .type-badge { display: inline-flex; padding: .1rem .45rem; border-radius: 999px; font-size: .65rem; font-weight: 700; }
 .type-barang { background: rgba(59,130,246,.1); color: #1d4ed8; }
 .type-jasa   { background: rgba(168,85,247,.1); color: #7c3aed; }
+.project-badge {
+  display: inline-block; font-size: .62rem; font-weight: 600; line-height: 1.2;
+  padding: .1rem .4rem; border-radius: .3rem;
+  background: rgba(99,102,241,.1); color: #4f46e5;
+}
 .split-badge {
   display: inline-flex; padding: .05rem .4rem; border-radius: 999px;
   font-size: .6rem; font-weight: 700; letter-spacing: .02em;

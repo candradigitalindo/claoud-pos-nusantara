@@ -66,8 +66,10 @@ export const salesApi = {
       timeout: 120000,
     }),
 
+  // Buku besar mengembalikan satu entri per transaksi, jadi rentang sebulan
+  // bisa puluhan ribu baris — timeout default 15s terlalu pendek.
   getGeneralLedger: (params) =>
-    apiClient.get('/admin/general-ledger', { params }),
+    apiClient.get('/admin/general-ledger', { params, timeout: 60000 }),
 
   exportGeneralLedger: (params) =>
     apiClient.get('/admin/general-ledger/export', {

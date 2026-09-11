@@ -296,7 +296,7 @@ func TestProcurementQueriesRun(t *testing.T) {
 	if _, err := GetPaymentStats([]string{"x"}, nil); err != nil {
 		t.Errorf("payment stats scoped: %v", err)
 	}
-	if _, _, err := BuildProcurementPaymentsExcel("", "", "", nil, nil); err != nil {
+	if _, _, err := BuildProcurementPaymentsExcel("", "", "", "", nil, nil); err != nil {
 		t.Errorf("export excel: %v", err)
 	}
 

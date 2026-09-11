@@ -186,12 +186,12 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 	trendWhere := andWhere(scopeClause, excludeShell+" AND "+trendExtra)
 	trendQ := fmt.Sprintf(`
 		SELECT
-			TO_CHAR(created_at, 'YYYY-MM') AS month,
+			TO_CHAR(tz_date(created_at), 'YYYY-MM') AS month,
 			COUNT(*) AS count,
 			COALESCE(SUM(total_final), 0) AS total_amount
 		FROM purchase_requests
 		%s
-		GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+		GROUP BY TO_CHAR(tz_date(created_at), 'YYYY-MM')
 		ORDER BY month`, trendWhere)
 
 	trendRows, err := database.DB.Query(trendQ, args...)

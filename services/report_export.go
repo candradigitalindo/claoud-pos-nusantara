@@ -1129,10 +1129,10 @@ func splitPaymentProof(proof string) string {
 // dengan filter yang sama persis dengan halaman /procurement-payments: status,
 // tipe (barang|jasa), dan kata kunci pencarian. Scope outlet/unit kerja dari
 // role admin ikut dipaksakan lewat ListPurchaseRequests.
-func BuildProcurementPaymentsExcel(status, requestType, search string, scopeIDs, wuScopeIDs []string) ([]byte, string, error) {
+func BuildProcurementPaymentsExcel(status, requestType, projectID, search string, scopeIDs, wuScopeIDs []string) ([]byte, string, error) {
 	// parent_id="all" + excludeMasters=true meniru halaman Pembayaran: baris
 	// split ditampilkan satu-satu, baris master disembunyikan.
-	result, err := ListPurchaseRequests("", "", status, requestType, "", "all", true, search, scopeIDs, wuScopeIDs, 1, exportTxLimit)
+	result, err := ListPurchaseRequests("", "", status, requestType, projectID, "all", true, search, scopeIDs, wuScopeIDs, 1, exportTxLimit)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1521,9 +1521,15 @@ func BuildGeneralLedgerExcel(dateFrom, dateTo, outletID, accountFilter string, s
 	row++
 
 	setSection("RINGKASAN")
-	setKV("Saldo Kas", report.Summary.CashBalance, st.money)
-	setKV("Total Pendapatan", report.Summary.TotalRevenue, st.money)
-	setKV("Total Beban", report.Summary.TotalExpense, st.money)
+	// Ringkasan hanya bermakna kalau seluruh akun ikut dihitung; saat laporan
+	// difilter ke satu akun, kas/pendapatan/beban lain memang tidak diambil.
+	if report.AccountAll {
+		setKV("Saldo Kas", report.Summary.CashBalance, st.money)
+		setKV("Total Pendapatan", report.Summary.TotalRevenue, st.money)
+		setKV("Total Beban", report.Summary.TotalExpense, st.money)
+	} else {
+		setKV("Catatan", "Ringkasan kas/pendapatan/beban hanya tersedia untuk filter Semua Akun.", 0)
+	}
 	setKV("Jumlah Akun", len(report.Accounts), st.num)
 
 	// ── Sheet Rekap Akun ─────────────────────────────────────────────────

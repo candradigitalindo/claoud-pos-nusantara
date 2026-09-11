@@ -3,11 +3,13 @@ package services
 import (
 	"cloud-pos/database"
 	"cloud-pos/models"
+	"database/sql"
 	"fmt"
 	"log"
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 )
@@ -643,8 +645,10 @@ func GetCashFlowReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*m
 
 	args := []interface{}{dateFrom, dateTo}
 	outletFilter := ""
+	prOutletFilter := ""
 	if filterIDs != nil {
 		outletFilter = " AND outlet_id = ANY($3::text[])"
+		prOutletFilter = " AND pr.outlet_id = ANY($3::text[])"
 		args = append(args, pq.Array(filterIDs))
 	}
 
@@ -680,17 +684,16 @@ func GetCashFlowReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*m
 
 			UNION ALL
 
-			-- Pengadaan Barang = HPP, Jasa = Beban Jasa
-			SELECT tz_date(paid_at) AS date,
+			-- Pengadaan Barang = HPP, Jasa = Beban Jasa.
+			-- Satu baris per PEMBAYARAN (lihat procurement_finance.go): cicilan
+			-- harus jatuh pada tanggal uangnya benar-benar keluar.
+			SELECT tz_date(ph.created_at) AS date,
 				0::float8, 0::float8,
-				CASE WHEN request_type = 'barang' THEN paid_amount ELSE 0 END,
-				CASE WHEN request_type = 'jasa'   THEN paid_amount ELSE 0 END,
+				CASE WHEN pr.request_type = 'barang' THEN ph.amount ELSE 0 END,
+				CASE WHEN pr.request_type = 'jasa'   THEN ph.amount ELSE 0 END,
 				0::float8
-			FROM purchase_requests
-			WHERE status IN ('partial','paid','received')
-			  AND paid_at IS NOT NULL
-			  AND split_status IS NULL
-			  AND paid_at >= tz_day_start($1::date) AND paid_at < tz_day_start($2::date + 1)` + outletFilter + `
+			FROM ` + procurementCashOutFrom + `
+			` + procurementCashOutWhere(prOutletFilter) + `
 		) sub
 		GROUP BY date
 		ORDER BY date DESC`
@@ -825,19 +828,16 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 			GROUP BY outlet_id
 		) uq ON uq.outlet_id = o.id
 		LEFT JOIN (
-			SELECT outlet_id, SUM(paid_amount) AS total_procurement
-			FROM purchase_requests
-			WHERE status IN ('partial','paid','received')
-			  AND paid_at IS NOT NULL
-			  AND split_status IS NULL
-			  AND paid_at >= tz_day_start($1::date) AND paid_at < tz_day_start($2::date + 1)
-			GROUP BY outlet_id
+			SELECT pr.outlet_id, SUM(ph.amount) AS total_procurement
+			FROM `+procurementCashOutFrom+`
+			`+procurementCashOutWhere("")+`
+			GROUP BY pr.outlet_id
 		) pr ON pr.outlet_id = o.id
 		LEFT JOIN (
-			SELECT outlet_id, SUM(CASE WHEN status = 'partial' THEN total_final - paid_amount ELSE COALESCE(total_final, total_amount) END) AS accounts_payable
+			SELECT outlet_id, SUM(`+payableExpr("")+`) AS accounts_payable
 			FROM purchase_requests
-			WHERE status IN ('approved','priced','partial')
-			  AND split_status IS NULL
+			WHERE `+outstandingCond+`
+			  AND `+countableCond("")+`
 			GROUP BY outlet_id
 		) ap ON ap.outlet_id = o.id
 		WHERE o.is_active = true
@@ -883,11 +883,9 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 	// Add procurement with no outlet (outlet_id IS NULL) to global expense
 	var nullOutletProcurement float64
 	nullPrArgs := []interface{}{dateFrom, dateTo}
-	nullPrQuery := `SELECT COALESCE(SUM(paid_amount), 0) FROM purchase_requests
-		WHERE status IN ('partial','paid','received') AND paid_at IS NOT NULL
-		  AND outlet_id IS NULL
-		  AND split_status IS NULL
-		  AND paid_at >= tz_day_start($1::date) AND paid_at < tz_day_start($2::date + 1)`
+	nullPrQuery := `SELECT COALESCE(SUM(ph.amount), 0)
+		FROM ` + procurementCashOutFrom + `
+		` + procurementCashOutWhere(" AND pr.outlet_id IS NULL")
 	if filterIDs == nil {
 		if err := database.DB.QueryRow(nullPrQuery, nullPrArgs...).Scan(&nullOutletProcurement); err != nil {
 			return nil, err
@@ -898,8 +896,8 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 	// Accounts payable with no outlet
 	var nullOutletAP float64
 	if filterIDs == nil {
-		database.DB.QueryRow(`SELECT COALESCE(SUM(CASE WHEN status = 'partial' THEN total_final - paid_amount ELSE COALESCE(total_final, total_amount) END), 0)
-			FROM purchase_requests WHERE status IN ('approved','priced','partial') AND outlet_id IS NULL AND split_status IS NULL`).Scan(&nullOutletAP)
+		database.DB.QueryRow(`SELECT COALESCE(SUM(`+payableExpr("")+`), 0)
+			FROM purchase_requests WHERE `+outstandingCond+` AND outlet_id IS NULL AND `+countableCond("")).Scan(&nullOutletAP)
 		sumAP += nullOutletAP
 	}
 
@@ -943,8 +941,12 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 
 	args := []interface{}{dateFrom, dateTo}
 	outletFilter := ""
+	// Arus kas keluar pengadaan dibaca lewat payment_histories yang di-join ke
+	// purchase_requests, jadi butuh varian filter yang ber-alias.
+	prOutletFilter := ""
 	if filterIDs != nil {
 		outletFilter = " AND outlet_id = ANY($3::text[])"
+		prOutletFilter = " AND pr.outlet_id = ANY($3::text[])"
 		args = append(args, pq.Array(filterIDs))
 	}
 
@@ -968,14 +970,11 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 
 			UNION ALL
 
-			SELECT tz_date(paid_at) AS date, 0::float8,
-				CASE WHEN request_type = 'barang' THEN paid_amount ELSE 0 END,
-				CASE WHEN request_type = 'jasa'   THEN paid_amount ELSE 0 END
-			FROM purchase_requests
-			WHERE status IN ('partial','paid','received')
-			  AND paid_at IS NOT NULL
-			  AND split_status IS NULL
-			  AND paid_at >= tz_day_start($1::date) AND paid_at < tz_day_start($2::date + 1)`+outletFilter+`
+			SELECT tz_date(ph.created_at) AS date, 0::float8,
+				CASE WHEN pr.request_type = 'barang' THEN ph.amount ELSE 0 END,
+				CASE WHEN pr.request_type = 'jasa'   THEN ph.amount ELSE 0 END
+			FROM `+procurementCashOutFrom+`
+			`+procurementCashOutWhere(prOutletFilter)+`
 		) sub
 		GROUP BY date
 		ORDER BY date DESC`,
@@ -1029,14 +1028,12 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 	// COGS (purchase barang) and Service expense (purchase jasa)
 	prArgs := []interface{}{dateFrom, dateTo}
 	prQ := `SELECT
-		COALESCE(SUM(CASE WHEN request_type = 'barang' THEN paid_amount ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN request_type = 'jasa'   THEN paid_amount ELSE 0 END), 0)
-	FROM purchase_requests
-	WHERE status IN ('partial','paid','received') AND paid_at IS NOT NULL
-	  AND split_status IS NULL
-	  AND paid_at >= tz_day_start($1::date) AND paid_at < tz_day_start($2::date + 1)`
+		COALESCE(SUM(CASE WHEN pr.request_type = 'barang' THEN ph.amount ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN pr.request_type = 'jasa'   THEN ph.amount ELSE 0 END), 0)
+	FROM ` + procurementCashOutFrom + `
+	` + procurementCashOutWhere("")
 	if filterIDs != nil {
-		prQ += ` AND outlet_id = ANY($3::text[])`
+		prQ += ` AND pr.outlet_id = ANY($3::text[])`
 		prArgs = append(prArgs, pq.Array(filterIDs))
 	}
 	database.DB.QueryRow(prQ, prArgs...).Scan(&totalCOGS, &serviceExpense)
@@ -1091,20 +1088,16 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 			GROUP BY outlet_id
 		) t ON t.outlet_id = o.id
 		LEFT JOIN (
-			SELECT outlet_id, SUM(paid_amount) AS cogs
-			FROM purchase_requests
-			WHERE status IN ('partial','paid','received') AND paid_at IS NOT NULL AND request_type = 'barang'
-			  AND split_status IS NULL
-			  AND paid_at >= tz_day_start($1::date) AND paid_at < tz_day_start($2::date + 1)
-			GROUP BY outlet_id
+			SELECT pr.outlet_id, SUM(ph.amount) AS cogs
+			FROM `+procurementCashOutFrom+`
+			`+procurementCashOutWhere(" AND pr.request_type = 'barang'")+`
+			GROUP BY pr.outlet_id
 		) pr_b ON pr_b.outlet_id = o.id
 		LEFT JOIN (
-			SELECT outlet_id, SUM(paid_amount) AS svc
-			FROM purchase_requests
-			WHERE status IN ('partial','paid','received') AND paid_at IS NOT NULL AND request_type = 'jasa'
-			  AND split_status IS NULL
-			  AND paid_at >= tz_day_start($1::date) AND paid_at < tz_day_start($2::date + 1)
-			GROUP BY outlet_id
+			SELECT pr.outlet_id, SUM(ph.amount) AS svc
+			FROM `+procurementCashOutFrom+`
+			`+procurementCashOutWhere(" AND pr.request_type = 'jasa'")+`
+			GROUP BY pr.outlet_id
 		) pr_j ON pr_j.outlet_id = o.id
 		LEFT JOIN (
 			SELECT outlet_id, SUM(amount) AS expense
@@ -1159,24 +1152,43 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 
 // ── Buku Besar (General Ledger) ─────────────────────────────
 
+// Kode akun COA F&B yang dipakai buku besar.
+const (
+	glAccCash        = "1-100"
+	glAccReceivable  = "1-200"
+	glAccPayable     = "2-100"
+	glAccTaxPayable  = "2-200"
+	glAccRevenue     = "4-100"
+	glAccOtherIncome = "4-200"
+	glAccCOGS        = "5-100"
+	glAccServiceExp  = "5-200"
+	glAccOpex        = "5-300"
+	glAccTaxExpense  = "6-100"
+)
+
+type glAccountMeta struct {
+	Code  string
+	Name  string
+	Group string
+}
+
+// glAccounts menentukan urutan tampil sekaligus nama & kelompok tiap akun.
+var glAccounts = []glAccountMeta{
+	{glAccCash, "Kas & Setara Kas", "aset"},
+	{glAccReceivable, "Piutang Usaha", "aset"},
+	{glAccPayable, "Hutang Usaha", "kewajiban"},
+	{glAccTaxPayable, "Hutang Pajak Restoran", "kewajiban"},
+	{glAccRevenue, "Pendapatan Penjualan", "pendapatan"},
+	{glAccOtherIncome, "Pendapatan Lainnya", "pendapatan"},
+	{glAccCOGS, "HPP - Bahan Baku", "beban"},
+	{glAccServiceExp, "Beban Jasa & Layanan", "beban"},
+	{glAccOpex, "Beban Operasional", "beban"},
+	{glAccTaxExpense, "Beban Pajak Restoran", "beban"},
+}
+
 func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs []string) (*models.GeneralLedgerResponse, error) {
-	round2 := func(v float64) float64 { return math.Round(v*100) / 100 }
-
-	// Account codes — COA F&B
-	const (
-		accCash        = "1-100"
-		accReceivable  = "1-200"
-		accPayable     = "2-100"
-		accTaxPayable  = "2-200"
-		accRevenue     = "4-100"
-		accOtherIncome = "4-200"
-		accCOGS        = "5-100"
-		accServiceExp  = "5-200"
-		accOpex        = "5-300"
-		accTaxExpense  = "6-100"
-	)
-
-	// Normalize outlet filter
+	// Normalisasi filter outlet: outlet_id eksplisit menang, selain itu pakai
+	// scope role. scopeIDs nil = boleh semua outlet.
 	var filterIDs []string
 	if outletID != "" {
 		filterIDs = []string{outletID}
@@ -1185,321 +1197,293 @@ func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs
 	}
 
 	type rawEntry struct {
-		AccountCode string
+		At          time.Time // waktu asli, dipakai mengurutkan saldo berjalan
 		Date        string
 		Description string
 		Debit       float64
 		Credit      float64
 	}
 
-	var entries []rawEntry
+	accountEntries := make(map[string][]rawEntry, len(glAccounts))
 
-	args := []interface{}{dateFrom, dateTo}
-	outletFilter := ""
-	if filterIDs != nil {
-		outletFilter = " AND outlet_id = ANY($3::text[])"
-		args = append(args, pq.Array(filterIDs))
-	}
-
-	// Skip queries not relevant to the filtered account
-	needQ := func(accounts ...string) bool {
-		if accountFilter == "" {
-			return true
+	// wanted: akun ikut ditampilkan? add: catat entri (dibuang kalau akunnya
+	// tidak diminta, sehingga tidak ada alokasi sia-sia saat difilter).
+	wanted := func(code string) bool { return accountFilter == "" || accountFilter == code }
+	add := func(code string, at time.Time, date, desc string, debit, credit float64) {
+		if !wanted(code) {
+			return
 		}
+		accountEntries[code] = append(accountEntries[code], rawEntry{
+			At: at, Date: date, Description: desc, Debit: debit, Credit: credit,
+		})
+	}
+	// needQ: lewati query yang tak satu pun akunnya diminta.
+	needQ := func(accounts ...string) bool {
 		for _, a := range accounts {
-			if accountFilter == a {
+			if wanted(a) {
 				return true
 			}
 		}
 		return false
 	}
 
-	// 1) Pendapatan Penjualan — from cloud_transactions
-	if needQ(accCash, accRevenue) {
-	txQuery := `
+	// eachRow menutup rows tepat setelah query selesai — penting karena
+	// fungsi ini menembak 6 query berurutan dalam satu request.
+	eachRow := func(label, query string, qargs []interface{}, scan func(*sql.Rows) error) error {
+		rows, err := database.DB.Query(query, qargs...)
+		if err != nil {
+			return fmt.Errorf("general ledger: %s query failed: %w", label, err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			if err := scan(rows); err != nil {
+				return fmt.Errorf("general ledger: %s scan failed: %w", label, err)
+			}
+		}
+		return rows.Err()
+	}
+
+	// Filter outlet dipasang sebagai $3 untuk query yang tabelnya tanpa alias.
+	args := []interface{}{dateFrom, dateTo}
+	outletFilter := ""
+	if filterIDs != nil {
+		outletFilter = " AND outlet_id = ANY($3::text[])"
+		args = append(args, pq.Array(filterIDs))
+	}
+	// Versi beralias (pr., o.) untuk query yang tabelnya di-JOIN.
+	aliasFilter := func(alias string) string {
+		if filterIDs == nil {
+			return ""
+		}
+		return " AND " + alias + ".outlet_id = ANY($3::text[])"
+	}
+
+	// 1) Pendapatan Penjualan — dari cloud_transactions (transaksi ter-void
+	//    dikecualikan agar angkanya sama dengan Laporan Penjualan).
+	if needQ(glAccCash, glAccRevenue) {
+		q := `
 		SELECT
+			created_at,
 			TO_CHAR(tz_date(created_at), 'YYYY-MM-DD') AS date,
 			COALESCE(cashier_name, 'Kasir') || ' - ' || COALESCE(payment_method, '') AS description,
-			total_amount
+			COALESCE(total_amount, 0)
 		FROM cloud_transactions
-		WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` + outletFilter + `
+		WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` +
+			outletFilter + txNotVoided("cloud_transactions") + `
 		ORDER BY created_at`
 
-	txRows, err := database.DB.Query(txQuery, args...)
-	if err != nil {
-		return nil, fmt.Errorf("general ledger: revenue query failed: %w", err)
-	}
-	defer txRows.Close()
-
-	for txRows.Next() {
-		var date, desc string
-		var amount float64
-		if err := txRows.Scan(&date, &desc, &amount); err != nil {
-			return nil, fmt.Errorf("general ledger: revenue scan failed: %w", err)
+		if err := eachRow("revenue", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, desc string
+			var amount float64
+			if err := rows.Scan(&at, &date, &desc, &amount); err != nil {
+				return err
+			}
+			desc = "Penjualan: " + desc
+			add(glAccCash, at, date, desc, amount, 0)
+			add(glAccRevenue, at, date, desc, 0, amount)
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		entries = append(entries, rawEntry{AccountCode: accCash, Date: date, Description: "Penjualan: " + desc, Debit: amount})
-		entries = append(entries, rawEntry{AccountCode: accRevenue, Date: date, Description: "Penjualan: " + desc, Credit: amount})
-	}
-	if err := txRows.Err(); err != nil {
-		return nil, err
-	}
 	}
 
-	// 2) Kas Masuk & Pengeluaran Operasional — from cloud_cash_movements
-	if needQ(accCash, accOtherIncome, accOpex) {
-	mvQuery := `
+	// 2) Kas Masuk & Pengeluaran Operasional — dari cloud_cash_movements
+	if needQ(glAccCash, glAccOtherIncome, glAccOpex) {
+		q := `
 		SELECT
+			created_at,
 			TO_CHAR(tz_date(created_at), 'YYYY-MM-DD') AS date,
 			COALESCE(NULLIF(note, ''), movement_type) AS description,
 			movement_type,
-			amount
+			COALESCE(amount, 0)
 		FROM cloud_cash_movements
 		WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` + outletFilter + `
 		ORDER BY created_at`
 
-	mvRows, err := database.DB.Query(mvQuery, args...)
-	if err != nil {
-		return nil, fmt.Errorf("general ledger: cash movement query failed: %w", err)
-	}
-	defer mvRows.Close()
-
-	for mvRows.Next() {
-		var date, desc, mvType string
-		var amount float64
-		if err := mvRows.Scan(&date, &desc, &mvType, &amount); err != nil {
-			return nil, fmt.Errorf("general ledger: cash movement scan failed: %w", err)
+		if err := eachRow("cash movement", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, desc, mvType string
+			var amount float64
+			if err := rows.Scan(&at, &date, &desc, &mvType, &amount); err != nil {
+				return err
+			}
+			switch strings.ToLower(mvType) {
+			case "masuk", "in", "income", "pemasukan":
+				desc = "Kas Masuk: " + desc
+				add(glAccCash, at, date, desc, amount, 0)
+				add(glAccOtherIncome, at, date, desc, 0, amount)
+			default:
+				desc = "Pengeluaran: " + desc
+				add(glAccOpex, at, date, desc, amount, 0)
+				add(glAccCash, at, date, desc, 0, amount)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		isIncome := strings.EqualFold(mvType, "masuk") || strings.EqualFold(mvType, "in") ||
-			strings.EqualFold(mvType, "income") || strings.EqualFold(mvType, "pemasukan")
-
-		if isIncome {
-			entries = append(entries, rawEntry{AccountCode: accCash, Date: date, Description: "Kas Masuk: " + desc, Debit: amount})
-			entries = append(entries, rawEntry{AccountCode: accOtherIncome, Date: date, Description: "Kas Masuk: " + desc, Credit: amount})
-		} else {
-			entries = append(entries, rawEntry{AccountCode: accOpex, Date: date, Description: "Pengeluaran: " + desc, Debit: amount})
-			entries = append(entries, rawEntry{AccountCode: accCash, Date: date, Description: "Pengeluaran: " + desc, Credit: amount})
-		}
-	}
-	if err := mvRows.Err(); err != nil {
-		return nil, err
-	}
 	}
 
-	// 3) Pengadaan Dibayar — split by type (barang→HPP, jasa→Beban Jasa)
-	if needQ(accCash, accCOGS, accServiceExp) {
-	prArgs := []interface{}{dateFrom, dateTo}
-	prFilter := ""
-	if filterIDs != nil {
-		prFilter = " AND pr.outlet_id = ANY($3::text[])"
-		prArgs = append(prArgs, pq.Array(filterIDs))
-	}
-	prQuery := `
+	// 3) Pengadaan Dibayar — dipisah per jenis (barang→HPP, jasa→Beban Jasa)
+	if needQ(glAccCash, glAccCOGS, glAccServiceExp) {
+		// Satu baris jurnal per PEMBAYARAN. Dulu satu baris per pengajuan
+		// memakai paid_at/paid_amount, sehingga pengajuan yang dicicil hanya
+		// muncul sekali di tanggal cicilan terakhir dengan nilai penuh.
+		q := `
 		SELECT
-			TO_CHAR(tz_date(pr.paid_at), 'YYYY-MM-DD') AS date,
+			ph.created_at,
+			TO_CHAR(tz_date(ph.created_at), 'YYYY-MM-DD') AS date,
 			pr.request_type,
 			pr.request_type || ': ' || COALESCE(wu.name, '-') || ' — ' || pr.requested_by AS description,
-			pr.paid_amount
-		FROM purchase_requests pr
+			ph.amount
+		FROM ` + procurementCashOutFrom + `
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
-		WHERE pr.status IN ('partial', 'paid', 'received')
-		  AND pr.paid_at IS NOT NULL
-		  AND (pr.split_status IS NULL OR pr.split_status != 'master')
-		  AND pr.paid_at >= tz_day_start($1::date) AND pr.paid_at < tz_day_start($2::date + 1)` + prFilter + `
-		ORDER BY pr.paid_at`
+		` + procurementCashOutWhere(aliasFilter("pr")) + `
+		ORDER BY ph.created_at`
 
-	prRows, err := database.DB.Query(prQuery, prArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("general ledger: procurement query failed: %w", err)
-	}
-	defer prRows.Close()
-
-	for prRows.Next() {
-		var date, reqType, desc string
-		var amount float64
-		if err := prRows.Scan(&date, &reqType, &desc, &amount); err != nil {
-			return nil, fmt.Errorf("general ledger: procurement scan failed: %w", err)
+		if err := eachRow("procurement", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, reqType, desc string
+			var amount float64
+			if err := rows.Scan(&at, &date, &reqType, &desc, &amount); err != nil {
+				return err
+			}
+			expAccount, prefix := glAccCOGS, "HPP: "
+			if reqType == "jasa" {
+				expAccount, prefix = glAccServiceExp, "Beban Jasa: "
+			}
+			add(expAccount, at, date, prefix+desc, amount, 0)
+			add(glAccCash, at, date, prefix+desc, 0, amount)
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		expAccount := accCOGS
-		prefix := "HPP: "
-		if reqType == "jasa" {
-			expAccount = accServiceExp
-			prefix = "Beban Jasa: "
-		}
-		entries = append(entries, rawEntry{AccountCode: expAccount, Date: date, Description: prefix + desc, Debit: amount})
-		entries = append(entries, rawEntry{AccountCode: accCash, Date: date, Description: prefix + desc, Credit: amount})
-	}
-	if err := prRows.Err(); err != nil {
-		return nil, err
-	}
 	}
 
-	// 4) Hutang Usaha — approved but unpaid purchase_requests
-	if needQ(accPayable, accCOGS, accServiceExp) {
-	apArgs := []interface{}{dateFrom, dateTo}
-	apFilter := ""
-	if filterIDs != nil {
-		apFilter = " AND pr.outlet_id = ANY($3::text[])"
-		apArgs = append(apArgs, pq.Array(filterIDs))
-	}
-	apQuery := `
+	// 4) Hutang Usaha — pengadaan disetujui yang belum (lunas) dibayar
+	if needQ(glAccPayable, glAccCOGS, glAccServiceExp) {
+		q := `
 		SELECT
+			pr.created_at,
 			TO_CHAR(tz_date(pr.created_at), 'YYYY-MM-DD') AS date,
 			pr.request_type,
 			pr.request_type || ': ' || COALESCE(wu.name, '-') || ' — ' || pr.requested_by AS description,
-			CASE WHEN pr.status = 'partial' THEN pr.total_final - pr.paid_amount ELSE COALESCE(pr.total_final, pr.total_amount) END
+			` + payableExpr("pr") + `
 		FROM purchase_requests pr
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
-		WHERE pr.status IN ('approved', 'payment_requested', 'partial')
-		  AND (pr.split_status IS NULL OR pr.split_status != 'master')
-		  AND pr.created_at >= tz_day_start($1::date) AND pr.created_at < tz_day_start($2::date + 1)` + apFilter + `
+		WHERE ` + outstandingCondFor("pr") + `
+		  AND ` + countableCond("pr") + `
+		  AND pr.created_at >= tz_day_start($1::date) AND pr.created_at < tz_day_start($2::date + 1)` +
+			aliasFilter("pr") + `
 		ORDER BY pr.created_at`
 
-	apRows, err := database.DB.Query(apQuery, apArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("general ledger: payable query failed: %w", err)
-	}
-	defer apRows.Close()
-
-	for apRows.Next() {
-		var date, reqType, desc string
-		var amount float64
-		if err := apRows.Scan(&date, &reqType, &desc, &amount); err != nil {
-			return nil, fmt.Errorf("general ledger: payable scan failed: %w", err)
+		if err := eachRow("payable", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, reqType, desc string
+			var amount float64
+			if err := rows.Scan(&at, &date, &reqType, &desc, &amount); err != nil {
+				return err
+			}
+			expAccount, prefix := glAccCOGS, "HPP (Hutang): "
+			if reqType == "jasa" {
+				expAccount, prefix = glAccServiceExp, "Beban Jasa (Hutang): "
+			}
+			add(expAccount, at, date, prefix+desc, amount, 0)
+			add(glAccPayable, at, date, prefix+desc, 0, amount)
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		expAccount := accCOGS
-		prefix := "HPP (Hutang): "
-		if reqType == "jasa" {
-			expAccount = accServiceExp
-			prefix = "Beban Jasa (Hutang): "
-		}
-		entries = append(entries, rawEntry{AccountCode: expAccount, Date: date, Description: prefix + desc, Debit: amount})
-		entries = append(entries, rawEntry{AccountCode: accPayable, Date: date, Description: prefix + desc, Credit: amount})
-	}
-	if err := apRows.Err(); err != nil {
-		return nil, err
-	}
 	}
 
-	// 5) Piutang Usaha — from cloud_orders (unpaid)
-	if needQ(accReceivable, accRevenue) {
-	unpArgs := []interface{}{dateFrom, dateTo}
-	unpFilter := ""
-	if filterIDs != nil {
-		unpFilter = " AND o.outlet_id = ANY($3::text[])"
-		unpArgs = append(unpArgs, pq.Array(filterIDs))
-	}
-	unpQuery := `
+	// 5) Piutang Usaha — cloud_orders yang belum lunas (snapshot saat ini)
+	if needQ(glAccReceivable, glAccRevenue) {
+		q := `
 		SELECT
+			o.created_at,
 			TO_CHAR(tz_date(o.created_at), 'YYYY-MM-DD') AS date,
-			COALESCE(ot.name, o.outlet_code) || ' - ' || COALESCE(o.customer_name, 'Pelanggan') AS description,
-			o.total_amount
+			COALESCE(ot.name, o.outlet_code, '-') || ' - ' || COALESCE(o.customer_name, 'Pelanggan') AS description,
+			COALESCE(o.total_amount, 0)
 		FROM cloud_orders o
 		LEFT JOIN outlets ot ON ot.id = o.outlet_id
-		WHERE COALESCE(o.payment_info->>'payment_status','unpaid') NOT IN ('paid')
+		WHERE COALESCE(o.payment_info->>'payment_status','unpaid') <> 'paid'
 		  AND NULLIF(o.payment_info->>'voided_at','') IS NULL AND COALESCE(o.is_holding,false) = false
-		  AND o.created_at >= tz_day_start($1::date) AND o.created_at < tz_day_start($2::date + 1)` + unpFilter + `
+		  AND o.created_at >= tz_day_start($1::date) AND o.created_at < tz_day_start($2::date + 1)` +
+			aliasFilter("o") + `
 		ORDER BY o.created_at`
 
-	unpRows, err := database.DB.Query(unpQuery, unpArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("general ledger: receivables query failed: %w", err)
-	}
-	defer unpRows.Close()
-
-	for unpRows.Next() {
-		var date, desc string
-		var amount float64
-		if err := unpRows.Scan(&date, &desc, &amount); err != nil {
-			return nil, fmt.Errorf("general ledger: receivables scan failed: %w", err)
+		if err := eachRow("receivables", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, desc string
+			var amount float64
+			if err := rows.Scan(&at, &date, &desc, &amount); err != nil {
+				return err
+			}
+			desc = "Piutang: " + desc
+			add(glAccReceivable, at, date, desc, amount, 0)
+			add(glAccRevenue, at, date, desc, 0, amount)
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		entries = append(entries, rawEntry{AccountCode: accReceivable, Date: date, Description: "Piutang: " + desc, Debit: amount})
-		entries = append(entries, rawEntry{AccountCode: accRevenue, Date: date, Description: "Piutang: " + desc, Credit: amount})
-	}
-	if err := unpRows.Err(); err != nil {
-		return nil, err
-	}
 	}
 
 	// 6) Pajak Restoran (PB1) — pakai tax_amount riil per transaksi (per-outlet,
-	// termasuk outlet yang pajaknya nonaktif/tarif beda), bukan revenue × tarif global.
-	if needQ(accTaxExpense, accTaxPayable) {
-	taxQuery := `
-		SELECT TO_CHAR(tz_date(created_at), 'YYYY-MM-DD') AS date, SUM(tax_amount)
+	// termasuk outlet yang pajaknya nonaktif/tarif beda), bukan revenue × tarif
+	// global. Dicatat sekali per hari, memakai transaksi terakhir hari itu
+	// sebagai waktu agar urutannya jatuh di akhir hari.
+	if needQ(glAccTaxExpense, glAccTaxPayable) {
+		q := `
+		SELECT MAX(created_at) AS at,
+		       TO_CHAR(tz_date(created_at), 'YYYY-MM-DD') AS date,
+		       COALESCE(SUM(tax_amount), 0)
 		FROM cloud_transactions
-		WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` + outletFilter + `
+		WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` +
+			outletFilter + txNotVoided("cloud_transactions") + `
 		GROUP BY tz_date(created_at)
 		ORDER BY tz_date(created_at)`
 
-	taxRows, err := database.DB.Query(taxQuery, args...)
-	if err != nil {
-		return nil, fmt.Errorf("general ledger: tax query failed: %w", err)
-	}
-	defer taxRows.Close()
-
-	for taxRows.Next() {
-		var date string
-		var dayTax float64
-		if err := taxRows.Scan(&date, &dayTax); err != nil {
-			return nil, fmt.Errorf("general ledger: tax scan failed: %w", err)
-		}
-		taxAmt := round2(dayTax)
-		if taxAmt > 0 {
-			entries = append(entries, rawEntry{AccountCode: accTaxExpense, Date: date, Description: "Pajak Restoran (PB1)", Debit: taxAmt})
-			entries = append(entries, rawEntry{AccountCode: accTaxPayable, Date: date, Description: "Pajak Restoran (PB1)", Credit: taxAmt})
+		if err := eachRow("tax", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date string
+			var dayTax float64
+			if err := rows.Scan(&at, &date, &dayTax); err != nil {
+				return err
+			}
+			if taxAmt := round2(dayTax); taxAmt > 0 {
+				add(glAccTaxExpense, at, date, "Pajak Restoran (PB1)", taxAmt, 0)
+				add(glAccTaxPayable, at, date, "Pajak Restoran (PB1)", 0, taxAmt)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
 		}
 	}
-	if err := taxRows.Err(); err != nil {
-		return nil, err
-	}
-	}
 
-	// ── Build accounts from entries ──
-	type accountMeta struct {
-		Code  string
-		Name  string
-		Group string
-	}
-	accountList := []accountMeta{
-		{accCash, "Kas & Setara Kas", "aset"},
-		{accReceivable, "Piutang Usaha", "aset"},
-		{accPayable, "Hutang Usaha", "kewajiban"},
-		{accTaxPayable, "Hutang Pajak Restoran", "kewajiban"},
-		{accRevenue, "Pendapatan Penjualan", "pendapatan"},
-		{accOtherIncome, "Pendapatan Lainnya", "pendapatan"},
-		{accCOGS, "HPP - Bahan Baku", "beban"},
-		{accServiceExp, "Beban Jasa & Layanan", "beban"},
-		{accOpex, "Beban Operasional", "beban"},
-		{accTaxExpense, "Beban Pajak Restoran", "beban"},
-	}
+	// ── Susun akun dari entri ──
+	accounts := make([]models.GeneralLedgerAccount, 0, len(glAccounts))
+	balanceOf := make(map[string]float64, len(glAccounts))
 
-	// Collect entries per account
-	accountEntries := make(map[string][]rawEntry)
-	for _, e := range entries {
-		accountEntries[e.AccountCode] = append(accountEntries[e.AccountCode], e)
-	}
-
-	accounts := make([]models.GeneralLedgerAccount, 0)
-	balanceOf := make(map[string]float64)
-
-	for _, meta := range accountList {
-		if accountFilter != "" && accountFilter != meta.Code {
+	for _, meta := range glAccounts {
+		if !wanted(meta.Code) {
 			continue
 		}
 		raw := accountEntries[meta.Code]
 
-		var acctDebit, acctCredit float64
-		var balance float64
-		ledgerEntries := make([]models.GeneralLedgerEntry, 0, len(raw))
+		// Satu akun bisa disuplai beberapa query (mis. Kas dari penjualan,
+		// kas masuk, dan pengadaan), jadi urutkan ulang secara kronologis.
+		// Harus stabil: tanpa itu entri berwaktu sama diacak dan kolom saldo
+		// berjalan berubah-ubah tiap request.
+		sort.SliceStable(raw, func(i, j int) bool { return raw[i].At.Before(raw[j].At) })
 
-		// Sort entries by date for running balance
-		sort.Slice(raw, func(i, j int) bool {
-			return raw[i].Date < raw[j].Date
-		})
+		var acctDebit, acctCredit, balance float64
+		isDebitNormal := meta.Group == "aset" || meta.Group == "beban"
+		ledgerEntries := make([]models.GeneralLedgerEntry, 0, len(raw))
 
 		for _, e := range raw {
 			acctDebit += e.Debit
 			acctCredit += e.Credit
-			if meta.Group == "aset" || meta.Group == "beban" {
+			if isDebitNormal {
 				balance += e.Debit - e.Credit
 			} else {
 				balance += e.Credit - e.Debit
@@ -1513,26 +1497,27 @@ func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs
 			})
 		}
 
+		balance = round2(balance)
 		accounts = append(accounts, models.GeneralLedgerAccount{
 			Code:        meta.Code,
 			Name:        meta.Name,
 			Group:       meta.Group,
 			TotalDebit:  round2(acctDebit),
 			TotalCredit: round2(acctCredit),
-			Balance:     round2(balance),
+			Balance:     balance,
 			Entries:     ledgerEntries,
 		})
-
-		balanceOf[meta.Code] = round2(balance)
+		balanceOf[meta.Code] = balance
 	}
 
 	return &models.GeneralLedgerResponse{
-		DateFrom: dateFrom,
-		DateTo:   dateTo,
+		DateFrom:   dateFrom,
+		DateTo:     dateTo,
+		AccountAll: accountFilter == "",
 		Summary: models.GeneralLedgerSummary{
-			CashBalance:  balanceOf[accCash],
-			TotalRevenue: round2(balanceOf[accRevenue] + balanceOf[accOtherIncome]),
-			TotalExpense: round2(balanceOf[accCOGS] + balanceOf[accServiceExp] + balanceOf[accOpex] + balanceOf[accTaxExpense]),
+			CashBalance:  balanceOf[glAccCash],
+			TotalRevenue: round2(balanceOf[glAccRevenue] + balanceOf[glAccOtherIncome]),
+			TotalExpense: round2(balanceOf[glAccCOGS] + balanceOf[glAccServiceExp] + balanceOf[glAccOpex] + balanceOf[glAccTaxExpense]),
 		},
 		Accounts: accounts,
 	}, nil

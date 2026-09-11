@@ -50,12 +50,18 @@ func ListVendors(activeOnly bool, outletIDs, wuIDs []string) ([]models.Vendor, e
 	rows, err := database.DB.Query(fmt.Sprintf(`
 		SELECT v.id, v.name, v.phone, v.email, v.address, v.notes,
 		       v.bank_name, v.account_number, v.account_holder, v.is_active,
+		       -- Definisi tunggal hutang (procurement_finance.go). Dulu di sini
+		       -- memakai SUM(total_final) atas status approved/payment_requested
+		       -- saja: cicilan yang sudah dibayar tidak dikurangi, dan tagihan
+		       -- berstatus 'partial' / 'received' yang belum lunas tidak muncul
+		       -- sama sekali — angkanya tidak pernah cocok dengan halaman
+		       -- Pembayaran maupun Neraca.
 		       COALESCE((
-		           SELECT SUM(pr.total_final)
+		           SELECT SUM(`+payableExpr("pr")+`)
 		           FROM purchase_requests pr
 		           WHERE pr.vendor_id = v.id
-		             AND pr.status IN ('approved', 'payment_requested')
-		             AND (pr.split_status IS NULL OR pr.split_status != 'master')%s
+		             AND `+outstandingCondFor("pr")+`
+		             AND `+countableCond("pr")+`%s
 		       ), 0) AS unpaid_amount,
 		       v.created_at, v.updated_at
 		FROM vendors v %s ORDER BY v.name ASC
@@ -135,7 +141,21 @@ func ToggleVendorActive(id string) (*models.Vendor, error) {
 	return GetVendor(id)
 }
 
+// DeleteVendor menolak menghapus vendor yang masih memegang riwayat pengadaan.
+// FK purchase_requests.vendor_id ON DELETE SET NULL, jadi menghapusnya akan
+// memutus tautan seluruh pengajuan vendor itu tanpa jejak: halaman Detail
+// Vendor, rekap hutang dan riwayat pembayarannya ikut kosong. Nonaktifkan
+// vendornya saja (ToggleVendorActive) bila sudah tidak dipakai.
 func DeleteVendor(id string) error {
+	var used int
+	if err := database.DB.QueryRow(
+		"SELECT COUNT(*) FROM purchase_requests WHERE vendor_id = $1", id,
+	).Scan(&used); err != nil {
+		return err
+	}
+	if used > 0 {
+		return fmt.Errorf("vendor masih memiliki %d pengajuan pengadaan — nonaktifkan saja agar riwayatnya tetap utuh", used)
+	}
 	result, err := database.DB.Exec("DELETE FROM vendors WHERE id = $1", id)
 	if err != nil {
 		return err
@@ -161,14 +181,18 @@ func GetVendorDetail(id string, outletIDs, wuIDs []string) (*models.VendorDetail
 	err = database.DB.QueryRow(`
 		SELECT
 			COUNT(*),
-			COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN total_final ELSE 0 END), 0),
+			-- total_amount = harga final bila sudah diisi, selain itu HPS.
+			-- Dulu memakai total_final: pengajuan yang belum diberi harga oleh
+			-- purchasing bernilai 0, sehingga "Total Belanja" dan terutama
+			-- "Pending" hampir selalu menampilkan Rp 0.
+			COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN total_amount ELSE 0 END), 0),
 			-- Dibayar & hutang dihitung dari nominal, bukan nama status.
 			-- Sebelumnya 'partial' tidak masuk keduanya, sehingga pengajuan yang
 			-- baru dilunasi sebagian lenyap dari kedua angka sekaligus.
 			COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN paid_amount ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN `+outstandingCond+` THEN total_final - paid_amount ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status = 'pending' THEN total_final ELSE 0 END), 0)
-		FROM purchase_requests WHERE vendor_id = $1`+aggCond,
+			COALESCE(SUM(CASE WHEN `+outstandingCond+` THEN `+payableExpr("")+` ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'pending' THEN total_amount ELSE 0 END), 0)
+		FROM purchase_requests WHERE vendor_id = $1 AND `+countableCond("")+aggCond,
 		append([]interface{}{id}, aggArgs...)...).
 		Scan(&resp.PurchaseCount, &resp.TotalSpent, &resp.TotalPaid, &resp.TotalDebt, &resp.TotalPending)
 	if err != nil {
@@ -178,11 +202,12 @@ func GetVendorDetail(id string, outletIDs, wuIDs []string) (*models.VendorDetail
 	// Monthly spending (last 12 months, scoped)
 	monCond, monArgs := prScopeCond("", outletIDs, wuIDs, 2)
 	rows, err := database.DB.Query(`
-		SELECT TO_CHAR(created_at, 'YYYY-MM') AS month,
+		SELECT TO_CHAR(tz_date(created_at), 'YYYY-MM') AS month,
 		       COUNT(*),
-		       COALESCE(SUM(total_final), 0)
+		       COALESCE(SUM(total_amount), 0)
 		FROM purchase_requests
 		WHERE vendor_id = $1 AND status NOT IN ('cancelled','rejected')
+		  AND `+countableCond("")+`
 		  AND created_at >= NOW() - INTERVAL '12 months'`+monCond+`
 		GROUP BY month ORDER BY month ASC
 	`, append([]interface{}{id}, monArgs...)...)
@@ -226,7 +251,7 @@ func ListVendorPurchases(vendorID string, outletIDs, wuIDs []string, page, limit
 		return nil, err
 	}
 
-	totalPages := int(float64(total+limit-1) / float64(limit))
+	totalPages := (total + limit - 1) / limit
 	offset := (page - 1) * limit
 
 	args := append([]interface{}{vendorID}, scopeArgs...)
@@ -234,9 +259,9 @@ func ListVendorPurchases(vendorID string, outletIDs, wuIDs []string, page, limit
 	offIdx := len(args) + 2
 	args = append(args, limit, offset)
 	rows, err := database.DB.Query(fmt.Sprintf(`
-		SELECT pr.id, pr.outlet_id, COALESCE(o.name,''), pr.work_unit_id, COALESCE(wu.name,''),
+		SELECT pr.id, pr.request_number, pr.outlet_id, COALESCE(o.name,''), pr.work_unit_id, COALESCE(wu.name,''),
 		       pr.request_type, pr.requested_by, pr.vendor_id, pr.vendor_name, pr.status,
-		       pr.items, pr.total_amount, pr.total_hps, pr.total_final, pr.notes,
+		       pr.items, pr.total_amount, pr.total_hps, pr.total_final, pr.notes, pr.invoice_number, pr.paid_amount,
 		       pr.approved_by, pr.approved_at,
 		       pr.rejected_reason,
 		       pr.paid_by, pr.paid_at, pr.payment_proof,
@@ -264,9 +289,9 @@ func ListVendorPurchases(vendorID string, outletIDs, wuIDs []string, page, limit
 		var createdAt, updatedAt time.Time
 
 		if err := rows.Scan(
-			&r.ID, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
+			&r.ID, &r.RequestNumber, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
 			&r.RequestType, &r.RequestedBy, &r.VendorID, &r.VendorName, &r.Status,
-			&itemsJSON, &r.TotalAmount, &r.TotalHps, &r.TotalFinal, &r.Notes,
+			&itemsJSON, &r.TotalAmount, &r.TotalHps, &r.TotalFinal, &r.Notes, &r.InvoiceNumber, &r.PaidAmount,
 			&r.ApprovedBy, &approvedAt,
 			&r.RejectedReason,
 			&r.PaidBy, &paidAt, &r.PaymentProof,

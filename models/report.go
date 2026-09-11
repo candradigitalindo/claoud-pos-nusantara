@@ -275,8 +275,11 @@ type GeneralLedgerSummary struct {
 }
 
 type GeneralLedgerResponse struct {
-	DateFrom string                 `json:"date_from"`
-	DateTo   string                 `json:"date_to"`
-	Summary  GeneralLedgerSummary   `json:"summary"`
-	Accounts []GeneralLedgerAccount `json:"accounts"`
+	DateFrom string `json:"date_from"`
+	DateTo   string `json:"date_to"`
+	// AccountAll = false saat laporan difilter ke satu akun; ringkasan
+	// (kas/pendapatan/beban) hanya lengkap kalau semua akun ikut dihitung.
+	AccountAll bool                   `json:"account_all"`
+	Summary    GeneralLedgerSummary   `json:"summary"`
+	Accounts   []GeneralLedgerAccount `json:"accounts"`
 }

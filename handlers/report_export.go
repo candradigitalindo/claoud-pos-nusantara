@@ -223,11 +223,13 @@ func ExportGeneralLedger(c *fiber.Ctx) error {
 }
 
 // ExportProcurementPayments mengunduh daftar pembayaran pengadaan sebagai file
-// Excel (.xlsx). Filter (status, tipe, kata kunci) identik dengan halaman
-// Pembayaran; scope outlet/unit kerja per role dipaksakan di service.
+// Excel (.xlsx). Filter (status, tipe, projek, kata kunci) identik dengan
+// halaman Pembayaran — kalau ada satu filter yang tidak ikut, isi file tidak
+// sama dengan yang dilihat pengguna di layar. Scope outlet/unit kerja per role
+// dipaksakan di service.
 func ExportProcurementPayments(c *fiber.Ctx) error {
 	data, filename, err := services.BuildProcurementPaymentsExcel(
-		c.Query("status"), c.Query("type"), strings.TrimSpace(c.Query("search")),
+		c.Query("status"), c.Query("type"), c.Query("project_id"), strings.TrimSpace(c.Query("search")),
 		getOutletScope(c), getWorkUnitScope(c))
 	if err != nil {
 		log.Printf("ExportProcurementPayments error: %v", err)

@@ -29,10 +29,11 @@ var validTransitions = map[string]map[string]string{
 	"cancel":  {"pending": "cancelled", "approved": "cancelled"},
 }
 
-// outstandingCond memilih baris yang masih menyisakan kewajiban bayar. Berbasis
-// nominal, bukan nama status, supaya pengajuan yang sudah diterima tapi belum
-// lunas tetap terhitung sebagai hutang.
-const outstandingCond = "status NOT IN ('pending','rejected','cancelled') AND total_final > paid_amount"
+// outstandingCond memilih baris yang masih menyisakan kewajiban bayar (tanpa
+// alias tabel). Definisinya tinggal di procurement_finance.go bersama versi
+// ber-alias, supaya halaman Pembayaran dan seluruh laporan keuangan tidak
+// pernah lagi memakai tiga rumus hutang yang berbeda.
+var outstandingCond = outstandingCondFor("")
 
 // fullySplitMasterCond cocok untuk baris master yang seluruh itemnya sudah
 // dipindah ke pecahan. Dokumen semacam itu tinggal cangkang: tidak boleh ikut

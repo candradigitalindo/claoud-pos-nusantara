@@ -18,14 +18,18 @@ function getTimezone() {
  * @param {number|string} value
  * @returns {string}  e.g. "Rp 1.500.000"
  */
+// Intl.NumberFormat mahal untuk dibuat; satu instance dipakai ulang karena
+// opsinya konstan. Penting di halaman tabel besar (buku besar bisa ratusan
+// pemanggilan per render).
+const RUPIAH_FMT = new Intl.NumberFormat('id-ID', {
+  style: 'currency',
+  currency: 'IDR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
+
 export function formatRupiah(value) {
-  const num = Number(value) || 0
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(num)
+  return RUPIAH_FMT.format(Number(value) || 0)
 }
 
 /**
