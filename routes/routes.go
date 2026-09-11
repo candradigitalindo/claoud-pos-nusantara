@@ -196,6 +196,18 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/business-analysis", middleware.RequirePermission("reports.business_analysis.view"), handlers.GetBusinessAnalysis)
 	admin.Get("/business-analysis/export", middleware.RequirePermission("reports.business_analysis.view"), handlers.ExportBusinessAnalysisExcel)
 
+	// Kinerja Markom — pemasok angka IG/TikTok untuk Analisa Bisnis.
+	// Melihat dipisah dari mengubah: mendaftarkan akun, mengetik tambalan
+	// mingguan, dan menarik paksa dari halaman publik adalah pekerjaan Markom.
+	admin.Get("/social-accounts", middleware.RequirePermission("social.view"), handlers.ListSocialAccounts)
+	admin.Get("/social-weekly", middleware.RequirePermission("social.view"), handlers.GetSocialWeekly)
+	admin.Get("/social-accounts/:id/manual", middleware.RequirePermission("social.view"), handlers.ListSocialManualWeeks)
+	admin.Post("/social-accounts", middleware.RequirePermission("social.manage"), handlers.CreateSocialAccount)
+	admin.Post("/social-accounts/scrape", middleware.RequirePermission("social.manage"), handlers.ScrapeSocialAccounts)
+	admin.Put("/social-accounts/:id", middleware.RequirePermission("social.manage"), handlers.UpdateSocialAccount)
+	admin.Put("/social-accounts/:id/manual", middleware.RequirePermission("social.manage"), handlers.UpsertSocialManualWeek)
+	admin.Delete("/social-accounts/:id", middleware.RequirePermission("social.manage"), handlers.DeleteSocialAccount)
+
 	// Products & Categories — CRUD granular
 	admin.Get("/products", middleware.RequirePermission("products.view"), handlers.AdminGetProducts)
 	admin.Get("/categories", middleware.RequirePermission("products.view"), handlers.AdminGetCategories)

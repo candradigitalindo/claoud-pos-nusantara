@@ -48,6 +48,9 @@ func main() {
 	// PPIC: evaluasi alert harian (expired/ROP) + broadcast SSE ke dashboard.
 	services.StartPpicScheduler()
 
+	// Medsos: tarik angka IG/TikTok tiap dini hari untuk grafik Analisa Bisnis.
+	services.StartSocialScheduler()
+
 	app := fiber.New(fiber.Config{
 		AppName:        "Nusantara POS Cloud API v1.0.0",
 		BodyLimit:      200 * 1024 * 1024,

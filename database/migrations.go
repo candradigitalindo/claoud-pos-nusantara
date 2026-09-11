@@ -2018,5 +2018,146 @@ func RunMigrations() error {
 		log.Printf("Permission Projek di-seed (view ke pemegang procurement.requests.view, manage ke admin)")
 	}
 
+	// ── Kinerja Markom (IG/TikTok) ──────────────────────────────────────────
+	// Tiga tabel, karena tiga jenis angka yang umurnya berbeda:
+	//
+	//   social_snapshots  — cacah kumulatif (pengikut, jumlah post) per tanggal.
+	//       Diambil harian. Pengikut hanya masuk akal sebagai potret, bukan
+	//       sebagai penjumlahan; menjumlah pengikut lintas hari menghasilkan
+	//       angka yang tidak berarti apa-apa.
+	//   social_posts      — satu baris per konten, dengan angka terkininya.
+	//       Dari sini jangkauan & interaksi MINGGUAN diturunkan, dengan konten
+	//       dihitung pada minggu ia terbit.
+	//   social_manual_weeks — tambalan yang diketik orang, per akun per minggu.
+	//       Kolomnya nullable dan hanya yang terisi yang menimpa hasil scrape.
+	//
+	// Tabel ketiga bukan kenyamanan, melainkan syarat agar halamannya jujur:
+	// jangkauan Instagram tidak pernah ada di halaman publik — angka itu hidup
+	// di layar Insights pemegang akun. Tanpa jalur manual, kolom jangkauan IG
+	// akan selamanya nol dan terbaca sebagai "tidak ada yang melihat".
+	socialMigrations := []string{
+		`CREATE TABLE IF NOT EXISTS social_accounts (
+			id CHAR(26) PRIMARY KEY,
+			outlet_id CHAR(26) NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+			platform VARCHAR(16) NOT NULL,
+			username VARCHAR(120) NOT NULL,
+			profile_url TEXT NOT NULL DEFAULT '',
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			last_scraped_at TIMESTAMP,
+			last_ok_at TIMESTAMP,
+			last_error TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_social_accounts
+			ON social_accounts(outlet_id, platform, lower(username))`,
+		// auto_fetch memisahkan akun yang angkanya DIJEMPUT dari yang angkanya
+		// DIANTAR orang. Pemisahan ini bukan kenyamanan: halaman profil publik
+		// Instagram tidak menyerahkan satu angka pun ke server ini (HTTP 429,
+		// lalu HTML tanpa angka), jadi akun IG yang terus dijadwalkan menarik
+		// hanya menghasilkan barisan galat harian. Lebih buruk lagi, kegagalan
+		// itu menandai outletnya "mandek" dan mengeluarkannya dari grafik —
+		// satu akun IG cukup untuk mengosongkan outlet yang TikTok-nya sehat.
+		`ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS auto_fetch BOOLEAN NOT NULL DEFAULT true`,
+		`CREATE INDEX IF NOT EXISTS idx_social_accounts_outlet ON social_accounts(outlet_id)`,
+
+		// captured_date = tanggal LOKAL (zona waktu aplikasi), bukan UTC. Scrape
+		// yang jalan pukul 03:00 WIB terjadi pada 20:00 UTC hari sebelumnya; kalau
+		// dikunci ke tanggal UTC, potret itu jatuh ke minggu bisnis yang salah
+		// setiap kali — dan seluruh perbandingan mingguannya ikut meleset sehari.
+		`CREATE TABLE IF NOT EXISTS social_snapshots (
+			id CHAR(26) PRIMARY KEY,
+			account_id CHAR(26) NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
+			captured_date DATE NOT NULL,
+			captured_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			followers BIGINT,
+			following BIGINT,
+			posts_count BIGINT,
+			likes_total BIGINT,
+			source VARCHAR(10) NOT NULL DEFAULT 'scrape',
+			-- approx = angka yang sudah dibulatkan platform ("12,3 rb"). Ikut
+			-- disimpan supaya selisih pengikut mingguan yang lahir dari
+			-- pembulatan tidak dilaporkan sebagai pertumbuhan.
+			approx BOOLEAN NOT NULL DEFAULT false
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_social_snapshots
+			ON social_snapshots(account_id, captured_date)`,
+
+		`CREATE TABLE IF NOT EXISTS social_posts (
+			id CHAR(26) PRIMARY KEY,
+			account_id CHAR(26) NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
+			post_ref VARCHAR(64) NOT NULL,
+			posted_at TIMESTAMP NOT NULL,
+			permalink TEXT NOT NULL DEFAULT '',
+			caption TEXT NOT NULL DEFAULT '',
+			views BIGINT NOT NULL DEFAULT 0,
+			likes BIGINT NOT NULL DEFAULT 0,
+			comments BIGINT NOT NULL DEFAULT 0,
+			shares BIGINT NOT NULL DEFAULT 0,
+			fetched_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_social_posts ON social_posts(account_id, post_ref)`,
+		`CREATE INDEX IF NOT EXISTS idx_social_posts_week ON social_posts(account_id, posted_at)`,
+
+		`CREATE TABLE IF NOT EXISTS social_manual_weeks (
+			account_id CHAR(26) NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
+			week_start DATE NOT NULL,
+			followers BIGINT,
+			posts BIGINT,
+			views BIGINT,
+			engagement BIGINT,
+			note TEXT NOT NULL DEFAULT '',
+			updated_by VARCHAR(150) NOT NULL DEFAULT '',
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			PRIMARY KEY (account_id, week_start)
+		)`,
+	}
+	for _, m := range socialMigrations {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Social migration skipped: %v", err)
+		}
+	}
+
+	// ── Instagram: alihkan ke isian manual (one-shot, marker) ───────────────
+	// Dijalankan sekali saat deploy, bukan sebagai aturan permanen di kode:
+	// kalau nanti dipasang proxy yang tembus, akun IG tinggal dinyalakan lagi
+	// per akun lewat halaman Kinerja Markom tanpa menyentuh migrasi ini.
+	var igSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_social_ig_manual'").Scan(&igSeeded)
+	if igSeeded == 0 {
+		DB.Exec(`UPDATE social_accounts SET auto_fetch = false WHERE platform = 'instagram'`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_social_ig_manual', 'done') ON CONFLICT (key) DO NOTHING`)
+	}
+
+	// ── Instagram: nyalakan kembali penarikannya (one-shot, marker) ─────────
+	// Migrasi di atas mematikannya ketika halaman publik IG belum terbukti bisa
+	// dibaca dari server ini. Setelah ditemukan bahwa IG tetap menyerahkan
+	// og:description kepada perayap pratinjau tautan, penarikannya sah lagi —
+	// yang tetap tidak pernah publik hanyalah JANGKAUAN-nya.
+	var igOn int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_social_ig_auto_on'").Scan(&igOn)
+	if igOn == 0 {
+		DB.Exec(`UPDATE social_accounts SET auto_fetch = true WHERE platform = 'instagram'`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_social_ig_auto_on', 'done') ON CONFLICT (key) DO NOTHING`)
+	}
+
+	// ── Seed izin Kinerja Markom (one-shot, marker) ─────────────────────────
+	// Lihat: diturunkan ke role yang hari ini boleh membuka Analisa Bisnis —
+	// grafik medsos menempel di halaman itu, jadi memisahkan izinnya hanya akan
+	// menghasilkan halaman yang separuhnya kosong tanpa sebab yang terlihat.
+	// Kelola (mendaftarkan akun, mengetik tambalan manual, menarik paksa) tidak
+	// diturunkan otomatis: itu pekerjaan Markom, bukan pembaca laporan.
+	var socSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_social_perm'").Scan(&socSeeded)
+	if socSeeded == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'social.view' FROM role_permissions WHERE permission = 'reports.business_analysis.view'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			VALUES ('admin', 'social.view'), ('admin', 'social.manage') ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_social_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Permission Kinerja Markom di-seed (view ke pemegang reports.business_analysis.view, manage ke admin)")
+	}
+
 	return nil
 }

@@ -63,6 +63,7 @@ const GeneralLedger       = () => import('@/pages/GeneralLedger.vue')
 const VoidReport          = () => import('@/pages/VoidReport.vue')
 const DiscountReport      = () => import('@/pages/DiscountReport.vue')
 const BusinessAnalysis    = () => import('@/pages/BusinessAnalysis.vue')
+const SocialAccounts      = () => import('@/pages/SocialAccounts.vue')
 const PurchaseGoods       = () => import('@/pages/PurchaseGoods.vue')
 const PurchaseServices    = () => import('@/pages/PurchaseServices.vue')
 const ProcurementDashboardPage = () => import('@/pages/ProcurementDashboard.vue')
@@ -310,6 +311,12 @@ const routes = [
         name: 'BusinessAnalysis',
         component: BusinessAnalysis,
         meta: { title: 'Analisa Bisnis — Cloud POS', requiresAuth: true, permission: 'reports.business_analysis.view' },
+      },
+      {
+        path: 'social-performance',
+        name: 'SocialAccounts',
+        meta: { title: 'Kinerja Markom — Cloud POS', requiresAuth: true, permission: 'social.view' },
+        component: SocialAccounts,
       },
       {
         path: 'procurement-payments',

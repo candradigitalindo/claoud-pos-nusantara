@@ -164,6 +164,106 @@
         </div>
       </AppCard>
 
+      <!-- ── Kinerja medsos ───────────────────────────────────── -->
+      <!--
+        Bagian ini hanya muncul kalau sudah ada akun yang didaftarkan. Grafik
+        medsos yang kosong bukan informasi netral: ia terbaca sebagai "medsos
+        outlet-outlet ini memang mati", padahal artinya belum ada yang mendaftar.
+      -->
+      <template v-if="medsos?.enabled">
+        <AppCard>
+          <SectionHead :section="bagian('medsos_jangkauan')" />
+          <div class="mt-2">
+            <VueApexCharts type="bar" height="230" :options="medJangkauanOpts" :series="medJangkauanSeries" />
+            <VueApexCharts type="bar" height="185" :options="medKontenOpts" :series="medKontenSeries" />
+          </div>
+        </AppCard>
+
+        <AppCard>
+          <SectionHead :section="bagian('medsos_pengikut')" />
+          <VueApexCharts type="line" height="320" :options="medPengikutOpts" :series="medPengikutSeries" />
+        </AppCard>
+
+        <AppCard>
+          <SectionHead :section="bagian('medsos_silang')" />
+
+          <VueApexCharts v-if="medSilangSeries.length" type="scatter" height="340"
+            :options="medSilangOpts" :series="medSilangSeries" />
+          <p v-else class="text-sm text-gray-500 py-8 text-center">
+            Belum ada outlet yang kedua sisinya cukup untuk digambarkan di sini.
+          </p>
+
+          <div class="overflow-x-auto mt-5">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-200">
+                  <th v-for="h in KOLOM_MEDSOS" :key="h.teks"
+                    class="py-3 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
+                    :class="h.kanan ? 'text-right' : 'text-left'">{{ h.teks }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <tr v-for="o in medsos.outlets" :key="o.outlet_id" class="align-top hover:bg-gray-50">
+                  <td class="py-2.5 px-3">
+                    <div class="font-medium text-gray-900 truncate max-w-52" :title="o.name">{{ o.name }}</div>
+                    <div class="mt-1 flex flex-wrap gap-1">
+                      <a v-for="a in o.accounts" :key="a.platform + a.username" :href="a.url"
+                        target="_blank" rel="noopener" :title="o.coverage"
+                        class="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded transition-colors"
+                        :class="chipAkun(a)">
+                        <span v-html="IC_MEDSOS[a.platform]" class="shrink-0" />
+                        {{ a.username }}
+                      </a>
+                    </div>
+                  </td>
+                  <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                    <span class="text-gray-800">{{ o.followers_now == null ? '—' : (o.follower_approx ? '≈ ' : '') + angkaID(o.followers_now) }}</span>
+                    <!--
+                      Tanda ≈ dipasang ketika angkanya disusun dari bilangan yang
+                      sudah dibulatkan platform ("39K"). Satu desimal tanpa tanda
+                      itu menjanjikan ketelitian yang tidak pernah ada, dan angka
+                      ini dipakai menilai kerja orang.
+                    -->
+                    <span v-if="o.follower_growth != null" class="block text-[11px]"
+                      :class="numClass(o.follower_growth)"
+                      :title="o.follower_approx ? 'Disusun dari angka yang sudah dibulatkan platform — langkah pembulatannya bisa ratusan pengikut' : ''">
+                      {{ o.follower_approx ? '≈ ' : '' }}{{ pp(o.follower_growth, '%') }}
+                    </span>
+                  </td>
+                  <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                    <span class="text-gray-800">{{ o.posts_recent }}</span>
+                    <span class="block text-[11px] text-gray-400">sebelumnya {{ o.posts_prev }}</span>
+                  </td>
+                  <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                    <span class="font-medium" :class="numClass(o.reach_growth)">{{ pp(o.reach_growth, '%') }}</span>
+                    <span v-if="o.reach_basis" class="block text-[11px] text-gray-400">{{ o.reach_basis }}</span>
+                  </td>
+                  <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                    <span class="font-medium" :class="numClass(o.sales_growth)">{{ pp(o.sales_growth, '%') }}</span>
+                  </td>
+                  <td class="py-2.5 px-3 max-w-96">
+                    <span class="text-[11px] font-semibold px-2 py-1 rounded whitespace-nowrap"
+                      :class="KUADRAN[o.quadrant].chip">{{ o.quadrant_label }}</span>
+                    <p class="text-[13px] text-gray-600 leading-relaxed mt-1.5">{{ o.reading }}</p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <details v-if="medsos.notes?.length" class="mt-4 rounded-lg border border-gray-200">
+            <summary class="px-4 py-2.5 text-xs font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700">
+              Dari mana angka medsos ini datang
+            </summary>
+            <ul class="px-4 pb-3 space-y-1.5">
+              <li v-for="(n, i) in medsos.notes" :key="i" class="text-xs text-gray-500 leading-relaxed flex gap-2">
+                <span class="text-gray-300 shrink-0">•</span><span>{{ n }}</span>
+              </li>
+            </ul>
+          </details>
+        </AppCard>
+      </template>
+
       <!-- ── Laporan detail per outlet ─────────────────────────── -->
       <AppCard id="detail-outlet">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -291,7 +391,11 @@ import AppSelect from '@/components/ui/AppSelect.vue'
 
 // Tiap grafik diberi id supaya gambarnya bisa diambil untuk PDF
 // (ApexCharts.exec(id, 'dataURI')).
-const CHART_ID = { grup: 'ba-grup', rgi: 'ba-rgi', tren: 'ba-tren', peta: 'ba-peta' }
+const CHART_ID = {
+  grup: 'ba-grup', rgi: 'ba-rgi', tren: 'ba-tren', peta: 'ba-peta',
+  medJangkauan: 'ba-med-jangkauan', medKonten: 'ba-med-konten',
+  medPengikut: 'ba-med-pengikut', medSilang: 'ba-med-silang',
+}
 // Kunci bagian dari backend -> id kanvas, supaya gambar untuk PDF bisa diambil
 // berdasarkan bagian yang sama dengan yang dipakai judulnya.
 const CHART_ID_BY_KEY = { pasar: 'grup', selisih: 'rgi', perjalanan: 'tren', peta: 'peta' }
@@ -388,6 +492,12 @@ const SectionHead = (props) => {
 }
 SectionHead.props = ['section']
 const bagian = (key) => (data.value?.sections ?? []).find(x => x.key === key) ?? {}
+
+// Ikon platform: inline SVG mengikuti gaya halaman lain di aplikasi ini.
+const IC_MEDSOS = {
+  instagram: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.1" fill="currentColor" stroke="none"/></svg>',
+  tiktok: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3v11.5a4 4 0 11-3-3.87"/><path d="M15 6.5a5 5 0 004.5 3"/></svg>',
+}
 
 // ── Vonis ────────────────────────────────────────────────────
 const IC = {
@@ -521,7 +631,24 @@ const rgiOpts = computed(() => ({
 }))
 
 // ── Grafik 3: tren indeks outlet vs grup ─────────────────────
-const OUTLET_COLORS = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6', '#84cc16', '#f43f5e', '#6366f1', '#06b6d4']
+// Urutannya bukan selera: pada susunan sebelumnya (…#ec4899, #14b8a6…) pasangan
+// pink–teal yang bersebelahan hanya terpisah ΔE 3,7 bagi mata deuteranopia —
+// dua garis outlet yang praktis kembar bagi sebagian pembaca. Warnanya sama
+// persis, hanya urutan pemberiannya digeser sampai tiap pasangan bersebelahan
+// terpisah cukup jauh (terburuk kini ΔE 8,9).
+const OUTLET_COLORS = ['#0ea5e9', '#f59e0b', '#8b5cf6', '#84cc16', '#ec4899', '#06b6d4', '#f43f5e', '#14b8a6', '#6366f1']
+
+// Warna melekat pada OUTLET, bukan pada urutannya di grafik yang sedang
+// digambar. Grafik medsos hanya memuat outlet yang punya akun terdaftar, jadi
+// tanpa peta ini outlet yang sama akan tampil hijau di grafik penjualan dan
+// merah muda di grafik medsos — dan pembaca yang menyandingkan keduanya
+// menyimpulkan hal yang salah tentang outlet yang salah.
+const outletColor = computed(() => {
+  const m = {}
+  ;(data.value?.outlets ?? []).forEach((o, i) => { m[o.code] = OUTLET_COLORS[i % OUTLET_COLORS.length] })
+  return m
+})
+const warnaOutlet = (code) => outletColor.value[code] ?? '#94a3b8'
 // Minggu sebelum garis pasar terbentuk dipotong: pada minggu itu belum ada
 // titik sandar, jadi seluruh kolomnya kosong dan hanya terbaca sebagai cacat.
 const trendWeeks = computed(() => {
@@ -543,7 +670,7 @@ const trendSeries = computed(() => {
 })
 const trendOpts = computed(() => ({
   chart: { id: CHART_ID.tren, toolbar: { show: false }, fontFamily: 'inherit', zoom: { enabled: false } },
-  colors: ['#111827', ...OUTLET_COLORS],
+  colors: ['#111827', ...(data.value?.outlets ?? []).map(o => warnaOutlet(o.code))],
   // Garis grup dibuat tebal & putus-putus supaya terbaca sebagai pembanding,
   // bukan sebagai salah satu outlet.
   // Sembilan garis dengan bobot sama menghasilkan benang kusut. Garis pasar
@@ -623,6 +750,243 @@ const matrixOpts = computed(() => {
     },
   }
 })
+
+// ── Medsos: bahan grafik ─────────────────────────────────────
+// Angkanya datang dari halaman profil publik IG/TikTok, jadi yang digambar di
+// sini harus tahan terhadap lubang: minggu yang tidak berhasil dibaca dikirim
+// backend sebagai null, dan null digambar sebagai putus — bukan sebagai nol.
+const medsos = computed(() => data.value?.social ?? null)
+
+// Dasar jangkauan grup: tontonan bila ada yang terbaca, kalau tidak interaksi.
+// Tidak pernah dicampur — menjumlahkan tontonan TikTok dengan suka Instagram
+// menghasilkan bilangan yang tidak mengukur apa pun.
+const medDasar = computed(() => {
+  const adaTonton = (medsos.value?.group ?? []).some(w => w.views > 0)
+  return adaTonton
+    ? { key: 'views', sumbu: 'Tontonan konten yang terbit minggu itu', pendek: 'tontonan' }
+    : { key: 'engagement', sumbu: 'Suka + komentar + bagikan pada konten minggu itu', pendek: 'interaksi' }
+})
+
+// Sumbu angka besar ditulis ringkas: "12,3 rb" terbaca sekilas, "12.300"
+// memaksa mata menghitung digit.
+function ringkasAngka(v) {
+  const n = Number(v) || 0
+  if (Math.abs(n) >= 1e6) return n1(n / 1e6) + ' jt'
+  if (Math.abs(n) >= 1e3) return n1(n / 1e3) + ' rb'
+  return String(Math.round(n))
+}
+const angkaID = (v) => Number(v ?? 0).toLocaleString('id-ID')
+
+// ── Grafik 5a: jangkauan mingguan grup ───────────────────────
+// Jangkauan dan jumlah konten sengaja dipisah jadi dua grafik bersumbu-x sama,
+// bukan disatukan dengan dua sumbu tegak. Grafik bersumbu ganda membuat dua
+// besaran yang skalanya tak berhubungan tampak berpotongan dan berpisah secara
+// bermakna, padahal bentuk persilangannya cuma akibat skala yang dipilih.
+const medJangkauanSeries = computed(() => [{
+  name: medDasar.value.pendek,
+  data: (medsos.value?.group ?? []).map(w => ({ x: weekRange(w.week_start), y: w[medDasar.value.key] })),
+}])
+const medJangkauanOpts = computed(() => {
+  const g = medsos.value?.group ?? []
+  return {
+    chart: { id: CHART_ID.medJangkauan, toolbar: { show: false }, fontFamily: 'inherit' },
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } },
+    colors: ['#0ea5e9'],
+    legend: { show: false },
+    dataLabels: { enabled: false },
+    grid: { borderColor: '#f1f5f9' },
+    // Label minggu ditulis sekali saja, di grafik bawah — keduanya memakai
+    // urutan minggu yang sama persis.
+    xaxis: { labels: { show: false }, axisTicks: { show: false } },
+    yaxis: {
+      title: { text: medDasar.value.sumbu, style: { fontSize: '11px', fontWeight: 500, color: '#6b7280' } },
+      labels: { formatter: ringkasAngka, style: { fontSize: '11px' } },
+    },
+    tooltip: {
+      y: {
+        formatter: (v, { dataPointIndex }) =>
+          angkaID(v) + (g[dataPointIndex]?.has_manual ? ' · sebagian diketik manual' : ''),
+      },
+    },
+  }
+})
+
+// ── Grafik 5b: konten yang terbit ────────────────────────────
+const medKontenSeries = computed(() => [{
+  name: 'Konten terbit',
+  data: (medsos.value?.group ?? []).map(w => ({ x: weekRange(w.week_start), y: w.posts })),
+}])
+const medKontenOpts = computed(() => ({
+  chart: { id: CHART_ID.medKonten, toolbar: { show: false }, fontFamily: 'inherit' },
+  plotOptions: { bar: { borderRadius: 3, columnWidth: '45%', dataLabels: { position: 'top' } } },
+  colors: ['#8b5cf6'],
+  legend: { show: false },
+  // Angkanya ditulis di tiap batang justru karena minggu tanpa konten tidak
+  // punya batang untuk dilihat. Nol yang tak tergambar adalah temuan yang
+  // hilang — dan minggu tanpa konten persis temuan yang dicari halaman ini.
+  dataLabels: {
+    enabled: true, formatter: v => String(v), offsetY: -18,
+    style: { fontSize: '11px', colors: ['#374151'] },
+  },
+  grid: { borderColor: '#f1f5f9', padding: { top: 14 } },
+  xaxis: { labels: { style: { fontSize: '11px' } } },
+  yaxis: {
+    tickAmount: 3,
+    title: { text: 'Jumlah konten', style: { fontSize: '11px', fontWeight: 500, color: '#6b7280' } },
+    labels: { formatter: v => String(Math.round(v)), style: { fontSize: '11px' } },
+  },
+  tooltip: { y: { formatter: v => `${v} konten` } },
+}))
+
+// ── Grafik 6: perjalanan pengikut ────────────────────────────
+// Disandingkan pada pembacaan pertama tiap outlet = 100. Angka mutlaknya
+// berbeda puluhan kali lipat antar outlet, jadi kalau digambar apa adanya
+// outlet kecil menjadi garis rata di dasar grafik dan perkembangannya — justru
+// yang ditanyakan halaman ini — tidak terlihat sama sekali. Angka aslinya tetap
+// dibawa di tooltip dan di tabel.
+const medPengikutSeries = computed(() => (medsos.value?.outlets ?? []).map(o => {
+  const dasar = o.weeks.find(w => w.followers != null)?.followers ?? null
+  return {
+    name: o.code,
+    data: o.weeks.map(w =>
+      (dasar && w.followers != null) ? Math.round((w.followers / dasar) * 1000) / 10 : null),
+  }
+}))
+const medPengikutOpts = computed(() => ({
+  chart: { id: CHART_ID.medPengikut, toolbar: { show: false }, fontFamily: 'inherit', zoom: { enabled: false } },
+  colors: (medsos.value?.outlets ?? []).map(o => warnaOutlet(o.code)),
+  stroke: { width: 2, curve: 'straight' },
+  markers: { size: 0, hover: { size: 5 } },
+  legend: { position: 'bottom', fontSize: '12px', markers: { radius: 3 } },
+  grid: { borderColor: '#f1f5f9' },
+  xaxis: {
+    categories: (medsos.value?.group ?? []).map(w => weekRange(w.week_start)),
+    labels: { style: { fontSize: '11px' } },
+  },
+  yaxis: {
+    title: { text: 'Pengikut (pembacaan pertama = 100)', style: { fontSize: '11px', fontWeight: 500, color: '#6b7280' } },
+    labels: { formatter: v => Number(v).toFixed(0), style: { fontSize: '11px' } },
+  },
+  annotations: { yaxis: [{ y: 100, borderColor: '#cbd5e1', strokeDashArray: 4 }] },
+  tooltip: {
+    shared: true,
+    y: {
+      formatter: (v, { seriesIndex, dataPointIndex }) => {
+        if (v == null) return 'belum terbaca'
+        const w = medsos.value?.outlets?.[seriesIndex]?.weeks?.[dataPointIndex]
+        return n1(v) + (w?.followers != null ? ` · ${angkaID(w.followers)} pengikut` : '')
+      },
+    },
+  },
+}))
+
+// ── Grafik 7: medsos disandingkan dengan penjualan ───────────
+// Warna kuadran adalah warna KEADAAN, bukan warna outlet — karena itu ia tidak
+// diambil dari peta warna outlet. Urutannya pun tetap: pada susunan ini tiap
+// pasangan yang bersebelahan di legenda masih terpisah jelas bagi mata
+// deuteranopia, dan tiap titik tetap diberi kode outletnya sehingga identitas
+// tidak pernah bergantung pada warna saja.
+const KUADRAN = {
+  SEJALAN:      { color: '#059669', chip: 'bg-emerald-100 text-emerald-700' },
+  SEPI_DUANYA:  { color: '#7c3aed', chip: 'bg-violet-100 text-violet-700' },
+  RAMAI_SEPI:   { color: '#e11d48', chip: 'bg-rose-100 text-rose-700' },
+  TANPA_MEDSOS: { color: '#0891b2', chip: 'bg-cyan-100 text-cyan-700' },
+  DATA_KURANG:  { color: '#cbd5e1', chip: 'bg-gray-100 text-gray-500' },
+}
+const KUADRAN_URUT = ['SEJALAN', 'SEPI_DUANYA', 'RAMAI_SEPI', 'TANPA_MEDSOS']
+
+const medSilangKelompok = computed(() => {
+  const byQ = {}
+  for (const o of medsos.value?.outlets ?? []) {
+    if (o.reach_growth == null || o.sales_growth == null || o.quadrant === 'DATA_KURANG') continue
+    ;(byQ[o.quadrant] ??= []).push({ x: o.reach_growth, y: o.sales_growth, code: o.code, label: o.quadrant_label })
+  }
+  return KUADRAN_URUT.filter(k => byQ[k]).map(k => ({ kunci: k, titik: byQ[k] }))
+})
+const medSilangSeries = computed(() =>
+  medSilangKelompok.value.map(g => ({ name: g.titik[0].label, data: g.titik })))
+
+// Sumbu grafik sebar ini WAJIB memuat angka nol. Seluruh pembacaannya adalah
+// pembacaan kuadran — "kanan-bawah berarti dilihat tapi tidak dibeli" — dan
+// kuadran hanya ada kalau garis nolnya kelihatan. Dibiarkan menskala sendiri,
+// tiga outlet yang kebetulan sama-sama turun akan digambar pada sumbu −31%
+// sampai −28%: titiknya benar, tapi gambarnya kehilangan satu-satunya hal yang
+// membuatnya bisa dibaca.
+function rentangSumbu(vals) {
+  if (!vals.length) return { min: -10, max: 10 }
+  const lo = Math.min(0, ...vals)
+  const hi = Math.max(0, ...vals)
+  const pad = Math.max((hi - lo) * 0.18, 5)
+  return { min: Math.floor(lo - pad), max: Math.ceil(hi + pad) }
+}
+const medSilangX = computed(() =>
+  rentangSumbu(medSilangKelompok.value.flatMap(g => g.titik.map(t => t.x))))
+const medSilangY = computed(() =>
+  rentangSumbu(medSilangKelompok.value.flatMap(g => g.titik.map(t => t.y))))
+const medSilangOpts = computed(() => ({
+  chart: { id: CHART_ID.medSilang, toolbar: { show: false }, fontFamily: 'inherit', zoom: { enabled: false } },
+  colors: medSilangKelompok.value.map(g => KUADRAN[g.kunci].color),
+  markers: { size: 11, strokeWidth: 0, hover: { sizeOffset: 3 } },
+  dataLabels: {
+    enabled: true,
+    formatter: (_v, { seriesIndex, dataPointIndex, w }) =>
+      w.config.series[seriesIndex].data[dataPointIndex]?.code ?? '',
+    offsetY: -14,
+    style: { fontSize: '11px', fontWeight: 600, colors: ['#374151'] },
+    background: { enabled: false },
+  },
+  legend: { position: 'bottom', fontSize: '12px', markers: { radius: 12 } },
+  grid: { borderColor: '#f1f5f9' },
+  xaxis: {
+    type: 'numeric', tickAmount: 6,
+    min: medSilangX.value.min, max: medSilangX.value.max,
+    title: { text: `← ${medDasar.value.pendek} medsos turun     ·     naik →`, style: { fontSize: '11px', fontWeight: 500, color: '#6b7280' } },
+    labels: { formatter: v => `${Number(v).toFixed(0)}%`, style: { fontSize: '11px' } },
+  },
+  yaxis: {
+    tickAmount: 5,
+    min: medSilangY.value.min, max: medSilangY.value.max,
+    title: { text: '← penjualan turun     ·     naik →', style: { fontSize: '11px', fontWeight: 500, color: '#6b7280' } },
+    labels: { formatter: v => `${Number(v).toFixed(0)}%`, style: { fontSize: '11px' } },
+  },
+  annotations: {
+    xaxis: [{
+      x: 0, borderColor: '#94a3b8', strokeDashArray: 4,
+      label: { text: 'medsos tidak berubah', orientation: 'horizontal', style: { fontSize: '10px', color: '#64748b', background: 'transparent' } },
+    }],
+    yaxis: [{
+      y: 0, borderColor: '#94a3b8', strokeDashArray: 4,
+      label: { text: 'penjualan tidak berubah', style: { fontSize: '10px', color: '#64748b', background: 'transparent' } },
+    }],
+  },
+  tooltip: {
+    custom: ({ seriesIndex, dataPointIndex, w }) => {
+      const p = w.config.series[seriesIndex].data[dataPointIndex]
+      return `<div class="px-2 py-1 text-xs">
+        <b>${p.code}</b><br>Medsos: ${p.x > 0 ? '+' : ''}${n1(p.x)}%<br>Penjualan: ${p.y > 0 ? '+' : ''}${n1(p.y)}%<br>${p.label}
+      </div>`
+    },
+  },
+}))
+
+// Tiga keadaan akun yang tidak boleh tampak sama: sehat, mandek, dan memang
+// diisi tangan. Yang ketiga bukan kegagalan — mewarnainya kuning seperti yang
+// mandek akan membuat orang berulang kali mencoba memperbaiki hal yang tidak
+// rusak.
+function chipAkun(a) {
+  if (a.stale) return 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+  if (!a.auto_fetch) return 'bg-sky-100 text-sky-800 hover:bg-sky-200'
+  return 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+}
+
+const KOLOM_MEDSOS = [
+  { teks: 'Outlet' },
+  { teks: 'Pengikut', kanan: true },
+  { teks: 'Konten', kanan: true },
+  { teks: 'Jangkauan', kanan: true },
+  { teks: 'Penjualan', kanan: true },
+  { teks: 'Pembacaan' },
+]
 
 // ── Bahan tampilan yang dirakit dari data ────────────────────
 // Tidak ada angka maupun daftar yang ditulis tetap di sini: semuanya diturunkan
@@ -783,7 +1147,15 @@ function saveBlob(blob, filename) {
 // Grafik yang ikut ke PDF. Hanya pemetaan id kanvas ke kunci bagian — judul
 // dan keterangannya diambil dari backend, sama persis dengan yang di layar,
 // supaya PDF tidak pernah memuat kalimat yang sudah usang.
-const PDF_SECTIONS = GRAFIK.map(g => ({ id: CHART_ID_BY_KEY[g.key], key: g.key }))
+// Satu bagian boleh memuat lebih dari satu kanvas: jangkauan dan jumlah konten
+// adalah dua grafik bersumbu-x sama di bawah satu judul, dan di PDF pun
+// keduanya harus berdiri di bawah judul yang sama.
+const PDF_SECTIONS = [
+  ...GRAFIK.map(g => ({ ids: [CHART_ID_BY_KEY[g.key]], key: g.key })),
+  { ids: ['medJangkauan', 'medKonten'], key: 'medsos_jangkauan' },
+  { ids: ['medPengikut'], key: 'medsos_pengikut' },
+  { ids: ['medSilang'], key: 'medsos_silang' },
+]
 
 // jsPDF memakai encoding WinAnsi; karakter panah tidak ada di dalamnya dan akan
 // tercetak jadi sampah, jadi diterjemahkan ke kata biasa lebih dulu.
@@ -884,28 +1256,39 @@ async function downloadPDF() {
       y = doc.lastAutoTable.finalY + 8
     }
 
-    // Grafik — diambil dari yang sudah tergambar di layar
+    // Grafik — diambil dari yang sudah tergambar di layar. Bagian yang tidak
+    // tergambar (medsos, saat belum ada akun terdaftar) tidak menghasilkan
+    // kanvas apa pun, jadi ia hilang dari PDF dengan sendirinya.
     for (const sec of PDF_SECTIONS) {
-      let img
-      try {
-        const png = (await ApexCharts.exec(CHART_ID[sec.id], 'dataURI', { width: 1200 }))?.imgURI
-        img = png ? await toJpeg(png) : null
-      } catch { img = null }
-      if (!img) continue
+      const imgs = []
+      for (const id of sec.ids) {
+        try {
+          const png = (await ApexCharts.exec(CHART_ID[id], 'dataURI', { width: 1200 }))?.imgURI
+          if (png) imgs.push(await toJpeg(png))
+        } catch { /* kanvas tidak ada di layar — lewati */ }
+      }
+      if (!imgs.length) continue
 
       const imgW = W - 2 * M
-      const props = doc.getImageProperties(img)
-      const imgH = (props.height * imgW) / props.width
+      const ukuran = imgs.map(img => {
+        const props = doc.getImageProperties(img)
+        return (props.height * imgW) / props.width
+      })
 
-      if (y + imgH + 16 > doc.internal.pageSize.getHeight() - M) { doc.addPage(); y = M }
+      // Judul dan gambar pertamanya tidak boleh terpisah halaman.
+      if (y + ukuran[0] + 16 > doc.internal.pageSize.getHeight() - M) { doc.addPage(); y = M }
       doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(30)
       doc.text(pdfText(bagian(sec.key).title ?? ''), M, y); y += 5
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(120)
       const ket = doc.splitTextToSize(
         pdfText([bagian(sec.key).lead, bagian(sec.key).hint].filter(Boolean).join(' ')), imgW)
       doc.text(ket, M, y); y += ket.length * 3.6 + 2
-      doc.addImage(img, 'JPEG', M, y, imgW, imgH, undefined, 'FAST')
-      y += imgH + 9
+
+      imgs.forEach((img, i) => {
+        if (y + ukuran[i] > doc.internal.pageSize.getHeight() - M) { doc.addPage(); y = M }
+        doc.addImage(img, 'JPEG', M, y, imgW, ukuran[i], undefined, 'FAST')
+        y += ukuran[i] + (i === imgs.length - 1 ? 9 : 2)
+      })
     }
 
     // Rincian per outlet — hanya pindah halaman kalau sisa ruang tidak cukup,
@@ -932,6 +1315,39 @@ async function downloadPDF() {
       ]),
     })
     y = doc.lastAutoTable.finalY + 8
+
+    // Kinerja medsos per outlet — hanya ada bila akunnya sudah didaftarkan.
+    if (d.social?.enabled && d.social.outlets?.length) {
+      if (y > doc.internal.pageSize.getHeight() - 70) { doc.addPage(); y = M }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(30)
+      doc.text('Kinerja Markom per Outlet', M, y); y += 6
+      autoTable(doc, {
+        startY: y,
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 1.8, valign: 'top', overflow: 'linebreak' },
+        headStyles: { fillColor: [5, 150, 105], textColor: 255, fontSize: 7.5 },
+        columnStyles: { 0: { cellWidth: 26 }, 6: { cellWidth: 56 } },
+        head: [['Outlet', 'Akun', 'Pengikut', 'Konten', 'Jangkauan', 'Penjualan', 'Pembacaan']],
+        body: d.social.outlets.map(o => [
+          `${o.name}\n(${o.code})`,
+          o.accounts.map(a => `${a.platform === 'instagram' ? 'IG' : 'TT'} @${a.username}`).join('\n'),
+          o.followers_now == null ? '-' : angkaID(o.followers_now),
+          `${o.posts_recent} / ${o.posts_prev}`,
+          pp(o.reach_growth, '%'),
+          pp(o.sales_growth, '%'),
+          `${o.quadrant_label}\n${pdfText(o.reading)}`,
+        ]),
+      })
+      y = doc.lastAutoTable.finalY + 6
+
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120)
+      for (const n of d.social.notes ?? []) {
+        const baris = doc.splitTextToSize('- ' + pdfText(n), W - 2 * M)
+        if (y + baris.length * 3.4 > doc.internal.pageSize.getHeight() - M) { doc.addPage(); y = M }
+        doc.text(baris, M, y); y += baris.length * 3.4 + 1.2
+      }
+      y += 4
+    }
 
     // Lembar detail per outlet — dibuat supaya bisa disobek dan diberikan ke
     // tiap manajer: angkanya rupiah, penjelasannya kalimat biasa.

@@ -392,6 +392,7 @@ const NAV_ITEMS_DATA = [
       { to: '/void-report',          label: 'Void & Titipan', permission: ['reports.void.view', 'reports.titipan.view'] },
       { to: '/discount-report',      label: 'Diskon & Komplimen', permission: 'reports.discount.view' },
       { to: '/business-analysis',    label: 'Analisa Bisnis', permission: 'reports.business_analysis.view' },
+      { to: '/social-performance',   label: 'Kinerja Markom', permission: 'social.view' },
       { to: '/bank-accounts',         label: 'Data Rekening', permission: 'finance.bank.view' },
     ],
   },

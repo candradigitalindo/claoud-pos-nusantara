@@ -390,6 +390,8 @@ const REDIRECT_GROUPS = [
     { value: '/tax-report',            label: 'Laporan Pajak',            perm: 'reports.tax.view' },
     { value: '/void-report',           label: 'Void & Titipan',           perm: 'reports.void.view' },
     { value: '/discount-report',       label: 'Diskon & Komplimen',       perm: 'reports.discount.view' },
+    { value: '/business-analysis',     label: 'Analisa Bisnis',           perm: 'reports.business_analysis.view' },
+    { value: '/social-performance',    label: 'Kinerja Markom',           perm: 'social.view' },
     { value: '/bank-accounts',         label: 'Data Rekening',            perm: 'finance.bank.view' },
   ]},
   { category: 'Pengadaan', options: [

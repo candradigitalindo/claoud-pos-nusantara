@@ -173,6 +173,13 @@ const CATEGORIES = [
           { key: 'reports.business_analysis.view', label: 'Analisa Bisnis' },
         ],
       },
+      {
+        type: 'toggles', label: 'Kinerja Markom (IG/TikTok)', icon: IC.report,
+        toggles: [
+          { key: 'social.view',   label: 'Lihat' },
+          { key: 'social.manage', label: 'Kelola akun & isi manual' },
+        ],
+      },
       { type: 'single', key: 'cashier_shifts.view', label: 'Laporan Shift Kasir', icon: IC.report },
       { type: 'single', key: 'shift_reconciliation.view', label: 'Rekonsiliasi Shift', icon: IC.report },
       {

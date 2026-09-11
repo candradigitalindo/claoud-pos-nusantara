@@ -47,6 +47,10 @@ var AllPermissions = []string{
 	"reports.discount.view",
 	// Analisa Bisnis (RGI): lintas outlet, tidak bisa di-scope per outlet.
 	"reports.business_analysis.view",
+	// Kinerja Markom — grafik IG/TikTok yang menempel di Analisa Bisnis.
+	// .manage = mendaftarkan akun outlet, mengetik tambalan mingguan, dan
+	// menarik paksa dari halaman publik; pekerjaan Markom, bukan pembaca laporan.
+	"social.view", "social.manage",
 	"cashier_shifts.view",
 	// Rekonsiliasi shift dipisah dari laporan shift kasir.
 	"shift_reconciliation.view",

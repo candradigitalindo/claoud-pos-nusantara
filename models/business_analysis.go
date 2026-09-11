@@ -221,6 +221,11 @@ type BusinessAnalysis struct {
 	Insights []BizInsight `json:"insights"`
 	Sections []BizSection `json:"sections"`
 	Glossary []BizTerm    `json:"glossary"`
+	// Social = blok kinerja medsos (IG/TikTok) yang disandingkan dengan gerak
+	// penjualan. nil bila belum ada akun yang didaftarkan — halaman menyembunyikan
+	// bagiannya alih-alih menggambar grafik kosong.
+	Social *BizSocial `json:"social,omitempty"`
+
 	Lagging     []string `json:"lagging"`      // kode outlet tertinggal
 	Leading     []string `json:"leading"`      // kode outlet unggul
 	GroupEvents []string `json:"group_events"` // label minggu peristiwa grup

@@ -1014,5 +1014,12 @@ func GetBusinessAnalysis(weeks int) (*models.BusinessAnalysis, error) {
 	// sehingga kalimatnya dijamin memakai angka yang sama dengan tabel.
 	BuildBusinessNarrative(out)
 
+	// Medsos ditempel SESUDAH narasi, bukan sebelum: BuildBusinessNarrative
+	// mengosongkan Sections dan Insights saat mulai merakit, jadi bagian yang
+	// ditambahkan lebih dulu akan terhapus tanpa jejak. Kegagalannya tidak
+	// menggagalkan laporan — angka penjualan tetap terpakai meski scraper medsos
+	// sedang diblokir.
+	AttachBusinessSocial(out, weeks)
+
 	return out, nil
 }

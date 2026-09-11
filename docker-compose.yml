@@ -32,6 +32,11 @@ services:
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-webhook-secret}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-secret-token}
       RATE_LIMIT_PER_MINUTE: 100
+      # Penarikan angka medsos keluar lewat alamat ini bila diisi. Instagram dan
+      # TikTok memblokir pembacaan anonim dari alamat datacenter, jadi tanpa
+      # proxy penarikannya pasti gagal dan angkanya harus diisi tangan lewat
+      # halaman Kinerja Medsos. Isi di .env, lalu `docker compose up -d app`.
+      SOCIAL_PROXY_URL: ${SOCIAL_PROXY_URL:-}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
