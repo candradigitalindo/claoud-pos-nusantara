@@ -1,275 +1,299 @@
 <template>
-  <div class="space-y-5">
+  <div class="space-y-4 sm:space-y-5">
     <!-- Header -->
-    <div class="flex items-start justify-between flex-wrap gap-3">
-      <div>
-        <h1 class="text-xl font-bold text-gray-900">Manajemen Perlengkapan</h1>
-        <p class="text-sm text-gray-500 mt-0.5">Inventaris barang (meja, kursi, dll) beserta histori perawatannya.</p>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0">
+        <h1 class="text-lg sm:text-xl font-bold text-gray-900">Manajemen Perlengkapan</h1>
+        <p class="mt-0.5 text-sm text-gray-500">Inventaris barang beserta nilai buku, riwayat lokasi, dan perawatannya.</p>
       </div>
-      <AppButton v-if="canCreate" @click="openCreate">+ Tambah Perlengkapan</AppButton>
+      <AppButton v-if="canCreate" class="w-full sm:w-auto" @click="openCreate">+ Tambah Perlengkapan</AppButton>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
 
-    <!-- Filters -->
+    <!-- Ringkasan -->
+    <div v-if="!loading && assets.length" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <AppCard class="min-w-0"><p class="stat-lbl">Jumlah Aset</p><p class="stat-val">{{ summary.count }}</p><p class="stat-sub">{{ summary.units }} unit</p></AppCard>
+      <AppCard class="min-w-0"><p class="stat-lbl">Nilai Perolehan</p><p class="stat-val">{{ formatRupiah(summary.acquisition) }}</p><p class="stat-sub">total harga beli</p></AppCard>
+      <AppCard class="min-w-0"><p class="stat-lbl">Nilai Buku</p><p class="stat-val">{{ formatRupiah(summary.book) }}</p><p class="stat-sub">setelah penyusutan</p></AppCard>
+      <AppCard class="min-w-0"><p class="stat-lbl">Perlu Perhatian</p><p class="stat-val" :class="summary.attention ? 'text-amber-600' : ''">{{ summary.attention }}</p><p class="stat-sub">rusak / dalam perbaikan</p></AppCard>
+    </div>
+
+    <!-- Filter -->
     <AppCard>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SearchSelect v-model="filterOutlet" :options="outletFilterOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" @change="load" />
+        <select v-model="filterStatus" @change="load" class="form-input">
+          <option value="">Semua status</option>
+          <option v-for="(lbl, key) in STATUSES" :key="key" :value="key">{{ lbl }}</option>
+        </select>
         <select v-model="filterCondition" @change="load" class="form-input">
           <option value="">Semua kondisi</option>
           <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
         </select>
-        <input v-model="search" @input="debouncedLoad" type="search" placeholder="Cari nama / kode / kategori…" class="form-input" />
+        <input v-model="search" @input="debouncedLoad" type="search" placeholder="Cari nama / nomor / seri…" class="form-input" />
       </div>
     </AppCard>
 
-    <!-- List -->
+    <!-- Bilah aksi massal -->
+    <div v-if="selected.length"
+      class="sticky bottom-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+      <span class="text-sm font-semibold text-emerald-800">{{ selected.length }} aset dipilih</span>
+      <div class="ml-auto flex flex-wrap gap-2">
+        <button class="btn-soft" @click="selected = []">Batal</button>
+        <button class="btn-soft" @click="printSelected('50x25')">Label 50×25</button>
+        <AppButton @click="printSelected('70x40')">Cetak Label 70×40</AppButton>
+      </div>
+    </div>
+
+    <!-- Daftar -->
     <AppCard :padding="false">
-      <!-- Mobile cards -->
+      <!-- Mobile: kartu -->
       <div class="sm:hidden">
-        <div v-if="loading" class="p-6 text-center text-sm text-gray-400">Memuat…</div>
-        <div v-else-if="!assets.length" class="p-6 text-center text-sm text-gray-400">Belum ada perlengkapan.</div>
+        <div v-if="loading" class="space-y-3 p-4">
+          <div v-for="i in 3" :key="i" class="animate-pulse space-y-2">
+            <div class="h-4 w-2/3 rounded bg-gray-200"></div>
+            <div class="h-3 w-1/2 rounded bg-gray-100"></div>
+          </div>
+        </div>
+        <div v-else-if="!assets.length" class="p-6 text-center text-sm text-gray-400">
+          {{ emptyText }}
+        </div>
         <ul v-else class="divide-y divide-gray-100">
-          <li v-for="a in assets" :key="a.id" class="p-4 space-y-2">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <p class="font-semibold text-gray-900 break-words">{{ a.name }}</p>
-                <p class="text-xs text-gray-500 mt-0.5">
-                  <span v-if="a.code" class="font-mono">{{ a.code }}</span>
-                  <span v-if="a.category"> · {{ a.category }}</span>
-                  · {{ a.quantity }} {{ a.unit }}
-                </p>
+          <li v-for="a in assets" :key="a.id" class="space-y-2 p-4">
+            <div class="flex items-start gap-2">
+              <input type="checkbox" class="mt-1 h-4 w-4 shrink-0 accent-emerald-600" :value="a.id" v-model="selected" :aria-label="`Pilih ${a.name}`" />
+              <button class="min-w-0 flex-1 text-left" @click="goDetail(a)">
+                <p class="break-words font-semibold text-gray-900">{{ a.name }}</p>
+                <p class="mt-0.5 font-mono text-[11px] text-gray-500">{{ a.asset_no || a.code || '—' }}</p>
+              </button>
+              <div class="flex shrink-0 flex-col items-end gap-1">
+                <span :class="statusCls(a.status)">{{ statusLabel(a.status) }}</span>
+                <span :class="condCls(a.condition)">{{ condLabel(a.condition) }}</span>
               </div>
-              <span class="cond-badge shrink-0" :class="condCls(a.condition)">{{ CONDITIONS[a.condition] || a.condition }}</span>
             </div>
-            <p class="text-xs text-gray-500">{{ a.outlet_name }}<span v-if="a.location"> · {{ a.location }}</span></p>
-            <p class="text-xs text-gray-500">Perawatan: {{ a.maintenance_count }}× · Terakhir: {{ a.last_maintenance ? formatDateStr(a.last_maintenance) : '—' }}</p>
+            <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dt class="text-gray-400">Lokasi</dt>
+              <dd class="break-words text-gray-700">{{ a.outlet_name }}<span v-if="a.location"> · {{ a.location }}</span></dd>
+              <dt class="text-gray-400">Jumlah</dt>
+              <dd class="text-gray-700">{{ a.quantity }} {{ a.unit }}</dd>
+              <dt class="text-gray-400">Nilai buku</dt>
+              <dd class="text-gray-700">{{ formatRupiah(a.book_value) }}<span v-if="a.purchase_price" class="text-gray-400"> dari {{ formatRupiah(a.purchase_price) }}</span></dd>
+              <dt class="text-gray-400">Perawatan</dt>
+              <dd class="text-gray-700">{{ a.maintenance_count }}× · {{ a.last_maintenance ? formatDateStr(a.last_maintenance) : 'belum ada' }}</dd>
+            </dl>
             <div class="flex gap-2 pt-1">
-              <button @click="openHistory(a)" class="flex-1 text-center text-xs font-medium px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100">Riwayat</button>
-              <button v-if="canUpdate" @click="openEdit(a)" class="flex-1 text-center text-xs font-medium px-2 py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Edit</button>
-              <button v-if="canDelete" @click="confirmDelete(a)" class="flex-1 text-center text-xs font-medium px-2 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Hapus</button>
+              <button @click="goDetail(a)" class="act-btn bg-emerald-50 text-emerald-700 hover:bg-emerald-100">Detail</button>
+              <button v-if="canUpdate" @click="openEdit(a)" class="act-btn bg-gray-100 text-gray-700 hover:bg-gray-200">Edit</button>
+              <button v-if="canDelete" @click="confirmDelete(a)" class="act-btn bg-red-50 text-red-600 hover:bg-red-100">Hapus</button>
             </div>
           </li>
         </ul>
       </div>
 
-      <!-- Desktop table -->
-      <AppTable class="hidden sm:block" :columns="COLUMNS" :rows="assets" :loading="loading" emptyText="Belum ada perlengkapan. Tambahkan di kanan atas.">
+      <!-- Desktop: tabel -->
+      <AppTable class="hidden sm:block" :columns="COLUMNS" :rows="assets" :loading="loading" :emptyText="emptyText">
+        <template #cell-pick="{ row }">
+          <input type="checkbox" class="h-4 w-4 accent-emerald-600" :value="row.id" v-model="selected" :aria-label="`Pilih ${row.name}`" />
+        </template>
         <template #cell-name="{ row }">
-          <div>
-            <p class="font-medium text-gray-900">{{ row.name }}</p>
-            <p v-if="row.code" class="text-xs text-gray-400 font-mono">{{ row.code }}</p>
-          </div>
+          <button class="text-left" @click="goDetail(row)">
+            <p class="font-medium text-gray-900 hover:text-emerald-700">{{ row.name }}</p>
+            <p class="font-mono text-xs text-gray-400">{{ row.asset_no || row.code || '—' }}</p>
+          </button>
         </template>
         <template #cell-quantity="{ row }">{{ row.quantity }} {{ row.unit }}</template>
-        <template #cell-condition="{ row }">
-          <span class="cond-badge" :class="condCls(row.condition)">{{ CONDITIONS[row.condition] || row.condition }}</span>
+        <template #cell-status="{ row }">
+          <div class="flex flex-col items-start gap-1">
+            <span :class="statusCls(row.status)">{{ statusLabel(row.status) }}</span>
+            <span :class="condCls(row.condition)">{{ condLabel(row.condition) }}</span>
+          </div>
+        </template>
+        <template #cell-value="{ row }">
+          <span class="text-sm">{{ formatRupiah(row.book_value) }}</span>
+          <span v-if="row.purchase_price" class="block text-xs text-gray-400">dari {{ formatRupiah(row.purchase_price) }}</span>
         </template>
         <template #cell-maintenance="{ row }">
           <span class="text-sm">{{ row.maintenance_count }}×</span>
-          <span class="text-xs text-gray-400 block">{{ row.last_maintenance ? formatDateStr(row.last_maintenance) : 'belum ada' }}</span>
+          <span class="block text-xs text-gray-400">{{ row.last_maintenance ? formatDateStr(row.last_maintenance) : 'belum ada' }}</span>
         </template>
         <template #cell-actions="{ row }">
-          <div class="flex items-center gap-1 justify-end">
-            <button @click="openHistory(row)" class="text-emerald-600 hover:text-emerald-800 text-xs font-medium px-2 py-1 rounded hover:bg-emerald-50">Riwayat</button>
-            <button v-if="canUpdate" @click="openEdit(row)" class="text-gray-600 hover:text-gray-900 text-xs font-medium px-2 py-1 rounded hover:bg-gray-100">Edit</button>
-            <button v-if="canDelete" @click="confirmDelete(row)" class="text-red-600 hover:text-red-800 text-xs font-medium px-2 py-1 rounded hover:bg-red-50">Hapus</button>
+          <div class="flex items-center justify-end gap-1">
+            <button @click="goDetail(row)" class="rounded px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800">Detail</button>
+            <button v-if="canUpdate" @click="openEdit(row)" class="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">Edit</button>
+            <button v-if="canDelete" @click="confirmDelete(row)" class="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-800">Hapus</button>
           </div>
         </template>
       </AppTable>
     </AppCard>
 
-    <!-- ── Asset Modal ── -->
-    <AppModal v-model="assetModal" :title="editing ? 'Edit Perlengkapan' : 'Tambah Perlengkapan'">
+    <!-- ── Modal tambah/edit ── -->
+    <AppModal v-model="assetModal" :title="editing ? 'Edit Perlengkapan' : 'Tambah Perlengkapan'" size="2xl">
       <form class="space-y-3" @submit.prevent="saveAsset">
         <div v-if="!editing">
           <label class="lbl">Outlet <span class="text-red-500">*</span></label>
           <SearchSelect v-model="form.outlet_id" :options="outlets" placeholder="Pilih outlet…" searchPlaceholder="Cari outlet…" />
         </div>
+        <p v-else class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+          Outlet <strong class="text-gray-700">{{ editing.outlet_name }}</strong> tidak bisa diubah di sini —
+          perpindahan antar outlet dilakukan lewat dokumen mutasi.
+        </p>
+
         <div>
           <label class="lbl">Nama Perlengkapan <span class="text-red-500">*</span></label>
-          <input v-model="form.name" class="form-input" placeholder="Contoh: Meja Kayu Jati" required />
+          <input v-model="form.name" class="form-input" placeholder="Contoh: AC Daikin 1PK" required />
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="lbl">Kode / Tag</label>
-            <input v-model="form.code" class="form-input" placeholder="mis. MJ-001" />
-          </div>
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label class="lbl">Kategori</label>
-            <input v-model="form.category" class="form-input" placeholder="mis. Furniture" list="asset-cats" />
-            <datalist id="asset-cats">
-              <option v-for="c in categorySuggestions" :key="c" :value="c" />
-            </datalist>
+            <input v-model="form.category" @change="applyLifeSuggestion" class="form-input" placeholder="mis. Elektronik" list="asset-cats" />
+            <datalist id="asset-cats"><option v-for="c in categorySuggestions" :key="c" :value="c" /></datalist>
+          </div>
+          <div>
+            <label class="lbl">Kode / Tag internal</label>
+            <input v-model="form.code" class="form-input" placeholder="mis. stiker lama MJ-001" />
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label class="lbl">Mode Pencatatan</label>
+            <select v-model="form.tracking_mode" class="form-input">
+              <option v-for="(lbl, key) in TRACKING_MODES" :key="key" :value="key">{{ lbl }}</option>
+            </select>
+          </div>
           <div>
             <label class="lbl">Jumlah</label>
-            <input v-model.number="form.quantity" type="number" min="1" class="form-input" />
+            <input v-model.number="form.quantity" type="number" inputmode="numeric" min="1" class="form-input"
+              :disabled="form.tracking_mode === 'tunggal'" />
+            <p v-if="form.tracking_mode === 'tunggal'" class="mt-1 text-[11px] text-gray-400">Mode tunggal selalu 1 unit.</p>
           </div>
           <div>
             <label class="lbl">Satuan</label>
             <input v-model="form.unit" class="form-input" placeholder="unit" />
           </div>
         </div>
-        <div>
-          <label class="lbl">Kondisi</label>
-          <select v-model="form.condition" class="form-input">
-            <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="lbl">Lokasi / Ruang</label>
-          <input v-model="form.location" class="form-input" placeholder="mis. Lantai 1 – Area Indoor" />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <label class="lbl">Tgl Pembelian</label>
+            <label class="lbl">Merk</label>
+            <input v-model="form.brand" class="form-input" placeholder="mis. Daikin" />
+          </div>
+          <div>
+            <label class="lbl">Tipe / Model</label>
+            <input v-model="form.model" class="form-input" placeholder="mis. FTKC25" />
+          </div>
+          <div>
+            <label class="lbl">Nomor Seri</label>
+            <input v-model="form.serial_number" class="form-input" placeholder="Opsional" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="lbl">Kondisi</label>
+            <select v-model="form.condition" class="form-input">
+              <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="lbl">Status</label>
+            <select v-model="form.status" class="form-input" :disabled="systemStatusLocked">
+              <option v-for="(lbl, key) in EDITABLE_STATUSES" :key="key" :value="key">{{ lbl }}</option>
+            </select>
+            <p v-if="systemStatusLocked" class="mt-1 text-[11px] text-amber-600">
+              Status “{{ statusLabel(editing.status) }}” diatur oleh dokumen, bukan form ini.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="lbl">Lokasi / Ruang</label>
+            <input v-model="form.location" class="form-input" placeholder="mis. Lantai 1 – Area Indoor" />
+          </div>
+          <div>
+            <label class="lbl">Penanggung Jawab</label>
+            <input v-model="form.pic_name" class="form-input" placeholder="Nama petugas" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label class="lbl">Tgl Perolehan</label>
             <input v-model="form.purchase_date" type="date" class="form-input" />
           </div>
           <div>
-            <label class="lbl">Harga Beli</label>
-            <input v-model.number="form.purchase_price" type="number" min="0" class="form-input" placeholder="0" />
+            <label class="lbl">Harga Perolehan</label>
+            <input v-model.number="form.purchase_price" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
+          </div>
+          <div>
+            <label class="lbl">Garansi s/d</label>
+            <input v-model="form.warranty_until" type="date" class="form-input" />
           </div>
         </div>
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="lbl">Umur Ekonomis (bulan)</label>
+            <input v-model.number="form.useful_life_months" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0 = tidak disusutkan" />
+            <p class="mt-1 text-[11px] text-gray-400">Dipakai menghitung nilai buku (garis lurus).</p>
+          </div>
+          <div>
+            <label class="lbl">Nilai Residu</label>
+            <input v-model.number="form.residual_value" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
+          </div>
+        </div>
+
         <div>
           <label class="lbl">Catatan</label>
           <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Opsional"></textarea>
         </div>
-        <div class="flex justify-end gap-2 pt-1">
+
+        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
           <button type="button" class="btn-ghost" @click="assetModal = false">Batal</button>
           <AppButton type="submit" :loading="saving">{{ editing ? 'Simpan' : 'Tambah' }}</AppButton>
         </div>
       </form>
-    </AppModal>
-
-    <!-- ── Maintenance History Modal ── -->
-    <AppModal v-model="historyModal" :title="`Riwayat Perawatan — ${activeAsset?.name || ''}`">
-      <div v-if="activeAsset" class="space-y-4">
-        <div class="flex items-center justify-between flex-wrap gap-2 text-xs text-gray-500">
-          <span>{{ activeAsset.outlet_name }}<span v-if="activeAsset.location"> · {{ activeAsset.location }}</span></span>
-          <span class="cond-badge" :class="condCls(activeAsset.condition)">{{ CONDITIONS[activeAsset.condition] || activeAsset.condition }}</span>
-        </div>
-
-        <!-- Add maintenance -->
-        <details v-if="canUpdate" class="rounded-lg border border-gray-200" :open="!history.length">
-          <summary class="cursor-pointer select-none px-3 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 rounded-lg">+ Catat Perawatan</summary>
-          <form class="p-3 space-y-3 border-t border-gray-100" @submit.prevent="saveMaintenance">
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="lbl">Tanggal</label>
-                <input v-model="mForm.maintenance_date" type="date" class="form-input" />
-              </div>
-              <div>
-                <label class="lbl">Jenis</label>
-                <select v-model="mForm.type" class="form-input">
-                  <option v-for="(lbl, key) in MTYPES" :key="key" :value="key">{{ lbl }}</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label class="lbl">Deskripsi <span class="text-red-500">*</span></label>
-              <textarea v-model="mForm.description" rows="2" class="form-input" placeholder="Pekerjaan yang dilakukan" required></textarea>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="lbl">Biaya</label>
-                <input v-model.number="mForm.cost" type="number" min="0" class="form-input" placeholder="0" />
-              </div>
-              <div>
-                <label class="lbl">Pelaksana / Teknisi</label>
-                <input v-model="mForm.performed_by" class="form-input" placeholder="Nama / vendor" />
-              </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="lbl">Kondisi Setelah</label>
-                <select v-model="mForm.condition_after" class="form-input">
-                  <option value="">— tidak diubah —</option>
-                  <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
-                </select>
-              </div>
-              <div>
-                <label class="lbl">Jadwal Berikutnya</label>
-                <input v-model="mForm.next_due_date" type="date" class="form-input" />
-              </div>
-            </div>
-            <div class="flex justify-end">
-              <AppButton type="submit" :loading="savingM">Simpan Perawatan</AppButton>
-            </div>
-          </form>
-        </details>
-
-        <!-- Timeline -->
-        <div v-if="loadingHistory" class="text-center text-sm text-gray-400 py-4">Memuat histori…</div>
-        <div v-else-if="!history.length" class="text-center text-sm text-gray-400 py-4">Belum ada catatan perawatan.</div>
-        <ol v-else class="space-y-3">
-          <li v-for="m in history" :key="m.id" class="relative pl-5 border-l-2 border-emerald-100">
-            <span class="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white"></span>
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span class="text-sm font-semibold text-gray-900">{{ formatDateStr(m.maintenance_date) }}</span>
-                  <span class="mtype-badge">{{ MTYPES[m.type] || m.type }}</span>
-                </div>
-                <p class="text-sm text-gray-700 mt-0.5 break-words">{{ m.description }}</p>
-                <p class="text-xs text-gray-500 mt-1 space-x-2">
-                  <span v-if="m.cost > 0">Biaya: {{ formatRupiah(m.cost) }}</span>
-                  <span v-if="m.performed_by">Oleh: {{ m.performed_by }}</span>
-                  <span v-if="m.condition_after">→ {{ CONDITIONS[m.condition_after] || m.condition_after }}</span>
-                  <span v-if="m.next_due_date">Berikutnya: {{ formatDateStr(m.next_due_date) }}</span>
-                </p>
-              </div>
-              <button v-if="canUpdate" @click="deleteMaintenance(m)" title="Hapus catatan" class="text-gray-300 hover:text-red-500 shrink-0">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-              </button>
-            </div>
-          </li>
-        </ol>
-      </div>
     </AppModal>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { assetsApi } from '@/api/assets.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
-import { formatRupiah, formatDateStr, todayDateString } from '@/utils/format.js'
-import AppCard   from '@/components/ui/AppCard.vue'
-import AppTable  from '@/components/ui/AppTable.vue'
-import AppAlert  from '@/components/ui/AppAlert.vue'
+import { formatRupiah, formatDateStr } from '@/utils/format.js'
+import {
+  CONDITIONS, STATUSES, EDITABLE_STATUSES, SYSTEM_STATUSES, TRACKING_MODES,
+  condCls, condLabel, statusCls, statusLabel, suggestUsefulLife, printAssetLabels,
+} from '@/utils/assets.js'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppTable from '@/components/ui/AppTable.vue'
+import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
-import AppModal  from '@/components/ui/AppModal.vue'
+import AppModal from '@/components/ui/AppModal.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
 
+const route = useRoute()
+const router = useRouter()
 const toast = useToastStore()
 const auth = useAuthStore()
 const canCreate = auth.hasPermission('assets.create')
 const canUpdate = auth.hasPermission('assets.update')
 const canDelete = auth.hasPermission('assets.delete')
 
-const CONDITIONS = { baik: 'Baik', rusak_ringan: 'Rusak Ringan', rusak_berat: 'Rusak Berat', perbaikan: 'Dalam Perbaikan' }
-const MTYPES = { rutin: 'Rutin', perbaikan: 'Perbaikan', penggantian: 'Penggantian Part', inspeksi: 'Inspeksi' }
-function condCls(c) {
-  return {
-    'cond-baik': c === 'baik',
-    'cond-ringan': c === 'rusak_ringan',
-    'cond-berat': c === 'rusak_berat',
-    'cond-perbaikan': c === 'perbaikan',
-  }
-}
-
 const COLUMNS = [
+  { key: 'pick',        label: '' },
   { key: 'name',        label: 'Perlengkapan' },
-  { key: 'category',    label: 'Kategori' },
   { key: 'outlet_name', label: 'Outlet' },
   { key: 'quantity',    label: 'Jumlah' },
-  { key: 'condition',   label: 'Kondisi' },
-  { key: 'location',    label: 'Lokasi' },
+  { key: 'status',      label: 'Status / Kondisi' },
+  { key: 'value',       label: 'Nilai Buku' },
   { key: 'maintenance', label: 'Perawatan' },
   { key: 'actions',     label: '' },
 ]
@@ -280,11 +304,29 @@ const loading = ref(false)
 const errorMsg = ref('')
 const filterOutlet = ref('')
 const filterCondition = ref('')
+const filterStatus = ref('')
 const search = ref('')
+const selected = ref([])
 
 const outletFilterOptions = computed(() => [{ id: '', name: 'Semua outlet' }, ...outlets.value])
 const categorySuggestions = computed(() => [...new Set(assets.value.map(a => a.category).filter(Boolean))])
+const hasFilter = computed(() => !!(filterOutlet.value || filterCondition.value || filterStatus.value || search.value.trim()))
+const emptyText = computed(() => hasFilter.value
+  ? 'Tidak ada perlengkapan yang cocok dengan filter ini. Ubah atau kosongkan filter untuk melihat semuanya.'
+  : (canCreate ? 'Belum ada perlengkapan. Tambahkan lewat tombol di kanan atas.' : 'Belum ada perlengkapan terdata.'))
 
+const summary = computed(() => {
+  const rows = assets.value
+  return {
+    count: rows.length,
+    units: rows.reduce((s, a) => s + (a.quantity || 0), 0),
+    acquisition: rows.reduce((s, a) => s + (a.purchase_price || 0) * (a.quantity || 1), 0),
+    book: rows.reduce((s, a) => s + (a.book_value || 0) * (a.quantity || 1), 0),
+    attention: rows.filter(a => a.condition !== 'baik' || a.status === 'perbaikan').length,
+  }
+})
+
+// apiClient tidak membuka amplop untuk respons non-paginasi.
 function asArray(d) { return Array.isArray(d) ? d : (d?.data || []) }
 
 async function load() {
@@ -293,9 +335,13 @@ async function load() {
     const data = await assetsApi.list({
       outlet_id: filterOutlet.value || undefined,
       condition: filterCondition.value || undefined,
+      status: filterStatus.value || undefined,
       search: search.value.trim() || undefined,
     })
     assets.value = asArray(data)
+    // Buang pilihan yang sudah tidak ada di hasil terbaru.
+    const ids = new Set(assets.value.map(a => a.id))
+    selected.value = selected.value.filter(id => ids.has(id))
   } catch (e) {
     errorMsg.value = e?.message || 'Gagal memuat perlengkapan'
   } finally {
@@ -312,23 +358,49 @@ async function loadOutlets() {
   } catch { outlets.value = [] }
 }
 
-// ── Asset CRUD ──
+function goDetail(a) { router.push(`/perlengkapan/${a.id}`) }
+
+async function printSelected(size) {
+  const rows = assets.value.filter(a => selected.value.includes(a.id))
+  const r = await printAssetLabels(rows, { size })
+  if (r?.blocked) toast.error('Jendela cetak diblokir browser. Izinkan pop-up untuk situs ini.')
+}
+
+// ── CRUD ──
 const assetModal = ref(false)
 const editing = ref(null)
 const saving = ref(false)
-const form = ref({})
+const form = ref(blankForm())
+const systemStatusLocked = computed(() => !!editing.value && SYSTEM_STATUSES.includes(editing.value.status))
+
 function blankForm() {
-  return { outlet_id: filterOutlet.value || '', code: '', name: '', category: '', quantity: 1, unit: 'unit', condition: 'baik', location: '', purchase_date: '', purchase_price: 0, notes: '' }
+  return {
+    outlet_id: filterOutlet.value || '', code: '', name: '', category: '', quantity: 1, unit: 'unit',
+    tracking_mode: 'massal', serial_number: '', brand: '', model: '', condition: 'baik', status: 'aktif',
+    location: '', pic_name: '', purchase_date: '', purchase_price: 0, warranty_until: '',
+    useful_life_months: 0, residual_value: 0, photo_url: '', notes: '',
+  }
+}
+function applyLifeSuggestion() {
+  if (!form.value.useful_life_months) form.value.useful_life_months = suggestUsefulLife(form.value.category, form.value.name)
 }
 function openCreate() { editing.value = null; form.value = blankForm(); assetModal.value = true }
 function openEdit(a) {
   editing.value = a
-  form.value = { outlet_id: a.outlet_id, code: a.code, name: a.name, category: a.category, quantity: a.quantity, unit: a.unit, condition: a.condition, location: a.location, purchase_date: a.purchase_date || '', purchase_price: a.purchase_price, notes: a.notes }
+  form.value = {
+    outlet_id: a.outlet_id, code: a.code, name: a.name, category: a.category, quantity: a.quantity, unit: a.unit,
+    tracking_mode: a.tracking_mode || 'massal', serial_number: a.serial_number || '', brand: a.brand || '',
+    model: a.model || '', condition: a.condition, status: a.status || 'aktif', location: a.location,
+    pic_name: a.pic_name || '', purchase_date: a.purchase_date || '', purchase_price: a.purchase_price,
+    warranty_until: a.warranty_until || '', useful_life_months: a.useful_life_months || 0,
+    residual_value: a.residual_value || 0, photo_url: a.photo_url || '', notes: a.notes,
+  }
   assetModal.value = true
 }
 async function saveAsset() {
   if (!form.value.name?.trim()) { toast.error('Nama perlengkapan wajib diisi'); return }
   if (!editing.value && !form.value.outlet_id) { toast.error('Pilih outlet'); return }
+  if (form.value.tracking_mode === 'tunggal') form.value.quantity = 1
   saving.value = true
   try {
     if (editing.value) await assetsApi.update(editing.value.id, form.value)
@@ -339,53 +411,22 @@ async function saveAsset() {
   } catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { saving.value = false }
 }
 async function confirmDelete(a) {
-  if (!window.confirm(`Hapus perlengkapan "${a.name}"? Histori perawatannya tetap tersimpan namun perlengkapan tak lagi tampil.`)) return
-  try { await assetsApi.remove(a.id); toast.success('Perlengkapan dihapus'); await load() }
+  if (!window.confirm(`Hapus data "${a.name}" dari daftar? Gunakan ini hanya untuk salah input — barang yang rusak atau dijual dicatat lewat penghapusan aset.`)) return
+  try { await assetsApi.remove(a.id); toast.success('Data perlengkapan dihapus'); await load() }
   catch (e) { toast.error(e?.message || 'Gagal menghapus') }
 }
 
-// ── Maintenance history ──
-const historyModal = ref(false)
-const activeAsset = ref(null)
-const history = ref([])
-const loadingHistory = ref(false)
-const savingM = ref(false)
-const mForm = ref({})
-function blankM() { return { maintenance_date: todayDateString(), type: 'rutin', description: '', cost: 0, performed_by: '', condition_after: '', next_due_date: '' } }
-
-async function openHistory(a) {
-  activeAsset.value = a
-  history.value = []
-  mForm.value = blankM()
-  historyModal.value = true
-  loadingHistory.value = true
-  try { history.value = asArray(await assetsApi.maintenances(a.id)) }
-  catch (e) { toast.error(e?.message || 'Gagal memuat histori') }
-  finally { loadingHistory.value = false }
-}
-async function saveMaintenance() {
-  if (!mForm.value.description?.trim()) { toast.error('Deskripsi wajib diisi'); return }
-  savingM.value = true
-  try {
-    await assetsApi.addMaintenance(activeAsset.value.id, mForm.value)
-    toast.success('Perawatan dicatat')
-    mForm.value = blankM()
-    history.value = asArray(await assetsApi.maintenances(activeAsset.value.id))
-    await load() // refresh count/last/condition in the list
-    const fresh = assets.value.find(x => x.id === activeAsset.value.id)
-    if (fresh) activeAsset.value = fresh
-  } catch (e) { toast.error(e?.message || 'Gagal menyimpan perawatan') } finally { savingM.value = false }
-}
-async function deleteMaintenance(m) {
-  if (!window.confirm('Hapus catatan perawatan ini?')) return
-  try {
-    await assetsApi.removeMaintenance(activeAsset.value.id, m.id)
-    history.value = history.value.filter(x => x.id !== m.id)
-    await load()
-  } catch (e) { toast.error(e?.message || 'Gagal menghapus') }
-}
-
-onMounted(async () => { await loadOutlets(); await load() })
+onMounted(async () => {
+  await loadOutlets()
+  await load()
+  // Datang dari halaman detail lewat tombol Edit.
+  const id = route.query.edit
+  if (id) {
+    const found = assets.value.find(a => a.id === String(id))
+    if (found && canUpdate) openEdit(found)
+    router.replace({ path: '/perlengkapan' })
+  }
+})
 </script>
 
 <style scoped>
@@ -394,15 +435,24 @@ onMounted(async () => { await loadOutlets(); await load() })
   border: 1px solid rgba(0,0,0,.14); background: #fff; color: #111827; outline: none;
 }
 .form-input:focus { border-color: rgba(5,150,105,.5); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
+.form-input:disabled { background: #f9fafb; color: #6b7280; }
 .lbl { display: block; font-size: .72rem; font-weight: 700; color: #4b5563; margin-bottom: .25rem; }
-.btn-ghost { padding: .5rem 1rem; border-radius: .6rem; font-size: .85rem; font-weight: 600; color: #374151; background: #f3f4f6; }
+.btn-ghost {
+  padding: .5rem 1rem; border-radius: .6rem; font-size: .85rem; font-weight: 600;
+  color: #374151; background: #f3f4f6; min-height: 40px;
+}
 .btn-ghost:hover { background: #e5e7eb; }
-
-.cond-badge { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
-.cond-baik { background: rgba(16,185,129,.13); color: #047857; }
-.cond-ringan { background: rgba(245,158,11,.15); color: #b45309; }
-.cond-berat { background: rgba(239,68,68,.13); color: #b91c1c; }
-.cond-perbaikan { background: rgba(59,130,246,.13); color: #1d4ed8; }
-
-.mtype-badge { display: inline-block; padding: .05rem .45rem; border-radius: 999px; font-size: .65rem; font-weight: 700; background: rgba(99,102,241,.12); color: #4338ca; }
+.btn-soft {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  padding: .5rem .9rem; border-radius: .6rem; font-size: .82rem; font-weight: 600;
+  color: #374151; background: #fff; border: 1px solid rgba(0,0,0,.08); min-height: 40px;
+}
+.btn-soft:hover { background: #f3f4f6; }
+.act-btn {
+  flex: 1; min-height: 40px; border-radius: .6rem; padding: .4rem .5rem;
+  font-size: .75rem; font-weight: 600; text-align: center;
+}
+.stat-lbl { font-size: .68rem; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .02em; }
+.stat-val { margin-top: .15rem; font-size: 1rem; font-weight: 700; color: #111827; overflow-wrap: anywhere; }
+.stat-sub { margin-top: .1rem; font-size: .7rem; color: #6b7280; overflow-wrap: anywhere; }
 </style>

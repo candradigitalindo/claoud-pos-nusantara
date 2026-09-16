@@ -40,3 +40,11 @@ export const purchaseApi = {
       timeout: 120000,
     }),
 }
+
+// Serah Terima pengadaan → aset / stok gudang (docs/perlengkapan-aset.md §8)
+export const receivingApi = {
+  draft:   (prId)       => apiClient.get(`/admin/purchase-requests/${prId}/receiving-draft`),
+  receive: (prId, data) => apiClient.post(`/admin/purchase-requests/${prId}/receive-goods`, data),
+  incomplete: ()        => apiClient.get('/admin/asset-incomplete-receipts'),
+  queue:   (kind)       => apiClient.get('/admin/receiving-queue', { params: { kind } }),
+}

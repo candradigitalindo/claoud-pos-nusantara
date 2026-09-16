@@ -347,7 +347,6 @@ const NAV_ITEMS_DATA = [
       { to: '/outlets',    label: 'Outlet',     permission: 'outlets.view' },
       { to: '/work-units', label: 'Unit Kerja', permission: 'workunits.view' },
       { to: '/warehouses', label: 'Gudang',     permission: 'warehouses.view' },
-      { to: '/perlengkapan', label: 'Perlengkapan', permission: 'assets.view' },
       { to: '/roles',      label: 'Role',       permission: 'roles.view' },
       { to: '/app-pos',    label: 'App POS',     permission: 'appfiles.view' },
     ],
@@ -453,10 +452,30 @@ const NAV_ITEMS_DATA = [
       { to: '/warehouse-dashboard', label: 'Dashboard', permission: 'warehouse_dashboard.view' },
       { to: '/stock-items',     label: 'Item Stok', permission: 'stockitems.view' },
       { to: '/goods-receipts',  label: 'Penerimaan Barang', permission: 'stockledger.view' },
+      { to: '/gudang/penerimaan-pengadaan', label: 'Penerimaan dari Pengadaan', permission: 'stockledger.adjust' },
       { to: '/stock-transfers', label: 'Transfer Stok', permission: 'stocktransfers.view' },
       { to: '/stock-wastes',    label: 'Stok Rusak/Hilang', permission: 'stockwastes.view' },
       { to: '/stock-ledger',    label: 'Buku Stok', permission: 'stockledger.view' },
       { to: '/recipes',         label: 'Resep', permission: 'recipes.view' },
+    ],
+  },
+  {
+    label: 'Perlengkapan',
+    icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"
+        d="M3 7l9-4 9 4v10l-9 4-9-4V7z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"
+        d="M3 7l9 4 9-4M12 11v10"/>
+    </svg>`,
+    children: [
+      { to: '/perlengkapan',        label: 'Daftar Aset',         permission: 'assets.view' },
+      { to: '/perlengkapan/penerimaan', label: 'Penerimaan Peralatan', permission: 'assets.create' },
+      { to: '/perlengkapan/distribusi', label: 'Distribusi ke PIC', permission: 'assets.view' },
+      { to: '/perlengkapan/mutasi', label: 'Mutasi Antar Outlet', permission: 'assets.transfer.view' },
+      { to: '/perlengkapan/perawatan', label: 'Perawatan', permission: 'assets.maintenance.view' },
+      { to: '/perlengkapan/opname', label: 'Opname Aset', permission: 'assets.opname.view' },
+      { to: '/perlengkapan/penghapusan', label: 'Penghapusan', permission: 'assets.disposal.view' },
+      { to: '/perlengkapan/laporan', label: 'Laporan Aset', permission: 'assets.report.view' },
     ],
   },
   {
@@ -469,6 +488,7 @@ const NAV_ITEMS_DATA = [
     </svg>`,
     children: [
       { to: '/settings/company',  label: 'Identitas Perusahaan', permission: 'settings.company.view' },
+      { to: '/settings/photo-backup', label: 'Cadangan Bukti Foto', permission: 'settings.company.view' },
       { to: '/settings/timezone', label: 'Zona Waktu', permission: 'settings.timezone.view' },
       { to: '/settings/tax',     label: 'Pajak', permission: 'settings.tax.view' },
       { to: '/settings/devices', label: 'Perangkat', permission: 'devices.view' },

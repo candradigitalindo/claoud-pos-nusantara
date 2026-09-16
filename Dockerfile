@@ -26,7 +26,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o cloud-api main.go
 # ── Stage 3: Go API runtime ──────────────────────────────────────────────────
 FROM alpine:3.20 AS api
 
-RUN apk add --no-cache tzdata ca-certificates
+# rclone dipakai menyalin bukti foto ke Google Drive memakai remote yang sudah
+# dikonfigurasi di host (berkas rclone.conf dipasang read-only lewat compose).
+RUN apk add --no-cache tzdata ca-certificates rclone
 
 WORKDIR /app
 

@@ -8,6 +8,9 @@ type GoodsReceiptItemReq struct {
 	QtyDist     float64 `json:"qty_dist"`      // jumlah dalam satuan beli/distribusi
 	CostPerBase float64 `json:"cost_per_base"` // harga per satuan dasar
 	ExpiryDate  string  `json:"expiry_date"`   // opsional, YYYY-MM-DD
+	// PRItemKey menautkan baris ini ke sub-item pengajuan asalnya, supaya
+	// rekonsiliasi "sudah dicatat berapa" tidak perlu menebak lewat nama.
+	PRItemKey string `json:"pr_item_key,omitempty"`
 }
 
 // GoodsReceiptRequest — payload buat GRN.

@@ -50,6 +50,9 @@ type PurchaseRequest struct {
 	PaidAmount           float64               `json:"paid_amount"`
 	ReceivedBy           *string               `json:"received_by"`
 	ReceivedAt           *string               `json:"received_at"`
+	// ReceiptStatus berdiri sendiri dari Status: '' (belum diterima), 'partial',
+	// atau 'received'. Barang bisa datang sebelum maupun sesudah dibayar.
+	ReceiptStatus string `json:"receipt_status"`
 	ProjectID            *string               `json:"project_id"`
 	ProjectName          string                `json:"project_name,omitempty"`
 	ParentID             *string               `json:"parent_id"`

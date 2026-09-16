@@ -379,6 +379,12 @@ const routes = [
         meta: { title: 'Detail Vendor — Cloud POS', requiresAuth: true, permission: 'vendors.view' },
       },
       {
+        path: 'settings/photo-backup',
+        name: 'PhotoBackupSettings',
+        component: () => import('@/pages/PhotoBackupSettings.vue'),
+        meta: { title: 'Cadangan Bukti Foto — Cloud POS', requiresAuth: true, permission: 'settings.company.view' },
+      },
+      {
         path: 'settings/company',
         name: 'CompanyIdentity',
         component: CompanyIdentity,
@@ -505,6 +511,60 @@ const routes = [
         name: 'Assets',
         component: Assets,
         meta: { title: 'Manajemen Perlengkapan — Cloud POS', requiresAuth: true, permission: 'assets.view' },
+      },
+      {
+        path: 'perlengkapan/mutasi',
+        name: 'AssetTransfers',
+        component: () => import('@/pages/AssetTransfers.vue'),
+        meta: { title: 'Mutasi Aset — Cloud POS', requiresAuth: true, permission: 'assets.transfer.view' },
+      },
+      {
+        path: 'perlengkapan/perawatan',
+        name: 'AssetMaintenance',
+        component: () => import('@/pages/AssetMaintenance.vue'),
+        meta: { title: 'Perawatan Aset — Cloud POS', requiresAuth: true, permission: 'assets.maintenance.view' },
+      },
+      {
+        path: 'perlengkapan/penghapusan',
+        name: 'AssetDisposals',
+        component: () => import('@/pages/AssetDisposals.vue'),
+        meta: { title: 'Penghapusan Aset — Cloud POS', requiresAuth: true, permission: 'assets.disposal.view' },
+      },
+      {
+        path: 'perlengkapan/opname',
+        name: 'AssetOpname',
+        component: () => import('@/pages/AssetOpname.vue'),
+        meta: { title: 'Opname Aset — Cloud POS', requiresAuth: true, permission: 'assets.opname.view' },
+      },
+      {
+        path: 'perlengkapan/penerimaan',
+        name: 'AssetReceivingQueue',
+        component: () => import('@/pages/ReceivingQueue.vue'),
+        meta: { title: 'Penerimaan Peralatan — Cloud POS', requiresAuth: true, permission: 'assets.create', receivingKind: 'perlengkapan' },
+      },
+      {
+        path: 'gudang/penerimaan-pengadaan',
+        name: 'WarehouseReceivingQueue',
+        component: () => import('@/pages/ReceivingQueue.vue'),
+        meta: { title: 'Penerimaan Barang Dapur — Cloud POS', requiresAuth: true, permission: 'stockledger.adjust', receivingKind: 'dapur' },
+      },
+      {
+        path: 'perlengkapan/distribusi',
+        name: 'AssetHandovers',
+        component: () => import('@/pages/AssetHandovers.vue'),
+        meta: { title: 'Distribusi Aset — Cloud POS', requiresAuth: true, permission: 'assets.view' },
+      },
+      {
+        path: 'perlengkapan/laporan',
+        name: 'AssetReports',
+        component: () => import('@/pages/AssetReports.vue'),
+        meta: { title: 'Laporan Aset — Cloud POS', requiresAuth: true, permission: 'assets.report.view' },
+      },
+      {
+        path: 'perlengkapan/:id',
+        name: 'AssetDetail',
+        component: () => import('@/pages/AssetDetail.vue'),
+        meta: { title: 'Detail Aset — Cloud POS', requiresAuth: true, permission: 'assets.view' },
       },
       {
         path: 'reservations',

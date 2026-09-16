@@ -51,6 +51,12 @@ func main() {
 	// Medsos: tarik angka IG/TikTok tiap dini hari untuk grafik Analisa Bisnis.
 	services.StartSocialScheduler()
 
+	// Terbitkan work order perawatan aset yang jatuh tempo (harian, ~03:00 WIB).
+	services.StartAssetMaintenanceScheduler()
+
+	// Cadangkan bukti foto serah terima ke email (tiap 15 menit).
+	services.StartPhotoBackupScheduler()
+
 	app := fiber.New(fiber.Config{
 		AppName:        "Nusantara POS Cloud API v1.0.0",
 		BodyLimit:      200 * 1024 * 1024,

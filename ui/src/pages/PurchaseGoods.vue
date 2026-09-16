@@ -172,6 +172,14 @@
           <div class="mt-3">
             <button type="button" @click="addItem" class="text-sm text-emerald-600 hover:text-emerald-800 font-medium">+ Tambah Pengadaan</button>
           </div>
+          <div v-if="mixedKind" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <p class="font-semibold">Pengajuan ini mencampur barang dapur dan peralatan.</p>
+            <p class="mt-1">
+              Barang dapur ({{ mixedKind.dapur.join(', ') }}) diterima di <strong>Gudang Induk</strong>,
+              sedangkan peralatan ({{ mixedKind.perlengkapan.join(', ') }}) diterima di <strong>bagian Aset</strong>.
+              Pisahkan menjadi dua pengajuan — server akan menolak yang tercampur.
+            </p>
+          </div>
           <p v-if="form.items.length" class="mt-2 text-sm font-semibold text-gray-700">
             Total HPS: {{ formatRupiah(estimatedTotal) }}
           </p>
@@ -513,7 +521,8 @@
       <template #footer>
         <div v-if="!parentDetailId" class="flex flex-wrap items-center gap-2 mr-auto">
           <AppButton v-if="detail && detail.status === 'approved' && authStore.hasPermission('procurement.requests.purchasing') && detail.total_final > 0" variant="primary" @click="confirmDetailAction('request_payment')">Ajukan Pembayaran</AppButton>
-          <AppButton v-if="detail && detail.status === 'paid' && authStore.hasPermission('procurement.requests.submit')" variant="primary" @click="confirmDetailAction('receive')">Serah Terima</AppButton>
+          <AppButton v-if="detail && ['paid','partial'].includes(detail.status) && authStore.hasPermission('procurement.requests.submit')" variant="primary" @click="openReceiving()">Serah Terima</AppButton>
+          <AppButton v-else-if="detail && detail.status === 'received' && authStore.hasPermission('procurement.requests.submit')" variant="secondary" @click="openReceiving()">Lengkapi Penerimaan</AppButton>
           <AppButton v-if="detail && ['pending','approved'].includes(detail.status) && authStore.hasPermission('procurement.requests.submit')" variant="danger" @click="confirmDetailAction('cancel')">Batalkan</AppButton>
         </div>
         <AppButton variant="secondary" @click="parentDetailId ? backToParent() : (showDetail = false)">{{ parentDetailId ? '← Kembali' : 'Tutup' }}</AppButton>
@@ -666,6 +675,9 @@
       </template>
     </AppModal>
   </div>
+    <!-- Serah Terima: membagi tiap baris belanja ke aset / stok gudang / habis pakai -->
+    <ReceivingDialog v-model="showReceiving" :purchase-request-id="receivingPrId" @done="onReceived" />
+
 </template>
 
 <script setup>
@@ -687,9 +699,47 @@ import AppPagination from '@/components/ui/AppPagination.vue'
 import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import { projectsApi } from '@/api/projects.js'
+import ReceivingDialog from '@/components/ReceivingDialog.vue'
+import { stockItemsApi } from '@/api/warehouse.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
+
+// Nama item di katalog stok = barang dapur (diterima di Gudang Induk). Dipakai
+// untuk memperingatkan pengaju SEBELUM disimpan; server tetap yang memutuskan.
+const stockItemNames = ref(new Set())
+async function loadStockItemNames() {
+  try {
+    const d = await stockItemsApi.list({ limit: 1000 })
+    const rows = Array.isArray(d) ? d : (d?.data || d?.items || [])
+    stockItemNames.value = new Set(rows.map(r => String(r.name || '').trim().toLowerCase()))
+  } catch { stockItemNames.value = new Set() }
+}
+
+const mixedKind = computed(() => {
+  if (!stockItemNames.value.size) return null
+  const dapur = [], perlengkapan = []
+  for (const entry of form.value.items || []) {
+    for (const sub of entry.items || []) {
+      const nm = String(sub.name || '').trim()
+      if (!nm) continue
+      if (stockItemNames.value.has(nm.toLowerCase())) dapur.push(nm)
+      else perlengkapan.push(nm)
+    }
+  }
+  return dapur.length && perlengkapan.length ? { dapur, perlengkapan } : null
+})
+
+const showReceiving = ref(false)
+const receivingPrId = ref('')
+function openReceiving() {
+  receivingPrId.value = detail.value?.id || ''
+  showReceiving.value = true
+}
+async function onReceived() {
+  showDetail.value = false
+  await fetchList()
+}
 
 const REQUEST_TYPE = 'barang'
 
@@ -921,7 +971,7 @@ async function fetchProjects() {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors(), fetchProjects()])
+  await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors(), fetchProjects(), loadStockItemNames()])
   // Datang lewat tombol "Belanja Tahap Baru" di halaman Projek: buka form
   // pengajuan dengan projeknya sudah terpilih.
   const pid = route.query.project_id

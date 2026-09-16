@@ -39,6 +39,9 @@ services:
       SOCIAL_PROXY_URL: ${SOCIAL_PROXY_URL:-}
     volumes:
       - uploads_data:/app/uploads
+      # Kredensial Google Drive milik host, read-only. Remote "gdrive:" inilah
+      # yang juga dipakai cron backup database harian.
+      - ${HOME}/.config/rclone/rclone.conf:/etc/rclone/rclone.conf:ro
     depends_on:
       db:
         condition: service_healthy

@@ -2159,5 +2159,475 @@ func RunMigrations() error {
 		log.Printf("Permission Kinerja Markom di-seed (view ke pemegang reports.business_analysis.view, manage ke admin)")
 	}
 
+	// ── Perlengkapan/Aset Fase 1: pendataan yang layak ─────────────────────
+	// Kolom tambahan + buku besar aset. DDL idempoten, aman dijalankan tiap boot.
+	// Rancangan lengkap: docs/perlengkapan-aset.md
+	assetPhase1 := []string{
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS asset_no VARCHAR(40) DEFAULT ''`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS tracking_mode VARCHAR(10) DEFAULT 'massal'`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS serial_number VARCHAR(80) DEFAULT ''`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS brand VARCHAR(80) DEFAULT ''`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS model VARCHAR(80) DEFAULT ''`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'aktif'`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS pic_name VARCHAR(100) DEFAULT ''`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS work_unit_id CHAR(26)`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS acquisition_src VARCHAR(20) DEFAULT 'manual'`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS purchase_request_id CHAR(26)`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS pr_item_key VARCHAR(120) DEFAULT ''`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS warranty_until DATE`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS useful_life_months INT DEFAULT 0`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS residual_value DECIMAL(15,2) DEFAULT 0`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS photo_url TEXT DEFAULT ''`,
+		`ALTER TABLE assets ADD COLUMN IF NOT EXISTS disposed_at TIMESTAMP`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_asset_no ON assets(asset_no) WHERE asset_no <> '' AND is_deleted = false`,
+		`CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_assets_pr ON assets(purchase_request_id)`,
+		`CREATE TABLE IF NOT EXISTS asset_movements (
+			id               CHAR(26) PRIMARY KEY,
+			asset_id         CHAR(26) NOT NULL REFERENCES assets(id),
+			type             VARCHAR(24) NOT NULL,
+			qty              INT DEFAULT 0,
+			from_outlet_id   CHAR(26),
+			to_outlet_id     CHAR(26),
+			from_location    VARCHAR(150) DEFAULT '',
+			to_location      VARCHAR(150) DEFAULT '',
+			condition_before VARCHAR(20) DEFAULT '',
+			condition_after  VARCHAR(20) DEFAULT '',
+			ref_type         VARCHAR(24) DEFAULT '',
+			ref_id           CHAR(26),
+			ref_number       VARCHAR(40) DEFAULT '',
+			amount           DECIMAL(15,2) DEFAULT 0,
+			notes            TEXT DEFAULT '',
+			actor            VARCHAR(100) DEFAULT '',
+			created_at       TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_mov_asset ON asset_movements(asset_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_mov_ref ON asset_movements(ref_type, ref_id)`,
+	}
+	for _, m := range assetPhase1 {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Asset phase-1 migration skipped: %v", err)
+		}
+	}
+
+	// Backfill sekali jalan (marker): nomor aset, pemisahan status dari kondisi,
+	// dan satu baris buku besar sebagai saldo awal tiap aset lama. Tanpa marker,
+	// blok ini akan menomori ulang / menulis ganda setiap kali aplikasi menyala.
+	var assetSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_assets_fase1'").Scan(&assetSeeded)
+	if assetSeeded == 0 {
+		// Nomor aset: AST-<kode outlet>-<YYMM>-<urut 3 digit>, urut created_at
+		// per outlet per bulan sehingga cocok dengan pola nextDocNumber.
+		if _, err := DB.Exec(`
+			WITH numbered AS (
+				SELECT a.id,
+				       'AST-' || COALESCE(NULLIF(o.code, ''), 'XXX') || '-' ||
+				       TO_CHAR(a.created_at, 'YYMM') || '-' ||
+				       LPAD((ROW_NUMBER() OVER (
+				           PARTITION BY a.outlet_id, TO_CHAR(a.created_at, 'YYMM')
+				           ORDER BY a.created_at, a.id))::text, 3, '0') AS no
+				FROM assets a
+				LEFT JOIN outlets o ON o.id = a.outlet_id
+				WHERE COALESCE(a.asset_no, '') = ''
+			)
+			UPDATE assets SET asset_no = numbered.no
+			FROM numbered WHERE assets.id = numbered.id`); err != nil {
+			log.Printf("Asset backfill asset_no skipped: %v", err)
+		}
+		// Kondisi 'perbaikan' dulu dipakai sebagai status. Pindahkan ke kolom
+		// status, kondisi fisiknya diturunkan ke rusak_ringan.
+		DB.Exec(`UPDATE assets SET status = 'perbaikan', condition = 'rusak_ringan' WHERE condition = 'perbaikan'`)
+		// Saldo awal buku besar aset — id hex 26 karakter, sah untuk CHAR(26)
+		// dan tidak bertabrakan dengan ULID yang dibuat aplikasi.
+		DB.Exec(`
+			INSERT INTO asset_movements (id, asset_id, type, qty, to_outlet_id, to_location,
+				condition_after, notes, actor, created_at)
+			SELECT UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text, '-', '') FROM 1 FOR 26)),
+			       a.id, 'pendataan', a.quantity, a.outlet_id, COALESCE(a.location, ''),
+			       a.condition, 'Saldo awal pendataan (migrasi Fase 1)', '', a.created_at
+			FROM assets a
+			WHERE a.is_deleted = false
+			  AND NOT EXISTS (SELECT 1 FROM asset_movements m WHERE m.asset_id = a.id)`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_assets_fase1', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Aset Fase 1: nomor aset di-backfill, status dipisah dari kondisi, buku besar disiapkan")
+	}
+
+	// ── Perlengkapan/Aset Fase 2: mutasi antar outlet ──────────────────────
+	// Alur & tabel meniru stock_transfers supaya istilahnya sama dengan
+	// Transfer Stok yang sudah dipakai tim. Lihat docs/perlengkapan-aset.md §6.
+	assetPhase2 := []string{
+		`CREATE TABLE IF NOT EXISTS asset_transfers (
+			id              CHAR(26) PRIMARY KEY,
+			transfer_number VARCHAR(30) NOT NULL UNIQUE,
+			from_outlet_id  CHAR(26) NOT NULL REFERENCES outlets(id),
+			to_outlet_id    CHAR(26) NOT NULL REFERENCES outlets(id),
+			status          VARCHAR(20) NOT NULL DEFAULT 'draft',
+			reason          VARCHAR(40) DEFAULT '',
+			expected_return DATE,
+			notes           TEXT DEFAULT '',
+			created_by      VARCHAR(100) DEFAULT '',
+			approved_by     VARCHAR(100),
+			approved_at     TIMESTAMP,
+			sent_by         VARCHAR(100),
+			sent_at         TIMESTAMP,
+			received_by     VARCHAR(100),
+			received_at     TIMESTAMP,
+			rejected_reason TEXT DEFAULT '',
+			created_at      TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at      TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE TABLE IF NOT EXISTS asset_transfer_items (
+			id              CHAR(26) PRIMARY KEY,
+			transfer_id     CHAR(26) NOT NULL REFERENCES asset_transfers(id) ON DELETE CASCADE,
+			asset_id        CHAR(26) NOT NULL REFERENCES assets(id),
+			qty             INT NOT NULL DEFAULT 1,
+			received_qty    INT,
+			condition_sent  VARCHAR(20) DEFAULT '',
+			condition_recv  VARCHAR(20) DEFAULT '',
+			target_asset_id CHAR(26),
+			notes           TEXT DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_tr_status ON asset_transfers(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_tr_outlets ON asset_transfers(from_outlet_id, to_outlet_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_tr_items_tr ON asset_transfer_items(transfer_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_tr_items_asset ON asset_transfer_items(asset_id)`,
+	}
+	for _, m := range assetPhase2 {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Asset phase-2 migration skipped: %v", err)
+		}
+	}
+
+	// Izin mutasi aset (one-shot, marker). Hanya MELIHAT yang diturunkan otomatis
+	// ke pemegang assets.view — wewenang memindahkan aset antar outlet terlalu
+	// besar untuk diberikan diam-diam; itu diberikan manual lewat halaman Role.
+	var assetTrPerm int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_assets_transfer_perm'").Scan(&assetTrPerm)
+	if assetTrPerm == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'assets.transfer.view' FROM role_permissions WHERE permission = 'assets.view'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES
+			('admin','assets.transfer.view'), ('admin','assets.transfer.create'),
+			('admin','assets.transfer.approve'), ('admin','assets.transfer.receive'),
+			('superadmin','assets.transfer.view'), ('superadmin','assets.transfer.create'),
+			('superadmin','assets.transfer.approve'), ('superadmin','assets.transfer.receive')
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_assets_transfer_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Aset Fase 2: izin mutasi di-seed (lihat ke pemegang assets.view, penuh ke admin)")
+	}
+
+	// ── Perlengkapan/Aset Fase 3: perawatan penuh ──────────────────────────
+	// next_due_date sudah lama tersimpan tapi tidak pernah dibaca. Kolom di
+	// bawah mengubah catatan mundur menjadi work order bersiklus hidup.
+	assetPhase3 := []string{
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS wo_number VARCHAR(30) DEFAULT ''`,
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'selesai'`,
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS scheduled_date DATE`,
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS vendor_id CHAR(26)`,
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS purchase_request_id CHAR(26)`,
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS downtime_hours DECIMAL(10,2) DEFAULT 0`,
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS attachment_url TEXT DEFAULT ''`,
+		`ALTER TABLE asset_maintenances ADD COLUMN IF NOT EXISTS created_by VARCHAR(100) DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_mtc_due ON asset_maintenances(next_due_date) WHERE next_due_date IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_mtc_status ON asset_maintenances(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_mtc_sched ON asset_maintenances(scheduled_date) WHERE scheduled_date IS NOT NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_mtc_wo ON asset_maintenances(wo_number) WHERE wo_number <> ''`,
+	}
+	for _, m := range assetPhase3 {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Asset phase-3 migration skipped: %v", err)
+		}
+	}
+
+	// Izin perawatan (one-shot, marker). Dipisah dari assets.update supaya teknisi
+	// bisa mencatat pekerjaan tanpa ikut berhak mengubah harga perolehan dan
+	// outlet aset — karena itu pemegang assets.update lama WAJIB diberi kunci
+	// baru ini, kalau tidak mereka kehilangan akses yang selama ini dipakai.
+	var assetMtcPerm int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_assets_maintenance_perm'").Scan(&assetMtcPerm)
+	if assetMtcPerm == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'assets.maintenance.view' FROM role_permissions WHERE permission = 'assets.view'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'assets.maintenance.create' FROM role_permissions WHERE permission = 'assets.update'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES
+			('admin','assets.maintenance.view'), ('admin','assets.maintenance.create'),
+			('superadmin','assets.maintenance.view'), ('superadmin','assets.maintenance.create')
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_assets_maintenance_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Aset Fase 3: izin perawatan di-seed (create ke pemegang assets.update lama)")
+	}
+
+	// Nomor WO untuk catatan perawatan lama, sekali jalan: WOM<YYMMDD><urut>
+	// berdasarkan tanggal pekerjaannya, supaya dokumen lama ikut bernomor.
+	var assetWoSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_assets_wo_backfill'").Scan(&assetWoSeeded)
+	if assetWoSeeded == 0 {
+		DB.Exec(`
+			WITH numbered AS (
+				SELECT id, 'WOM' || TO_CHAR(maintenance_date, 'YYMMDD') || LPAD((ROW_NUMBER() OVER (
+					PARTITION BY maintenance_date ORDER BY created_at, id))::text, 3, '0') AS wo
+				FROM asset_maintenances WHERE COALESCE(wo_number, '') = ''
+			)
+			UPDATE asset_maintenances SET wo_number = numbered.wo
+			FROM numbered WHERE asset_maintenances.id = numbered.id`)
+		DB.Exec(`UPDATE asset_maintenances SET status = 'selesai' WHERE COALESCE(status, '') = ''`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_assets_wo_backfill', 'done') ON CONFLICT (key) DO NOTHING`)
+	}
+
+	// ── Perlengkapan/Aset Fase 4: penerimaan dari pengadaan ────────────────
+	// Jejak keputusan per baris pengajuan. Tanpa ini, baris yang sengaja
+	// ditandai "habis pakai" akan muncul selamanya di laporan barang yang
+	// belum lengkap — dan laporan itu berhenti dipercaya orang.
+	for _, m := range []string{
+		`ALTER TABLE goods_receipt_items ADD COLUMN IF NOT EXISTS pr_item_key VARCHAR(120) DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS pr_receiving_decisions (
+			id          CHAR(26) PRIMARY KEY,
+			purchase_request_id CHAR(26) NOT NULL,
+			pr_item_key VARCHAR(120) NOT NULL,
+			destination VARCHAR(16) NOT NULL,
+			qty         INT NOT NULL DEFAULT 0,
+			reason      TEXT DEFAULT '',
+			actor       VARCHAR(100) DEFAULT '',
+			created_at  TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pr_decisions_pr ON pr_receiving_decisions(purchase_request_id, pr_item_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_grn_items_prkey ON goods_receipt_items(pr_item_key) WHERE pr_item_key <> ''`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Asset phase-4 migration skipped: %v", err)
+		}
+	}
+
+	// Indeks unik inilah pertahanan terakhir terhadap pencatatan ganda: klik
+	// ganda, dua petugas membuka dokumen yang sama, atau status yang sempat
+	// dikembalikan tidak boleh melahirkan aset kembar (§8.4).
+	if _, err := DB.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_pr_item
+		ON assets(purchase_request_id, pr_item_key)
+		WHERE purchase_request_id IS NOT NULL AND pr_item_key <> '' AND is_deleted = false`); err != nil {
+		log.Printf("Asset phase-4 migration skipped: %v", err)
+	}
+
+	// ── Perlengkapan/Aset Fase 4b: penghapusan & opname ────────────────────
+	assetPhase4b := []string{
+		`CREATE TABLE IF NOT EXISTS asset_disposals (
+			id              CHAR(26) PRIMARY KEY,
+			disposal_number VARCHAR(30) NOT NULL UNIQUE,
+			asset_id        CHAR(26) NOT NULL REFERENCES assets(id),
+			qty             INT NOT NULL DEFAULT 1,
+			method          VARCHAR(20) NOT NULL,
+			reason          TEXT NOT NULL,
+			proceeds        DECIMAL(15,2) DEFAULT 0,
+			book_value      DECIMAL(15,2) DEFAULT 0,
+			status          VARCHAR(20) DEFAULT 'pending',
+			requested_by    VARCHAR(100) DEFAULT '',
+			approved_by     VARCHAR(100),
+			approved_at     TIMESTAMP,
+			rejected_reason TEXT DEFAULT '',
+			attachment_url  TEXT DEFAULT '',
+			created_at      TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_disposals_status ON asset_disposals(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_disposals_asset ON asset_disposals(asset_id)`,
+		`CREATE TABLE IF NOT EXISTS asset_opname_sessions (
+			id            CHAR(26) PRIMARY KEY,
+			opname_number VARCHAR(30) NOT NULL UNIQUE,
+			outlet_id     CHAR(26) NOT NULL REFERENCES outlets(id),
+			status        VARCHAR(20) DEFAULT 'berjalan',
+			notes         TEXT DEFAULT '',
+			created_by    VARCHAR(100) DEFAULT '',
+			approved_by   VARCHAR(100),
+			approved_at   TIMESTAMP,
+			created_at    TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE TABLE IF NOT EXISTS asset_opname_items (
+			id              CHAR(26) PRIMARY KEY,
+			session_id      CHAR(26) NOT NULL REFERENCES asset_opname_sessions(id) ON DELETE CASCADE,
+			asset_id        CHAR(26) REFERENCES assets(id),
+			system_qty      INT DEFAULT 0,
+			counted_qty     INT,
+			condition_found VARCHAR(20) DEFAULT '',
+			found_name      VARCHAR(150) DEFAULT '',
+			location        VARCHAR(150) DEFAULT '',
+			notes           TEXT DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_opname_items_sess ON asset_opname_items(session_id)`,
+	}
+	for _, m := range assetPhase4b {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Asset phase-4b migration skipped: %v", err)
+		}
+	}
+
+	// Izin penghapusan & opname (one-shot, marker). Mengajukan penghapusan
+	// diturunkan ke pemegang assets.delete — merekalah yang selama ini berhak
+	// mengeluarkan barang dari daftar. MENYETUJUI tidak diturunkan otomatis.
+	var assetD4Perm int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_assets_disposal_opname_perm'").Scan(&assetD4Perm)
+	if assetD4Perm == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, p FROM role_permissions, LATERAL (VALUES ('assets.disposal.view'), ('assets.opname.view')) AS t(p)
+			WHERE permission = 'assets.view' ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'assets.disposal.create' FROM role_permissions WHERE permission = 'assets.delete'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT r.role, p FROM (VALUES ('admin'), ('superadmin')) AS r(role),
+			       LATERAL (VALUES ('assets.disposal.view'), ('assets.disposal.create'), ('assets.disposal.approve'),
+			                       ('assets.opname.view'), ('assets.opname.create'), ('assets.opname.approve'),
+			                       ('assets.report.view')) AS t(p)
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_assets_disposal_opname_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Aset Fase 4: izin penghapusan, opname, dan laporan di-seed")
+	}
+
+	// Jenis belanja barang: "dapur" (diterima di Gudang Induk) atau
+	// "perlengkapan" (diterima di bagian Aset). Satu pengajuan hanya boleh
+	// salah satu — dokumen campuran memaksa satu berkas diantar ke dua meja.
+	for _, m := range []string{
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS goods_kind VARCHAR(16) DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_pr_goods_kind ON purchase_requests(goods_kind) WHERE goods_kind <> ''`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Purchase goods_kind migration skipped: %v", err)
+		}
+	}
+
+	// ── Perlengkapan/Aset Fase 5: material projek ──────────────────────────
+	// Buku stok lokasi projek. Sengaja TERPISAH dari stock_items: semen dan
+	// keramik bukan bahan F&B, dan memasukkannya ke katalog stok akan mengotori
+	// resep, HPP, MRP, serta seluruh laporan PPIC (keputusan A, docs §15.1).
+	assetPhase5 := []string{
+		`CREATE TABLE IF NOT EXISTS project_materials (
+			id           CHAR(26) PRIMARY KEY,
+			project_id   CHAR(26) NOT NULL REFERENCES projects(id),
+			purchase_request_id CHAR(26),
+			pr_item_key  VARCHAR(120) DEFAULT '',
+			name         VARCHAR(150) NOT NULL,
+			unit         VARCHAR(20) DEFAULT '',
+			qty_received DECIMAL(15,4) NOT NULL DEFAULT 0,
+			qty_used     DECIMAL(15,4) NOT NULL DEFAULT 0,
+			qty_returned DECIMAL(15,4) NOT NULL DEFAULT 0,
+			qty_wasted   DECIMAL(15,4) NOT NULL DEFAULT 0,
+			unit_cost    DECIMAL(15,2) DEFAULT 0,
+			location     VARCHAR(150) DEFAULT '',
+			received_at  TIMESTAMP,
+			received_by  VARCHAR(100) DEFAULT '',
+			notes        TEXT DEFAULT '',
+			created_at   TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at   TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_project_materials_pr_item
+			ON project_materials(purchase_request_id, pr_item_key)
+			WHERE purchase_request_id IS NOT NULL AND pr_item_key <> ''`,
+		`CREATE INDEX IF NOT EXISTS idx_project_materials_project ON project_materials(project_id)`,
+		`CREATE TABLE IF NOT EXISTS project_material_logs (
+			id          CHAR(26) PRIMARY KEY,
+			material_id CHAR(26) NOT NULL REFERENCES project_materials(id) ON DELETE CASCADE,
+			type        VARCHAR(20) NOT NULL,
+			qty         DECIMAL(15,4) NOT NULL,
+			ref_type    VARCHAR(24) DEFAULT '',
+			ref_id      CHAR(26),
+			ref_number  VARCHAR(40) DEFAULT '',
+			notes       TEXT DEFAULT '',
+			actor       VARCHAR(100) DEFAULT '',
+			created_at  TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_material_logs_mat ON project_material_logs(material_id, created_at)`,
+	}
+	for _, m := range assetPhase5 {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Asset phase-5 migration skipped: %v", err)
+		}
+	}
+
+	// Penerimaan barang dan pembayaran adalah DUA DIMENSI, bukan satu deret.
+	// Ada vendor yang mengirim dulu baru ditagih (tempo), ada yang minta dibayar
+	// di muka. Kolom status lama bercampur: 'received' diperlakukan sebagai
+	// kelanjutan 'paid', sehingga barang yang datang sebelum dibayar tidak punya
+	// tempat dicatat. receipt_status memisahkan keduanya.
+	for _, m := range []string{
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS receipt_status VARCHAR(20) DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_pr_receipt_status ON purchase_requests(receipt_status) WHERE receipt_status <> ''`,
+		// Dokumen lama berstatus 'received' jelas sudah diterima seluruhnya.
+		`UPDATE purchase_requests SET receipt_status = 'received'
+		 WHERE status = 'received' AND COALESCE(receipt_status, '') = ''`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Purchase receipt_status migration skipped: %v", err)
+		}
+	}
+
+	// ── Fase 6: bukti foto serah terima & distribusi ───────────────────────
+	// Dua momen wajib berfoto: saat barang diterima dari tim purchasing, dan
+	// saat barang diteruskan ke tujuan akhirnya (gudang outlet / PIC pengaju).
+	// Foto disalin ke email cadangan supaya tetap ada bila berkas di server
+	// hilang — karena itu setiap baris punya status cadangannya sendiri.
+	phase6 := []string{
+		`CREATE TABLE IF NOT EXISTS handover_photos (
+			id         CHAR(26) PRIMARY KEY,
+			moment     VARCHAR(16) NOT NULL,      -- terima | distribusi
+			desk       VARCHAR(16) NOT NULL DEFAULT '', -- perlengkapan | dapur
+			ref_type   VARCHAR(24) NOT NULL,      -- purchase_request | asset_handover | stock_transfer
+			ref_id     CHAR(26) NOT NULL,
+			ref_number VARCHAR(40) DEFAULT '',
+			photo_url  TEXT NOT NULL,
+			notes      TEXT DEFAULT '',
+			actor      VARCHAR(100) DEFAULT '',
+			backup_status VARCHAR(16) NOT NULL DEFAULT 'pending', -- pending|sent|failed|skipped
+			backup_at  TIMESTAMP,
+			backup_error TEXT DEFAULT '',
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_handover_photos_ref ON handover_photos(ref_type, ref_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_handover_photos_backup ON handover_photos(backup_status) WHERE backup_status = 'pending'`,
+
+		// Serah terima aset ke PIC pengaju: barang tidak berhenti di bagian aset.
+		`CREATE TABLE IF NOT EXISTS asset_handovers (
+			id            CHAR(26) PRIMARY KEY,
+			handover_number VARCHAR(30) NOT NULL UNIQUE,
+			purchase_request_id CHAR(26),
+			outlet_id     CHAR(26) REFERENCES outlets(id),
+			pic_name      VARCHAR(100) NOT NULL,
+			pic_position  VARCHAR(100) DEFAULT '',
+			location      VARCHAR(150) DEFAULT '',
+			notes         TEXT DEFAULT '',
+			handed_by     VARCHAR(100) DEFAULT '',
+			created_at    TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE TABLE IF NOT EXISTS asset_handover_items (
+			id          CHAR(26) PRIMARY KEY,
+			handover_id CHAR(26) NOT NULL REFERENCES asset_handovers(id) ON DELETE CASCADE,
+			asset_id    CHAR(26) NOT NULL REFERENCES assets(id),
+			qty         INT NOT NULL DEFAULT 1
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_handover_items_h ON asset_handover_items(handover_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_handovers_pr ON asset_handovers(purchase_request_id)`,
+
+		// Foto saat barang dikirim dari gudang induk ke gudang outlet.
+		`ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS photo_url TEXT DEFAULT ''`,
+	}
+	for _, m := range phase6 {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Handover photo migration skipped: %v", err)
+		}
+	}
+
+	// Tautan Google Drive untuk bukti foto. Berkas dijadikan publik ("siapa
+	// saja yang punya link") atas keputusan pemilik sistem, sehingga bisa
+	// dipanggil langsung dari layar tanpa login.
+	for _, m := range []string{
+		`ALTER TABLE handover_photos ADD COLUMN IF NOT EXISTS drive_file_id VARCHAR(80) DEFAULT ''`,
+		`ALTER TABLE handover_photos ADD COLUMN IF NOT EXISTS drive_url TEXT DEFAULT ''`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Drive photo migration skipped: %v", err)
+		}
+	}
+
 	return nil
 }

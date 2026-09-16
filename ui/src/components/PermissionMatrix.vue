@@ -138,9 +138,47 @@ const CATEGORIES = [
       { type: 'crud', module: 'outlets', label: 'Outlet', icon: IC.outlet },
       { type: 'crud', module: 'workunits', label: 'Unit Kerja', icon: IC.workunit },
       { type: 'crud', module: 'warehouses', label: 'Gudang', icon: IC.warehouse },
-      { type: 'crud', module: 'assets', label: 'Perlengkapan & Perawatan', icon: IC.warehouse },
       { type: 'crud', module: 'roles', label: 'Role & Hak Akses', icon: IC.shield },
       { type: 'crud', module: 'appfiles', label: 'App POS', icon: IC.product, ops: ['view', 'create', 'delete'] },
+    ],
+  },
+  {
+    label: 'Perlengkapan', icon: IC.warehouse,
+    items: [
+      { type: 'crud', module: 'assets', label: 'Data Aset', icon: IC.warehouse },
+      {
+        type: 'toggles', label: 'Opname Aset', icon: IC.ledger,
+        toggles: [
+          { key: 'assets.opname.view',    label: 'Lihat' },
+          { key: 'assets.opname.create',  label: 'Hitung' },
+          { key: 'assets.opname.approve', label: 'Terapkan Selisih' },
+        ],
+      },
+      {
+        type: 'toggles', label: 'Penghapusan Aset', icon: IC.waste,
+        toggles: [
+          { key: 'assets.disposal.view',    label: 'Lihat' },
+          { key: 'assets.disposal.create',  label: 'Ajukan' },
+          { key: 'assets.disposal.approve', label: 'Setujui' },
+        ],
+      },
+      { type: 'single', key: 'assets.report.view', label: 'Laporan Aset', icon: IC.report },
+      {
+        type: 'toggles', label: 'Perawatan', icon: IC.settings,
+        toggles: [
+          { key: 'assets.maintenance.view',   label: 'Lihat' },
+          { key: 'assets.maintenance.create', label: 'Catat & Selesaikan' },
+        ],
+      },
+      {
+        type: 'toggles', label: 'Mutasi Antar Outlet', icon: IC.transfer,
+        toggles: [
+          { key: 'assets.transfer.view',    label: 'Lihat' },
+          { key: 'assets.transfer.create',  label: 'Buat & Kirim' },
+          { key: 'assets.transfer.approve', label: 'Setujui' },
+          { key: 'assets.transfer.receive', label: 'Terima' },
+        ],
+      },
     ],
   },
   {

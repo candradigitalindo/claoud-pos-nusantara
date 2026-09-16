@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"cloud-pos/database"
 	"cloud-pos/models"
 	"cloud-pos/services"
@@ -82,6 +83,12 @@ func CreatePurchaseRequest(c *fiber.Ctx) error {
 
 	result, err := services.CreatePurchaseRequest(input)
 	if err != nil {
+		// Kesalahan isi permintaan ditampilkan apa adanya — pengaju perlu tahu
+		// apa yang salah. Kegagalan sistem tetap disembunyikan.
+		var ve services.ValidationError
+		if errors.As(err, &ve) {
+			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: ve.Error()})
+		}
 		log.Printf("CreatePurchaseRequest error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
 			Success: false, Error: "Gagal membuat pengajuan.",

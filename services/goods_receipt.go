@@ -24,18 +24,32 @@ func generateGRNNumber(tx *sql.Tx) (string, error) {
 // CreateGoodsReceipt mencatat penerimaan barang: header GRN + tiap baris menghasilkan
 // stock-in (movement purchase_in + batch FIFO) via applyMovement, semua dalam satu transaksi.
 func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.GoodsReceipt, error) {
-	if req.WarehouseID == "" {
-		return nil, fmt.Errorf("gudang wajib dipilih")
-	}
-	if len(req.Items) == 0 {
-		return nil, fmt.Errorf("minimal satu item diterima")
-	}
-
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
+
+	grnID, err := CreateGoodsReceiptTx(tx, req, actor)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return GetGoodsReceipt(grnID)
+}
+
+// CreateGoodsReceiptTx adalah isi CreateGoodsReceipt tanpa transaksinya sendiri,
+// supaya penerimaan pengadaan (aset + stok gudang + status pengajuan) bisa
+// berjalan sebagai SATU transaksi — bukan dua yang bisa putus di tengah.
+func CreateGoodsReceiptTx(tx *sql.Tx, req models.GoodsReceiptRequest, actor string) (string, error) {
+	if req.WarehouseID == "" {
+		return "", fmt.Errorf("gudang wajib dipilih")
+	}
+	if len(req.Items) == 0 {
+		return "", fmt.Errorf("minimal satu item diterima")
+	}
 
 	// Tanpa foreign key, id pengajuan yang salah ketik dulu tersimpan diam-diam
 	// dan menghasilkan tautan yang menunjuk ke mana-mana.
@@ -44,14 +58,14 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 		if err := database.DB.QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM purchase_requests WHERE id = $1)`, req.PurchaseRequestID,
 		).Scan(&exists); err != nil || !exists {
-			return nil, fmt.Errorf("pengajuan pengadaan yang ditautkan tidak ditemukan")
+			return "", fmt.Errorf("pengajuan pengadaan yang ditautkan tidak ditemukan")
 		}
 	}
 
 	grnID := NewULID()
 	grnNumber, err := generateGRNNumber(tx)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	now := time.Now().UTC()
 
@@ -60,13 +74,13 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`,
 		grnID, grnNumber, req.WarehouseID, req.VendorName, req.PORef, nilIfEmpty(req.PurchaseRequestID), req.Notes, actor, now,
 	); err != nil {
-		return nil, fmt.Errorf("gagal membuat GRN: %w", err)
+		return "", fmt.Errorf("gagal membuat GRN: %w", err)
 	}
 
 	var totalCost float64
 	for _, line := range req.Items {
 		if line.ItemID == "" || line.QtyDist <= 0 {
-			return nil, fmt.Errorf("item dan qty (>0) wajib diisi tiap baris")
+			return "", fmt.Errorf("item dan qty (>0) wajib diisi tiap baris")
 		}
 		// Ambil master item untuk konversi satuan.
 		var name, baseUnit, distUnit string
@@ -74,7 +88,7 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 		if err := tx.QueryRow(
 			`SELECT name, base_unit, dist_unit, dist_ratio FROM stock_items WHERE id=$1`, line.ItemID,
 		).Scan(&name, &baseUnit, &distUnit, &distRatio); err != nil {
-			return nil, fmt.Errorf("item stok tidak ditemukan: %w", err)
+			return "", fmt.Errorf("item stok tidak ditemukan: %w", err)
 		}
 		if distRatio <= 0 {
 			distRatio = 1
@@ -85,7 +99,7 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 		if err := applyMovement(tx, line.ItemID, req.WarehouseID, "purchase_in", distUnit,
 			grnID, "goods_receipt", grnNumber, req.Notes, actor,
 			qtyBase, line.QtyDist, line.CostPerBase, line.ExpiryDate); err != nil {
-			return nil, fmt.Errorf("gagal posting stok %s: %w", name, err)
+			return "", fmt.Errorf("gagal posting stok %s: %w", name, err)
 		}
 
 		var expiry interface{}
@@ -93,22 +107,19 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 			expiry = line.ExpiryDate
 		}
 		if _, err := tx.Exec(`
-			INSERT INTO goods_receipt_items (id, receipt_id, item_id, item_name, qty_base, qty_dist, unit_used, cost_per_base, subtotal, expiry_date)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			NewULID(), grnID, line.ItemID, name, qtyBase, line.QtyDist, distUnit, line.CostPerBase, subtotal, expiry,
+			INSERT INTO goods_receipt_items (id, receipt_id, item_id, item_name, qty_base, qty_dist, unit_used, cost_per_base, subtotal, expiry_date, pr_item_key)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			NewULID(), grnID, line.ItemID, name, qtyBase, line.QtyDist, distUnit, line.CostPerBase, subtotal, expiry, line.PRItemKey,
 		); err != nil {
-			return nil, fmt.Errorf("gagal simpan baris GRN: %w", err)
+			return "", fmt.Errorf("gagal simpan baris GRN: %w", err)
 		}
 		totalCost += subtotal
 	}
 
 	if _, err := tx.Exec(`UPDATE goods_receipts SET total_cost=$1 WHERE id=$2`, round2(totalCost), grnID); err != nil {
-		return nil, err
+		return "", err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return GetGoodsReceipt(grnID)
+	return grnID, nil
 }
 
 // GoodsReceiptInScope: gudang GRN berada dalam scope outlet user (pusat = boleh semua).

@@ -320,6 +320,8 @@ func CreateStockTransfer(c *fiber.Ctx) error {
 func UpdateTransferStatus(c *fiber.Ctx) error {
 	var body struct {
 		Status string `json:"status"`
+		// PhotoURL: bukti barang saat dikirim dari gudang induk ke gudang outlet.
+		PhotoURL string `json:"photo_url"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
@@ -328,7 +330,7 @@ func UpdateTransferStatus(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Error: "Akses transfer tidak diizinkan"})
 	}
 	actor, _ := c.Locals("admin_username").(string)
-	t, err := services.UpdateTransferStatus(c.Params("id"), body.Status, actor)
+	t, err := services.UpdateTransferStatusWithPhoto(c.Params("id"), body.Status, body.PhotoURL, actor)
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}

@@ -271,7 +271,7 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, 
 		       pr.paid_by, pr.paid_at, pr.payment_proof,
 		       pr.payment_account_dest, pr.payment_account_source, pr.payment_notes,
 		       pr.paid_amount,
-		       pr.received_by, pr.received_at,
+		       pr.received_by, pr.received_at, COALESCE(pr.receipt_status, ''),
 		       pr.parent_id, COALESCE(ppr.request_number,''), pr.split_status,
 		       pr.project_id, COALESCE(prj.name,''),
 		       pr.created_at, pr.updated_at
@@ -308,7 +308,7 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, 
 			&r.PaidBy, &paidAt, &r.PaymentProof,
 			&r.PaymentAccountDest, &r.PaymentAccountSource, &r.PaymentNotes,
 			&r.PaidAmount,
-			&r.ReceivedBy, &receivedAt,
+			&r.ReceivedBy, &receivedAt, &r.ReceiptStatus,
 			&r.ParentID, &r.ParentNumber, &r.SplitStatus,
 			&r.ProjectID, &r.ProjectName,
 			&createdAt, &updatedAt,
@@ -355,6 +355,16 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 	if err := validateItems(input.Items); err != nil {
 		return nil, err
 	}
+	// Pengadaan barang dipisah sejak awal: dapur ke Gudang Induk, peralatan ke
+	// bagian Aset. Lihat ClassifyPurchaseItems untuk alasannya.
+	goodsKind := ""
+	if input.RequestType == "barang" {
+		k, err := ClassifyPurchaseItems(input.Items)
+		if err != nil {
+			return nil, err
+		}
+		goodsKind = k
+	}
 
 	id := NewULID()
 	totalHps, totalFinal := recalcItems(input.Items)
@@ -367,11 +377,11 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 	now := time.Now().UTC()
 	err = insertWithRequestNumber(now, func(reqNumber string) error {
 		_, err := database.DB.Exec(`
-			INSERT INTO purchase_requests (id, request_number, outlet_id, work_unit_id, request_type, requested_by, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, project_id, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, $14, $15, $15)
+			INSERT INTO purchase_requests (id, request_number, outlet_id, work_unit_id, request_type, requested_by, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, project_id, goods_kind, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, $14, $15, $16, $16)
 		`, id, reqNumber, nilIfEmpty(input.OutletID), nilIfEmpty(input.WorkUnitID), input.RequestType, input.RequestedBy,
 			nilIfEmpty(input.VendorID), input.VendorName, itemsJSON,
-			amountOf(totalHps, totalFinal), totalHps, totalFinal, input.Notes, nilIfEmpty(input.ProjectID), now)
+			amountOf(totalHps, totalFinal), totalHps, totalFinal, input.Notes, nilIfEmpty(input.ProjectID), goodsKind, now)
 		return err
 	})
 	if err != nil {
@@ -396,7 +406,7 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 		       pr.paid_by, pr.paid_at, pr.payment_proof,
 		       pr.payment_account_dest, pr.payment_account_source, pr.payment_notes,
 		       pr.paid_amount,
-		       pr.received_by, pr.received_at,
+		       pr.received_by, pr.received_at, COALESCE(pr.receipt_status, ''),
 		       pr.parent_id, COALESCE(ppr.request_number,''), pr.split_status,
 		       pr.project_id, COALESCE(prj.name,''),
 		       pr.created_at, pr.updated_at
@@ -415,7 +425,7 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 		&r.PaidBy, &paidAt, &r.PaymentProof,
 		&r.PaymentAccountDest, &r.PaymentAccountSource, &r.PaymentNotes,
 		&r.PaidAmount,
-		&r.ReceivedBy, &receivedAt,
+		&r.ReceivedBy, &receivedAt, &r.ReceiptStatus,
 		&r.ParentID, &r.ParentNumber, &r.SplitStatus,
 		&r.ProjectID, &r.ProjectName,
 		&createdAt, &updatedAt,
@@ -473,7 +483,7 @@ func getPurchaseChildren(parentID string) ([]models.PurchaseRequest, error) {
 		       pr.paid_by, pr.paid_at, pr.payment_proof,
 		       pr.payment_account_dest, pr.payment_account_source, pr.payment_notes,
 		       pr.paid_amount,
-		       pr.received_by, pr.received_at,
+		       pr.received_by, pr.received_at, COALESCE(pr.receipt_status, ''),
 		       pr.parent_id, COALESCE(ppr.request_number,''), pr.split_status,
 		       pr.project_id, COALESCE(prj.name,''),
 		       pr.created_at, pr.updated_at
@@ -506,7 +516,7 @@ func getPurchaseChildren(parentID string) ([]models.PurchaseRequest, error) {
 			&r.PaidBy, &paidAt, &r.PaymentProof,
 			&r.PaymentAccountDest, &r.PaymentAccountSource, &r.PaymentNotes,
 			&r.PaidAmount,
-			&r.ReceivedBy, &receivedAt,
+			&r.ReceivedBy, &receivedAt, &r.ReceiptStatus,
 			&r.ParentID, &r.ParentNumber, &r.SplitStatus,
 			&r.ProjectID, &r.ProjectName,
 			&createdAt, &updatedAt,
@@ -638,6 +648,11 @@ func SplitPurchaseRequest(parentID string, input models.SplitPurchaseRequestInpu
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuat pengajuan pecahan: %w", err)
 	}
+
+	// Pecahan mewarisi jenis belanja induknya: memecah ke beberapa vendor tidak
+	// mengubah di meja mana barangnya diterima.
+	database.DB.Exec(`UPDATE purchase_requests c SET goods_kind = p.goods_kind
+		FROM purchase_requests p WHERE c.parent_id = p.id AND COALESCE(c.goods_kind,'') = ''`)
 
 	// 4. Item yang dipindah benar-benar keluar dari master — master hanya
 	// menyisakan bagian yang belum diserahkan ke vendor mana pun, dan sisa itu
@@ -854,6 +869,16 @@ func applyStatusUpdate(id, newStatus string, input models.UpdatePurchaseStatusIn
 		if newPaid >= totalFinal {
 			actualStatus = "paid"
 		}
+		// Barang yang sudah diterima lebih dulu (pembelian tempo): begitu
+		// lunas, dokumennya langsung tuntas — tidak perlu menekan "Serah
+		// Terima" untuk barang yang fisiknya sudah lama ada di outlet.
+		if actualStatus == "paid" {
+			var receipt string
+			tx.QueryRow(`SELECT COALESCE(receipt_status, '') FROM purchase_requests WHERE id = $1`, id).Scan(&receipt)
+			if receipt == "received" {
+				actualStatus = "received"
+			}
+		}
 
 		_, err = tx.Exec(
 			`UPDATE purchase_requests SET status=$1, paid_by=$2, paid_at=$3, payment_proof=$4,
@@ -937,6 +962,15 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	}
 	if err := validateItems(input.Items); err != nil {
 		return nil, err
+	}
+	var reqType string
+	database.DB.QueryRow("SELECT request_type FROM purchase_requests WHERE id = $1", id).Scan(&reqType)
+	if reqType == "barang" {
+		k, kerr := ClassifyPurchaseItems(input.Items)
+		if kerr != nil {
+			return nil, kerr
+		}
+		database.DB.Exec("UPDATE purchase_requests SET goods_kind = $1 WHERE id = $2", k, id)
 	}
 
 	totalHps, totalFinal := recalcItems(input.Items)

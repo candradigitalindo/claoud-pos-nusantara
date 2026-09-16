@@ -190,7 +190,14 @@
                     Sisa: {{ formatRupiah((row.total_final || 0) - (row.paid_amount || 0)) }}
                   </div>
                 </td>
-                <td class="px-4 py-3 align-middle"><span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span></td>
+                <td class="px-4 py-3 align-middle">
+                  <div class="flex flex-col items-start gap-1">
+                    <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+                    <span v-if="row.request_type === 'barang'" :class="receiptBadgeCls(row)" :title="receiptHint(row)">
+                      {{ receiptLabel(row) }}
+                    </span>
+                  </div>
+                </td>
                 <td class="px-4 py-3 align-middle text-gray-700">{{ formatDateTime(row.created_at) }}</td>
                 <td class="px-4 py-3 align-middle text-right">
                   <div class="action-btns">
@@ -217,6 +224,9 @@
       <div v-if="detail" class="space-y-4">
         <div class="flex flex-wrap items-center gap-2 text-xs">
           <span :class="statusBadge(detail.status)" class="text-sm">{{ statusLabel(detail.status) }}</span>
+          <span v-if="detail.request_type === 'barang'" :class="receiptBadgeCls(detail)" class="text-sm">
+            {{ receiptLabel(detail) }}
+          </span>
           <span v-if="detail.request_number" class="font-mono text-sm text-gray-600">No. {{ detail.request_number }}</span>
           <span :class="detail.request_type === 'barang' ? 'type-badge type-barang' : 'type-badge type-jasa'" class="text-xs">
             {{ detail.request_type === 'barang' ? 'Barang' : 'Jasa' }}
@@ -765,6 +775,25 @@ function statusBadge(s) {
   return `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${m.cls}`
 }
 function statusLabel(s) { return (statusMap[s] || { label: s }).label }
+
+// Penerimaan barang berdiri sendiri dari pembayaran: ada vendor yang mengirim
+// dulu baru ditagih, ada yang minta dibayar di muka. Bagian pembayaran perlu
+// tahu bedanya — membayar barang yang belum datang adalah risiko yang berbeda.
+function receiptLabel(row) {
+  if (row.receipt_status === 'received') return 'Barang sudah diterima'
+  if (row.receipt_status === 'partial') return 'Barang diterima sebagian'
+  return 'Barang belum diterima'
+}
+function receiptBadgeCls(row) {
+  if (row.receipt_status === 'received') return 'receipt-ok'
+  if (row.receipt_status === 'partial') return 'receipt-partial'
+  return 'receipt-none'
+}
+function receiptHint(row) {
+  return row.receipt_status === 'received'
+    ? 'Barang sudah diterima — pembayaran menyusul (tempo).'
+    : 'Barang belum diterima seluruhnya — membayar sekarang berarti membayar di muka.'
+}
 function adminName() { return authStore.admin?.name || 'Admin' }
 
 onMounted(() => { fetchList(); fetchStats(); fetchBankAccounts(); fetchProjects() })
@@ -1074,4 +1103,13 @@ async function submitPay() {
 
 .slide-bar-enter-active, .slide-bar-leave-active { transition: all .25s ease; }
 .slide-bar-enter-from, .slide-bar-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* Penanda penerimaan barang di halaman pembayaran */
+.receipt-ok, .receipt-partial, .receipt-none {
+  display: inline-block; padding: .1rem .45rem; border-radius: 999px;
+  font-size: .65rem; font-weight: 700; white-space: nowrap;
+}
+.receipt-ok      { background: rgba(16,185,129,.13); color: #047857; }
+.receipt-partial { background: rgba(245,158,11,.15); color: #b45309; }
+.receipt-none    { background: rgba(107,114,128,.12); color: #4b5563; }
 </style>

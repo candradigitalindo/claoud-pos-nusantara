@@ -1337,6 +1337,25 @@ func UpdateTransferReceivedQty(transferID, itemID string, receivedQtyBase float6
 }
 
 // UpdateTransferStatus memperbarui status transfer stok dan melakukan pergerakan stok pada tahap yang sesuai.
+// UpdateTransferStatusWithPhoto membungkus UpdateTransferStatus dengan bukti
+// foto pengiriman: distribusi gudang induk → gudang outlet wajib berfoto sama
+// seperti penerimaan dari purchasing.
+func UpdateTransferStatusWithPhoto(id, newStatus, photoURL, actor string) (*models.StockTransfer, error) {
+	if newStatus == "sent" && strings.TrimSpace(photoURL) == "" {
+		return nil, Invalid("foto barang saat dikirim wajib diunggah")
+	}
+	t, err := UpdateTransferStatus(id, newStatus, actor)
+	if err != nil {
+		return nil, err
+	}
+	if newStatus == "sent" {
+		database.DB.Exec(`UPDATE stock_transfers SET photo_url=$1 WHERE id=$2`, photoURL, id)
+		SaveHandoverPhoto(database.DB, "distribusi", "dapur", "stock_transfer", id, t.TransferNumber,
+			photoURL, "Distribusi gudang induk → "+t.ToWarehouse, actor)
+	}
+	return t, nil
+}
+
 func UpdateTransferStatus(id, newStatus, actor string) (*models.StockTransfer, error) {
 	transfer, err := GetStockTransfer(id)
 	if err != nil {

@@ -74,3 +74,16 @@ h1, h2, h3, h4, h5 { color: #14532d; }
 /* Muted helpers */
 .text-muted  { color: #6b7280 !important; }
 .text-subtle { color: #9ca3af !important; }
+
+/* ── Badge status/kondisi aset ───────────────────────────────────
+   Dipakai bersama oleh halaman Perlengkapan, Detail Aset, dan label.
+   Warna sengaja seragam di semua layar: satu status = satu warna. */
+.badge-ok, .badge-warn, .badge-bad, .badge-info, .badge-mute {
+  display: inline-block; padding: .12rem .5rem; border-radius: 999px;
+  font-size: .68rem; font-weight: 700; white-space: nowrap; line-height: 1.35;
+}
+.badge-ok   { background: rgba(16,185,129,.13); color: #047857; }
+.badge-warn { background: rgba(245,158,11,.15); color: #b45309; }
+.badge-bad  { background: rgba(239,68,68,.13);  color: #b91c1c; }
+.badge-info { background: rgba(59,130,246,.13); color: #1d4ed8; }
+.badge-mute { background: rgba(107,114,128,.12); color: #4b5563; }

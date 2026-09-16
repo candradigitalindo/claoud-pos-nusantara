@@ -109,6 +109,35 @@
           </template>
         </AppTable>
       </AppCard>
+
+      <!-- Wujud barang dari belanja projek: yang habis dikonsumsi (material)
+           dan yang bertahan (aset). Sebelumnya projek hanya memegang angka. -->
+      <AppCard>
+        <ProjectMaterialPanel :project-id="project.id" />
+      </AppCard>
+
+      <AppCard>
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-sm font-bold text-gray-900">Aset yang Dihasilkan Projek Ini</h2>
+          <span v-if="projectAssets.length" class="text-xs text-gray-500">
+            {{ projectAssets.length }} aset · {{ formatRupiah(projectAssetValue) }}
+          </span>
+        </div>
+        <p v-if="loadingAssets" class="mt-3 text-sm text-gray-400">Memuat…</p>
+        <p v-else-if="!projectAssets.length" class="mt-3 rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">
+          Belum ada aset dari projek ini. Aset lahir saat belanja projek diserahterimakan
+          dengan tujuan “Aset”.
+        </p>
+        <ul v-else class="mt-3 divide-y divide-gray-100">
+          <li v-for="a in projectAssets" :key="a.id" class="flex flex-wrap items-center gap-2 py-2">
+            <button class="min-w-0 flex-1 text-left" @click="$router.push(`/perlengkapan/${a.id}`)">
+              <p class="break-words text-sm font-medium text-gray-900 hover:text-emerald-700">{{ a.name }}</p>
+              <p class="font-mono text-[11px] text-gray-400">{{ a.asset_no }} · {{ a.outlet_name }}</p>
+            </button>
+            <span class="text-sm text-gray-700">{{ formatRupiah(a.purchase_price) }}</span>
+          </li>
+        </ul>
+      </AppCard>
     </template>
 
     <!-- Arahkan ke halaman pengadaan untuk membuat belanja tahap baru.
@@ -143,6 +172,8 @@ import { formatRupiah, formatDateTime } from '@/utils/format.js'
 import { useAuthStore } from '@/stores/auth.js'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppCard   from '@/components/ui/AppCard.vue'
+import ProjectMaterialPanel from '@/components/ProjectMaterialPanel.vue'
+import { assetsApi } from '@/api/assets.js'
 import AppTable  from '@/components/ui/AppTable.vue'
 import AppModal  from '@/components/ui/AppModal.vue'
 import AppAlert  from '@/components/ui/AppAlert.vue'
@@ -157,6 +188,22 @@ const canSubmit = computed(() => authStore.hasPermission('procurement.requests.s
 const loading = ref(false)
 const errorMsg = ref('')
 const project = ref(null)
+
+// Aset hasil projek: dicocokkan lewat catatan pengadaan yang menautkannya.
+const projectAssets = ref([])
+const loadingAssets = ref(false)
+const projectAssetValue = computed(() =>
+  projectAssets.value.reduce((s, a) => s + (a.purchase_price || 0) * (a.quantity || 1), 0))
+
+async function loadProjectAssets(prNumbers) {
+  if (!prNumbers.length) { projectAssets.value = []; return }
+  loadingAssets.value = true
+  try {
+    const d = await assetsApi.list()
+    const rows = Array.isArray(d) ? d : (d?.data || [])
+    projectAssets.value = rows.filter(a => prNumbers.some(n => (a.notes || '').includes(n)))
+  } catch { projectAssets.value = [] } finally { loadingAssets.value = false }
+}
 const requests = ref([])
 const showNewPurchase = ref(false)
 
@@ -250,6 +297,9 @@ async function fetchDetail() {
     const res = await projectsApi.get(route.params.id)
     project.value = res?.project ?? null
     requests.value = res?.requests ?? []
+    // Aset hasil projek ditelusuri lewat nomor pengajuan yang tercatat di
+    // catatan aset ("Pengadaan: <nomor>") saat serah terima.
+    await loadProjectAssets(requests.value.map(r => r.request_number).filter(Boolean))
   } catch (e) {
     errorMsg.value = e.message || 'Gagal memuat projek'
   } finally {
