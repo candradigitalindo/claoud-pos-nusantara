@@ -6,232 +6,191 @@
 | **Bagian** | Perlengkapan & Aset |
 | **Melapor kepada** | Manajer Area / Manajer Pusat |
 | **Berhubungan erat dengan** | Tim Purchasing, Gudang Induk, Kepala Outlet, PIC pengaju, Teknisi & vendor, Keuangan |
-| **Alat kerja** | Cloud POS — menu **Perlengkapan** (Dashboard Aset, Daftar Aset, Penerimaan Peralatan, Distribusi ke PIC, Mutasi Antar Outlet, Perawatan, Opname Aset, Penghapusan, Laporan Aset, Kategori Aset) |
 | **Berlaku sejak** | 16 September 2026 |
+| **Panduan teknis** | Cara mengerjakannya di aplikasi: `docs/panduan-perlengkapan.md` |
+
+> Dokumen ini menjawab **apa tanggung jawabnya dan bagaimana dinilai**.
+> Cara mengerjakannya langkah demi langkah di aplikasi ada di dokumen panduan terpisah,
+> supaya uraian tugas ini tetap berlaku meski tampilan aplikasi berubah.
 
 ---
 
 ## 1. Ringkasan Peran
 
 Petugas Perlengkapan bertanggung jawab agar **setiap barang tidak habis pakai milik perusahaan
-punya wujud data yang benar** — sejak barangnya diterima dari tim purchasing, dipakai
-sehari-hari, dirawat, dipindahkan, sampai akhirnya dihapus.
+punya wujud data yang benar** — sejak diterima dari tim purchasing, dipakai sehari-hari,
+dirawat, dipindahkan, sampai akhirnya dihapus.
 
-Ukuran keberhasilan peran ini sederhana: **apa yang tercatat di sistem sama dengan apa yang ada
-di lapangan**, dan setiap perpindahan barang bisa dibuktikan tanpa mengandalkan ingatan orang.
+Ukuran keberhasilannya sederhana: **apa yang tercatat sama dengan apa yang ada di lapangan**,
+dan setiap perpindahan barang bisa dibuktikan tanpa mengandalkan ingatan orang.
 
-Peran ini **tidak mengurus barang dapur**. Bahan baku, kemasan, dan barang habis pakai yang
-masuk katalog stok adalah urusan Gudang Induk. Batas ini tegas dan sudah dijaga sistem:
-pengajuan pengadaan tidak boleh mencampur barang dapur dan peralatan.
+Peran ini **tidak mengurus barang dapur**. Bahan baku, kemasan, dan barang yang masuk katalog
+stok adalah tanggung jawab Gudang Induk.
 
 ---
 
-## 2. Tanggung Jawab Utama
+## 2. Tanggung Jawab
 
-### 2.1 Menerima peralatan dari tim purchasing
+Dinyatakan sebagai **hasil yang harus tercapai**, bukan urutan langkah.
 
-Membuka **Penerimaan Peralatan**, mencocokkan fisik barang dengan rincian pengajuan, lalu
-mencatat penerimaannya.
+### 2.1 Penerimaan peralatan
+Memastikan setiap peralatan yang dibeli perusahaan benar-benar diterima, diperiksa
+kesesuaiannya dengan pengajuan, dan tercatat lengkap dengan bukti fotonya pada hari barang itu
+datang. Barang yang datang bertahap atau belum dibayar tetap tercatat apa adanya.
 
-- **Wajib memotret barang saat diterima.** Sistem menolak penerimaan tanpa foto. Foto diambil
-  di tempat serah terima, bukan diunggah dari galeri.
-- Menentukan tujuan tiap baris: **Aset** (dicatat bernomor), **Material projek**, atau
-  **Habis pakai**. Barang bernilai ≥ Rp 1.000.000 yang ditandai habis pakai wajib beralasan.
-- Boleh menerima barang yang **belum dibayar** (pembelian tempo) — status tagihannya tidak
-  berubah, dan itu memang benar.
-- Menerima sebagian bila barang datang bertahap; sisanya tetap tercatat menunggu.
+### 2.2 Kelengkapan data aset
+Memastikan setiap aset punya identitas yang cukup untuk ditelusuri: nomor, kategori, merk,
+nomor seri, lokasi, penanggung jawab, serta tanggal dan harga perolehan. Aset yang sudah
+berlabel fisik bisa dicocokkan dengan catatannya tanpa menebak.
 
-### 2.2 Mendata aset dengan lengkap
+### 2.3 Penyerahan ke pemakai
+Memastikan tidak ada aset yang "menganggur tanpa tuan" di bagian aset. Setiap barang berpindah
+ke PIC yang mengajukan pembeliannya dengan bukti serah terima, dan tanggung jawab fisiknya
+berpindah bersamanya.
 
-Setiap aset yang lahir mendapat nomor otomatis (`AST-…`). Tugas petugas adalah melengkapi yang
-tidak bisa ditebak sistem:
+### 2.4 Perpindahan antar outlet
+Memastikan aset yang berpindah outlet tercatat lengkap: disetujui sebelum berangkat, diperiksa
+kondisinya saat kirim dan terima, serta selisihnya dicatat apa adanya — bukan dibulatkan agar
+terlihat rapi.
 
-- Kategori (dipilih dari **Kategori Aset**, bukan diketik bebas), merk, tipe, **nomor seri**
-- Lokasi penempatan dan **penanggung jawab**
-- Tanggal & harga perolehan, masa garansi
-- Mencetak dan menempelkan **label QR** pada barangnya
+### 2.5 Perawatan
+Memastikan perawatan preventif dikerjakan sebelum lewat tenggat, perbaikan dicatat beserta
+biaya dan lama berhentinya, dan aset yang biaya perawatannya sudah tidak masuk akal diusulkan
+diganti — bukan diperbaiki terus-menerus.
 
-Aset mahal atau bernomor seri dicatat sebagai **tunggal** (satu baris satu unit); barang
-seragam berjumlah banyak seperti kursi dicatat sebagai **massal**.
-
-### 2.3 Mendistribusikan ke PIC pengaju
-
-Barang tidak berhenti di bagian aset. Lewat **Distribusi ke PIC**, petugas menyerahkan aset
-kepada orang yang mengajukan pembeliannya.
-
-- **Wajib berfoto saat serah terima.**
-- Penanggung jawab dan lokasi aset otomatis berpindah ke penerima.
-- Daftar "Menunggu Diserahkan" adalah antrean pekerjaan harian — idealnya kosong.
-
-### 2.4 Mengurus mutasi antar outlet
-
-Membuat dokumen **Mutasi Antar Outlet** (`MTA-…`) saat aset pindah tempat: ajukan → (disetujui
-manajer) → kirim → diterima outlet tujuan.
-
-- Memeriksa kondisi barang saat kirim dan saat terima; selisih dicatat apa adanya.
-- Mencetak **Berita Acara Serah Terima** untuk ditandatangani kedua pihak.
-- Aset yang sedang diperbaiki tidak boleh dimutasi, kecuali memang dikirim ke bengkel.
-
-### 2.5 Menjalankan perawatan
-
-Halaman **Perawatan** memegang jadwal dan riwayat seluruh aset.
-
-- Mengerjakan daftar **jatuh tempo** sebelum lewat tanggal: mulai → selesaikan work order
-  (`WOM-…`), isi biaya, pelaksana, lama berhenti, dan kondisi setelah dikerjakan.
-- Jadwal berikutnya terbit otomatis dari interval kategori; petugas menyesuaikan bila perlu.
-- Bila perbaikan memerlukan vendor berbayar, **mengajukan Pengadaan Jasa langsung dari work
-  order** agar biayanya tidak diketik dua kali di dua modul.
-- Mengusulkan penggantian bila biaya perawatan sebuah aset sudah melewati **50%** harga
-  belinya — memperbaiki terus barang seperti itu lebih mahal daripada menggantinya.
-
-### 2.6 Opname aset (audit fisik)
-
-Minimal **dua kali setahun per outlet**, atau sewaktu-waktu diminta manajemen.
-
-- Membuka sesi opname (`OPA-…`), menghitung fisik, mencatat kondisi yang ditemukan.
-- Barang yang ada di lapangan tapi tak terdata dicatat sebagai temuan → menjadi aset baru.
-- Barang yang tidak ditemukan **tidak langsung dihapus**, melainkan menjadi usulan penghapusan
-  yang menunggu persetujuan.
+### 2.6 Audit fisik
+Memastikan catatan dan lapangan dicocokkan secara berkala, selisihnya ditindaklanjuti, dan
+barang yang tidak ditemukan diproses lewat persetujuan — bukan dihapus diam-diam.
 
 ### 2.7 Penghapusan aset
-
-Mengajukan **Penghapusan** (`DSP-…`) untuk barang yang dijual, dimusnahkan, dihibahkan, atau
-hilang — lengkap dengan alasan dan (bila dijual) hasil penjualannya. Nilai bukunya dibekukan di
-dokumen agar berita acara tetap cocok meski penyusutan terus berjalan.
-
-> Menghapus data lewat tombol Hapus di Daftar Aset **hanya untuk salah input**. Barang yang
-> benar-benar sudah tidak ada harus lewat dokumen penghapusan, supaya nilainya tercatat dan
-> laporan aset tidak menyusut tanpa sebab.
+Memastikan barang yang dijual, dimusnahkan, dihibahkan, atau hilang keluar dari daftar lewat
+dokumen resmi beserta nilai bukunya, sehingga nilai aset perusahaan tidak menyusut tanpa sebab
+yang bisa dijelaskan.
 
 ### 2.8 Material projek
+Memastikan material renovasi yang dibeli punya catatan penerimaan, pemakaian, dan sisa; serta
+sisanya didata menjadi aset saat projek ditutup.
 
-Untuk belanja projek renovasi/pembangunan: mencatat penerimaan material (semen, cat, keramik),
-mencatat pemakaiannya, dan **memastikan sisanya didata menjadi aset** saat projek ditutup.
-
-### 2.9 Menjaga kebersihan data & laporan
-
-- Memeriksa **Dashboard Aset** setiap pagi dan mengerjakan kartu "Perlu Ditindak".
-- Menindaklanjuti laporan **Pengadaan Belum Lengkap** — selama ada baris di sana, ada barang
-  yang sudah dibayar tapi belum jelas keberadaannya.
-- Memastikan seluruh bukti foto berhasil tercadangkan (status pada dokumen dan di Pengaturan).
-- Menyiapkan laporan aset bulanan untuk manajemen.
+### 2.9 Kualitas data dan pelaporan
+Memastikan tidak ada barang yang sudah dibayar tapi tidak jelas keberadaannya, seluruh bukti
+foto tersimpan aman, dan laporan aset tersedia tepat waktu untuk manajemen.
 
 ---
 
 ## 3. Irama Kerja
 
-| Frekuensi | Yang dikerjakan |
+| Frekuensi | Fokus |
 |---|---|
-| **Harian** | Buka Dashboard Aset; kerjakan penerimaan yang masuk antrean; serahkan aset ke PIC; mulai/selesaikan work order yang jatuh tempo; terima mutasi masuk |
-| **Mingguan** | Kosongkan antrean "Menunggu Diserahkan"; periksa laporan Pengadaan Belum Lengkap; pastikan tidak ada foto gagal tercadangkan; lengkapi data aset yang belum penuh |
-| **Bulanan** | Tutup laporan biaya perawatan; usulkan penggantian untuk aset yang melewati ambang 50%; periksa aset tanpa penanggung jawab; laporan aset ke manajemen |
-| **Semesteran** | Opname aset per outlet; rekonsiliasi selisih; usulkan penghapusan untuk barang hilang/rusak berat |
-| **Insidental** | Mutasi antar outlet; perbaikan darurat; penerimaan material projek; penutupan material saat projek selesai |
+| **Harian** | Menerima barang yang datang, menyerahkan aset ke pemakainya, mengerjakan perawatan yang jatuh tempo, menerima kiriman mutasi |
+| **Mingguan** | Mengosongkan antrean aset yang belum diserahkan, menuntaskan barang yang belum berwujud data, memastikan bukti foto aman, melengkapi data yang kurang |
+| **Bulanan** | Menutup laporan biaya perawatan, mengusulkan penggantian aset yang boros, memastikan tidak ada aset tanpa penanggung jawab |
+| **Semesteran** | Audit fisik per outlet, rekonsiliasi selisih, mengusulkan penghapusan barang hilang/rusak berat |
+| **Insidental** | Mutasi antar outlet, perbaikan darurat, penerimaan dan penutupan material projek |
 
 ---
 
 ## 4. Batas Wewenang
 
-| Boleh diputuskan sendiri | Perlu persetujuan atasan |
+| Diputuskan sendiri | Perlu persetujuan atasan |
 |---|---|
-| Mencatat penerimaan barang dan membuat aset | **Menyetujui** mutasi antar outlet |
-| Menyerahkan aset ke PIC pengaju | **Menyetujui** penghapusan aset |
-| Membuat & menyelesaikan work order perawatan | **Menerapkan** selisih opname |
-| Mengajukan mutasi, penghapusan, dan opname | Mengubah ambang kebijakan (nilai kapitalisasi, umur ekonomis, interval perawatan) |
-| Melengkapi data aset, lokasi, penanggung jawab | Mengubah data outlet atau harga perolehan aset yang sudah ditetapkan |
+| Mencatat penerimaan barang dan membuat data aset | Menyetujui perpindahan aset antar outlet |
+| Menyerahkan aset kepada PIC pengaju | Menyetujui penghapusan aset |
+| Menjadwalkan dan menyelesaikan perawatan | Menerapkan hasil audit fisik ke catatan |
+| Mengajukan mutasi, penghapusan, dan audit fisik | Mengubah ambang kebijakan perusahaan |
+| Melengkapi data, lokasi, dan penanggung jawab | Mengubah harga perolehan yang sudah ditetapkan |
 
-Pemisahan ini juga ditegakkan sistem lewat hak akses: petugas memegang izin **membuat dan
-menjalankan**, atasan memegang izin **menyetujui**. Seorang petugas tidak bisa mengirim sekaligus
-menerima mutasinya sendiri.
+**Prinsipnya: yang menjalankan bukan yang menyetujui.** Petugas tidak dapat mengirim sekaligus
+menerima perpindahan yang sama, dan tidak dapat mengesahkan usulannya sendiri. Pemisahan ini
+ditegakkan oleh hak akses, bukan sekadar kesepakatan lisan.
 
 ---
 
 ## 5. Indikator Kinerja (KPI)
 
-Semua angka di bawah bisa dibaca langsung dari sistem — tidak ada yang perlu dihitung manual.
-
 ### 5.1 KPI Utama
 
-| # | Indikator | Rumus | Target | Sumber data | Periode |
-|---|---|---|---|---|---|
-| 1 | **Kepatuhan jadwal perawatan** | WO preventif selesai tepat waktu ÷ WO preventif jatuh tempo | **≥ 90%** | Perawatan → tab Riwayat & Jatuh Tempo | Bulanan |
-| 2 | **Perawatan terlambat** | Jumlah WO berstatus dijadwalkan yang lewat tanggal | **0** | Dashboard Aset → kartu "Perawatan terlambat" | Mingguan |
-| 3 | **Akurasi data aset (IRA)** | 1 − (baris selisih ÷ baris diperiksa saat opname) | **≥ 98%** | Opname Aset → akurasi sesi | Per opname |
-| 4 | **Kelengkapan data aset** | Aset yang punya nomor, tgl & harga perolehan, lokasi, dan penanggung jawab ÷ total aset | **≥ 95%** | Daftar Aset & Laporan Daftar Aset | Bulanan |
-| 5 | **Ketepatan pencatatan penerimaan** | Baris pengadaan diterima yang sudah berwujud data ÷ seluruh baris diterima | **100%** dalam 1 hari kerja | Laporan "Pengadaan Belum Lengkap" | Mingguan |
-| 6 | **Kecepatan distribusi ke PIC** | Rata-rata hari dari aset diterima sampai diserahkan ke PIC | **≤ 2 hari kerja** | Distribusi ke PIC → "Menunggu Diserahkan" | Mingguan |
-| 7 | **Kelengkapan bukti foto** | Foto penerimaan & distribusi yang berhasil tercadangkan ÷ seluruh foto | **100%** | Pengaturan → Cadangan Bukti Foto | Mingguan |
-| 8 | **Selisih mutasi** | Jumlah dokumen mutasi yang diterima lebih sedikit dari yang dikirim | **0** | Mutasi Antar Outlet → penanda "Selisih" | Bulanan |
+| # | Indikator | Rumus | Target | Periode |
+|---|---|---|---|---|
+| 1 | **Kepatuhan jadwal perawatan** | Perawatan preventif selesai tepat waktu ÷ yang jatuh tempo | **≥ 90%** | Bulanan |
+| 2 | **Perawatan terlambat** | Jumlah perawatan terjadwal yang lewat tanggal | **0** | Mingguan |
+| 3 | **Akurasi data aset** | 1 − (baris selisih ÷ baris diperiksa saat audit fisik) | **≥ 98%** | Per audit |
+| 4 | **Kelengkapan data aset** | Aset dengan nomor, tanggal & harga perolehan, lokasi, dan penanggung jawab ÷ total aset | **≥ 95%** | Bulanan |
+| 5 | **Ketepatan pencatatan penerimaan** | Barang diterima yang sudah berwujud data ÷ seluruh barang diterima | **100%** dalam 1 hari kerja | Mingguan |
+| 6 | **Kecepatan penyerahan ke pemakai** | Rata-rata hari dari aset diterima sampai diserahkan | **≤ 2 hari kerja** | Mingguan |
+| 7 | **Kelengkapan bukti foto** | Bukti foto yang tersimpan aman ÷ seluruh serah terima | **100%** | Mingguan |
+| 8 | **Selisih perpindahan** | Jumlah perpindahan yang diterima lebih sedikit dari yang dikirim | **0** | Bulanan |
 
 ### 5.2 KPI Pendukung
 
 | # | Indikator | Rumus | Target | Periode |
 |---|---|---|---|---|
-| 9 | **Rasio preventif : korektif** | Jumlah WO rutin+inspeksi : perbaikan+penggantian | **≥ 70 : 30** | Triwulan |
-| 10 | **Aset melewati ambang ganti** | Aset dengan biaya rawat kumulatif > 50% harga beli **yang belum diusulkan diganti** | **0** | Bulanan |
-| 11 | **Ketepatan waktu opname** | Outlet yang diopname sesuai jadwal ÷ seluruh outlet | **100%** | Semester |
+| 9 | **Rasio preventif : korektif** | Perawatan rutin & inspeksi : perbaikan & penggantian | **≥ 70 : 30** | Triwulan |
+| 10 | **Aset boros belum ditindak** | Aset dengan biaya rawat kumulatif > 50% harga beli yang belum diusulkan diganti | **0** | Bulanan |
+| 11 | **Ketepatan waktu audit fisik** | Outlet diaudit sesuai jadwal ÷ seluruh outlet | **100%** | Semester |
 | 12 | **Penyelesaian usulan penghapusan** | Usulan diproses ≤ 7 hari sejak diajukan | **≥ 90%** | Bulanan |
 | 13 | **Sisa material projek tertangani** | Projek selesai tanpa sisa material yang belum ditentukan nasibnya | **100%** | Per projek |
-| 14 | **Aset tanpa penanggung jawab** | Jumlah aset aktif yang `pic_name`-nya kosong | **0** | Bulanan |
+| 14 | **Aset tanpa penanggung jawab** | Jumlah aset aktif yang tidak punya penanggung jawab | **0** | Bulanan |
 
 ### 5.3 Cara Menilai
 
-- **Sangat baik** — seluruh KPI Utama tercapai, tidak ada temuan berulang pada opname.
-- **Baik** — maksimal satu KPI Utama meleset tipis, disertai penjelasan dan tindak lanjut.
-- **Perlu perbaikan** — dua KPI Utama atau lebih meleset, atau ada barang hilang yang tidak
-  bisa dijelaskan.
+| Penilaian | Kriteria |
+|---|---|
+| **Sangat baik** | Seluruh KPI Utama tercapai; tidak ada temuan berulang pada audit fisik |
+| **Baik** | Maksimal satu KPI Utama meleset tipis, disertai penjelasan dan tindak lanjut |
+| **Perlu perbaikan** | Dua KPI Utama atau lebih meleset, atau ada barang hilang yang tidak bisa dijelaskan |
 
-Penilaian dilakukan **bulanan** oleh atasan langsung, memakai angka apa adanya dari sistem.
+Penilaian dilakukan **bulanan** oleh atasan langsung. Seluruh angka diambil apa adanya dari
+sistem — tidak ada indikator yang menuntut perhitungan manual, agar penilaian tidak bergantung
+pada niat baik pencatatnya. Letak angkanya di aplikasi dijelaskan di dokumen panduan.
 
 ---
 
 ## 6. Yang Tidak Boleh Terjadi
 
-Hal-hal berikut dianggap kegagalan serius, bukan sekadar KPI yang meleset:
+Berikut dianggap kegagalan serius, bukan sekadar KPI yang meleset:
 
-1. **Menerima barang tanpa memotretnya**, atau memotret sesuatu yang bukan barangnya.
-2. **Menyerahkan aset tanpa dokumen serah terima** — barang berpindah tangan tanpa penanggung
-   jawab yang jelas.
-3. **Mencatat penerimaan barang yang belum datang**, dengan alasan apa pun.
-4. **Menghapus data aset yang barangnya benar-benar hilang** lewat tombol Hapus, bukan lewat
-   dokumen penghapusan — ini menghilangkan nilai dari laporan tanpa jejak.
-5. **Membiarkan hasil opname tidak diterapkan**, sehingga catatan dan lapangan terus berbeda.
-6. **Menandai barang mahal sebagai "habis pakai"** untuk menghindari pencatatan aset.
-
----
-
-## 7. Kebutuhan Akses Sistem
-
-Role **Petugas Perlengkapan** minimal memegang hak akses berikut (diatur di menu Role):
-
-| Hak akses | Untuk |
-|---|---|
-| `assets.dashboard.view` | Membuka Dashboard Aset |
-| `assets.view`, `assets.create`, `assets.update` | Mendata dan melengkapi aset, mengelola kategori |
-| `assets.transfer.view`, `.create`, `.receive` | Mengajukan, mengirim, dan menerima mutasi |
-| `assets.maintenance.view`, `.create` | Menjadwalkan dan menyelesaikan perawatan |
-| `assets.opname.view`, `.create` | Menghitung opname |
-| `assets.disposal.view`, `.create` | Mengajukan penghapusan |
-| `assets.report.view` | Membuka laporan aset |
-| `procurement.requests.submit` | Menyelesaikan serah terima pengadaan |
-
-**Sengaja tidak diberikan** kepada petugas: `assets.transfer.approve`, `assets.disposal.approve`,
-`assets.opname.approve`, dan `assets.delete`. Keempatnya milik atasan — yang menjalankan dan yang
-menyetujui tidak boleh orang yang sama.
-
-Petugas yang juga mengurus material projek memerlukan tambahan `procurement.projects.view` dan
-`procurement.projects.manage`.
+1. Mencatat penerimaan barang yang **belum datang**, dengan alasan apa pun.
+2. Menyerahkan aset **tanpa dokumen dan bukti** serah terima.
+3. Memotret sesuatu yang **bukan barangnya** sebagai bukti.
+4. Mengeluarkan aset dari daftar **tanpa dokumen penghapusan** — nilainya hilang dari laporan
+   tanpa jejak.
+5. Membiarkan hasil audit fisik **tidak ditindaklanjuti**, sehingga catatan dan lapangan terus
+   berbeda.
+6. Menandai barang mahal sebagai **habis pakai** untuk menghindari pencatatan aset.
 
 ---
 
-## 8. Perlengkapan Kerja
+## 7. Kualifikasi & Perlengkapan Kerja
 
-- Ponsel berkamera dengan akses Cloud POS (dipakai memotret di lapangan dan menghitung opname)
-- Printer label untuk stiker QR aset
+**Kualifikasi**
+- Teliti pada angka dan detail fisik barang; terbiasa bekerja dengan daftar dan tenggat
+- Mampu menggunakan aplikasi berbasis web dan kamera ponsel
+- Berani menolak mencatat sesuatu yang belum ia lihat sendiri
+
+**Perlengkapan**
+- Ponsel berkamera dengan akses aplikasi (dipakai memotret dan menghitung di lapangan)
+- Printer label untuk penanda fisik aset
 - Akses ke seluruh area outlet dan gudang yang menjadi tanggung jawabnya
 
 ---
 
-*Dokumen ini mengikuti alur yang berjalan di Cloud POS modul Perlengkapan. Bila alur sistem
-berubah, uraian tugas dan KPI di sini ikut ditinjau. Rincian teknis alurnya ada di
-`docs/perlengkapan-aset.md`.*
+## 8. Hak Akses yang Diberikan
+
+Petugas memegang hak **membuat dan menjalankan**; atasan memegang hak **menyetujui**.
+
+| Diberikan | Tidak diberikan |
+|---|---|
+| Melihat dashboard dan laporan aset | Menyetujui perpindahan antar outlet |
+| Mendata, melengkapi, dan mengelola kategori aset | Menyetujui penghapusan aset |
+| Mengajukan, mengirim, dan menerima perpindahan | Menerapkan hasil audit fisik |
+| Menjadwalkan dan menyelesaikan perawatan | Menghapus data aset |
+| Menghitung audit fisik dan mengajukan penghapusan | |
+| Menyelesaikan serah terima pengadaan | |
+
+Petugas yang juga menangani material projek mendapat tambahan hak melihat dan mengelola projek.
+Daftar teknis nama hak aksesnya ada di dokumen panduan.
+
+---
+
+*Uraian tugas dan KPI ini mengikuti proses kerja yang berlaku. Bila prosesnya berubah, dokumen
+ini ikut ditinjau bersama panduan penggunaannya.*
