@@ -259,9 +259,9 @@ func SettleMaterialRemainder(id string, req models.ProjectMaterialSettleRequest,
 		if !outletInScope(outletID, outletScope) {
 			return nil, Invalid("outlet di luar akses Anda")
 		}
-		category := req.Category
-		if strings.TrimSpace(category) == "" {
-			category = "Sisa Material Projek"
+		category, cerr := resolveAssetCategory(req.Category)
+		if cerr != nil {
+			return nil, cerr
 		}
 		assetID, err := insertReceivedAsset(tx, receivedAsset{
 			OutletID: outletID, Name: m.Name, Category: category,

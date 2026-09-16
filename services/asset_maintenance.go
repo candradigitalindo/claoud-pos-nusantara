@@ -80,6 +80,12 @@ func intervalMatches(hay, key string) bool {
 }
 
 func maintenanceIntervalMonths(category, name string) int {
+	// Master kategori adalah sumber utama sejak kategori tidak lagi teks bebas.
+	// Daftar bawaan di bawah tinggal jaring pengaman untuk kategori yang belum
+	// mengisi intervalnya.
+	if _, interval := categoryDefaults(category); interval > 0 {
+		return interval
+	}
 	table := defaultMaintenanceIntervals
 	if raw, err := GetSetting("asset_maintenance_intervals"); err == nil && strings.TrimSpace(raw) != "" {
 		custom := map[string]int{}

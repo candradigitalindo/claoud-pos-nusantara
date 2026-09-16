@@ -72,22 +72,6 @@ export function statusCls(s) {
   return 'badge-mute'
 }
 
-// Umur ekonomis default per kategori (bulan) — usulan yang mengisi form,
-// bukan aturan yang mengunci. Angka final ditetapkan manajemen.
-const LIFE_BY_CATEGORY = [
-  [/elektronik|it|komputer|laptop|printer|cctv|pos/i, 36],
-  [/mebel|furnitur|meja|kursi|rak|lemari/i, 60],
-  [/kendaraan|motor|mobil/i, 96],
-  [/dapur|kitchen|kompor|oven/i, 60],
-  [/mesin|kopi|chiller|kulkas|freezer|ac|genset/i, 60],
-]
-
-export function suggestUsefulLife(category, name = '') {
-  const hay = `${category || ''} ${name || ''}`
-  for (const [re, months] of LIFE_BY_CATEGORY) if (re.test(hay)) return months
-  return 48
-}
-
 /**
  * Cetak label aset (nomor + nama + outlet + QR) lewat jendela terpisah.
  *

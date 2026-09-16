@@ -121,7 +121,7 @@
           </div>
           <div>
             <label class="lbl">Kategori Aset</label>
-            <input v-model="settleForm.category" class="form-input" placeholder="mis. Material Cadangan" />
+            <SearchSelect v-model="settleForm.category" :options="categoryOptions" placeholder="Pilih kategori…" />
           </div>
         </div>
 
@@ -153,6 +153,7 @@ import { projectMaterialsApi } from '@/api/projectMaterials.js'
 import { projectsApi } from '@/api/projects.js'
 import { outletsApi } from '@/api/outlets.js'
 import { warehousesApi, stockItemsApi } from '@/api/warehouse.js'
+import { assetCategoriesApi } from '@/api/assetCategories.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah } from '@/utils/format.js'
@@ -189,6 +190,8 @@ const outlets = ref([])
 const warehouses = ref([])
 const stockItems = ref([])
 const projects = ref([])
+const categories = ref([])
+const categoryOptions = computed(() => categories.value.map(c => ({ id: c.name, name: c.name })))
 
 const bulking = ref(false)
 
@@ -241,6 +244,7 @@ async function loadRefs() {
   try { warehouses.value = asArray(await warehousesApi.list()) } catch { warehouses.value = [] }
   try { stockItems.value = asArray(await stockItemsApi.list({ limit: 500 })) } catch { stockItems.value = [] }
   try { projects.value = asArray(await projectsApi.list()) } catch { projects.value = [] }
+  try { categories.value = asArray(await assetCategoriesApi.list()) } catch { categories.value = [] }
 }
 
 function openUsage(m) { active.value = m; usageForm.value = { qty: m.remaining, notes: '' }; usageModal.value = true }

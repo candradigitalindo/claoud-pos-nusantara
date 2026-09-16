@@ -304,6 +304,15 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor string, can
 			if name == "" {
 				name = src.Name
 			}
+			category, cerr := resolveAssetCategory(in.Category)
+			if cerr != nil {
+				return nil, cerr
+			}
+			if in.UsefulLifeMonths == 0 && category != "" {
+				if life, _ := categoryDefaults(category); life > 0 {
+					in.UsefulLifeMonths = life
+				}
+			}
 			mode := in.TrackingMode
 			if mode != "tunggal" && mode != "massal" {
 				mode = "massal"
@@ -326,7 +335,7 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor string, can
 				}
 				assetID, err := insertReceivedAsset(tx, receivedAsset{
 					OutletID: outletID, SourcePRID: src.SourcePRID, PRItemKey: key,
-					Name: name, Category: in.Category, Qty: perRow, Unit: src.Unit,
+					Name: name, Category: category, Qty: perRow, Unit: src.Unit,
 					TrackingMode: mode, Serial: in.SerialNumber, Brand: in.Brand, Model: in.Model,
 					Location: in.Location, Price: price,
 					UsefulLife: in.UsefulLifeMonths, Residual: in.ResidualValue,

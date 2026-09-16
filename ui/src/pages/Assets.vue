@@ -147,8 +147,11 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label class="lbl">Kategori</label>
-            <input v-model="form.category" @change="applyLifeSuggestion" class="form-input" placeholder="mis. Elektronik" list="asset-cats" />
-            <datalist id="asset-cats"><option v-for="c in categorySuggestions" :key="c" :value="c" /></datalist>
+            <SearchSelect v-model="form.category" :options="categoryOptions" placeholder="Pilih kategori…"
+              searchPlaceholder="Cari kategori…" @change="applyCategoryDefaults" />
+            <p class="mt-1 text-[11px] text-gray-400">
+              Dikelola di <RouterLink to="/perlengkapan/kategori" class="text-emerald-700 underline">Kategori Aset</RouterLink>.
+            </p>
           </div>
           <div>
             <label class="lbl">Kode / Tag internal</label>
@@ -262,7 +265,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { assetCategoriesApi } from '@/api/assetCategories.js'
 import { assetsApi } from '@/api/assets.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
@@ -270,7 +274,7 @@ import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah, formatDateStr } from '@/utils/format.js'
 import {
   CONDITIONS, STATUSES, EDITABLE_STATUSES, SYSTEM_STATUSES, TRACKING_MODES,
-  condCls, condLabel, statusCls, statusLabel, suggestUsefulLife, printAssetLabels,
+  condCls, condLabel, statusCls, statusLabel, printAssetLabels,
 } from '@/utils/assets.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
@@ -309,7 +313,16 @@ const search = ref('')
 const selected = ref([])
 
 const outletFilterOptions = computed(() => [{ id: '', name: 'Semua outlet' }, ...outlets.value])
-const categorySuggestions = computed(() => [...new Set(assets.value.map(a => a.category).filter(Boolean))])
+// Kategori berasal dari master, bukan ketikan bebas: "Elektronik",
+// "elektronik", dan "Elektronic" dulu jadi tiga kelompok di dashboard & laporan.
+const categories = ref([])
+const categoryOptions = computed(() => categories.value.map(c => ({ id: c.name, name: c.name })))
+async function loadCategories() {
+  try {
+    const d = await assetCategoriesApi.list()
+    categories.value = Array.isArray(d) ? d : (d?.data || [])
+  } catch { categories.value = [] }
+}
 const hasFilter = computed(() => !!(filterOutlet.value || filterCondition.value || filterStatus.value || search.value.trim()))
 const emptyText = computed(() => hasFilter.value
   ? 'Tidak ada perlengkapan yang cocok dengan filter ini. Ubah atau kosongkan filter untuk melihat semuanya.'
@@ -381,8 +394,13 @@ function blankForm() {
     useful_life_months: 0, residual_value: 0, photo_url: '', notes: '',
   }
 }
-function applyLifeSuggestion() {
-  if (!form.value.useful_life_months) form.value.useful_life_months = suggestUsefulLife(form.value.category, form.value.name)
+// Umur ekonomis mengikuti kategorinya — angka itu kini tinggal di master,
+// bukan ditebak dari nama barang di sisi layar.
+function applyCategoryDefaults() {
+  const c = categories.value.find(x => x.name === form.value.category)
+  if (c && !form.value.useful_life_months && c.useful_life_months) {
+    form.value.useful_life_months = c.useful_life_months
+  }
 }
 function openCreate() { editing.value = null; form.value = blankForm(); assetModal.value = true }
 function openEdit(a) {
@@ -417,7 +435,7 @@ async function confirmDelete(a) {
 }
 
 onMounted(async () => {
-  await loadOutlets()
+  await Promise.all([loadOutlets(), loadCategories()])
   await load()
   // Datang dari halaman detail lewat tombol Edit.
   const id = route.query.edit

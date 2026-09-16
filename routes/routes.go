@@ -284,6 +284,12 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/vendors/:id/detail", middleware.RequirePermission("vendors.view"), handlers.GetVendorDetail)
 	admin.Get("/vendors/:id/purchases", middleware.RequirePermission("vendors.view"), handlers.ListVendorPurchases)
 	// Manajemen Aset + histori perawatan (scoped per outlet)
+	// Master kategori aset — dipakai form aset, dialog penerimaan, dan laporan.
+	admin.Get("/asset-categories", middleware.RequirePermission("assets.view"), handlers.ListAssetCategories)
+	admin.Post("/asset-categories", middleware.RequirePermission("assets.update"), handlers.CreateAssetCategory)
+	admin.Put("/asset-categories/:id", middleware.RequirePermission("assets.update"), handlers.UpdateAssetCategory)
+	admin.Delete("/asset-categories/:id", middleware.RequirePermission("assets.delete"), handlers.DeleteAssetCategory)
+
 	admin.Get("/assets", middleware.RequirePermission("assets.view"), handlers.ListAssets)
 	admin.Get("/assets/:id", middleware.RequirePermission("assets.view"), handlers.GetAsset)
 	admin.Post("/assets", middleware.RequirePermission("assets.create"), handlers.CreateAsset)

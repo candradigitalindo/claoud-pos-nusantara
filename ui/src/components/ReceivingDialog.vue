@@ -68,7 +68,7 @@
         <div v-if="form[line.pr_item_key].destination === 'aset'" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label class="lbl">Kategori</label>
-            <input v-model="form[line.pr_item_key].category" class="form-input" placeholder="mis. Elektronik" />
+            <SearchSelect v-model="form[line.pr_item_key].category" :options="categoryOptions" placeholder="Pilih kategori…" />
           </div>
           <div>
             <label class="lbl">Mode</label>
@@ -136,6 +136,7 @@ import { ref, computed, watch } from 'vue'
 import { receivingApi } from '@/api/purchase.js'
 import { outletsApi } from '@/api/outlets.js'
 import { warehousesApi, stockItemsApi } from '@/api/warehouse.js'
+import { assetCategoriesApi } from '@/api/assetCategories.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah } from '@/utils/format.js'
@@ -178,6 +179,8 @@ const photoURL = ref('')
 const outlets = ref([])
 const warehouses = ref([])
 const stockItems = ref([])
+const categories = ref([])
+const categoryOptions = computed(() => categories.value.map(c => ({ id: c.name, name: c.name })))
 
 function asArray(d) { return Array.isArray(d) ? d : (d?.data || d?.items || []) }
 function asObject(d) { return d?.data ?? d ?? null }
@@ -250,6 +253,7 @@ async function loadRefs() {
   try { outlets.value = asArray((await outletsApi.myOutlets())?.outlets ?? await outletsApi.myOutlets()) } catch { outlets.value = [] }
   try { warehouses.value = asArray(await warehousesApi.list()) } catch { warehouses.value = [] }
   try { stockItems.value = asArray(await stockItemsApi.list({ limit: 500 })) } catch { stockItems.value = [] }
+  try { categories.value = asArray(await assetCategoriesApi.list()) } catch { categories.value = [] }
 }
 
 watch(() => props.modelValue, async (open) => {

@@ -2644,5 +2644,61 @@ func RunMigrations() error {
 		log.Printf("Aset: izin Dashboard Aset di-seed ke pemegang assets.view")
 	}
 
+	// ── Master kategori aset ───────────────────────────────────────────────
+	// Sebelumnya kategori diketik bebas, sehingga "Elektronik", "elektronik",
+	// dan "Elektronic" menjadi tiga kelompok berbeda di dashboard dan laporan.
+	// Master ini sekaligus menjadi rumah bagi dua angka bawaan yang tadinya
+	// terserak: umur ekonomis (dulu ditebak di sisi layar) dan interval
+	// perawatan preventif (dulu daftar tetap di dalam kode Go).
+	assetCategoryMigrations := []string{
+		`CREATE TABLE IF NOT EXISTS asset_categories (
+			id   CHAR(26) PRIMARY KEY,
+			name VARCHAR(100) NOT NULL UNIQUE,
+			useful_life_months INT DEFAULT 0,
+			maintenance_interval_months INT DEFAULT 0,
+			notes TEXT DEFAULT '',
+			is_active BOOLEAN DEFAULT true,
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_categories_active ON asset_categories(is_active)`,
+	}
+	for _, m := range assetCategoryMigrations {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Asset category migration skipped: %v", err)
+		}
+	}
+
+	// Isi awal (one-shot, marker): daftar bawaan dari rancangan + kategori yang
+	// terlanjur diketik pada aset yang sudah ada, supaya tidak ada data lama
+	// yang kategorinya mendadak tidak dikenal.
+	var assetCatSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_asset_categories'").Scan(&assetCatSeeded)
+	if assetCatSeeded == 0 {
+		DB.Exec(`
+			INSERT INTO asset_categories (id, name, useful_life_months, maintenance_interval_months, notes)
+			VALUES
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'Elektronik & IT', 36, 12, 'Komputer, printer, POS, CCTV'),
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'AC & Pendingin', 36, 3,  'AC split, kulkas, chiller, freezer'),
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'Mebel', 60, 0, 'Meja, kursi, rak, lemari'),
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'Peralatan Dapur', 60, 6, 'Kompor, oven, peralatan masak'),
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'Mesin Kopi & Bar', 60, 1, 'Mesin espresso, grinder, blender'),
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'Genset & Kelistrikan', 96, 6, 'Genset, panel, instalasi'),
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'Kendaraan', 96, 6, 'Motor, mobil operasional'),
+			 (UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)), 'Perkakas & Lainnya', 48, 0, 'Perkakas, perlengkapan umum')
+			ON CONFLICT (name) DO NOTHING`)
+		DB.Exec(`
+			INSERT INTO asset_categories (id, name, useful_life_months, notes)
+			SELECT UPPER(SUBSTRING(REPLACE(gen_random_uuid()::text,'-','') FROM 1 FOR 26)),
+			       a.category, COALESCE(MAX(a.useful_life_months), 0), 'Dari data aset lama'
+			FROM assets a
+			WHERE COALESCE(a.category,'') <> ''
+			  AND NOT EXISTS (SELECT 1 FROM asset_categories c WHERE lower(c.name) = lower(a.category))
+			GROUP BY a.category
+			ON CONFLICT (name) DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_asset_categories', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Aset: master kategori di-seed")
+	}
+
 	return nil
 }

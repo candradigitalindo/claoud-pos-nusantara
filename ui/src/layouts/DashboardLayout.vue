@@ -492,6 +492,7 @@ const NAV_ITEMS_DATA = [
       { to: '/perlengkapan/opname', label: 'Opname Aset', permission: 'assets.opname.view' },
       { to: '/perlengkapan/penghapusan', label: 'Penghapusan', permission: 'assets.disposal.view' },
       { to: '/perlengkapan/laporan', label: 'Laporan Aset', permission: 'assets.report.view' },
+      { to: '/perlengkapan/kategori', label: 'Kategori Aset', permission: 'assets.view' },
     ],
   },
   {

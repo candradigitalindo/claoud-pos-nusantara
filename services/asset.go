@@ -293,6 +293,19 @@ func normalizeAssetInput(req *models.AssetRequest, isCreate bool) error {
 	if isCreate && assetSystemStatus[req.Status] {
 		return fmt.Errorf("status '%s' hanya bisa terjadi lewat dokumen (mutasi/perawatan/penghapusan)", req.Status)
 	}
+	// Kategori wajib terdaftar di master — teks bebas membuat "Elektronik",
+	// "elektronik", dan "Elektronic" jadi tiga kelompok di dashboard & laporan.
+	official, err := resolveAssetCategory(req.Category)
+	if err != nil {
+		return err
+	}
+	req.Category = official
+	// Umur ekonomis bawaan diambil dari kategorinya bila tidak diisi.
+	if req.UsefulLifeMonths == 0 && official != "" {
+		if life, _ := categoryDefaults(official); life > 0 {
+			req.UsefulLifeMonths = life
+		}
+	}
 	if req.UsefulLifeMonths < 0 {
 		req.UsefulLifeMonths = 0
 	}

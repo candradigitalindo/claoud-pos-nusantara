@@ -379,6 +379,7 @@ const REDIRECT_GROUPS = [
     { value: '/perlengkapan/opname', label: 'Opname Aset', perm: 'assets.opname.view' },
     { value: '/perlengkapan/penghapusan', label: 'Penghapusan Aset', perm: 'assets.disposal.view' },
     { value: '/perlengkapan/laporan', label: 'Laporan Aset', perm: 'assets.report.view' },
+    { value: '/perlengkapan/kategori', label: 'Kategori Aset', perm: 'assets.view' },
   ]},
   { category: 'Produk', options: [
     { value: '/products', label: 'Produk & Kategori', perm: 'products.view' },

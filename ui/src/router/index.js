@@ -543,6 +543,12 @@ const routes = [
         meta: { title: 'Dashboard Aset — Cloud POS', requiresAuth: true, permission: 'assets.dashboard.view' },
       },
       {
+        path: 'perlengkapan/kategori',
+        name: 'AssetCategories',
+        component: () => import('@/pages/AssetCategories.vue'),
+        meta: { title: 'Kategori Aset — Cloud POS', requiresAuth: true, permission: 'assets.view' },
+      },
+      {
         path: 'perlengkapan/penerimaan',
         name: 'AssetReceivingQueue',
         component: () => import('@/pages/ReceivingQueue.vue'),
