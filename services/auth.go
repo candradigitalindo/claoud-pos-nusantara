@@ -25,6 +25,7 @@ var AllPermissions = []string{
 	"workunits.view", "workunits.create", "workunits.update", "workunits.delete",
 	"appfiles.view", "appfiles.create", "appfiles.delete",
 	"assets.view", "assets.create", "assets.update", "assets.delete",
+	"assets.dashboard.view",
 	"assets.transfer.view", "assets.transfer.create", "assets.transfer.approve", "assets.transfer.receive",
 	"assets.maintenance.view", "assets.maintenance.create",
 	"assets.disposal.view", "assets.disposal.create", "assets.disposal.approve",

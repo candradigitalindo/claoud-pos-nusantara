@@ -316,6 +316,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Laporan aset. Rute statis didaftarkan sebelum "/assets/:id" di atas —
 	// path terpisah dipakai supaya tidak pernah bentrok dengan id aset.
+	admin.Get("/asset-dashboard", middleware.RequirePermission("assets.dashboard.view"), handlers.GetAssetDashboard)
 	admin.Get("/asset-summary", middleware.RequirePermission("assets.view"), handlers.GetAssetSummary)
 	admin.Get("/asset-reports/:type", middleware.RequirePermission("assets.report.view"), handlers.GetAssetReport)
 	admin.Get("/asset-reports/:type/export", middleware.RequirePermission("assets.report.view"), handlers.ExportAssetReport)

@@ -468,6 +468,7 @@ const NAV_ITEMS_DATA = [
         d="M3 7l9 4 9-4M12 11v10"/>
     </svg>`,
     children: [
+      { to: '/perlengkapan/dashboard', label: 'Dashboard Aset',    permission: 'assets.dashboard.view' },
       { to: '/perlengkapan',        label: 'Daftar Aset',         permission: 'assets.view' },
       { to: '/perlengkapan/penerimaan', label: 'Penerimaan Peralatan', permission: 'assets.create' },
       { to: '/perlengkapan/distribusi', label: 'Distribusi ke PIC', permission: 'assets.view' },

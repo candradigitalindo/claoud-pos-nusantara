@@ -15,6 +15,7 @@ export const assetOpnamesApi = {
 }
 
 export const assetReportsApi = {
+  dashboard: () => apiClient.get('/admin/asset-dashboard'),
   summary: ()                  => apiClient.get('/admin/asset-summary'),
   report:  (type, params = {}) => apiClient.get(`/admin/asset-reports/${type}`, { params }),
   export:  (type, params = {}) => apiClient.get(`/admin/asset-reports/${type}/export`, {

@@ -2629,5 +2629,20 @@ func RunMigrations() error {
 		}
 	}
 
+	// Izin Dashboard Aset (one-shot, marker): diturunkan ke pemegang assets.view,
+	// karena dashboard hanya merangkum data yang sudah boleh mereka lihat.
+	var assetDashPerm int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_assets_dashboard_perm'").Scan(&assetDashPerm)
+	if assetDashPerm == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT DISTINCT role, 'assets.dashboard.view' FROM role_permissions WHERE permission = 'assets.view'
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES
+			('admin','assets.dashboard.view'), ('superadmin','assets.dashboard.view')
+			ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_assets_dashboard_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Aset: izin Dashboard Aset di-seed ke pemegang assets.view")
+	}
+
 	return nil
 }

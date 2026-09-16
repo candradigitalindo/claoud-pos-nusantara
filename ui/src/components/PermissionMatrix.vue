@@ -145,6 +145,7 @@ const CATEGORIES = [
   {
     label: 'Perlengkapan', icon: IC.warehouse,
     items: [
+      { type: 'single', key: 'assets.dashboard.view', label: 'Dashboard Aset', icon: IC.dashboard },
       { type: 'crud', module: 'assets', label: 'Data Aset', icon: IC.warehouse },
       {
         type: 'toggles', label: 'Opname Aset', icon: IC.ledger,

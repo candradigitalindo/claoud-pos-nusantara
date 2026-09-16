@@ -19,6 +19,16 @@ func GetAssetSummary(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: s})
 }
 
+// GetAssetDashboard — satu layar ringkas untuk pengelola aset.
+func GetAssetDashboard(c *fiber.Ctx) error {
+	d, err := services.GetAssetDashboard(getOutletScope(c))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false, Error: "Gagal memuat dashboard: " + err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: d})
+}
+
 func GetAssetReport(c *fiber.Ctx) error {
 	rep, err := services.BuildAssetReport(c.Params("type"), c.Query("from"), c.Query("to"), getOutletScope(c))
 	if err != nil {
