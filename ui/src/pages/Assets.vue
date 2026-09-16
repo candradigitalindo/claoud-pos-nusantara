@@ -6,7 +6,10 @@
         <h1 class="text-lg sm:text-xl font-bold text-gray-900">Manajemen Perlengkapan</h1>
         <p class="mt-0.5 text-sm text-gray-500">Inventaris barang beserta nilai buku, riwayat lokasi, dan perawatannya.</p>
       </div>
-      <AppButton v-if="canCreate" class="w-full sm:w-auto" @click="openCreate">+ Tambah Perlengkapan</AppButton>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <button v-if="canCreate" class="btn-soft w-full sm:w-auto" @click="importModal = true">Impor Excel</button>
+        <AppButton v-if="canCreate" class="w-full sm:w-auto" @click="openCreate">+ Tambah Perlengkapan</AppButton>
+      </div>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
@@ -126,6 +129,9 @@
         </template>
       </AppTable>
     </AppCard>
+
+    <!-- Impor massal: staf mendata di Excel sambil berkeliling, lalu diunggah -->
+    <AssetImportDialog v-model="importModal" @done="load" />
 
     <!-- ── Modal tambah/edit ── -->
     <AppModal v-model="assetModal" :title="editing ? 'Edit Perlengkapan' : 'Tambah Perlengkapan'" size="2xl">
@@ -282,6 +288,7 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
+import AssetImportDialog from '@/components/AssetImportDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -380,6 +387,7 @@ async function printSelected(size) {
 }
 
 // ── CRUD ──
+const importModal = ref(false)
 const assetModal = ref(false)
 const editing = ref(null)
 const saving = ref(false)
@@ -460,6 +468,12 @@ onMounted(async () => {
   color: #374151; background: #f3f4f6; min-height: 40px;
 }
 .btn-ghost:hover { background: #e5e7eb; }
+.btn-soft {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: .5rem .9rem; border-radius: .6rem; font-size: .85rem; font-weight: 600;
+  color: #374151; background: #fff; border: 1px solid rgba(0,0,0,.12); min-height: 40px;
+}
+.btn-soft:hover { background: #f3f4f6; border-color: rgba(5,150,105,.4); color: #047857; }
 .btn-soft {
   display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
   padding: .5rem .9rem; border-radius: .6rem; font-size: .82rem; font-weight: 600;

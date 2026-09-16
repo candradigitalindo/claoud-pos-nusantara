@@ -16,7 +16,7 @@ Seluruh pekerjaan ada di grup **Perlengkapan** di sisi kiri:
 | Menu | Dipakai untuk |
 |---|---|
 | **Dashboard Aset** | Melihat nilai aset dan daftar pekerjaan yang menunggu |
-| **Daftar Aset** | Mencari, melengkapi data, dan mencetak label aset |
+| **Daftar Aset** | Mencari, melengkapi data, mencetak label, dan **impor massal lewat Excel** |
 | **Penerimaan Peralatan** | Menerima barang dari tim purchasing |
 | **Distribusi ke PIC** | Menyerahkan aset ke orang yang mengajukan pembeliannya |
 | **Mutasi Antar Outlet** | Memindahkan aset ke outlet lain |
@@ -99,6 +99,56 @@ biarkan — itu antrean Gudang Induk.
 
 Halaman detail aset menampilkan **nilai buku berjalan**, riwayat perawatan, dan riwayat
 perpindahan — termasuk siapa yang terakhir memegangnya.
+
+---
+
+## 3b. Mendata Banyak Aset Sekaligus lewat Excel
+
+Untuk pendataan awal atau aset lama yang jumlahnya ratusan, mengetik satu per satu lewat form
+terlalu lama. Pakai jalur Excel.
+
+**Langkah:**
+
+1. Buka **Daftar Aset** → tombol **Impor Excel**.
+2. Klik **Unduh Template**. Templatenya berisi empat lembar:
+   - **Data Aset** — tempat Anda mengetik, hanya berisi judul kolom
+   - **Panduan** — arti tiap kolom dan aturan pengisiannya
+   - **Referensi** — daftar kategori dan kode outlet yang berlaku
+   - **Contoh Pengisian** — dua contoh baris, sengaja dipisah agar tidak ikut terkirim
+3. Isi lembar **Data Aset** mulai baris ke-2. Kolom Kode Outlet, Kategori, Mode, dan Kondisi
+   punya daftar pilihan — klik selnya lalu pilih.
+4. Simpan sebagai `.xlsx`, kembali ke aplikasi, klik **Pilih Berkas**.
+5. Sistem **memeriksa dulu** dan menampilkan tiga angka: baris terbaca, siap disimpan, dan perlu
+   diperbaiki. Baris bermasalah disebut **nomor barisnya** beserta alasannya.
+6. Perbaiki baris yang bermasalah di Excel lalu unggah ulang, atau langsung tekan
+   **Simpan N Baris** untuk menyimpan yang sudah benar.
+
+**Yang perlu diketahui:**
+
+| Hal | Perilakunya |
+|---|---|
+| Baris bermasalah | Tidak menggagalkan berkas. Yang benar tetap tersimpan, yang salah dilaporkan |
+| Mode **Tunggal** dengan jumlah 3 | Menghasilkan **3 aset terpisah**, masing-masing bernomor sendiri |
+| Mode **Massal** dengan jumlah 40 | Menghasilkan **1 baris aset** berisi 40 unit |
+| Harga `Rp 35.000.000` atau `450.000` | Diterima; pemisah ribuan dan awalan Rp dibersihkan sendiri |
+| Tanggal `15/02/2026` | Diterima, sama dengan `2026-02-15` |
+| Umur ekonomis kosong | Diisi otomatis dari kategorinya |
+| Nomor aset | **Tidak perlu diisi** — dibuat sistem |
+| Nomor seri kembar dalam satu berkas | Ditolak, disebut baris berapa kembarannya |
+
+**Pesan yang sering muncul:**
+
+| Pesan | Perbaikannya |
+|---|---|
+| "kode outlet … tidak dikenal atau di luar akses Anda" | Salin persis dari sheet Referensi |
+| "kategori … tidak terdaftar" | Tambahkan dulu di menu Kategori Aset, atau kosongkan |
+| "jumlah harus angka bulat lebih dari 0" | Periksa sel yang kosong atau berisi teks |
+| "format tanggal tidak dikenali" | Tulis `YYYY-MM-DD` |
+| "kolom … tidak ditemukan" | Judul kolom terhapus/berubah — unduh template baru |
+
+> Jangan mengubah judul kolom di baris 1. Sistem mencocokkan kolom lewat judulnya, bukan
+> posisinya — jadi menambah kolom bantu sendiri di sebelah kanan tidak masalah, tetapi
+> mengganti judul akan membuat kolomnya tidak terbaca.
 
 ---
 
