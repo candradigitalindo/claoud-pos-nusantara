@@ -292,9 +292,24 @@ async function changePassword() {
 const adminInitial     = computed(() => (authStore.admin?.username ?? 'A').charAt(0).toUpperCase())
 const currentPageTitle = computed(() => route.meta?.title?.replace(' — Cloud POS', '') ?? 'Dashboard')
 
+// Penanda menu aktif.
+//
+// `startsWith` polos membuat menu induk ikut menyala di setiap anaknya: membuka
+// /perlengkapan/dashboard juga menyalakan "Daftar Aset" (/perlengkapan), karena
+// alamatnya memang berawalan sama. Karena itu sub-alamat hanya menyalakan menu
+// ini bila TIDAK ADA menu lain yang cocok lebih spesifik.
+//
+// Halaman yang tidak punya menunya sendiri — misalnya detail aset
+// /perlengkapan/<id> — tetap menyalakan menu induknya, dan itu memang yang
+// diharapkan.
 function isActive(to) {
   if (to === '/') return route.path === '/'
-  return route.path.startsWith(to)
+  if (route.path === to) return true
+  if (!route.path.startsWith(to + '/')) return false
+  return !ALL_NAV_PATHS.some(
+    (p) => p !== to && p.length > to.length &&
+      (route.path === p || route.path.startsWith(p + '/')),
+  )
 }
 
 function isGroupActive(item) {
@@ -516,6 +531,12 @@ const NAV_ITEMS = computed(() =>
     })
     .filter(item => !item.children || item.children.length > 0)
 )
+
+// Seluruh alamat yang punya menunya sendiri — dipakai isActive untuk memilih
+// menu yang paling spesifik.
+const ALL_NAV_PATHS = NAV_ITEMS_DATA.flatMap((item) =>
+  item.to ? [item.to] : (item.children || []).map((c) => c.to),
+).filter(Boolean)
 
 // Auto-open group if a child route is active
 NAV_ITEMS_DATA.forEach(item => {
