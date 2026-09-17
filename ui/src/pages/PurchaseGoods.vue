@@ -161,6 +161,17 @@
                       <button type="button" @click="removeSubItem(i, j)" class="col-span-1 justify-self-end self-center text-red-400 hover:text-red-600 sm:col-span-1 sm:justify-self-center" :disabled="item.items.length <= 1">
                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                       </button>
+                      <!-- Sumber HPS diberi barisnya sendiri: tautan marketplace
+                           panjang dan tidak muat di deret kolom angka. -->
+                      <div class="col-span-2 sm:col-span-12">
+                        <div class="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5">
+                          <span class="shrink-0 text-gray-400">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg>
+                          </span>
+                          <input v-model="sub.hps_source" class="input-sm w-full border-0 bg-transparent px-0"
+                            placeholder="Sumber HPS — mis. Toko Jaya (telp 0812…), atau tempel link Shopee/Tokopedia" />
+                        </div>
+                      </div>
                     </div>
                     <button type="button" @click="addSubItem(i)" class="text-xs text-emerald-600 hover:text-emerald-800 font-medium">+ Tambah Item</button>
                   </div>
@@ -378,6 +389,14 @@
                       </span>
                       <span v-else>{{ sub.qty }} {{ sub.unit }}</span>
                     </dd>
+                    <template v-if="showHps && sub.hps_source">
+                      <dt class="text-gray-400">Sumber HPS</dt>
+                      <dd class="min-w-0">
+                        <a v-if="isLink(sub.hps_source)" :href="sub.hps_source" target="_blank" rel="noopener"
+                          class="block break-all text-emerald-700 underline">{{ shortSource(sub.hps_source) }}</a>
+                        <span v-else class="block break-words text-gray-700">{{ sub.hps_source }}</span>
+                      </dd>
+                    </template>
                     <template v-if="showHps">
                       <dt class="text-gray-400">HPS</dt>
                       <dd class="text-gray-700">
@@ -407,6 +426,7 @@
                       <th class="py-1.5 pr-2">Satuan</th>
                       <th v-if="showHps" class="py-1.5 pr-2 text-right">HPS Satuan</th>
                       <th v-if="showHps" class="py-1.5 pr-2 text-right">HPS Total</th>
+                      <th v-if="showHps" class="py-1.5 pr-2 text-left">Sumber HPS</th>
                       <th class="py-1.5 pr-2 text-right">Harga Satuan</th>
                       <th class="py-1.5 text-right">Harga Total</th>
                     </tr>
@@ -427,6 +447,13 @@
                       <td class="py-1.5 pr-2">{{ sub.unit }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(sub.hps_price) }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(detail.status === 'pending' ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</td>
+                      <td v-if="showHps" class="max-w-[14rem] py-1.5 pr-2">
+                        <input v-if="detail.status === 'pending'" v-model="sub.hps_source" class="input-sm w-full py-0.5 px-1"
+                          placeholder="toko / link" @change="saveDetailQty()" />
+                        <a v-else-if="isLink(sub.hps_source)" :href="sub.hps_source" target="_blank" rel="noopener"
+                          class="block truncate text-emerald-700 underline" :title="sub.hps_source">{{ shortSource(sub.hps_source) }}</a>
+                        <span v-else class="block truncate text-gray-600" :title="sub.hps_source">{{ sub.hps_source || '—' }}</span>
+                      </td>
                       <td class="py-1.5 pr-2 text-right">{{ sub.final_price ? formatRupiah(sub.final_price) : '-' }}</td>
                       <td class="py-1.5 text-right font-medium">{{ sub.final_price ? formatRupiah((sub.qty || 0) * sub.final_price) : '-' }}</td>
                     </tr>
@@ -774,6 +801,20 @@ const detailRejectReason = ref('')
 // item ke pecahan, `items` dari server sudah berisi sisa yang tepat — dulu di
 // sini item pecahan disaring lagi berdasarkan nama, sehingga dua baris bernama
 // sama dalam satu grup ikut hilang semuanya.
+// Sumber HPS boleh berupa tautan marketplace atau sekadar catatan "telepon
+// toko". Tautan ditampilkan sebagai nama situsnya saja supaya kolom tidak
+// melebar oleh URL panjang, tapi tetap bisa diklik dan di-hover untuk melihat
+// alamat penuhnya.
+function isLink(v) { return /^https?:\/\//i.test(String(v || '').trim()) }
+function shortSource(v) {
+  const s = String(v || '').trim()
+  if (!isLink(s)) return s
+  try {
+    const u = new URL(s)
+    return u.hostname.replace(/^www\./, '') + (u.pathname.length > 1 ? '…' : '')
+  } catch { return s }
+}
+
 function getUnsplitItems(d) {
   return (d.items || []).map(it => ({ ...it, selected: false }))
 }
@@ -939,15 +980,15 @@ function canDelete(s) {
 function emptyForm() {
   return {
     outlet_id: '', work_unit_id: '', requested_by: '', vendor_id: '', vendor_name: '', project_id: '',
-    items: [{ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0 }] }],
+    items: [{ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '' }] }],
     notes: '',
   }
 }
 function addItem() {
-  form.value.items.push({ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0 }] })
+  form.value.items.push({ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '' }] })
 }
 function removeItem(i) { if (form.value.items.length > 1) form.value.items.splice(i, 1) }
-function addSubItem(i) { form.value.items[i].items.push({ name: '', qty: 1, unit: 'pcs', hps_price: 0 }) }
+function addSubItem(i) { form.value.items[i].items.push({ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '' }) }
 function removeSubItem(i, j) { if (form.value.items[i].items.length > 1) form.value.items[i].items.splice(j, 1) }
 function adminName() { return authStore.admin?.name || 'Admin' }
 

@@ -2,10 +2,14 @@ package models
 
 // PurchaseSubItem represents a single item inside a procurement entry.
 type PurchaseSubItem struct {
-	Name          string  `json:"name"`
-	Qty           int     `json:"qty"`
-	Unit          string  `json:"unit"`
-	HpsPrice      float64 `json:"hps_price"`
+	Name     string  `json:"name"`
+	Qty      int     `json:"qty"`
+	Unit     string  `json:"unit"`
+	HpsPrice float64 `json:"hps_price"`
+	// HpsSource: dari mana angka HPS itu didapat — nama toko yang ditelepon,
+	// tautan Shopee/Tokopedia, atau penawaran vendor. Tanpa ini, HPS hanya
+	// angka yang harus dipercaya begitu saja saat pengajuan ditinjau.
+	HpsSource     string  `json:"hps_source"`
 	HpsSubtotal   float64 `json:"hps_subtotal"`
 	FinalPrice    float64 `json:"final_price"`
 	FinalSubtotal float64 `json:"final_subtotal"`
