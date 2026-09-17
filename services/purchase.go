@@ -725,6 +725,12 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 	if !ok {
 		return nil, fmt.Errorf("tidak bisa %s dari status '%s'", input.Action, currentStatus)
 	}
+	// Alasan penolakan wajib, dan dijaga di SERVER — bukan hanya di layar.
+	// Pengaju berhak tahu apa yang harus diperbaiki; penolakan tanpa alasan
+	// memaksanya menebak dan mengajukan ulang hal yang sama.
+	if input.Action == "reject" && strings.TrimSpace(input.RejectedReason) == "" {
+		return nil, Invalid("alasan penolakan wajib diisi")
+	}
 
 	return applyStatusUpdate(id, newStatus, input)
 }
