@@ -34,6 +34,9 @@ type AssetTransfer struct {
 	Reason         string              `json:"reason"`
 	ExpectedReturn string              `json:"expected_return"`
 	Notes          string              `json:"notes"`
+	// PhotoURL: bukti barang saat dikirim dari outlet asal (wajib saat 'sent'),
+	// sama seperti transfer stok dan serah terima ke PIC.
+	PhotoURL       string              `json:"photo_url"`
 	RejectedReason string              `json:"rejected_reason"`
 	CreatedBy      string              `json:"created_by"`
 	ApprovedBy     string              `json:"approved_by"`
@@ -69,8 +72,9 @@ type AssetTransferRequest struct {
 // AssetTransferActionRequest dipakai semua aksi status. `Items` hanya dibaca
 // saat menerima: qty yang benar-benar sampai, per baris.
 type AssetTransferActionRequest struct {
-	Reason string                       `json:"reason"` // alasan penolakan
-	Items  []AssetTransferReceiptLine   `json:"items"`
+	Reason   string                     `json:"reason"`    // alasan penolakan
+	PhotoURL string                     `json:"photo_url"` // bukti kirim, wajib saat send
+	Items    []AssetTransferReceiptLine `json:"items"`
 }
 
 type AssetTransferReceiptLine struct {

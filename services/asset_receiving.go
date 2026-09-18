@@ -146,6 +146,11 @@ func BuildReceivingDraft(prID string, outletScope []string) (*models.ReceivingDr
 	}
 	d.CapitalizationMin = settingFloat("asset_capitalization_min", defaultCapitalizationMin)
 	d.AlreadyReceived = d.Status == "received"
+	// Gudang yang MEMBUTUHKAN barang (untuk ditampilkan) vs gudang yang
+	// MENERIMA (bawaan pilihan): barang dapur selalu masuk Gudang Induk dulu,
+	// lalu diteruskan lewat Transfer Stok yang berfoto.
+	d.TargetWarehouseID, d.TargetWarehouseName, d.TargetWarehouseType = targetWarehouseFor(prID)
+	d.ReceivingWarehouseID = defaultReceivingWarehouse()
 	// Barang boleh datang sebelum dibayar (tempo) maupun sesudah (bayar di
 	// muka). Yang menghalangi penerimaan hanyalah dokumen yang belum disetujui
 	// atau sudah mati — bukan urusan pembayarannya.
@@ -222,6 +227,12 @@ func BuildReceivingDraft(prID string, outletScope []string) (*models.ReceivingDr
 					line.Destination = "habis"
 					line.Kind = "habis"
 				}
+				// Petugas tanpa hak gudang sudah memutuskan baris ini STOK dan
+				// menundanya: sejak itu baris ini milik meja Gudang Induk, apa pun
+				// namanya di katalog.
+				if line.Remaining > 0 && stockQueuedFor(srcID, base) {
+					line.Destination, line.Kind = "stok", "dapur"
+				}
 				d.Lines = append(d.Lines, line)
 			}
 		}
@@ -290,7 +301,6 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor string, can
 		if price <= 0 {
 			price = src.UnitPrice
 		}
-		appliedQty[src.PRItemKey] += qty
 
 		switch in.Destination {
 		case "aset":
@@ -351,11 +361,26 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor string, can
 
 		case "stok":
 			if !canStock {
+				// Ditunda ke antrean gudang. Keputusan "ini stok" dicatat supaya
+				// barisnya berpindah ke meja Gudang Induk, tapi TIDAK dihitung
+				// selesai (lihat appliedQty di bawah): barangnya belum masuk buku
+				// stok siapa pun, jadi dokumen harus tetap terbuka.
 				res.StockLinesQueued++
+				if _, err := tx.Exec(`
+					INSERT INTO pr_receiving_decisions (id, purchase_request_id, pr_item_key, destination, qty, reason, actor, created_at)
+					VALUES ($1,$2,$3,'stok_tunda',$4,$5,$6,(now() AT TIME ZONE 'UTC'))`,
+					NewULID(), src.SourcePRID, src.PRItemKey, qty, in.Reason, actor); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			if in.StockItemID == "" || in.WarehouseID == "" {
 				return nil, fmt.Errorf("%s: item stok dan gudang wajib dipilih", src.Name)
+			}
+			// Scope dokumen diperiksa lewat outlet pengaju; gudang tujuannya
+			// dipilih bebas di dialog, jadi harus diperiksa sendiri.
+			if !WarehouseMutableInScope(in.WarehouseID, outletScope) {
+				return nil, Invalid("%s: gudang tujuan di luar akses Anda", src.Name)
 			}
 			// Harga di pengajuan adalah harga per SATUAN BELI (mis. per kg),
 			// sedangkan GRN menyimpan harga per SATUAN DASAR (mis. per gram).
@@ -390,6 +415,8 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor string, can
 		default:
 			return nil, fmt.Errorf("%s: tujuan '%s' tidak dikenal", src.Name, in.Destination)
 		}
+		// Hanya baris yang benar-benar berwujud data yang dihitung selesai.
+		appliedQty[src.PRItemKey] += qty
 
 		// Jejak keputusan: siapa memutuskan apa atas baris belanja mana.
 		if _, err := tx.Exec(`
@@ -635,7 +662,7 @@ func ListIncompleteReceipts(outletScope []string, kind string) ([]IncompleteRece
 				if price == 0 {
 					price = sub.HpsPrice
 				}
-				lineKind := lineKindFor(sub.Name)
+				lineKind := lineKindOf(prID, key, sub.Name)
 				if kind != "" && lineKind != kind {
 					continue
 				}
@@ -671,6 +698,10 @@ type ReceivingQueueRow struct {
 	PaidAmount    float64 `json:"paid_amount"`
 	TotalFinal    float64 `json:"total_final"`
 	ReceiptStatus string  `json:"receipt_status"`
+	// Gudang yang membutuhkan barangnya (gudang run MRP, atau gudang outlet
+	// pengaju), supaya penerima tahu ke mana barang ini diteruskan.
+	TargetWarehouseName string `json:"target_warehouse_name,omitempty"`
+	TargetWarehouseType string `json:"target_warehouse_type,omitempty"`
 }
 
 // ListReceivingQueue mencari pengajuan yang sudah dibayar tapi barisnya belum
@@ -689,16 +720,10 @@ func ListReceivingQueue(kind string, outletScope []string) ([]ReceivingQueueRow,
 		  AND pr.status IN ('approved', 'payment_requested', 'paid', 'partial', 'received')
 		  AND COALESCE(jsonb_array_length(pr.items), 0) > 0`
 	args := []interface{}{}
-	// Pengajuan baru sudah bertanda jenis sejak dibuat, jadi bisa disaring di
-	// SQL. Dokumen lama (goods_kind kosong) tetap dipilah per baris di bawah —
-	// sebagian di antaranya memang masih campuran.
-	if kind != "" {
-		q += ` AND COALESCE(pr.goods_kind, '') IN ('', $%d)`
-	}
-	if kind != "" {
-		args = append(args, kind)
-		q = strings.Replace(q, "$%d", fmt.Sprintf("$%d", len(args)), 1)
-	}
+	// Pemilahan meja sengaja HANYA per baris (lineKindOf), bukan lewat kolom
+	// goods_kind. Kolom itu dibekukan saat pengajuan dibuat; bila katalog stok
+	// berubah sesudahnya, saringan SQL dan saringan per baris bisa saling
+	// bertolak belakang dan dokumen lenyap dari KEDUA antrean.
 	if outletScope != nil {
 		args = append(args, pqStringArray(outletScope))
 		q += fmt.Sprintf(` AND pr.outlet_id = ANY($%d::text[])`, len(args))
@@ -732,7 +757,7 @@ func ListReceivingQueue(kind string, outletScope []string) ([]ReceivingQueueRow,
 				if remaining <= 0 {
 					continue
 				}
-				if kind != "" && lineKindFor(sub.Name) != kind {
+				if kind != "" && lineKindOf(r.PurchaseRequestID, key, sub.Name) != kind {
 					continue
 				}
 				price := sub.FinalPrice
@@ -745,6 +770,7 @@ func ListReceivingQueue(kind string, outletScope []string) ([]ReceivingQueueRow,
 			}
 		}
 		if r.Lines > 0 {
+			_, r.TargetWarehouseName, r.TargetWarehouseType = targetWarehouseFor(r.PurchaseRequestID)
 			out = append(out, r)
 		}
 	}
@@ -763,6 +789,53 @@ func lineKindFor(name string) string {
 		return "dapur"
 	}
 	return "perlengkapan"
+}
+
+// stockQueuedFor: seorang petugas tanpa hak gudang sudah memutuskan baris ini
+// adalah STOK dan menundanya ke antrean gudang (destination 'stok_tunda').
+// Keputusan itu memindahkan baris ke meja Gudang Induk apa pun nama barangnya —
+// kalau tidak, "Gula pasir 1 kg" yang tidak persis sama dengan katalog akan
+// menunggu di meja yang salah selamanya.
+func stockQueuedFor(prID, key string) bool {
+	var exists bool
+	database.DB.QueryRow(`
+		SELECT EXISTS(SELECT 1 FROM pr_receiving_decisions
+			WHERE purchase_request_id = $1 AND pr_item_key = $2 AND destination = 'stok_tunda')`,
+		prID, key).Scan(&exists)
+	return exists
+}
+
+// lineKindOf = lineKindFor + keputusan tunda. Satu-satunya rumus meja yang
+// dipakai antrean, dialog, dan laporan, supaya ketiganya tidak pernah berbeda.
+func lineKindOf(prID, key, name string) string {
+	if stockQueuedFor(prID, key) {
+		return "dapur"
+	}
+	return lineKindFor(name)
+}
+
+// targetWarehouseFor menebak gudang yang MEMBUTUHKAN barang pengajuan ini:
+// gudang pada run MRP bila pengajuan lahir dari MRP, atau gudang outlet
+// pengaju. Tidak disimpan sebagai kolom — cukup diturunkan dari tautan yang
+// sudah ada (mrp_run_id, outlet_id).
+func targetWarehouseFor(prID string) (id, name, typ string) {
+	var wid, wname, wtype sql.NullString
+	database.DB.QueryRow(`
+		SELECT w.id, w.name, w.type
+		FROM purchase_requests pr
+		LEFT JOIN mrp_runs mr ON mr.id = pr.mrp_run_id
+		LEFT JOIN warehouses w ON w.id = COALESCE(mr.warehouse_id,
+			(SELECT ow.id FROM warehouses ow WHERE ow.outlet_id = pr.outlet_id AND ow.type = 'outlet' AND ow.is_active = true LIMIT 1))
+		WHERE pr.id = $1`, prID).Scan(&wid, &wname, &wtype)
+	return wid.String, wname.String, wtype.String
+}
+
+// defaultReceivingWarehouse: gudang induk aktif pertama — tempat bawaan
+// barang dapur diterima sebelum diteruskan ke outlet.
+func defaultReceivingWarehouse() string {
+	var id sql.NullString
+	database.DB.QueryRow(`SELECT id FROM warehouses WHERE type = 'central' AND is_active = true ORDER BY created_at LIMIT 1`).Scan(&id)
+	return id.String
 }
 
 // ── Pemisahan jenis belanja sejak pengajuan ─────────────────────────────────

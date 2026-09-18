@@ -82,7 +82,10 @@ var AllPermissions = []string{
 	"warehouse_dashboard.view",
 	"warehouses.view", "warehouses.create", "warehouses.update", "warehouses.delete",
 	"stockitems.view", "stockitems.create", "stockitems.update", "stockitems.delete",
+	// Transfer stok: setujui dan terima dipisah dari update (kirim/batalkan),
+	// sama seperti mutasi aset — yang mengirim bukan yang menerima.
 	"stocktransfers.view", "stocktransfers.create", "stocktransfers.update",
+	"stocktransfers.approve", "stocktransfers.receive",
 	"stockwastes.view", "stockwastes.create",
 	"stockledger.view", "stockledger.adjust",
 	"recipes.view", "recipes.create", "recipes.update", "recipes.delete",

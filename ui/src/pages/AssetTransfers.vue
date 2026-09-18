@@ -204,6 +204,17 @@
           Isi apa adanya. Unit yang tidak sampai otomatis dikembalikan ke {{ detail.from_outlet_name }} dan
           dokumen ditandai selisih.
         </p>
+
+        <!-- Bukti barang berangkat: wajib saat kirim, sama seperti transfer stok
+             dan serah terima ke PIC. Ditolak server bila kosong. -->
+        <div v-if="isSending" class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+          <PhotoCapture v-model="sendPhoto" label="Foto Barang Saat Dikirim"
+            hint="Potret barangnya saat dimuat/berangkat dari outlet asal." />
+        </div>
+        <div v-else-if="detail.photo_url" class="flex items-center gap-3">
+          <img :src="detail.photo_url" alt="Bukti kirim" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+          <p class="text-xs text-gray-500">Foto saat dikirim dari {{ detail.from_outlet_name }}.</p>
+        </div>
       </div>
 
       <template #footer>
@@ -236,6 +247,7 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
+import PhotoCapture from '@/components/PhotoCapture.vue'
 
 const toast = useToastStore()
 const auth = useAuthStore()
@@ -355,6 +367,8 @@ const detail = ref(null)
 const acting = ref('')
 const receipt = ref({})
 const isReceiving = computed(() => detail.value?.status === 'sent' && canReceive)
+const isSending = computed(() => detail.value?.status === 'approved' && canCreate)
+const sendPhoto = ref('')
 
 const jejak = computed(() => {
   const d = detail.value
@@ -369,6 +383,7 @@ const jejak = computed(() => {
 async function openDetail(t) {
   detailModal.value = true
   detail.value = null
+  sendPhoto.value = ''
   try {
     detail.value = asObject(await assetTransfersApi.get(t.id))
     receipt.value = Object.fromEntries((detail.value.items || []).map(it => [it.id, it.received_qty ?? it.qty]))
@@ -407,11 +422,15 @@ async function runAction(act) {
     reason = window.prompt('Alasan penolakan:') || ''
     if (!reason.trim()) return
   }
+  if (act === 'send' && !sendPhoto.value) { toast.error('Foto barang saat dikirim wajib diunggah'); return }
   acting.value = act
   try {
     if (act === 'receive') {
       const items = (detail.value.items || []).map(it => ({ item_id: it.id, received_qty: Number(receipt.value[it.id] ?? it.qty) }))
       detail.value = asObject(await assetTransfersApi.receive(detail.value.id, items))
+    } else if (act === 'send') {
+      detail.value = asObject(await assetTransfersApi.send(detail.value.id, sendPhoto.value))
+      sendPhoto.value = ''
     } else if (act === 'reject') {
       detail.value = asObject(await assetTransfersApi.reject(detail.value.id, reason))
     } else {

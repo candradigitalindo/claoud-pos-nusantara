@@ -63,8 +63,15 @@
             <input v-model="form.vendor_name" class="form-input" placeholder="mis. CV Sumber Pangan" />
           </div>
           <div>
-            <label class="lbl">No. Pengadaan / PO (opsional)</label>
-            <input v-model="form.po_ref" class="form-input" placeholder="mis. 010726001" />
+            <label class="lbl">No. PO vendor (opsional)</label>
+            <input v-model="form.po_ref" class="form-input" placeholder="mis. PO/2026/091" />
+            <!-- GRN manual tidak menulis pr_item_key, jadi pengajuan pengadaan tidak
+                 pernah tertutup lewat sini; server menolak nomor pengajuan yang masih hidup. -->
+            <p class="mt-1 text-[11px] text-amber-700">
+              Barang dari <strong>pengajuan pengadaan</strong> dicatat lewat
+              <RouterLink to="/gudang/penerimaan-pengadaan" class="font-semibold underline">Penerimaan dari Pengadaan</RouterLink>,
+              bukan di sini — supaya pengajuannya ikut tertutup.
+            </p>
           </div>
           <div>
             <label class="lbl">Catatan</label>

@@ -46,6 +46,34 @@ func fullySplitMasterCond(alias string) string {
 	return fmt.Sprintf("(%[1]ssplit_status = 'master' AND COALESCE(jsonb_array_length(%[1]sitems), 0) = 0)", p)
 }
 
+// rowQuerier dipenuhi *sql.DB maupun *sql.Tx.
+type rowQuerier interface {
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
+// purchaseHasReceipts melaporkan apakah pengajuan ini (atau pecahannya) sudah
+// punya wujud barang: receipt_status terisi, atau ada aset / GRN / material
+// projek yang menunjuk ke sana.
+//
+// Begitu barang mulai diterima, dokumennya dikunci: tidak boleh dibatalkan,
+// itemnya tidak boleh diubah, dan tidak boleh dihapus. Tanpa kunci ini,
+// pembelian tempo yang barangnya sudah jadi aset bisa dibatalkan — hutang ke
+// vendor lenyap dari laporan sementara barangnya ada di outlet; mengganti nama
+// item mengubah pr_item_key sehingga baris yang sudah dicatat muncul lagi
+// sebagai belum diterima dan bisa dicatat dua kali.
+func purchaseHasReceipts(q rowQuerier, id string) bool {
+	var has bool
+	err := q.QueryRow(`
+		WITH fam AS (SELECT id FROM purchase_requests WHERE id = $1 OR parent_id = $1)
+		SELECT EXISTS(SELECT 1 FROM purchase_requests p WHERE p.id IN (SELECT id FROM fam) AND COALESCE(p.receipt_status,'') <> '')
+		    OR EXISTS(SELECT 1 FROM assets a WHERE a.purchase_request_id IN (SELECT id FROM fam) AND a.is_deleted = false)
+		    OR EXISTS(SELECT 1 FROM goods_receipts g WHERE g.purchase_request_id IN (SELECT id FROM fam))
+		    OR EXISTS(SELECT 1 FROM project_materials m WHERE m.purchase_request_id IN (SELECT id FROM fam))`, id).Scan(&has)
+	return err == nil && has
+}
+
+const receivedLockMsg = "barang pada pengajuan ini sudah mulai diterima dan tercatat (aset/stok/material), jadi dokumennya dikunci — %s"
+
 func nilIfEmpty(s string) interface{} {
 	if s == "" {
 		return nil
@@ -697,6 +725,11 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 	// If this is a master with children, cascade certain actions to children
 	isMaster := splitStatus != nil && *splitStatus == "master"
 	if isMaster {
+		// Kunci yang sama berlaku sebelum cascade: master yang salah satu
+		// pecahannya sudah menerima barang tidak boleh dibatalkan.
+		if input.Action == "cancel" && purchaseHasReceipts(database.DB, id) {
+			return nil, Invalid(receivedLockMsg, "tidak bisa dibatalkan")
+		}
 		switch input.Action {
 		case "pay":
 			// Master hanya boleh dibayar sebatas sisa item yang masih dipegang
@@ -730,6 +763,9 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 	// memaksanya menebak dan mengajukan ulang hal yang sama.
 	if input.Action == "reject" && strings.TrimSpace(input.RejectedReason) == "" {
 		return nil, Invalid("alasan penolakan wajib diisi")
+	}
+	if input.Action == "cancel" && purchaseHasReceipts(database.DB, id) {
+		return nil, Invalid(receivedLockMsg, "tidak bisa dibatalkan. Selesaikan pembayarannya, atau kembalikan barangnya lewat dokumen penghapusan/koreksi stok")
 	}
 
 	return applyStatusUpdate(id, newStatus, input)
@@ -966,6 +1002,11 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	if currentStatus != "pending" && currentStatus != "approved" {
 		return nil, fmt.Errorf("hanya bisa update item pada status pending/approved")
 	}
+	// Pembelian tempo: status masih 'approved' padahal barangnya sudah diterima.
+	// Mengubah item di titik ini mengacak kunci idempotensi penerimaan.
+	if purchaseHasReceipts(database.DB, id) {
+		return nil, Invalid(receivedLockMsg, "itemnya tidak bisa diubah lagi")
+	}
 	if err := validateItems(input.Items); err != nil {
 		return nil, err
 	}
@@ -1038,6 +1079,12 @@ func DeletePurchaseRequest(id string, isAdmin bool) error {
 	).Scan(&status, &splitStatus, &parentID, &paidAmount, &itemsJSON)
 	if err != nil {
 		return fmt.Errorf("pengajuan tidak ditemukan")
+	}
+	// Berlaku untuk admin maupun bukan: dokumen yang sudah melahirkan aset,
+	// GRN, atau material projek tidak boleh hilang — tidak ada foreign key yang
+	// menahannya, jadi kuncinya ada di sini.
+	if purchaseHasReceipts(tx, id) {
+		return Invalid(receivedLockMsg, "tidak bisa dihapus")
 	}
 
 	if isAdmin {

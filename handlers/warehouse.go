@@ -326,11 +326,44 @@ func UpdateTransferStatus(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
 	}
-	if !services.TransferInScope(c.Params("id"), getOutletScope(c)) {
+	scope := getOutletScope(c)
+	if !services.TransferInScope(c.Params("id"), scope) {
 		return c.Status(403).JSON(models.APIResponse{Error: "Akses transfer tidak diizinkan"})
 	}
+	// Izin per tahap, sama seperti mutasi aset: setujui dan terima adalah
+	// wewenang yang berbeda dari kirim/batalkan. Satu izin untuk semuanya
+	// membuat satu orang bisa menyetujui, mengirim, dan menerima sendiri.
+	perm := map[string]string{
+		"approved":  "stocktransfers.approve",
+		"sent":      "stocktransfers.update",
+		"cancelled": "stocktransfers.update",
+		"received":  "stocktransfers.receive",
+	}[body.Status]
+	if perm == "" {
+		return c.Status(400).JSON(models.APIResponse{Error: "status tidak dikenal"})
+	}
+	if !roleHasPermission(c, perm) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Anda tidak punya izin untuk tahap ini (" + perm + ")"})
+	}
+	// Arah: yang melepas barang adalah gudang asal, yang menerima gudang
+	// tujuan. TransferInScope lolos bila salah satu sisi dalam scope, jadi
+	// tanpa cek ini pengguna outlet bisa menekan "kirim" atas nama gudang lain.
+	t, err := services.GetStockTransfer(c.Params("id"))
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Error: "transfer tidak ditemukan"})
+	}
+	switch body.Status {
+	case "received":
+		if !services.WarehouseMutableInScope(t.ToWarehouseID, scope) {
+			return c.Status(403).JSON(models.APIResponse{Error: "hanya gudang tujuan yang bisa menerima transfer ini"})
+		}
+	default:
+		if !services.WarehouseMutableInScope(t.FromWarehouseID, scope) {
+			return c.Status(403).JSON(models.APIResponse{Error: "hanya gudang asal yang bisa melakukan ini"})
+		}
+	}
 	actor, _ := c.Locals("admin_username").(string)
-	t, err := services.UpdateTransferStatusWithPhoto(c.Params("id"), body.Status, body.PhotoURL, actor)
+	t, err = services.UpdateTransferStatusWithPhoto(c.Params("id"), body.Status, body.PhotoURL, actor)
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -347,8 +380,17 @@ func UpdateReceivedQty(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
 	}
-	if !services.TransferInScope(transferID, getOutletScope(c)) {
+	scope := getOutletScope(c)
+	if !services.TransferInScope(transferID, scope) {
 		return c.Status(403).JSON(models.APIResponse{Error: "Akses transfer tidak diizinkan"})
+	}
+	// Mengisi jumlah yang sampai adalah bagian dari MENERIMA: izin dan arahnya
+	// mengikuti tahap 'received'.
+	if !roleHasPermission(c, "stocktransfers.receive") {
+		return c.Status(403).JSON(models.APIResponse{Error: "Anda tidak punya izin menerima transfer (stocktransfers.receive)"})
+	}
+	if t, err := services.GetStockTransfer(transferID); err != nil || !services.WarehouseMutableInScope(t.ToWarehouseID, scope) {
+		return c.Status(403).JSON(models.APIResponse{Error: "hanya gudang tujuan yang bisa mengisi jumlah diterima"})
 	}
 	if err := services.UpdateTransferReceivedQty(transferID, itemID, body.ReceivedQtyBase); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})

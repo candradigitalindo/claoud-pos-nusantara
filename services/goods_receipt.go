@@ -23,7 +23,16 @@ func generateGRNNumber(tx *sql.Tx) (string, error) {
 
 // CreateGoodsReceipt mencatat penerimaan barang: header GRN + tiap baris menghasilkan
 // stock-in (movement purchase_in + batch FIFO) via applyMovement, semua dalam satu transaksi.
+//
+// Ini jalur GRN MANUAL (menu Gudang → Penerimaan Barang). Barang yang berasal
+// dari pengajuan pengadaan harus lewat dialog Penerimaan dari Pengadaan: hanya
+// jalur itu yang menulis pr_item_key, dan tanpa kunci itu rekonsiliasi
+// "sudah dicatat berapa" tidak melihat GRN ini — pengajuan tetap menunggu di
+// antrean dan stok berisiko dicatat dua kali.
 func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.GoodsReceipt, error) {
+	if err := rejectManualReceiptForPurchase(req); err != nil {
+		return nil, err
+	}
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, err
@@ -38,6 +47,38 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 		return nil, err
 	}
 	return GetGoodsReceipt(grnID)
+}
+
+// rejectManualReceiptForPurchase menolak GRN manual yang sebenarnya milik
+// sebuah pengajuan pengadaan yang masih hidup — dikenali dari nomor pengajuan
+// yang diketik di kolom PO, atau dari purchase_request_id tanpa pr_item_key.
+func rejectManualReceiptForPurchase(req models.GoodsReceiptRequest) error {
+	if strings.TrimSpace(req.PurchaseRequestID) != "" {
+		for _, it := range req.Items {
+			if strings.TrimSpace(it.PRItemKey) == "" {
+				return Invalid("penerimaan yang ditautkan ke pengajuan pengadaan harus dicatat lewat menu Penerimaan dari Pengadaan, supaya pengajuannya ikut tertutup")
+			}
+		}
+		return nil
+	}
+	ref := strings.TrimSpace(req.PORef)
+	if ref == "" {
+		return nil
+	}
+	var number, status, receipt string
+	err := database.DB.QueryRow(`
+		SELECT request_number, status, COALESCE(receipt_status, '')
+		FROM purchase_requests
+		WHERE request_type = 'barang' AND request_number = $1
+		  AND status NOT IN ('pending','rejected','cancelled')
+		LIMIT 1`, ref).Scan(&number, &status, &receipt)
+	if err != nil {
+		return nil // bukan nomor pengajuan, atau pengajuannya belum/tidak hidup
+	}
+	if receipt == "received" {
+		return Invalid("pengajuan %s sudah tercatat diterima seluruhnya lewat Penerimaan dari Pengadaan — mencatatnya lagi di sini berarti stok dihitung dua kali", number)
+	}
+	return Invalid("nomor %s adalah pengajuan pengadaan yang menunggu di antrean Gudang → Penerimaan dari Pengadaan. Catat lewat menu itu supaya pengajuannya ikut tertutup", number)
 }
 
 // CreateGoodsReceiptTx adalah isi CreateGoodsReceipt tanpa transaksinya sendiri,

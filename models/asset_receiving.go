@@ -51,6 +51,15 @@ type ReceivingDraft struct {
 	TotalFinal    float64 `json:"total_final"`
 	AlreadyReceived   bool            `json:"already_received"`
 	CapitalizationMin float64         `json:"capitalization_min"`
+	// TargetWarehouse* = gudang yang MEMBUTUHKAN barang (gudang run MRP, atau
+	// gudang outlet pengaju) — ditampilkan supaya penerima tahu barang ini
+	// diteruskan ke mana. ReceivingWarehouseID = gudang induk, bawaan pilihan
+	// untuk baris stok: barang dapur diterima di sana dulu, lalu diteruskan
+	// lewat Transfer Stok yang berfoto.
+	TargetWarehouseID    string `json:"target_warehouse_id,omitempty"`
+	TargetWarehouseName  string `json:"target_warehouse_name,omitempty"`
+	TargetWarehouseType  string `json:"target_warehouse_type,omitempty"`
+	ReceivingWarehouseID string `json:"receiving_warehouse_id,omitempty"`
 	Lines             []ReceivingLine `json:"lines"`
 }
 

@@ -10,7 +10,7 @@ export const assetTransfersApi = {
   submit:    (id)          => apiClient.post(`/admin/asset-transfers/${id}/submit`),
   approve:   (id)          => apiClient.post(`/admin/asset-transfers/${id}/approve`),
   reject:    (id, reason)  => apiClient.post(`/admin/asset-transfers/${id}/reject`, { reason }),
-  send:      (id)          => apiClient.post(`/admin/asset-transfers/${id}/send`),
+  send:      (id, photoUrl) => apiClient.post(`/admin/asset-transfers/${id}/send`, { photo_url: photoUrl }),
   receive:   (id, items)   => apiClient.post(`/admin/asset-transfers/${id}/receive`, { items }),
   cancel:    (id)          => apiClient.post(`/admin/asset-transfers/${id}/cancel`),
 }

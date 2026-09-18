@@ -62,7 +62,8 @@ export const stockTransfersApi = {
   list: (params = {}) => api.get('/admin/stock-transfers', { params }),
   get: (id) => api.get(`/admin/stock-transfers/${id}`),
   create: (data) => api.post('/admin/stock-transfers', data),
-  updateStatus: (id, status) => api.put(`/admin/stock-transfers/${id}/status`, { status }),
+  // photoUrl wajib saat status 'sent' (bukti barang berangkat dari gudang asal).
+  updateStatus: (id, status, photoUrl = '') => api.put(`/admin/stock-transfers/${id}/status`, { status, photo_url: photoUrl }),
   updateReceivedQty: (id, itemId, qty) =>
     api.put(`/admin/stock-transfers/${id}/items/${itemId}/received`, { received_qty_base: qty }),
 }

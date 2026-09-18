@@ -169,6 +169,8 @@ type StockTransfer struct {
 	ToWarehouse     string              `json:"to_warehouse_name"`
 	Status          string              `json:"status"` // draft | pending | sent | received | cancelled
 	Notes           string              `json:"notes"`
+	// PhotoURL: bukti barang saat dikirim dari gudang asal (wajib saat 'sent').
+	PhotoURL        string              `json:"photo_url"`
 	Items           []StockTransferItem `json:"items"`
 	CreatedBy       string              `json:"created_by"`
 	ApprovedBy      string              `json:"approved_by"`

@@ -13,6 +13,7 @@ package services
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"cloud-pos/config"
@@ -436,4 +437,142 @@ func TestPartiallySplitMasterRemainsPayable(t *testing.T) {
 	}
 }
 
-func strPtr(s string) *string { return &s }
+// strPtr dipakai dari services/asset_import.go — deklarasi kedua di sini
+// membuat paket tes tidak terkompilasi.
+
+// ── Kunci dokumen & antrean penerimaan ──────────────────────────────────────
+
+// Nama barang yang pasti tidak ada di katalog stok, supaya barisnya jatuh ke
+// meja Perlengkapan dan tidak tergantung isi database.
+const testOddItem = "Zzz-Uji-Barang-Perlengkapan-9f3a"
+
+func newReceivableGoodsPR(t *testing.T, price float64) *models.PurchaseRequest {
+	t.Helper()
+	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+		RequestType: "barang", RequestedBy: "tester", VendorName: "CV Uji",
+		Items: []models.PurchaseRequestItem{{
+			Name:  "Uji Penerimaan",
+			Items: []models.PurchaseSubItem{{Name: testOddItem, Qty: 2, Unit: "pcs", HpsPrice: price, FinalPrice: price}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "approve", ActorName: "atasan"}); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	return pr
+}
+
+func cleanupReceivablePR(id string) {
+	execScratch("DELETE FROM pr_receiving_decisions WHERE purchase_request_id = $1", id)
+	execScratch("DELETE FROM handover_photos WHERE ref_id = $1", id)
+	execScratch("UPDATE purchase_requests SET receipt_status = '' WHERE id = $1", id)
+	execScratch("DELETE FROM purchase_requests WHERE id = $1", id)
+}
+
+// Pembelian tempo: barang diterima saat status masih 'approved'. Sejak itu
+// dokumen dikunci — tidak bisa dibatalkan, itemnya diubah, atau dihapus.
+func TestReceivedRequestIsLocked(t *testing.T) {
+	requireDB(t)
+	pr := newReceivableGoodsPR(t, 50000)
+	defer cleanupReceivablePR(pr.ID)
+
+	draft, err := BuildReceivingDraft(pr.ID, nil)
+	if err != nil || len(draft.Lines) != 1 {
+		t.Fatalf("draft: %v (%d baris)", err, len(draft.Lines))
+	}
+	res, err := ReceiveGoods(pr.ID, models.ReceiveGoodsRequest{
+		PhotoURL: "/uploads/uji.jpg",
+		Lines:    []models.ReceiveGoodsLine{{PRItemKey: draft.Lines[0].PRItemKey, Destination: "habis", Qty: 2, Reason: "uji"}},
+	}, "petugas", false, nil)
+	if err != nil {
+		t.Fatalf("receive: %v", err)
+	}
+	if res.ReceiptStatus != "received" {
+		t.Fatalf("receipt_status = %q, mau received", res.ReceiptStatus)
+	}
+	got, _ := GetPurchaseRequest(pr.ID)
+	if got.Status != "approved" {
+		t.Fatalf("status = %q, mau tetap approved (belum dibayar)", got.Status)
+	}
+
+	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "cancel", ActorName: "pengaju"}); err == nil {
+		t.Error("pengajuan yang barangnya sudah diterima bisa dibatalkan")
+	}
+	if _, err := UpdatePurchaseItems(pr.ID, models.UpdatePurchaseItemsInput{Items: pr.Items}); err == nil {
+		t.Error("item pengajuan yang barangnya sudah diterima bisa diubah")
+	}
+	if err := DeletePurchaseRequest(pr.ID, true); err == nil {
+		t.Error("pengajuan yang barangnya sudah diterima bisa dihapus admin")
+	}
+}
+
+// Baris stok yang ditunda (petugas tanpa hak gudang) TIDAK dihitung selesai:
+// dokumen tetap terbuka, dan barisnya berpindah ke antrean Gudang Induk
+// meski namanya tidak ada di katalog stok.
+func TestQueuedStockLineStaysOpen(t *testing.T) {
+	requireDB(t)
+	pr := newReceivableGoodsPR(t, 50000)
+	defer cleanupReceivablePR(pr.ID)
+
+	draft, _ := BuildReceivingDraft(pr.ID, nil)
+	key := draft.Lines[0].PRItemKey
+	res, err := ReceiveGoods(pr.ID, models.ReceiveGoodsRequest{
+		PhotoURL: "/uploads/uji.jpg",
+		Lines:    []models.ReceiveGoodsLine{{PRItemKey: key, Destination: "stok", Qty: 2}},
+	}, "petugas-aset", false, nil)
+	if err != nil {
+		t.Fatalf("receive: %v", err)
+	}
+	if res.StockLinesQueued != 1 || res.OutstandingLines != 1 || res.ReceiptStatus != "partial" {
+		t.Fatalf("queued=%d outstanding=%d receipt=%q; mau 1/1/partial", res.StockLinesQueued, res.OutstandingLines, res.ReceiptStatus)
+	}
+
+	inQueue := func(kind string) bool {
+		rows, err := ListReceivingQueue(kind, nil)
+		if err != nil {
+			t.Fatalf("queue %s: %v", kind, err)
+		}
+		for _, r := range rows {
+			if r.PurchaseRequestID == pr.ID {
+				return true
+			}
+		}
+		return false
+	}
+	if !inQueue("dapur") {
+		t.Error("baris stok yang ditunda tidak muncul di antrean Gudang Induk")
+	}
+	if inQueue("perlengkapan") {
+		t.Error("baris stok yang ditunda masih nongkrong di antrean Perlengkapan")
+	}
+	again, _ := BuildReceivingDraft(pr.ID, nil)
+	if again.Lines[0].Kind != "dapur" || again.Lines[0].Destination != "stok" || again.Lines[0].Remaining != 2 {
+		t.Errorf("draft ulang: kind=%q dest=%q remaining=%d; mau dapur/stok/2",
+			again.Lines[0].Kind, again.Lines[0].Destination, again.Lines[0].Remaining)
+	}
+}
+
+// GRN manual yang menyebut nomor pengajuan yang masih hidup ditolak — jalur
+// itu tidak menulis pr_item_key, jadi pengajuannya tidak akan pernah tertutup.
+func TestManualReceiptRejectsLivePurchase(t *testing.T) {
+	requireDB(t)
+	pr := newReceivableGoodsPR(t, 50000)
+	defer cleanupReceivablePR(pr.ID)
+
+	_, err := CreateGoodsReceipt(models.GoodsReceiptRequest{
+		WarehouseID: "tidak-dipakai", PORef: pr.RequestNumber,
+		Items: []models.GoodsReceiptItemReq{{ItemID: "x", QtyDist: 1}},
+	}, "gudang")
+	if err == nil || !strings.Contains(err.Error(), pr.RequestNumber) {
+		t.Errorf("GRN manual untuk pengajuan hidup tidak ditolak dengan menyebut nomornya: %v", err)
+	}
+	_, err = CreateGoodsReceipt(models.GoodsReceiptRequest{
+		WarehouseID: "tidak-dipakai", PurchaseRequestID: pr.ID,
+		Items: []models.GoodsReceiptItemReq{{ItemID: "x", QtyDist: 1}},
+	}, "gudang")
+	if err == nil || !strings.Contains(err.Error(), "Penerimaan dari Pengadaan") {
+		t.Errorf("GRN bertaut pengajuan tanpa pr_item_key tidak ditolak: %v", err)
+	}
+}

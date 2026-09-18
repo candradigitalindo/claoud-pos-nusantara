@@ -5,7 +5,7 @@
 | **Untuk** | Petugas Perlengkapan dan siapa pun yang membuka menu Perlengkapan |
 | **Isi** | Langkah demi langkah tiap pekerjaan, aturan yang ditolak sistem, dan letak angka KPI |
 | **Pasangan dokumen** | Tanggung jawab & penilaian: `docs/jobdesk-petugas-perlengkapan.md` |
-| **Diperbarui** | 16 September 2026 |
+| **Diperbarui** | 18 September 2026 |
 
 ---
 
@@ -173,9 +173,10 @@ Setelah itu penanggung jawab dan lokasi aset berpindah otomatis, dan riwayat ase
 2. Pilih outlet asal dan tujuan, lalu alasan pemindahannya.
 3. Centang aset yang dipindah dan isi jumlahnya (untuk aset massal bisa sebagian).
 4. Simpan sebagai draft, lalu **Ajukan**.
-5. Setelah disetujui atasan, tekan **Kirim Barang** dan lampirkan fotonya.
+5. Setelah disetujui atasan, **ambil foto barang saat dikirim** lalu tekan **Kirim Barang**.
+   Sistem menolak pengiriman tanpa foto.
 6. Petugas outlet tujuan membuka dokumen yang sama dan menekan **Terima Barang**, mengisi jumlah
-   yang benar-benar sampai.
+   yang benar-benar sampai. **Orang yang mengirim tidak bisa menerima dokumen yang sama.**
 7. Cetak **Berita Acara Serah Terima** dari dokumen yang sudah selesai.
 
 **Yang perlu diketahui:**
@@ -345,5 +346,5 @@ Hak **menyetujui** (`.approve`) dan **menghapus** (`assets.delete`) sengaja dipe
 
 ---
 
-*Panduan ini mengikuti tampilan aplikasi per 16 September 2026. Rincian alur dan alasan
+*Panduan ini mengikuti tampilan aplikasi per 18 September 2026. Rincian alur dan alasan
 rancangannya ada di `docs/perlengkapan-aset.md`.*

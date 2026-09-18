@@ -175,7 +175,7 @@
             <tr>
               <th class="px-3 py-2 text-left">Bahan Baku</th>
               <th class="px-3 py-2 text-right">Dikirim</th>
-              <th v-if="detail.status === 'sent'" class="px-3 py-2 text-right">Diterima (input)</th>
+              <th v-if="isReceiving" class="px-3 py-2 text-right">Diterima (input)</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
@@ -185,7 +185,7 @@
                 {{ it.qty_dist }} {{ it.dist_unit_label || it.dist_unit }}
                 <span class="text-gray-400">({{ it.qty_base.toFixed(3) }} {{ it.base_unit }})</span>
               </td>
-              <td v-if="detail.status === 'sent'" class="px-3 py-2 text-right">
+              <td v-if="isReceiving" class="px-3 py-2 text-right">
                 <input v-model.number="it._received_qty" type="number" step="0.001"
                   min="0"
                   :max="it.qty_base"
@@ -199,11 +199,22 @@
 
         <p v-if="detail.notes" class="text-sm text-gray-500">{{ detail.notes }}</p>
 
-        <!-- Actions -->
+        <!-- Bukti barang berangkat dari gudang asal. Server menolak status 'sent'
+             tanpa foto — sebelumnya tombol ini tidak pernah mengirimkannya. -->
+        <div v-if="isSending" class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+          <PhotoCapture v-model="sendPhoto" label="Foto Barang Saat Dikirim"
+            hint="Potret barangnya saat dimuat/berangkat dari gudang asal." />
+        </div>
+        <div v-else-if="detail.photo_url" class="flex items-center gap-3">
+          <img :src="detail.photo_url" alt="Bukti kirim" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+          <p class="text-xs text-gray-500">Foto saat dikirim dari {{ detail.from_warehouse_name }}.</p>
+        </div>
+
+        <!-- Actions: tombol hanya muncul bila status DAN izin memungkinkan. -->
         <div v-if="nextAction" class="flex justify-end">
           <AppButton :loading="saving" @click="doAction">{{ nextAction.label }}</AppButton>
         </div>
-        <div v-if="detail.status === 'draft' || detail.status === 'approved'">
+        <div v-if="(detail.status === 'draft' || detail.status === 'approved') && canSend">
           <button @click="doCancel" :disabled="saving" class="text-xs text-red-500 hover:text-red-700">Batalkan Transfer</button>
         </div>
       </div>
@@ -219,6 +230,8 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { warehousesApi, stockItemsApi, stockTransfersApi } from '@/api/warehouse.js'
 import { useToastStore } from '@/stores/toast.js'
+import { useAuthStore } from '@/stores/auth.js'
+import PhotoCapture  from '@/components/PhotoCapture.vue'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
 import AppTable      from '@/components/ui/AppTable.vue'
@@ -230,6 +243,13 @@ import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import { describeWarehouse, formatWarehouseOptionLabel, TRANSFER_STATUS_LABELS, transferStatusClass } from '@/utils/warehouse.js'
 
 const toast = useToastStore()
+const auth = useAuthStore()
+// Setujui, kirim/batalkan, dan terima adalah tiga izin berbeda — sama
+// dengan mutasi aset. Tombol yang izinnya tidak ada tidak ditampilkan.
+const canApprove = auth.hasPermission('stocktransfers.approve')
+const canSend    = auth.hasPermission('stocktransfers.update')
+const canReceive = auth.hasPermission('stocktransfers.receive')
+const sendPhoto = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const errorMsg = ref('')
@@ -269,12 +289,15 @@ const COLUMNS = [
 
 const statusCls = transferStatusClass
 
+const NEXT_PERM = { approved: canApprove, sent: canSend, received: canReceive }
 const nextAction = computed(() => {
   if (!detail.value) return null
   const ns = NEXT_STATUS[detail.value.status]
-  if (!ns) return null
+  if (!ns || !NEXT_PERM[ns]) return null
   return { status: ns, label: NEXT_LABELS[detail.value.status] }
 })
+const isSending = computed(() => detail.value?.status === 'approved' && canSend)
+const isReceiving = computed(() => detail.value?.status === 'sent' && canReceive)
 
 const EMPTY_FORM = () => ({ from_warehouse_id: '', to_warehouse_id: '', notes: '', items: [] })
 const form = ref(EMPTY_FORM())
@@ -413,6 +436,7 @@ async function submitCreate() {
 
 async function openDetail(id) {
   detail.value = null
+  sendPhoto.value = ''
   showDetail.value = true
   try {
     const data = await stockTransfersApi.get(id)
@@ -457,10 +481,15 @@ async function saveReceivedQty(it) {
 
 async function doAction() {
   if (!nextAction.value) return
+  if (nextAction.value.status === 'sent' && !sendPhoto.value) {
+    toast.error('Foto barang saat dikirim wajib diunggah')
+    return
+  }
   saving.value = true
   try {
-    const data = await stockTransfersApi.updateStatus(detail.value.id, nextAction.value.status)
+    const data = await stockTransfersApi.updateStatus(detail.value.id, nextAction.value.status, sendPhoto.value)
     detail.value = data
+    sendPhoto.value = ''
     toast.success('Status transfer diperbarui')
     load()
   } catch (e) {

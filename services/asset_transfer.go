@@ -76,7 +76,7 @@ func outletInScope(outletID string, scope []string) bool {
 const assetTransferCols = `
 	t.id, t.transfer_number, t.from_outlet_id, COALESCE(fo.name, ''), t.to_outlet_id, COALESCE(t_o.name, ''),
 	t.status, COALESCE(t.reason, ''), COALESCE(TO_CHAR(t.expected_return, 'YYYY-MM-DD'), ''),
-	COALESCE(t.notes, ''), COALESCE(t.rejected_reason, ''), COALESCE(t.created_by, ''),
+	COALESCE(t.notes, ''), COALESCE(t.photo_url, ''), COALESCE(t.rejected_reason, ''), COALESCE(t.created_by, ''),
 	COALESCE(t.approved_by, ''), COALESCE(TO_CHAR(t.approved_at, 'YYYY-MM-DD HH24:MI'), ''),
 	COALESCE(t.sent_by, ''), COALESCE(TO_CHAR(t.sent_at, 'YYYY-MM-DD HH24:MI'), ''),
 	COALESCE(t.received_by, ''), COALESCE(TO_CHAR(t.received_at, 'YYYY-MM-DD HH24:MI'), ''),
@@ -96,7 +96,7 @@ func scanAssetTransfer(sc interface{ Scan(...interface{}) error }) (models.Asset
 	var t models.AssetTransfer
 	err := sc.Scan(&t.ID, &t.TransferNumber, &t.FromOutletID, &t.FromOutletName,
 		&t.ToOutletID, &t.ToOutletName, &t.Status, &t.Reason, &t.ExpectedReturn,
-		&t.Notes, &t.RejectedReason, &t.CreatedBy, &t.ApprovedBy, &t.ApprovedAt,
+		&t.Notes, &t.PhotoURL, &t.RejectedReason, &t.CreatedBy, &t.ApprovedBy, &t.ApprovedAt,
 		&t.SentBy, &t.SentAt, &t.ReceivedBy, &t.ReceivedAt,
 		&t.ItemCount, &t.TotalQty, &t.HasShortfall, &t.CreatedAt, &t.UpdatedAt)
 	return t, err
@@ -392,12 +392,26 @@ func AssetTransferAction(id, action string, req models.AssetTransferActionReques
 
 	switch action {
 	case "send":
+		// Foto saat barang berangkat wajib, sama seperti transfer stok dan serah
+		// terima ke PIC: tanpa itu, selisih di tujuan tidak bisa ditelusuri.
+		if strings.TrimSpace(req.PhotoURL) == "" {
+			return nil, Invalid("foto barang saat dikirim wajib diunggah — tanpa bukti, selisih di outlet tujuan tidak bisa ditelusuri")
+		}
 		if err := applyTransferSend(tx, before, actor); err != nil {
 			return nil, err
 		}
 		_, err = tx.Exec(`UPDATE asset_transfers SET status='sent', sent_by=$1, sent_at=(now() AT TIME ZONE 'UTC'),
-			updated_at=(now() AT TIME ZONE 'UTC') WHERE id=$2`, actor, id)
+			photo_url=$3, updated_at=(now() AT TIME ZONE 'UTC') WHERE id=$2`, actor, id, req.PhotoURL)
+		if err == nil {
+			SaveHandoverPhoto(tx, "distribusi", "perlengkapan", "asset_transfer", id, before.TransferNumber,
+				req.PhotoURL, "Mutasi aset "+before.FromOutletName+" → "+before.ToOutletName, actor)
+		}
 	case "receive":
+		// Yang mengirim bukan yang menerima — dijaga di sini, bukan hanya lewat
+		// pemisahan izin: dua izin bisa saja jatuh ke satu orang.
+		if before.SentBy != "" && before.SentBy == actor {
+			return nil, Invalid("pengirim tidak boleh menerima mutasi yang sama — penerimaan dicatat petugas outlet tujuan")
+		}
 		if err := applyTransferReceive(tx, before, req, actor); err != nil {
 			return nil, err
 		}

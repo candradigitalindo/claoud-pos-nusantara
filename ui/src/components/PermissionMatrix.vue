@@ -332,7 +332,17 @@ const CATEGORIES = [
     items: [
       { type: 'single', key: 'warehouse_dashboard.view', label: 'Dashboard Gudang', icon: IC.gauge },
       { type: 'crud', module: 'stockitems', label: 'Item Stok', icon: IC.stockitem },
-      { type: 'crud', module: 'stocktransfers', label: 'Transfer Stok', icon: IC.transfer, ops: ['view', 'create', 'update'] },
+      {
+        // Setujui dan terima dipisah dari kirim/batalkan, sama seperti mutasi aset.
+        type: 'toggles', label: 'Transfer Stok', icon: IC.transfer,
+        toggles: [
+          { key: 'stocktransfers.view',    label: 'Lihat' },
+          { key: 'stocktransfers.create',  label: 'Buat' },
+          { key: 'stocktransfers.update',  label: 'Kirim & Batalkan' },
+          { key: 'stocktransfers.approve', label: 'Setujui' },
+          { key: 'stocktransfers.receive', label: 'Terima' },
+        ],
+      },
       { type: 'crud', module: 'stockwastes', label: 'Stok Rusak/Hilang', icon: IC.waste, ops: ['view', 'create'] },
       {
         type: 'toggles', label: 'Buku Stok', icon: IC.ledger,

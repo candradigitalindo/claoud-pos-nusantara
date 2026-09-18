@@ -23,6 +23,9 @@
               <span :class="payCls(r)">{{ payLabel(r) }}</span>
             </div>
             <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <template v-if="r.target_warehouse_name">
+                <dt class="text-gray-400">Untuk</dt><dd class="text-gray-700">{{ r.target_warehouse_name }}</dd>
+              </template>
               <dt class="text-gray-400">Belum diterima</dt><dd class="text-gray-700">{{ r.lines }} baris · {{ r.units }} unit</dd>
               <dt class="text-gray-400">Nilai</dt><dd class="text-gray-700">{{ formatRupiah(r.value) }}</dd>
               <dt class="text-gray-400">Dibayar</dt><dd class="text-gray-700">{{ r.paid_at || '—' }}</dd>
@@ -37,7 +40,10 @@
             <p class="font-mono text-xs font-semibold text-gray-900">{{ row.request_number }}</p>
             <p class="text-[11px] text-gray-400">{{ row.paid_at || '—' }}</p>
           </template>
-          <template #cell-outlet="{ row }">{{ row.outlet_name || '—' }}</template>
+          <template #cell-outlet="{ row }">
+            <p>{{ row.outlet_name || '—' }}</p>
+            <p v-if="row.target_warehouse_name" class="text-[11px] text-gray-400">untuk {{ row.target_warehouse_name }}</p>
+          </template>
           <template #cell-vendor="{ row }">{{ row.vendor_name || '—' }}</template>
           <template #cell-lines="{ row }">{{ row.lines }} baris · {{ row.units }} unit</template>
           <template #cell-pay="{ row }"><span :class="payCls(row)">{{ payLabel(row) }}</span></template>

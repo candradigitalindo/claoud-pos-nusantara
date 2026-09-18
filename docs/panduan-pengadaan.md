@@ -149,7 +149,12 @@ berbeda dengan melunasi barang yang sudah ada di outlet — keduanya sah, tapi h
 2. **Foto barang saat diterima wajib.** Sistem menolak penerimaan tanpa foto.
 3. Barang yang datang bertahap dicatat **sebagian**, sisanya tetap muncul di antrean.
 4. Status pengajuan menjadi **Diterima** hanya setelah **seluruh** barisnya diterima **dan**
-   pembayarannya lunas.
+   pembayarannya lunas. Baris **stok gudang** yang dicatat oleh petugas tanpa hak gudang
+   (misalnya dari halaman Pengadaan) **belum dihitung diterima**: baris itu berpindah ke antrean
+   Gudang Induk dan dokumen tetap terbuka sampai gudang mencatatnya.
+5. Barang dapur diterima di **Gudang Induk** dulu, lalu diteruskan ke outlet lewat Transfer
+   Stok. Dialog penerimaan menampilkan gudang mana yang membutuhkannya (dari MRP atau dari outlet
+   pengaju), tetapi tujuan penerimaannya tetap Gudang Induk.
 
 ### Langkah singkat
 
@@ -189,6 +194,13 @@ tersebut yang bertanggung jawab atas fisiknya.
    (statusnya tercatat), bukan dihapus.
 5. **Pengajuan yang sudah dibayar tidak bisa diubah itemnya.** Perbaikan hanya mungkin sebelum
    pembayaran diajukan.
+6. **Pengajuan yang barangnya sudah mulai diterima dikunci.** Begitu ada aset, stok, atau
+   material projek yang lahir darinya, pengajuan itu tidak bisa dibatalkan, diubah itemnya, atau
+   dihapus, meski belum dibayar (pembelian tempo). Koreksi dilakukan lewat dokumen penghapusan
+   aset atau koreksi stok, bukan dengan membatalkan pengajuannya.
+7. **GRN manual bukan untuk barang pengadaan.** Menu Gudang → Penerimaan Barang menolak nomor
+   pengajuan yang masih hidup; barang pengadaan dicatat lewat Penerimaan dari Pengadaan supaya
+   pengajuannya ikut tertutup.
 
 ---
 
@@ -203,7 +215,7 @@ tersebut yang bertanggung jawab atas fisiknya.
 | **Dibayar** | Tagihan lunas | Penerimaan |
 | **Diterima** | Seluruh barang diterima **dan** lunas | Distribusi |
 | **Ditolak** | Ditolak beserta alasannya | Pengaju (ajukan ulang bila masih perlu) |
-| **Dibatalkan** | Dibatalkan sebelum dibayar | — |
+| **Dibatalkan** | Dibatalkan sebelum dibayar dan sebelum ada barang yang diterima | — |
 
 Penanda **Barang sudah/belum diterima** berdiri sendiri dari status di atas, karena barang bisa
 datang sebelum maupun sesudah dibayar.
@@ -250,5 +262,5 @@ dan terpantau di laporan "Pengadaan Belum Lengkap".
 
 ---
 
-*Panduan ini mengikuti alur yang berjalan di aplikasi per 17 September 2026. Bila alurnya
+*Panduan ini mengikuti alur yang berjalan di aplikasi per 18 September 2026. Bila alurnya
 berubah, dokumen ini ikut ditinjau.*

@@ -102,9 +102,15 @@
             <label class="lbl">Gudang <span class="text-red-500">*</span></label>
             <SearchSelect v-model="form[line.pr_item_key].warehouse_id" :options="warehouses" placeholder="Pilih gudang…" />
           </div>
+          <!-- Gudang yang MEMBUTUHKAN vs gudang yang MENERIMA: barang dapur masuk
+               Gudang Induk dulu, lalu diteruskan lewat Transfer Stok yang berfoto. -->
+          <p v-if="draft.target_warehouse_name" class="text-[11px] text-gray-500 sm:col-span-2">
+            Kebutuhan: <strong>{{ draft.target_warehouse_name }}</strong><template v-if="draft.target_warehouse_type === 'outlet'">.
+            Terima di Gudang Induk, lalu teruskan lewat <strong>Transfer Stok</strong> (berfoto) — jangan langsung ke gudang outlet.</template>
+          </p>
           <p v-if="!canStock" class="text-[11px] text-amber-700 sm:col-span-2">
-            Anda tidak punya izin menambah stok. Baris ini akan masuk antrean penerimaan gudang —
-            serah terima tetap bisa diselesaikan.
+            Anda tidak punya izin menambah stok. Baris ini berpindah ke antrean Gudang Induk dan
+            dokumen tetap terbuka sampai gudang mencatatnya.
           </p>
         </div>
 
@@ -241,7 +247,8 @@ async function load() {
       tracking_mode: l.qty === 1 || l.unit_price >= 5000000 ? 'tunggal' : 'massal',
       location: '',
       stock_item_id: l.suggested_stock_item_id || '',
-      warehouse_id: warehouses.value[0]?.id || '',
+      // Bawaan: Gudang Induk (dari server), bukan sekadar gudang pertama di daftar.
+      warehouse_id: draft.value?.receiving_warehouse_id || warehouses.value[0]?.id || '',
       reason: '',
     }]))
   } catch (e) {

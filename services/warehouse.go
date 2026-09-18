@@ -1200,7 +1200,7 @@ func GetStockTransfer(id string) (*models.StockTransfer, error) {
 	var t models.StockTransfer
 	err := database.DB.QueryRow(`
 		SELECT st.id, st.transfer_number, st.from_warehouse_id, fw.name, st.to_warehouse_id, tw.name,
-		       st.status, st.notes,
+		       st.status, st.notes, COALESCE(st.photo_url,''),
 		       COALESCE(st.approved_by,''), COALESCE(TO_CHAR(st.approved_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.sent_by,''), COALESCE(TO_CHAR(st.sent_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.received_by,''), COALESCE(TO_CHAR(st.received_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
@@ -1212,7 +1212,7 @@ func GetStockTransfer(id string) (*models.StockTransfer, error) {
 		JOIN warehouses tw ON tw.id = st.to_warehouse_id
 		WHERE st.id = $1`, id).Scan(
 		&t.ID, &t.TransferNumber, &t.FromWarehouseID, &t.FromWarehouse,
-		&t.ToWarehouseID, &t.ToWarehouse, &t.Status, &t.Notes,
+		&t.ToWarehouseID, &t.ToWarehouse, &t.Status, &t.Notes, &t.PhotoURL,
 		&t.ApprovedBy, &t.ApprovedAt, &t.SentBy, &t.SentAt,
 		&t.ReceivedBy, &t.ReceivedAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
 	if err == sql.ErrNoRows {
@@ -1426,6 +1426,11 @@ func UpdateTransferStatus(id, newStatus, actor string) (*models.StockTransfer, e
 		}
 		_, err = tx.Exec(`UPDATE stock_transfers SET status='sent', sent_by=$1, sent_at=$2, updated_at=NOW() WHERE id=$3`, actor, now, id)
 	case "received":
+		// Yang mengirim bukan yang menerima — prinsip yang sama dengan mutasi
+		// aset. Tanpa ini, selisih kirim vs terima tidak akan pernah ketahuan.
+		if transfer.SentBy != "" && transfer.SentBy == actor {
+			return nil, Invalid("pengirim tidak boleh menerima transfer yang sama — penerimaan dicatat oleh petugas gudang tujuan")
+		}
 		// Tambah stok ke gudang tujuan
 		for _, it := range transfer.Items {
 			// Nilai barang masuk = cost FIFO yang benar-benar terpotong saat "sent"
