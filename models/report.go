@@ -132,14 +132,22 @@ type TaxReportResponse struct {
 }
 
 type CashFlowSummary struct {
-	// Penerimaan Operasi
-	SalesReceipts float64 `json:"sales_receipts"`
-	OtherReceipts float64 `json:"other_receipts"`
-	TotalReceipts float64 `json:"total_receipts"`
+	// Penerimaan Operasi. SalesReceipts sudah dikurangi bagian transaksi yang
+	// dibayar dari uang muka reservasi (uangnya masuk saat DP, lihat
+	// DepositReceipts) supaya kas tidak dihitung dua kali.
+	SalesReceipts   float64 `json:"sales_receipts"`
+	OtherReceipts   float64 `json:"other_receipts"`
+	DepositReceipts float64 `json:"deposit_receipts"` // uang muka reservasi tervalidasi (DP/pelunasan)
+	TotalReceipts   float64 `json:"total_receipts"`
 	// Pengeluaran Operasi
 	COGSPayments    float64 `json:"cogs_payments"`
 	ServicePayments float64 `json:"service_payments"`
 	OpexPayments    float64 `json:"opex_payments"`
+	// Pengeluaran Investasi: belanja modal (peralatan → aset tetap) dan
+	// belanja projek. Ikut mengurangi kas, tapi bukan beban di Laba/Rugi.
+	CapexPayments   float64 `json:"capex_payments"`
+	ProjectPayments float64 `json:"project_payments"`
+	DepositRefunds  float64 `json:"deposit_refunds"` // refund uang muka reservasi
 	TotalPayments   float64 `json:"total_payments"`
 	// Arus Kas Bersih
 	NetCashFlow float64 `json:"net_cash_flow"`
@@ -152,6 +160,10 @@ type CashFlowRow struct {
 	COGSPayments    float64 `json:"cogs_payments"`
 	ServicePayments float64 `json:"service_payments"`
 	OpexPayments    float64 `json:"opex_payments"`
+	CapexPayments   float64 `json:"capex_payments"`
+	ProjectPayments float64 `json:"project_payments"`
+	DepositReceipts float64 `json:"deposit_receipts"`
+	DepositRefunds  float64 `json:"deposit_refunds"`
 	NetCashFlow     float64 `json:"net_cash_flow"`
 }
 
@@ -166,9 +178,16 @@ type BalanceOutletRow struct {
 	// Aset
 	CashAndEquivalents float64 `json:"cash_and_equivalents"`
 	Receivables        float64 `json:"receivables"`
+	// Persediaan = nilai buku stok (qty × rata-rata biaya) saat ini.
+	// Aset Tetap = nilai buku aset (perolehan − penyusutan) per tanggal akhir.
+	// Projek Berjalan = belanja projek yang dibayar dan belum berwujud aset.
+	Inventory          float64 `json:"inventory"`
+	FixedAssets        float64 `json:"fixed_assets"`
+	ProjectsInProgress float64 `json:"projects_in_progress"`
 	TotalAssets        float64 `json:"total_assets"`
-	// Kewajiban
+	// Kewajiban. CustomerDeposits = uang muka reservasi yang belum ditutup.
 	AccountsPayable  float64 `json:"accounts_payable"`
+	CustomerDeposits float64 `json:"customer_deposits"`
 	TaxPayable       float64 `json:"tax_payable"`
 	TotalLiabilities float64 `json:"total_liabilities"`
 	// Ekuitas
@@ -186,9 +205,13 @@ type BalanceResponse struct {
 	// Aset
 	CashAndEquivalents float64 `json:"cash_and_equivalents"`
 	Receivables        float64 `json:"receivables"`
+	Inventory          float64 `json:"inventory"`
+	FixedAssets        float64 `json:"fixed_assets"`
+	ProjectsInProgress float64 `json:"projects_in_progress"`
 	TotalAssets        float64 `json:"total_assets"`
 	// Kewajiban
 	AccountsPayable  float64 `json:"accounts_payable"`
+	CustomerDeposits float64 `json:"customer_deposits"`
 	TaxPayable       float64 `json:"tax_payable"`
 	TotalLiabilities float64 `json:"total_liabilities"`
 	// Ekuitas
@@ -204,10 +227,12 @@ type BalanceResponse struct {
 // ── Laba Rugi F&B ───────────────────────────────────────────
 
 type ProfitLossSummary struct {
-	// Pendapatan
-	SalesRevenue float64 `json:"sales_revenue"`
-	OtherIncome  float64 `json:"other_income"`
-	TotalRevenue float64 `json:"total_revenue"`
+	// Pendapatan. OtherIncome sudah memuat ForfeitedDeposits (uang muka
+	// reservasi yang hangus karena dibatalkan).
+	SalesRevenue      float64 `json:"sales_revenue"`
+	OtherIncome       float64 `json:"other_income"`
+	ForfeitedDeposits float64 `json:"forfeited_deposits"`
+	TotalRevenue      float64 `json:"total_revenue"`
 	// HPP
 	COGS        float64 `json:"cogs"`
 	GrossProfit float64 `json:"gross_profit"`
@@ -215,8 +240,15 @@ type ProfitLossSummary struct {
 	// Beban Operasional
 	ServiceExpense   float64 `json:"service_expense"`
 	OperatingExpense float64 `json:"operating_expense"`
+	// DepreciationExpense: penyusutan garis lurus seluruh aset aktif untuk
+	// periode ini — inilah cara belanja modal masuk ke Laba/Rugi.
+	DepreciationExpense float64 `json:"depreciation_expense"`
 	TotalOpex        float64 `json:"total_opex"`
 	OperatingProfit  float64 `json:"operating_profit"`
+	// Kas keluar yang TIDAK dibebankan (ditampilkan sebagai keterangan):
+	// belanja modal menjadi aset tetap, belanja projek menjadi projek berjalan.
+	CapexPayments   float64 `json:"capex_payments"`
+	ProjectPayments float64 `json:"project_payments"`
 	// Pajak
 	TaxExpense float64 `json:"tax_expense"`
 	// Laba Bersih
@@ -239,6 +271,7 @@ type ProfitLossOutletRow struct {
 	Revenue          float64 `json:"revenue"`
 	COGS             float64 `json:"cogs"`
 	OperatingExpense float64 `json:"operating_expense"`
+	Depreciation     float64 `json:"depreciation"`
 	NetProfit        float64 `json:"net_profit"`
 }
 

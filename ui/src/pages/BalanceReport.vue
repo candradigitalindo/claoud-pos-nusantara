@@ -56,6 +56,29 @@
               </div>
               <span class="text-sm font-semibold" :class="report.receivables > 0 ? 'text-amber-600' : 'text-gray-800'">{{ formatRupiah(report.receivables) }}</span>
             </div>
+            <!-- Tiga baris di bawah datang dari modul Gudang dan Perlengkapan:
+                 sebelumnya nilai stok dan aset tidak pernah sampai ke Neraca. -->
+            <div class="flex justify-between items-center py-2 border-b border-gray-100">
+              <div>
+                <p class="text-sm font-medium text-gray-700">Persediaan</p>
+                <p class="text-xs text-gray-400">Nilai buku stok gudang saat ini (qty × rata-rata biaya)</p>
+              </div>
+              <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.inventory) }}</span>
+            </div>
+            <div class="flex justify-between items-center py-2 border-b border-gray-100">
+              <div>
+                <p class="text-sm font-medium text-gray-700">Aset Tetap</p>
+                <p class="text-xs text-gray-400">Nilai buku peralatan per akhir periode (perolehan − penyusutan)</p>
+              </div>
+              <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.fixed_assets) }}</span>
+            </div>
+            <div class="flex justify-between items-center py-2 border-b border-gray-100">
+              <div>
+                <p class="text-sm font-medium text-gray-700">Projek Berjalan</p>
+                <p class="text-xs text-gray-400">Belanja projek yang dibayar dan belum berwujud aset</p>
+              </div>
+              <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.projects_in_progress) }}</span>
+            </div>
           </div>
           <div class="flex justify-between items-center pt-4 mt-2 border-t-2 border-emerald-200">
             <span class="text-sm font-bold text-emerald-700">Total Aset</span>
@@ -80,6 +103,13 @@
                   <p class="text-xs text-gray-400">Pengadaan disetujui belum dibayar</p>
                 </div>
                 <span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.accounts_payable) }}</span>
+              </div>
+              <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                <div>
+                  <p class="text-sm font-medium text-gray-700">Uang Muka Pelanggan</p>
+                  <p class="text-xs text-gray-400">DP reservasi tervalidasi yang belum ditutup di POS</p>
+                </div>
+                <span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.customer_deposits) }}</span>
               </div>
               <div class="flex justify-between items-center py-2 border-b border-gray-100">
                 <div>
@@ -166,11 +196,16 @@
           <template #cell-receivables="{ row }">
             <span :class="row.receivables > 0 ? 'text-amber-600' : ''">{{ formatRupiah(row.receivables) }}</span>
           </template>
+          <template #cell-inventory="{ row }">{{ formatRupiah(row.inventory) }}</template>
+          <template #cell-fixed_assets="{ row }">{{ formatRupiah(row.fixed_assets) }}</template>
           <template #cell-total_assets="{ row }">
             <span class="font-semibold text-emerald-700">{{ formatRupiah(row.total_assets) }}</span>
           </template>
           <template #cell-accounts_payable="{ row }">
             <span class="text-red-600">{{ formatRupiah(row.accounts_payable) }}</span>
+          </template>
+          <template #cell-customer_deposits="{ row }">
+            <span class="text-red-600">{{ formatRupiah(row.customer_deposits) }}</span>
           </template>
           <template #cell-tax_payable="{ row }">
             <span class="text-red-600">{{ formatRupiah(row.tax_payable) }}</span>
@@ -215,8 +250,11 @@ const OUTLET_COLS = [
   { key: 'outlet_name',          label: 'Outlet' },
   { key: 'cash_and_equivalents', label: 'Kas', align: 'right' },
   { key: 'receivables',          label: 'Piutang', align: 'right' },
+  { key: 'inventory',            label: 'Persediaan', align: 'right' },
+  { key: 'fixed_assets',         label: 'Aset Tetap', align: 'right' },
   { key: 'total_assets',         label: 'Total Aset', align: 'right' },
   { key: 'accounts_payable',     label: 'Hutang Usaha', align: 'right' },
+  { key: 'customer_deposits',    label: 'Uang Muka', align: 'right' },
   { key: 'tax_payable',          label: 'Hutang Pajak', align: 'right' },
   { key: 'total_equity',         label: 'Ekuitas', align: 'right' },
 ]

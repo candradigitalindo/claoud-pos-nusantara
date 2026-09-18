@@ -51,7 +51,8 @@
             <span class="font-medium text-gray-800">{{ formatRupiah(report.summary.sales_revenue) }}</span>
           </div>
           <div class="flex justify-between py-1.5">
-            <span class="text-gray-600 pl-4">Pendapatan Lainnya</span>
+            <span class="text-gray-600 pl-4">Pendapatan Lainnya
+              <span v-if="report.summary.forfeited_deposits" class="text-[11px] text-gray-400">(termasuk DP reservasi hangus {{ formatRupiah(report.summary.forfeited_deposits) }})</span></span>
             <span class="font-medium text-gray-800">{{ formatRupiah(report.summary.other_income) }}</span>
           </div>
           <div class="flex justify-between py-2 border-t border-gray-200 font-semibold">
@@ -81,6 +82,11 @@
             <span class="text-gray-600 pl-4">Beban Operasional Outlet</span>
             <span class="font-medium text-red-600">{{ formatRupiah(report.summary.operating_expense) }}</span>
           </div>
+          <div class="flex justify-between py-1.5">
+            <span class="text-gray-600 pl-4">Beban Penyusutan Aset
+              <span class="text-[11px] text-gray-400">(garis lurus, dari modul Perlengkapan)</span></span>
+            <span class="font-medium text-red-600">{{ formatRupiah(report.summary.depreciation_expense) }}</span>
+          </div>
           <div class="flex justify-between py-2 border-t border-gray-200 font-semibold">
             <span class="text-gray-800">Total Beban Operasional</span>
             <span class="text-red-600">{{ formatRupiah(report.summary.total_opex) }}</span>
@@ -108,6 +114,16 @@
               <span class="text-xs font-normal text-gray-500 ml-1">({{ report.summary.net_margin.toFixed(1) }}%)</span>
             </span>
           </div>
+        </div>
+
+        <!-- Kas keluar yang sengaja TIDAK dibebankan: menjadi aset di Neraca,
+             masuk P&L lewat penyusutan. Ditampilkan supaya angkanya tidak
+             "hilang" dari pandangan pembaca. -->
+        <div v-if="(report.summary.capex_payments || 0) + (report.summary.project_payments || 0) > 0"
+          class="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+          <p class="font-semibold text-gray-700">Tidak dibebankan pada periode ini (menjadi aset, lihat Neraca)</p>
+          <div class="mt-1 flex justify-between"><span>Belanja Modal (peralatan → aset tetap)</span><span>{{ formatRupiah(report.summary.capex_payments) }}</span></div>
+          <div class="flex justify-between"><span>Belanja Projek (→ projek berjalan)</span><span>{{ formatRupiah(report.summary.project_payments) }}</span></div>
         </div>
       </AppCard>
 
@@ -148,6 +164,9 @@
           </template>
           <template #cell-operating_expense="{ row }">
             <span class="text-red-600">{{ formatRupiah(row.operating_expense) }}</span>
+          </template>
+          <template #cell-depreciation="{ row }">
+            <span class="text-red-600">{{ formatRupiah(row.depreciation) }}</span>
           </template>
           <template #cell-net_profit="{ row }">
             <span :class="row.net_profit >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold'">
@@ -197,6 +216,7 @@ const OUTLET_COLS = [
   { key: 'revenue',           label: 'Pendapatan', align: 'right' },
   { key: 'cogs',              label: 'HPP', align: 'right' },
   { key: 'operating_expense', label: 'Beban Opex', align: 'right' },
+  { key: 'depreciation',      label: 'Penyusutan', align: 'right' },
   { key: 'net_profit',        label: 'Laba Bersih', align: 'right' },
 ]
 

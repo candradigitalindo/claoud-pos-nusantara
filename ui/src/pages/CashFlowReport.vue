@@ -55,6 +55,13 @@
               <span class="text-gray-600">Pemasukan Kas Lainnya</span>
               <span class="font-medium text-gray-800">{{ formatRupiah(report.summary.other_receipts) }}</span>
             </div>
+            <!-- Uang muka reservasi: kas masuk saat DP tervalidasi (kewajiban, bukan
+                 pendapatan). Penjualan di atas sudah dikurangi bagian yang dibayar
+                 dari uang muka supaya tidak dihitung dua kali. -->
+            <div class="flex justify-between">
+              <span class="text-gray-600">Uang Muka Reservasi <span class="text-[11px] text-gray-400">(DP/pelunasan)</span></span>
+              <span class="font-medium text-gray-800">{{ formatRupiah(report.summary.deposit_receipts) }}</span>
+            </div>
             <div class="flex justify-between pt-2 border-t border-emerald-200 font-semibold">
               <span class="text-emerald-700">Total Penerimaan</span>
               <span class="text-emerald-700">{{ formatRupiah(report.summary.total_receipts) }}</span>
@@ -77,6 +84,20 @@
             <div class="flex justify-between">
               <span class="text-gray-600">Pengeluaran Operasional</span>
               <span class="font-medium text-red-600">{{ formatRupiah(report.summary.opex_payments) }}</span>
+            </div>
+            <!-- Investasi: mengurangi kas, tapi bukan beban di Laba/Rugi — menjadi
+                 Aset Tetap / Projek Berjalan di Neraca. -->
+            <div class="flex justify-between pt-2 border-t border-dashed border-gray-200">
+              <span class="text-gray-600">Belanja Modal <span class="text-[11px] text-gray-400">(peralatan → aset)</span></span>
+              <span class="font-medium text-red-600">{{ formatRupiah(report.summary.capex_payments) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Belanja Projek</span>
+              <span class="font-medium text-red-600">{{ formatRupiah(report.summary.project_payments) }}</span>
+            </div>
+            <div v-if="report.summary.deposit_refunds" class="flex justify-between">
+              <span class="text-gray-600">Refund Uang Muka Reservasi</span>
+              <span class="font-medium text-red-600">{{ formatRupiah(report.summary.deposit_refunds) }}</span>
             </div>
             <div class="flex justify-between pt-2 border-t border-red-200 font-semibold">
               <span class="text-red-600">Total Pengeluaran</span>
@@ -105,6 +126,7 @@
           <template #cell-date="{ row }">{{ formatDateStr(row.date) }}</template>
           <template #cell-sales_receipts="{ row }">{{ formatRupiah(row.sales_receipts) }}</template>
           <template #cell-other_receipts="{ row }">{{ formatRupiah(row.other_receipts) }}</template>
+          <template #cell-deposit_receipts="{ row }">{{ formatRupiah(row.deposit_receipts) }}</template>
           <template #cell-cogs_payments="{ row }">
             <span class="text-red-600">{{ formatRupiah(row.cogs_payments) }}</span>
           </template>
@@ -113,6 +135,12 @@
           </template>
           <template #cell-opex_payments="{ row }">
             <span class="text-red-600">{{ formatRupiah(row.opex_payments) }}</span>
+          </template>
+          <template #cell-capex_payments="{ row }">
+            <span class="text-red-600">{{ formatRupiah(row.capex_payments) }}</span>
+          </template>
+          <template #cell-project_payments="{ row }">
+            <span class="text-red-600">{{ formatRupiah(row.project_payments) }}</span>
           </template>
           <template #cell-net_cash_flow="{ row }">
             <span :class="row.net_cash_flow >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold'">
@@ -152,9 +180,12 @@ const DAILY_COLS = [
   { key: 'date',             label: 'Tanggal' },
   { key: 'sales_receipts',   label: 'Penjualan', align: 'right' },
   { key: 'other_receipts',   label: 'Kas Masuk', align: 'right' },
+  { key: 'deposit_receipts', label: 'Uang Muka', align: 'right' },
   { key: 'cogs_payments',    label: 'Bahan Baku', align: 'right' },
   { key: 'service_payments', label: 'Jasa', align: 'right' },
   { key: 'opex_payments',    label: 'Opex', align: 'right' },
+  { key: 'capex_payments',   label: 'Modal', align: 'right' },
+  { key: 'project_payments', label: 'Projek', align: 'right' },
   { key: 'net_cash_flow',    label: 'Arus Bersih', align: 'right' },
 ]
 

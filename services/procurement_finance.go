@@ -55,6 +55,28 @@ func countableCond(alias string) string {
 	return "NOT " + fullySplitMasterCond(alias)
 }
 
+// procurementClassExpr: kelas belanja sebuah pengajuan untuk laporan keuangan.
+//
+//	bahan  → HPP bahan baku (barang dapur, ada di katalog stok)
+//	jasa   → beban jasa & layanan
+//	modal  → belanja modal: barang perlengkapan → Aset Tetap, BUKAN beban.
+//	         Bebannya masuk P&L lewat penyusutan.
+//	projek → belanja projek (barang/jasa bertaut projek) → Projek Berjalan
+//
+// Sebelum ini semua pengajuan 'barang' dihitung HPP, sehingga membeli AC 15
+// juta menurunkan laba kotor bulan itu sebesar 15 juta dan tidak pernah muncul
+// sebagai aset. Kelasnya diturunkan dari kolom yang sudah ada: goods_kind
+// (ditentukan saat pengajuan dibuat) dan project_id. Dokumen lama tanpa
+// goods_kind tetap dihitung 'bahan' — sama seperti sebelumnya.
+func procurementClassExpr(alias string) string {
+	p := prefixOf(alias)
+	return fmt.Sprintf(`(CASE
+		WHEN %[1]sproject_id IS NOT NULL THEN 'projek'
+		WHEN %[1]srequest_type = 'jasa' THEN 'jasa'
+		WHEN COALESCE(%[1]sgoods_kind, '') = 'perlengkapan' THEN 'modal'
+		ELSE 'bahan' END)`, p)
+}
+
 // procurementCashOutFrom: sumber arus kas KELUAR pengadaan, satu baris per
 // PEMBAYARAN.
 //

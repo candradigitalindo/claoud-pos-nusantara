@@ -652,13 +652,18 @@ func GetCashFlowReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*m
 		args = append(args, pq.Array(filterIDs))
 	}
 
+	cls := procurementClassExpr("pr")
 	query := `
 		SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date,
 			SUM(sales_receipts) AS sales_receipts,
 			SUM(other_receipts) AS other_receipts,
 			SUM(cogs_payments)  AS cogs_payments,
 			SUM(svc_payments)   AS svc_payments,
-			SUM(opex_payments)  AS opex_payments
+			SUM(opex_payments)  AS opex_payments,
+			SUM(capex_payments) AS capex_payments,
+			SUM(proj_payments)  AS proj_payments,
+			SUM(dep_receipts)   AS dep_receipts,
+			SUM(dep_refunds)    AS dep_refunds
 		FROM (
 			-- Penerimaan Penjualan
 			SELECT tz_date(created_at) AS date,
@@ -666,7 +671,11 @@ func GetCashFlowReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*m
 				0::float8 AS other_receipts,
 				0::float8 AS cogs_payments,
 				0::float8 AS svc_payments,
-				0::float8 AS opex_payments
+				0::float8 AS opex_payments,
+				0::float8 AS capex_payments,
+				0::float8 AS proj_payments,
+				0::float8 AS dep_receipts,
+				0::float8 AS dep_refunds
 			FROM cloud_transactions
 			WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` + outletFilter + `
 
@@ -678,22 +687,50 @@ func GetCashFlowReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*m
 				CASE WHEN LOWER(movement_type) IN ('masuk','in','income','pemasukan') THEN amount ELSE 0 END,
 				0::float8,
 				0::float8,
-				CASE WHEN LOWER(movement_type) NOT IN ('masuk','in','income','pemasukan') THEN amount ELSE 0 END
+				CASE WHEN LOWER(movement_type) NOT IN ('masuk','in','income','pemasukan') THEN amount ELSE 0 END,
+				0::float8, 0::float8, 0::float8, 0::float8
 			FROM cloud_cash_movements
 			WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` + outletFilter + `
 
 			UNION ALL
 
-			-- Pengadaan Barang = HPP, Jasa = Beban Jasa.
+			-- Pengadaan dipilah per kelas (procurementClassExpr): bahan = HPP,
+			-- jasa = Beban Jasa, modal = Belanja Modal, projek = Belanja Projek.
 			-- Satu baris per PEMBAYARAN (lihat procurement_finance.go): cicilan
 			-- harus jatuh pada tanggal uangnya benar-benar keluar.
 			SELECT tz_date(ph.created_at) AS date,
 				0::float8, 0::float8,
-				CASE WHEN pr.request_type = 'barang' THEN ph.amount ELSE 0 END,
-				CASE WHEN pr.request_type = 'jasa'   THEN ph.amount ELSE 0 END,
-				0::float8
+				CASE WHEN ` + cls + ` = 'bahan'  THEN ph.amount ELSE 0 END,
+				CASE WHEN ` + cls + ` = 'jasa'   THEN ph.amount ELSE 0 END,
+				0::float8,
+				CASE WHEN ` + cls + ` = 'modal'  THEN ph.amount ELSE 0 END,
+				CASE WHEN ` + cls + ` = 'projek' THEN ph.amount ELSE 0 END,
+				0::float8, 0::float8
 			FROM ` + procurementCashOutFrom + `
 			` + procurementCashOutWhere(prOutletFilter) + `
+
+			UNION ALL
+
+			-- Uang muka reservasi tervalidasi pada tanggal dibayar: DP/pelunasan
+			-- masuk, refund keluar. Kewajiban (bukan pendapatan), tapi kasnya nyata.
+			SELECT tz_date(p.paid_at) AS date,
+				0::float8, 0::float8, 0::float8, 0::float8, 0::float8, 0::float8, 0::float8,
+				CASE WHEN p.type <> 'refund' THEN p.amount ELSE 0 END,
+				CASE WHEN p.type = 'refund' THEN p.amount ELSE 0 END
+			FROM reservation_payments p
+			WHERE p.status = 'validated'
+			  AND p.paid_at >= tz_day_start($1::date) AND p.paid_at < tz_day_start($2::date + 1)` +
+		strings.Replace(prOutletFilter, "pr.outlet_id", "p.outlet_id", 1) + `
+
+			UNION ALL
+
+			-- Bagian transaksi POS yang dibayar dari uang muka: uangnya sudah masuk
+			-- saat DP, jadi dikurangkan dari penerimaan penjualan hari kunjungan.
+			SELECT tz_date(created_at) AS date,
+				-amount, 0::float8, 0::float8, 0::float8, 0::float8, 0::float8, 0::float8, 0::float8, 0::float8
+			FROM transaction_payments
+			WHERE payment_method = '` + ReservationDpMethod + `'
+			  AND created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` + payNotVoided + outletFilter + `
 		) sub
 		GROUP BY date
 		ORDER BY date DESC`
@@ -705,41 +742,108 @@ func GetCashFlowReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*m
 	defer rows.Close()
 
 	daily := make([]models.CashFlowRow, 0)
-	var sumSales, sumOther, sumCOGS, sumSvc, sumOpex float64
+	var sumSales, sumOther, sumCOGS, sumSvc, sumOpex, sumCapex, sumProj, sumDep, sumRefund float64
 	for rows.Next() {
 		var r models.CashFlowRow
 		if err := rows.Scan(&r.Date, &r.SalesReceipts, &r.OtherReceipts,
-			&r.COGSPayments, &r.ServicePayments, &r.OpexPayments); err != nil {
+			&r.COGSPayments, &r.ServicePayments, &r.OpexPayments,
+			&r.CapexPayments, &r.ProjectPayments, &r.DepositReceipts, &r.DepositRefunds); err != nil {
 			return nil, err
 		}
-		r.NetCashFlow = (r.SalesReceipts + r.OtherReceipts) - (r.COGSPayments + r.ServicePayments + r.OpexPayments)
+		r.NetCashFlow = (r.SalesReceipts + r.OtherReceipts + r.DepositReceipts) -
+			(r.COGSPayments + r.ServicePayments + r.OpexPayments + r.CapexPayments + r.ProjectPayments + r.DepositRefunds)
 		daily = append(daily, r)
 		sumSales += r.SalesReceipts
 		sumOther += r.OtherReceipts
 		sumCOGS += r.COGSPayments
 		sumSvc += r.ServicePayments
 		sumOpex += r.OpexPayments
+		sumCapex += r.CapexPayments
+		sumProj += r.ProjectPayments
+		sumDep += r.DepositReceipts
+		sumRefund += r.DepositRefunds
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	totalReceipts := sumSales + sumOther
-	totalPayments := sumCOGS + sumSvc + sumOpex
+	totalReceipts := sumSales + sumOther + sumDep
+	totalPayments := sumCOGS + sumSvc + sumOpex + sumCapex + sumProj + sumRefund
 
 	return &models.CashFlowResponse{
 		Summary: models.CashFlowSummary{
 			SalesReceipts:   sumSales,
 			OtherReceipts:   sumOther,
+			DepositReceipts: sumDep,
 			TotalReceipts:   totalReceipts,
 			COGSPayments:    sumCOGS,
 			ServicePayments: sumSvc,
 			OpexPayments:    sumOpex,
+			CapexPayments:   sumCapex,
+			ProjectPayments: sumProj,
+			DepositRefunds:  sumRefund,
 			TotalPayments:   totalPayments,
 			NetCashFlow:     totalReceipts - totalPayments,
 		},
 		Daily: daily,
 	}, nil
+}
+
+// assetBookValueExprAt: nilai buku satu baris aset (per unit × jumlah) pada
+// tanggal parameter, memakai rumus garis lurus yang sama dengan modul aset
+// (assetJoins di asset.go): akumulasi = min(basis/umur × bulan berjalan, basis).
+func assetBookValueExprAt(dateParam string) string {
+	return fmt.Sprintf(`GREATEST(a.purchase_price - LEAST(
+		CASE WHEN COALESCE(a.useful_life_months, 0) > 0
+		     THEN (a.purchase_price - COALESCE(a.residual_value, 0)) / a.useful_life_months
+		          * GREATEST(0, (DATE_PART('year', AGE(%[1]s::date, a.purchase_date)) * 12
+		                        + DATE_PART('month', AGE(%[1]s::date, a.purchase_date)))::int)
+		     ELSE 0 END,
+		GREATEST(a.purchase_price - COALESCE(a.residual_value, 0), 0)), 0) * a.quantity`, dateParam)
+}
+
+// depreciationForPeriod menghitung beban penyusutan garis lurus seluruh aset
+// aktif untuk rentang tanggal, per outlet. Beban periode = akumulasi(dateTo)
+// − akumulasi(dateFrom − 1 hari), sehingga totalnya selalu cocok dengan
+// nilai buku yang ditampilkan modul aset — tidak ada rumus kedua.
+func depreciationForPeriod(dateFrom, dateTo string, filterIDs []string) (float64, map[string]float64, error) {
+	args := []interface{}{dateFrom, dateTo}
+	scope := ""
+	if filterIDs != nil {
+		scope = " AND a.outlet_id = ANY($3::text[])"
+		args = append(args, pq.Array(filterIDs))
+	}
+	rows, err := database.DB.Query(`
+		SELECT COALESCE(x.outlet_id, ''),
+		       COALESCE(SUM((LEAST(x.months_to, x.life) - LEAST(x.months_from, x.life)) * x.base / x.life * x.quantity), 0)
+		FROM (
+			SELECT a.outlet_id, a.quantity, a.useful_life_months AS life,
+			       GREATEST(a.purchase_price - COALESCE(a.residual_value, 0), 0) AS base,
+			       GREATEST(0, (DATE_PART('year', AGE($2::date, a.purchase_date)) * 12
+			                   + DATE_PART('month', AGE($2::date, a.purchase_date)))::int) AS months_to,
+			       GREATEST(0, (DATE_PART('year', AGE($1::date - 1, a.purchase_date)) * 12
+			                   + DATE_PART('month', AGE($1::date - 1, a.purchase_date)))::int) AS months_from
+			FROM assets a
+			WHERE a.is_deleted = false AND COALESCE(a.status, 'aktif') <> 'dihapus'
+			  AND a.purchase_date IS NOT NULL AND COALESCE(a.useful_life_months, 0) > 0`+scope+`
+		) x
+		GROUP BY 1`, args...)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer rows.Close()
+	byOutlet := map[string]float64{}
+	var total float64
+	for rows.Next() {
+		var outlet string
+		var amt float64
+		if err := rows.Scan(&outlet, &amt); err != nil {
+			return 0, nil, err
+		}
+		byOutlet[strings.TrimSpace(outlet)] = amt
+		total += amt
+	}
+	return total, byOutlet, rows.Err()
 }
 
 // taxTotalsByOutlet menjumlahkan tax_amount riil per outlet untuk periode terpilih.
@@ -803,7 +907,12 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 			COALESCE(mv.total_expense, 0),
 			COALESCE(uq.unpaid_amount, 0),
 			COALESCE(pr.total_procurement, 0),
-			COALESCE(ap.accounts_payable, 0)
+			COALESCE(ap.accounts_payable, 0),
+			COALESCE(inv.inventory, 0),
+			COALESCE(fa.fixed_assets, 0),
+			COALESCE(pj.projects, 0),
+			COALESCE(cd.deposits, 0),
+			COALESCE(ca.cash_adj, 0)
 		FROM outlets o
 		LEFT JOIN (
 			SELECT outlet_id, SUM(total_amount) AS total_revenue
@@ -840,8 +949,66 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 			  AND `+countableCond("")+`
 			GROUP BY outlet_id
 		) ap ON ap.outlet_id = o.id
+		-- Persediaan: nilai buku stok gudang outlet saat ini (gudang induk tanpa
+		-- outlet dijumlahkan ke total di bawah).
+		LEFT JOIN (
+			SELECT w.outlet_id, SUM(sl.qty_base * sl.avg_cost) AS inventory
+			FROM stock_ledger sl JOIN warehouses w ON w.id = sl.warehouse_id
+			WHERE w.outlet_id IS NOT NULL
+			GROUP BY w.outlet_id
+		) inv ON inv.outlet_id = o.id
+		-- Aset tetap: nilai buku per tanggal akhir periode, rumus modul aset.
+		LEFT JOIN (
+			SELECT a.outlet_id, SUM(`+assetBookValueExprAt("$2")+`) AS fixed_assets
+			FROM assets a
+			WHERE a.is_deleted = false AND COALESCE(a.status, 'aktif') <> 'dihapus'
+			  AND (a.purchase_date IS NULL OR a.purchase_date <= $2::date)
+			GROUP BY a.outlet_id
+		) fa ON fa.outlet_id = o.id
+		-- Projek berjalan: belanja projek yang sudah dibayar dan belum berwujud
+		-- aset, untuk projek yang belum selesai.
+		LEFT JOIN (
+			SELECT p.outlet_id, GREATEST(SUM(p.paid_amount) - COALESCE(SUM(av.value), 0), 0) AS projects
+			FROM (
+				SELECT pr.id, pr.outlet_id, COALESCE(pr.paid_amount, 0) AS paid_amount
+				FROM purchase_requests pr
+				JOIN projects pj ON pj.id = pr.project_id
+				WHERE pj.status NOT IN ('selesai','batal')
+				  AND pr.status NOT IN ('pending','rejected','cancelled')
+				  AND `+countableCond("pr")+`
+			) p
+			LEFT JOIN (
+				SELECT purchase_request_id, SUM(purchase_price * quantity) AS value
+				FROM assets WHERE is_deleted = false AND purchase_request_id IS NOT NULL
+				GROUP BY purchase_request_id
+			) av ON av.purchase_request_id = p.id
+			GROUP BY p.outlet_id
+		) pj ON pj.outlet_id = o.id
+		-- Uang muka pelanggan: kewajiban atas reservasi yang belum ditutup (atau
+		-- dibatalkan dengan keputusan refund tapi refundnya belum dicatat).
+		LEFT JOIN (
+			SELECT p.outlet_id, SUM(CASE WHEN p.type = 'refund' THEN -p.amount ELSE p.amount END) AS deposits
+			FROM reservation_payments p JOIN reservations rv ON rv.id = p.reservation_id
+			WHERE p.status = 'validated'
+			  AND (rv.status IN ('pending','confirmed') OR (rv.status = 'cancelled' AND rv.cancel_disposition = 'refund'))
+			GROUP BY p.outlet_id
+		) cd ON cd.outlet_id = o.id
+		-- Penyesuaian kas periode: uang muka masuk − refund − bagian transaksi
+		-- yang dibayar dari uang muka (uangnya sudah dihitung saat DP).
+		LEFT JOIN (
+			SELECT outlet_id, SUM(v) AS cash_adj FROM (
+				SELECT p.outlet_id, CASE WHEN p.type = 'refund' THEN -p.amount ELSE p.amount END AS v
+				FROM reservation_payments p
+				WHERE p.status = 'validated' AND p.paid_at >= tz_day_start($1::date) AND p.paid_at < tz_day_start($2::date + 1)
+				UNION ALL
+				SELECT tp.outlet_id, -tp.amount FROM transaction_payments tp
+				WHERE tp.payment_method = '`+ReservationDpMethod+`'
+				  AND tp.created_at >= tz_day_start($1::date) AND tp.created_at < tz_day_start($2::date + 1)
+			) x GROUP BY outlet_id
+		) ca ON ca.outlet_id = o.id
 		WHERE o.is_active = true
-		  AND (t.outlet_id IS NOT NULL OR mv.outlet_id IS NOT NULL OR uq.outlet_id IS NOT NULL OR pr.outlet_id IS NOT NULL OR ap.outlet_id IS NOT NULL)`+outletWhere+`
+		  AND (t.outlet_id IS NOT NULL OR mv.outlet_id IS NOT NULL OR uq.outlet_id IS NOT NULL OR pr.outlet_id IS NOT NULL OR ap.outlet_id IS NOT NULL
+		       OR inv.outlet_id IS NOT NULL OR fa.outlet_id IS NOT NULL OR pj.outlet_id IS NOT NULL OR cd.outlet_id IS NOT NULL)`+outletWhere+`
 		ORDER BY COALESCE(t.total_revenue, 0) DESC`,
 		args...,
 	)
@@ -851,21 +1018,26 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 	defer outletRows.Close()
 
 	outlets := make([]models.BalanceOutletRow, 0)
-	var sumRev, sumCashIn, sumExp, sumUnpaid, sumAP float64
+	var sumRev, sumCashIn, sumExp, sumUnpaid, sumAP, sumInv, sumFA, sumPJ, sumDep, sumCashAdj float64
 	for outletRows.Next() {
 		var r models.BalanceOutletRow
-		var procurement float64
-		if err := outletRows.Scan(&r.OutletID, &r.OutletName, &r.TotalRevenue, &r.TotalCashIn, &r.TotalExpense, &r.UnpaidAmount, &procurement, &r.AccountsPayable); err != nil {
+		var procurement, cashAdj float64
+		if err := outletRows.Scan(&r.OutletID, &r.OutletName, &r.TotalRevenue, &r.TotalCashIn, &r.TotalExpense, &r.UnpaidAmount, &procurement, &r.AccountsPayable,
+			&r.Inventory, &r.FixedAssets, &r.ProjectsInProgress, &r.CustomerDeposits, &cashAdj); err != nil {
 			return nil, err
 		}
 		r.TotalExpense += procurement
+		r.CustomerDeposits = math.Max(round2(r.CustomerDeposits), 0)
 		// Aset
-		r.CashAndEquivalents = round2(r.TotalRevenue + r.TotalCashIn - r.TotalExpense)
+		r.CashAndEquivalents = round2(r.TotalRevenue + r.TotalCashIn - r.TotalExpense + cashAdj)
 		r.Receivables = r.UnpaidAmount
-		r.TotalAssets = round2(r.CashAndEquivalents + r.Receivables)
+		r.Inventory = round2(r.Inventory)
+		r.FixedAssets = round2(r.FixedAssets)
+		r.ProjectsInProgress = round2(r.ProjectsInProgress)
+		r.TotalAssets = round2(r.CashAndEquivalents + r.Receivables + r.Inventory + r.FixedAssets + r.ProjectsInProgress)
 		// Kewajiban
 		r.TaxPayable = round2(taxByOutlet[strings.TrimSpace(r.OutletID)])
-		r.TotalLiabilities = round2(r.TaxPayable + r.AccountsPayable)
+		r.TotalLiabilities = round2(r.TaxPayable + r.AccountsPayable + r.CustomerDeposits)
 		// Ekuitas = Aset - Kewajiban
 		r.TotalEquity = round2(r.TotalAssets - r.TotalLiabilities)
 
@@ -875,6 +1047,11 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 		sumExp += r.TotalExpense
 		sumUnpaid += r.UnpaidAmount
 		sumAP += r.AccountsPayable
+		sumInv += r.Inventory
+		sumFA += r.FixedAssets
+		sumPJ += r.ProjectsInProgress
+		sumDep += r.CustomerDeposits
+		sumCashAdj += cashAdj
 	}
 	if err := outletRows.Err(); err != nil {
 		return nil, err
@@ -899,15 +1076,40 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 		database.DB.QueryRow(`SELECT COALESCE(SUM(`+payableExpr("")+`), 0)
 			FROM purchase_requests WHERE `+outstandingCond+` AND outlet_id IS NULL AND `+countableCond("")).Scan(&nullOutletAP)
 		sumAP += nullOutletAP
+
+		// Persediaan gudang induk (tanpa outlet) dan projek tanpa outlet hanya
+		// masuk ke total gabungan — tidak ada baris outlet yang memilikinya.
+		var centralInv, nullProjects float64
+		database.DB.QueryRow(`SELECT COALESCE(SUM(sl.qty_base * sl.avg_cost), 0)
+			FROM stock_ledger sl JOIN warehouses w ON w.id = sl.warehouse_id WHERE w.outlet_id IS NULL`).Scan(&centralInv)
+		database.DB.QueryRow(`
+			SELECT GREATEST(COALESCE(SUM(p.paid_amount), 0) - COALESCE(SUM(av.value), 0), 0)
+			FROM (
+				SELECT pr.id, COALESCE(pr.paid_amount, 0) AS paid_amount
+				FROM purchase_requests pr JOIN projects pj ON pj.id = pr.project_id
+				WHERE pj.status NOT IN ('selesai','batal') AND pr.outlet_id IS NULL
+				  AND pr.status NOT IN ('pending','rejected','cancelled') AND `+countableCond("pr")+`
+			) p
+			LEFT JOIN (
+				SELECT purchase_request_id, SUM(purchase_price * quantity) AS value
+				FROM assets WHERE is_deleted = false AND purchase_request_id IS NOT NULL
+				GROUP BY purchase_request_id
+			) av ON av.purchase_request_id = p.id`).Scan(&nullProjects)
+		sumInv += centralInv
+		sumPJ += nullProjects
 	}
 
 	// Total accounting
-	cash := round2(sumRev + sumCashIn - sumExp)
+	cash := round2(sumRev + sumCashIn - sumExp + sumCashAdj)
 	receivables := sumUnpaid
-	totalAssets := round2(cash + receivables)
+	inventory := round2(sumInv)
+	fixedAssets := round2(sumFA)
+	projects := round2(sumPJ)
+	totalAssets := round2(cash + receivables + inventory + fixedAssets + projects)
 	taxPayable := round2(taxTotal)
 	accountsPayable := round2(sumAP)
-	totalLiabilities := round2(taxPayable + accountsPayable)
+	customerDeposits := round2(sumDep)
+	totalLiabilities := round2(taxPayable + accountsPayable + customerDeposits)
 	totalEquity := round2(totalAssets - totalLiabilities)
 
 	return &models.BalanceResponse{
@@ -915,8 +1117,12 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 		DateTo:             dateTo,
 		CashAndEquivalents: cash,
 		Receivables:        receivables,
+		Inventory:          inventory,
+		FixedAssets:        fixedAssets,
+		ProjectsInProgress: projects,
 		TotalAssets:        totalAssets,
 		AccountsPayable:    accountsPayable,
+		CustomerDeposits:   customerDeposits,
 		TaxPayable:         taxPayable,
 		TotalLiabilities:   totalLiabilities,
 		TotalEquity:        totalEquity,
@@ -949,6 +1155,10 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 		prOutletFilter = " AND pr.outlet_id = ANY($3::text[])"
 		args = append(args, pq.Array(filterIDs))
 	}
+	// Hanya kelas 'bahan' yang menjadi HPP dan 'jasa' yang menjadi beban jasa.
+	// Belanja modal dan projek bukan beban: keduanya menjadi aset (lihat Neraca)
+	// dan masuk Laba/Rugi lewat penyusutan.
+	cls := procurementClassExpr("pr")
 
 	// ── Daily breakdown ──
 	dailyRows, err := database.DB.Query(`
@@ -971,8 +1181,8 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 			UNION ALL
 
 			SELECT tz_date(ph.created_at) AS date, 0::float8,
-				CASE WHEN pr.request_type = 'barang' THEN ph.amount ELSE 0 END,
-				CASE WHEN pr.request_type = 'jasa'   THEN ph.amount ELSE 0 END
+				CASE WHEN `+cls+` = 'bahan' THEN ph.amount ELSE 0 END,
+				CASE WHEN `+cls+` = 'jasa'  THEN ph.amount ELSE 0 END
 			FROM `+procurementCashOutFrom+`
 			`+procurementCashOutWhere(prOutletFilter)+`
 		) sub
@@ -1003,6 +1213,7 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 
 	// ── Summary totals ──
 	var salesRevenue, otherIncome, totalCOGS, serviceExpense, operatingExpense float64
+	var capexPayments, projectPayments float64
 
 	// Sales revenue
 	revArgs := []interface{}{dateFrom, dateTo}
@@ -1025,18 +1236,38 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 	}
 	database.DB.QueryRow(oiQ, oiArgs...).Scan(&otherIncome)
 
+	// Uang muka reservasi yang HANGUS (dibatalkan dengan keputusan 'hangus')
+	// menjadi pendapatan lain pada tanggal pembatalan — satu-satunya jalan uang
+	// muka masuk P&L tanpa transaksi POS.
+	var forfeited float64
+	ffArgs := []interface{}{dateFrom, dateTo}
+	ffQ := `SELECT COALESCE(SUM(s.v), 0) FROM (
+		SELECT rv.id, SUM(CASE WHEN p.type = 'refund' THEN -p.amount ELSE p.amount END) AS v
+		FROM reservations rv JOIN reservation_payments p ON p.reservation_id = rv.id AND p.status = 'validated'
+		WHERE rv.status = 'cancelled' AND rv.cancel_disposition = 'hangus'
+		  AND rv.cancelled_at >= tz_day_start($1::date) AND rv.cancelled_at < tz_day_start($2::date + 1)`
+	if filterIDs != nil {
+		ffQ += ` AND rv.outlet_id = ANY($3::text[])`
+		ffArgs = append(ffArgs, pq.Array(filterIDs))
+	}
+	ffQ += ` GROUP BY rv.id) s`
+	database.DB.QueryRow(ffQ, ffArgs...).Scan(&forfeited)
+	otherIncome += forfeited
+
 	// COGS (purchase barang) and Service expense (purchase jasa)
 	prArgs := []interface{}{dateFrom, dateTo}
 	prQ := `SELECT
-		COALESCE(SUM(CASE WHEN pr.request_type = 'barang' THEN ph.amount ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN pr.request_type = 'jasa'   THEN ph.amount ELSE 0 END), 0)
+		COALESCE(SUM(CASE WHEN ` + cls + ` = 'bahan'  THEN ph.amount ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN ` + cls + ` = 'jasa'   THEN ph.amount ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN ` + cls + ` = 'modal'  THEN ph.amount ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN ` + cls + ` = 'projek' THEN ph.amount ELSE 0 END), 0)
 	FROM ` + procurementCashOutFrom + `
 	` + procurementCashOutWhere("")
 	if filterIDs != nil {
 		prQ += ` AND pr.outlet_id = ANY($3::text[])`
 		prArgs = append(prArgs, pq.Array(filterIDs))
 	}
-	database.DB.QueryRow(prQ, prArgs...).Scan(&totalCOGS, &serviceExpense)
+	database.DB.QueryRow(prQ, prArgs...).Scan(&totalCOGS, &serviceExpense, &capexPayments, &projectPayments)
 
 	// Operating expense (kas keluar)
 	opArgs := []interface{}{dateFrom, dateTo}
@@ -1049,9 +1280,16 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 	}
 	database.DB.QueryRow(opQ, opArgs...).Scan(&operatingExpense)
 
+	// Penyusutan aset periode ini — satu-satunya jalan belanja modal ke P&L.
+	depreciation, depByOutlet, err := depreciationForPeriod(dateFrom, dateTo, filterIDs)
+	if err != nil {
+		return nil, err
+	}
+	depreciation = round2(depreciation)
+
 	totalRevenue := salesRevenue + otherIncome
 	grossProfit := salesRevenue - totalCOGS
-	totalOpex := serviceExpense + operatingExpense
+	totalOpex := serviceExpense + operatingExpense + depreciation
 	operatingProfit := grossProfit + otherIncome - totalOpex
 	_, pnlTax := taxTotalsByOutlet(dateFrom, dateTo, filterIDs)
 	taxExpense := round2(pnlTax)
@@ -1090,13 +1328,13 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 		LEFT JOIN (
 			SELECT pr.outlet_id, SUM(ph.amount) AS cogs
 			FROM `+procurementCashOutFrom+`
-			`+procurementCashOutWhere(" AND pr.request_type = 'barang'")+`
+			`+procurementCashOutWhere(" AND "+cls+" = 'bahan'")+`
 			GROUP BY pr.outlet_id
 		) pr_b ON pr_b.outlet_id = o.id
 		LEFT JOIN (
 			SELECT pr.outlet_id, SUM(ph.amount) AS svc
 			FROM `+procurementCashOutFrom+`
-			`+procurementCashOutWhere(" AND pr.request_type = 'jasa'")+`
+			`+procurementCashOutWhere(" AND "+cls+" = 'jasa'")+`
 			GROUP BY pr.outlet_id
 		) pr_j ON pr_j.outlet_id = o.id
 		LEFT JOIN (
@@ -1122,7 +1360,8 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 		if err := outletQRows.Scan(&r.OutletID, &r.OutletName, &r.Revenue, &r.COGS, &r.OperatingExpense); err != nil {
 			return nil, err
 		}
-		r.NetProfit = r.Revenue - r.COGS - r.OperatingExpense
+		r.Depreciation = round2(depByOutlet[strings.TrimSpace(r.OutletID)])
+		r.NetProfit = r.Revenue - r.COGS - r.OperatingExpense - r.Depreciation
 		byOutlet = append(byOutlet, r)
 	}
 	if err := outletQRows.Err(); err != nil {
@@ -1133,14 +1372,18 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 		Summary: models.ProfitLossSummary{
 			SalesRevenue:     round2(salesRevenue),
 			OtherIncome:      round2(otherIncome),
+			ForfeitedDeposits: round2(forfeited),
 			TotalRevenue:     round2(totalRevenue),
 			COGS:             round2(totalCOGS),
 			GrossProfit:      round2(grossProfit),
 			GrossMargin:      grossMargin,
 			ServiceExpense:   round2(serviceExpense),
 			OperatingExpense: round2(operatingExpense),
+			DepreciationExpense: depreciation,
 			TotalOpex:        round2(totalOpex),
 			OperatingProfit:  round2(operatingProfit),
+			CapexPayments:    round2(capexPayments),
+			ProjectPayments:  round2(projectPayments),
 			TaxExpense:       taxExpense,
 			NetProfit:        round2(netProfit),
 			NetMargin:        netMargin,
@@ -1154,16 +1397,20 @@ func GetProfitLossReport(dateFrom, dateTo, outletID string, scopeIDs []string) (
 
 // Kode akun COA F&B yang dipakai buku besar.
 const (
-	glAccCash        = "1-100"
-	glAccReceivable  = "1-200"
-	glAccPayable     = "2-100"
-	glAccTaxPayable  = "2-200"
-	glAccRevenue     = "4-100"
-	glAccOtherIncome = "4-200"
-	glAccCOGS        = "5-100"
-	glAccServiceExp  = "5-200"
-	glAccOpex        = "5-300"
-	glAccTaxExpense  = "6-100"
+	glAccCash         = "1-100"
+	glAccReceivable   = "1-200"
+	glAccFixedAsset   = "1-400" // belanja modal; dikredit oleh penyusutan (metode neto)
+	glAccProjectWIP   = "1-450" // belanja projek yang belum berwujud aset
+	glAccPayable      = "2-100"
+	glAccTaxPayable   = "2-200"
+	glAccCustomerDep  = "2-300" // uang muka reservasi: kewajiban sampai ditutup di POS
+	glAccRevenue      = "4-100"
+	glAccOtherIncome  = "4-200"
+	glAccCOGS         = "5-100"
+	glAccServiceExp   = "5-200"
+	glAccOpex         = "5-300"
+	glAccDepreciation = "5-400"
+	glAccTaxExpense   = "6-100"
 )
 
 type glAccountMeta struct {
@@ -1176,14 +1423,32 @@ type glAccountMeta struct {
 var glAccounts = []glAccountMeta{
 	{glAccCash, "Kas & Setara Kas", "aset"},
 	{glAccReceivable, "Piutang Usaha", "aset"},
+	{glAccFixedAsset, "Aset Tetap (Peralatan)", "aset"},
+	{glAccProjectWIP, "Projek Berjalan", "aset"},
 	{glAccPayable, "Hutang Usaha", "kewajiban"},
 	{glAccTaxPayable, "Hutang Pajak Restoran", "kewajiban"},
+	{glAccCustomerDep, "Uang Muka Pelanggan", "kewajiban"},
 	{glAccRevenue, "Pendapatan Penjualan", "pendapatan"},
 	{glAccOtherIncome, "Pendapatan Lainnya", "pendapatan"},
 	{glAccCOGS, "HPP - Bahan Baku", "beban"},
 	{glAccServiceExp, "Beban Jasa & Layanan", "beban"},
 	{glAccOpex, "Beban Operasional", "beban"},
+	{glAccDepreciation, "Beban Penyusutan Aset", "beban"},
 	{glAccTaxExpense, "Beban Pajak Restoran", "beban"},
+}
+
+// glAccountForClass memetakan kelas belanja (procurementClassExpr) ke akun
+// yang didebit saat pengadaan diakui.
+func glAccountForClass(cls string) (account, label string) {
+	switch cls {
+	case "jasa":
+		return glAccServiceExp, "Beban Jasa"
+	case "modal":
+		return glAccFixedAsset, "Aset Tetap"
+	case "projek":
+		return glAccProjectWIP, "Projek"
+	}
+	return glAccCOGS, "HPP"
 }
 
 func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs []string) (*models.GeneralLedgerResponse, error) {
@@ -1324,72 +1589,71 @@ func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs
 		}
 	}
 
-	// 3) Pengadaan Dibayar — dipisah per jenis (barang→HPP, jasa→Beban Jasa)
-	if needQ(glAccCash, glAccCOGS, glAccServiceExp) {
-		// Satu baris jurnal per PEMBAYARAN. Dulu satu baris per pengajuan
-		// memakai paid_at/paid_amount, sehingga pengajuan yang dicicil hanya
-		// muncul sekali di tanggal cicilan terakhir dengan nilai penuh.
+	// 3) Pengakuan belanja pengadaan — AKRUAL per dokumen pada tanggal
+	//    disetujui: Dr (HPP | Beban Jasa | Aset Tetap | Projek Berjalan) /
+	//    Cr Hutang Usaha sebesar harga final. Pembayaran (4) lalu mengurangi
+	//    hutang, bukan mendebit beban lagi.
+	//
+	//    Skema lama mendebit beban DUA KALI untuk pembelian tempo/cicilan
+	//    lintas periode: sekali sebagai "sisa hutang" (disaring per tanggal
+	//    dibuat), sekali lagi saat dibayar — dan hutangnya tidak pernah dibalik.
+	//    Pengajuan 10 juta dicicil 4 + 6 lintas bulan menghasilkan HPP 16 juta.
+	if needQ(glAccPayable, glAccCOGS, glAccServiceExp, glAccFixedAsset, glAccProjectWIP) {
 		q := `
 		SELECT
-			ph.created_at,
-			TO_CHAR(tz_date(ph.created_at), 'YYYY-MM-DD') AS date,
-			pr.request_type,
-			pr.request_type || ': ' || COALESCE(wu.name, '-') || ' — ' || pr.requested_by AS description,
-			ph.amount
-		FROM ` + procurementCashOutFrom + `
+			COALESCE(pr.approved_at, pr.created_at) AS at,
+			TO_CHAR(tz_date(COALESCE(pr.approved_at, pr.created_at)), 'YYYY-MM-DD') AS date,
+			` + procurementClassExpr("pr") + `,
+			pr.request_number || ' · ' || COALESCE(wu.name, '-') || ' — ' || pr.requested_by AS description,
+			pr.total_final
+		FROM purchase_requests pr
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
-		` + procurementCashOutWhere(aliasFilter("pr")) + `
-		ORDER BY ph.created_at`
+		WHERE pr.status NOT IN ('pending','rejected','cancelled') AND pr.total_final > 0
+		  AND ` + countableCond("pr") + `
+		  AND COALESCE(pr.approved_at, pr.created_at) >= tz_day_start($1::date)
+		  AND COALESCE(pr.approved_at, pr.created_at) < tz_day_start($2::date + 1)` +
+			aliasFilter("pr") + `
+		ORDER BY 1`
 
-		if err := eachRow("procurement", q, args, func(rows *sql.Rows) error {
+		if err := eachRow("procurement accrual", q, args, func(rows *sql.Rows) error {
 			var at time.Time
-			var date, reqType, desc string
+			var date, cls, desc string
 			var amount float64
-			if err := rows.Scan(&at, &date, &reqType, &desc, &amount); err != nil {
+			if err := rows.Scan(&at, &date, &cls, &desc, &amount); err != nil {
 				return err
 			}
-			expAccount, prefix := glAccCOGS, "HPP: "
-			if reqType == "jasa" {
-				expAccount, prefix = glAccServiceExp, "Beban Jasa: "
-			}
-			add(expAccount, at, date, prefix+desc, amount, 0)
-			add(glAccCash, at, date, prefix+desc, 0, amount)
+			account, label := glAccountForClass(cls)
+			add(account, at, date, label+": "+desc, amount, 0)
+			add(glAccPayable, at, date, label+": "+desc, 0, amount)
 			return nil
 		}); err != nil {
 			return nil, err
 		}
 	}
 
-	// 4) Hutang Usaha — pengadaan disetujui yang belum (lunas) dibayar
-	if needQ(glAccPayable, glAccCOGS, glAccServiceExp) {
+	// 4) Pembayaran pengadaan — Dr Hutang Usaha / Cr Kas, satu baris per
+	//    PEMBAYARAN supaya cicilan jatuh pada tanggal uangnya benar-benar keluar.
+	if needQ(glAccCash, glAccPayable) {
 		q := `
 		SELECT
-			pr.created_at,
-			TO_CHAR(tz_date(pr.created_at), 'YYYY-MM-DD') AS date,
-			pr.request_type,
-			pr.request_type || ': ' || COALESCE(wu.name, '-') || ' — ' || pr.requested_by AS description,
-			` + payableExpr("pr") + `
-		FROM purchase_requests pr
+			ph.created_at,
+			TO_CHAR(tz_date(ph.created_at), 'YYYY-MM-DD') AS date,
+			pr.request_number || ' · ' || COALESCE(wu.name, '-') || ' — ' || pr.requested_by AS description,
+			ph.amount
+		FROM ` + procurementCashOutFrom + `
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
-		WHERE ` + outstandingCondFor("pr") + `
-		  AND ` + countableCond("pr") + `
-		  AND pr.created_at >= tz_day_start($1::date) AND pr.created_at < tz_day_start($2::date + 1)` +
-			aliasFilter("pr") + `
-		ORDER BY pr.created_at`
+		` + procurementCashOutWhere(aliasFilter("pr")) + `
+		ORDER BY ph.created_at`
 
-		if err := eachRow("payable", q, args, func(rows *sql.Rows) error {
+		if err := eachRow("procurement payment", q, args, func(rows *sql.Rows) error {
 			var at time.Time
-			var date, reqType, desc string
+			var date, desc string
 			var amount float64
-			if err := rows.Scan(&at, &date, &reqType, &desc, &amount); err != nil {
+			if err := rows.Scan(&at, &date, &desc, &amount); err != nil {
 				return err
 			}
-			expAccount, prefix := glAccCOGS, "HPP (Hutang): "
-			if reqType == "jasa" {
-				expAccount, prefix = glAccServiceExp, "Beban Jasa (Hutang): "
-			}
-			add(expAccount, at, date, prefix+desc, amount, 0)
-			add(glAccPayable, at, date, prefix+desc, 0, amount)
+			add(glAccPayable, at, date, "Bayar: "+desc, amount, 0)
+			add(glAccCash, at, date, "Bayar: "+desc, 0, amount)
 			return nil
 		}); err != nil {
 			return nil, err
@@ -1460,6 +1724,121 @@ func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs
 		}
 	}
 
+	// 6b) Uang muka reservasi.
+	//     Masuk (dp/pelunasan tervalidasi): Dr Kas / Cr Uang Muka Pelanggan.
+	//     Refund: Dr Uang Muka / Cr Kas. Hangus: Dr Uang Muka / Cr Pendapatan
+	//     Lainnya. Dipakai di POS (baris 'reservasi_dp'): Dr Uang Muka / Cr Kas,
+	//     mengimbangi Dr Kas penuh dari posting penjualan.
+	if needQ(glAccCash, glAccCustomerDep, glAccOtherIncome) {
+		q := `
+		SELECT p.paid_at, TO_CHAR(tz_date(p.paid_at), 'YYYY-MM-DD') AS date, p.type,
+			COALESCE(o.name, '-') || ' - ' || rv.customer_name AS description, p.amount
+		FROM reservation_payments p
+		JOIN reservations rv ON rv.id = p.reservation_id
+		LEFT JOIN outlets o ON o.id = rv.outlet_id
+		WHERE p.status = 'validated'
+		  AND p.paid_at >= tz_day_start($1::date) AND p.paid_at < tz_day_start($2::date + 1)` +
+			aliasFilter("p") + `
+		ORDER BY p.paid_at`
+		if err := eachRow("reservation deposits", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, typ, desc string
+			var amount float64
+			if err := rows.Scan(&at, &date, &typ, &desc, &amount); err != nil {
+				return err
+			}
+			if typ == "refund" {
+				add(glAccCustomerDep, at, date, "Refund uang muka: "+desc, amount, 0)
+				add(glAccCash, at, date, "Refund uang muka: "+desc, 0, amount)
+			} else {
+				add(glAccCash, at, date, "Uang muka reservasi ("+typ+"): "+desc, amount, 0)
+				add(glAccCustomerDep, at, date, "Uang muka reservasi ("+typ+"): "+desc, 0, amount)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+
+		q = `
+		SELECT rv.cancelled_at, TO_CHAR(tz_date(rv.cancelled_at), 'YYYY-MM-DD') AS date,
+			COALESCE(o.name, '-') || ' - ' || rv.customer_name AS description,
+			COALESCE((SELECT SUM(CASE WHEN p.type = 'refund' THEN -p.amount ELSE p.amount END)
+			          FROM reservation_payments p WHERE p.reservation_id = rv.id AND p.status = 'validated'), 0)
+		FROM reservations rv LEFT JOIN outlets o ON o.id = rv.outlet_id
+		WHERE rv.status = 'cancelled' AND rv.cancel_disposition = 'hangus'
+		  AND rv.cancelled_at >= tz_day_start($1::date) AND rv.cancelled_at < tz_day_start($2::date + 1)` +
+			aliasFilter("rv") + `
+		ORDER BY rv.cancelled_at`
+		if err := eachRow("forfeited deposits", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, desc string
+			var amount float64
+			if err := rows.Scan(&at, &date, &desc, &amount); err != nil {
+				return err
+			}
+			if amount > 0 {
+				add(glAccCustomerDep, at, date, "Uang muka hangus: "+desc, amount, 0)
+				add(glAccOtherIncome, at, date, "Uang muka hangus: "+desc, 0, amount)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+
+		q = `
+		SELECT transaction_payments.created_at, TO_CHAR(tz_date(transaction_payments.created_at), 'YYYY-MM-DD') AS date,
+			COALESCE(NULLIF(t.orderer_name, ''), t.cashier_name, 'Kasir') || ' - ' || t.local_id AS description,
+			transaction_payments.amount
+		FROM transaction_payments
+		JOIN cloud_transactions t ON t.id = transaction_payments.transaction_id
+		WHERE transaction_payments.payment_method = '` + ReservationDpMethod + `'
+		  AND transaction_payments.created_at >= tz_day_start($1::date) AND transaction_payments.created_at < tz_day_start($2::date + 1)` +
+			payNotVoided + aliasFilter("transaction_payments") + `
+		ORDER BY transaction_payments.created_at`
+		if err := eachRow("deposit usage", q, args, func(rows *sql.Rows) error {
+			var at time.Time
+			var date, desc string
+			var amount float64
+			if err := rows.Scan(&at, &date, &desc, &amount); err != nil {
+				return err
+			}
+			add(glAccCustomerDep, at, date, "Pemakaian uang muka: "+desc, amount, 0)
+			add(glAccCash, at, date, "Pemakaian uang muka: "+desc, 0, amount)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	// 7) Penyusutan aset — satu jurnal per bulan kalender dalam rentang,
+	//    Dr Beban Penyusutan / Cr Aset Tetap (metode neto), rumus modul aset.
+	if needQ(glAccDepreciation, glAccFixedAsset) {
+		from, errF := time.Parse("2006-01-02", dateFrom)
+		to, errT := time.Parse("2006-01-02", dateTo)
+		if errF == nil && errT == nil && !to.Before(from) {
+			loc := GetTimezoneLocation()
+			for cur := time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, time.UTC); !cur.After(to); cur = cur.AddDate(0, 1, 0) {
+				mStart, mEnd := cur, cur.AddDate(0, 1, -1)
+				if mStart.Before(from) {
+					mStart = from
+				}
+				if mEnd.After(to) {
+					mEnd = to
+				}
+				amt, _, err := depreciationForPeriod(mStart.Format("2006-01-02"), mEnd.Format("2006-01-02"), filterIDs)
+				if err != nil {
+					return nil, fmt.Errorf("general ledger: depreciation: %w", err)
+				}
+				if amt = round2(amt); amt > 0 {
+					at := time.Date(mEnd.Year(), mEnd.Month(), mEnd.Day(), 23, 59, 59, 0, loc)
+					desc := "Penyusutan aset " + cur.Format("2006-01")
+					add(glAccDepreciation, at, mEnd.Format("2006-01-02"), desc, amt, 0)
+					add(glAccFixedAsset, at, mEnd.Format("2006-01-02"), desc, 0, amt)
+				}
+			}
+		}
+	}
+
 	// ── Susun akun dari entri ──
 	accounts := make([]models.GeneralLedgerAccount, 0, len(glAccounts))
 	balanceOf := make(map[string]float64, len(glAccounts))
@@ -1517,7 +1896,7 @@ func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs
 		Summary: models.GeneralLedgerSummary{
 			CashBalance:  balanceOf[glAccCash],
 			TotalRevenue: round2(balanceOf[glAccRevenue] + balanceOf[glAccOtherIncome]),
-			TotalExpense: round2(balanceOf[glAccCOGS] + balanceOf[glAccServiceExp] + balanceOf[glAccOpex] + balanceOf[glAccTaxExpense]),
+			TotalExpense: round2(balanceOf[glAccCOGS] + balanceOf[glAccServiceExp] + balanceOf[glAccOpex] + balanceOf[glAccDepreciation] + balanceOf[glAccTaxExpense]),
 		},
 		Accounts: accounts,
 	}, nil

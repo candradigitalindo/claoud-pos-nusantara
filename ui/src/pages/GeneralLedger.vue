@@ -263,13 +263,17 @@ const accountPages     = reactive({})
 const ACCOUNT_OPTIONS = [
   { value: '1-100', label: '1-100 Kas & Setara Kas' },
   { value: '1-200', label: '1-200 Piutang Usaha' },
+  { value: '1-400', label: '1-400 Aset Tetap (Peralatan)' },
+  { value: '1-450', label: '1-450 Projek Berjalan' },
   { value: '2-100', label: '2-100 Hutang Usaha' },
   { value: '2-200', label: '2-200 Hutang Pajak Restoran' },
+  { value: '2-300', label: '2-300 Uang Muka Pelanggan' },
   { value: '4-100', label: '4-100 Pendapatan Penjualan' },
   { value: '4-200', label: '4-200 Pendapatan Lainnya' },
   { value: '5-100', label: '5-100 HPP - Bahan Baku' },
   { value: '5-200', label: '5-200 Beban Jasa & Layanan' },
   { value: '5-300', label: '5-300 Beban Operasional' },
+  { value: '5-400', label: '5-400 Beban Penyusutan Aset' },
   { value: '6-100', label: '6-100 Beban Pajak Restoran' },
 ]
 

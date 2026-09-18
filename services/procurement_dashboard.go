@@ -87,7 +87,8 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 	summaryQ := fmt.Sprintf(`
 		SELECT
 			COUNT(*) AS total,
-			COALESCE(SUM(total_final), 0) AS total_amount,
+			-- Nilai total hanya dari dokumen yang tidak ditolak/dibatalkan.
+			COALESCE(SUM(total_final) FILTER (WHERE status NOT IN ('rejected','cancelled')), 0) AS total_amount,
 			COUNT(*) FILTER (WHERE status = 'pending')           AS pending,
 			COUNT(*) FILTER (WHERE status = 'approved')          AS approved,
 			COUNT(*) FILTER (WHERE status = 'payment_requested') AS payment_requested,
@@ -113,9 +114,9 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 	typeQ := fmt.Sprintf(`
 		SELECT
 			COUNT(*) FILTER (WHERE request_type = 'barang') AS barang,
-			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'barang'), 0) AS barang_total,
+			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'barang' AND status NOT IN ('rejected','cancelled')), 0) AS barang_total,
 			COUNT(*) FILTER (WHERE request_type = 'jasa') AS jasa,
-			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'jasa'), 0) AS jasa_total
+			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'jasa' AND status NOT IN ('rejected','cancelled')), 0) AS jasa_total
 		FROM purchase_requests
 		%s`, andWhere(scopeClause, excludeShell))
 

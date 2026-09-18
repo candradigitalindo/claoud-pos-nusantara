@@ -829,8 +829,21 @@ Barang tidak berhenti di meja penerimaan. Masing-masing meja meneruskannya:
 **Dua momen wajib berfoto**, keduanya ditolak bila fotonya kosong:
 
 1. **Saat barang diterima dari tim purchasing** — foto diminta di dialog Serah Terima.
-2. **Saat barang didistribusikan** — foto diminta saat menyerahkan aset ke PIC, dan saat
-   gudang induk menekan "Kirim" pada transfer stok.
+2. **Saat barang didistribusikan** — foto diminta saat menyerahkan aset ke PIC, saat
+   gudang induk menekan "Kirim" pada transfer stok, dan saat outlet asal menekan "Kirim"
+   pada mutasi aset antar outlet (`asset_transfers.photo_url`).
+
+**Kontrol transfer stok disamakan dengan mutasi aset** (18 Sep 2026): izin
+`stocktransfers.approve` dan `stocktransfers.receive` dipisah dari `.update`
+(kirim/batalkan); tahap kirim/batalkan hanya sah dari gudang asal dalam scope, tahap terima
+hanya dari gudang tujuan; dan pengirim tidak boleh menerima dokumen yang sama — aturan yang
+sama berlaku pada mutasi aset. GRN manual (menu Penerimaan Barang) menolak nomor pengajuan
+pengadaan yang masih hidup, karena jalur itu tidak menulis `pr_item_key`.
+
+**Pengajuan yang barangnya sudah mulai diterima dikunci** (`purchaseHasReceipts`): tidak bisa
+dibatalkan, itemnya diubah, atau dihapus — termasuk pembelian tempo yang statusnya masih
+`approved`. Mengubah nama item mengubah `pr_item_key` dan membuat baris yang sudah dicatat
+muncul lagi sebagai belum diterima.
 
 Tanpa foto, “barang sudah saya serahkan” dan “saya belum menerima apa pun” tidak bisa
 dibedakan ketika keduanya saling mengklaim. Pengambilannya memakai
@@ -1029,9 +1042,21 @@ Dua syarat yang harus dipenuhi, kalau tidak baris itu ditunda:
    kemiripan nama; boleh membuat item baru bila pengguna punya izin katalog).
 2. Pembuatan GRN memerlukan izin `stockledger.adjust`
    ([routes/routes.go:361](../routes/routes.go#L361)). Petugas pengadaan umumnya tidak
-   memilikinya. Bila izin tidak ada, baris ditandai **“menunggu penerimaan gudang”** dan
-   muncul di antrean halaman Gudang — status PR tetap boleh menjadi `received`, karena
-   barangnya memang sudah diterima secara fisik.
+   memilikinya. Bila izin tidak ada, baris ditandai **“menunggu penerimaan gudang”**: satu
+   baris `pr_receiving_decisions` bertujuan `stok_tunda` ditulis, baris itu berpindah ke
+   antrean Gudang Induk **apa pun nama barangnya** (keputusan petugas mengalahkan pencocokan
+   nama katalog), dan baris itu **tidak dihitung diterima** — `receipt_status` tetap
+   `partial` dan dokumen tetap terbuka sampai gudang mencatat GRN-nya. Rancangan awal
+   membiarkan status maju ke `received` di titik ini; itu dicabut (18 Sep 2026) karena
+   membuat dokumen tertutup sementara stoknya belum masuk buku siapa pun.
+
+   Pemilahan meja (`lineKindOf`) hanya dilakukan **per baris**, bukan lewat kolom
+   `goods_kind` di SQL: kolom itu dibekukan saat pengajuan dibuat, dan bila katalog stok
+   berubah sesudahnya, dua saringan yang berbeda bisa membuang dokumen dari kedua antrean.
+
+   Gudang tujuan baris stok diperiksa scope-nya di server, dan dialog menampilkan **gudang
+   yang membutuhkan** (gudang run MRP, atau gudang outlet pengaju) sebagai keterangan —
+   bawaan pilihannya tetap Gudang Induk, karena barang dapur diteruskan lewat Transfer Stok.
 
 ### 8.7 Projek pembangunan/renovasi: tiga nasib satu belanja
 
@@ -1572,6 +1597,23 @@ mengonversi ulang tanggal yang sudah dikonversi, sehingga laporan berbeda dari l
 Lihat `docs/kontrak-waktu-transaksi-utc.md`.
 
 ---
+
+### 12b. Sambungan ke laporan keuangan (18 Sep 2026)
+
+Sebelum ini laporan keuangan tidak membaca satu pun data modul ini: setiap pengajuan
+`barang` yang dibayar dihitung **HPP**, Neraca hanya berisi Kas dan Piutang, dan tidak ada
+penyusutan. Sekarang:
+
+| Laporan | Yang berubah |
+|---|---|
+| **Kelas belanja** (`procurementClassExpr`, `services/procurement_finance.go`) | `bahan` (barang dapur) → HPP · `jasa` → Beban Jasa · `modal` (goods_kind `perlengkapan`) → **Belanja Modal / Aset Tetap** · `projek` (ada `project_id`) → **Belanja Projek / Projek Berjalan**. Dokumen lama tanpa `goods_kind` tetap `bahan`. |
+| **Arus Kas** | Belanja Modal dan Belanja Projek tampil sebagai pengeluaran investasi; arus kas bersih tidak berubah. |
+| **Laba/Rugi** | HPP hanya kelas `bahan`; belanja modal & projek **tidak dibebankan** (ditampilkan sebagai keterangan); ditambah **Beban Penyusutan Aset** = akumulasi(akhir periode) − akumulasi(awal − 1 hari), rumus garis lurus yang sama dengan `assetJoins`. Masih berbasis tanggal bayar untuk HPP (belum berbasis pemakaian). |
+| **Neraca** | Ditambah **Persediaan** (Σ `stock_ledger.qty_base × avg_cost`, saldo saat ini), **Aset Tetap** (nilai buku per tanggal akhir periode), dan **Projek Berjalan** (belanja projek dibayar − nilai aset yang lahir darinya, untuk projek belum selesai). |
+| **Buku Besar** | Akrual per dokumen: saat disetujui Dr (HPP \| Beban Jasa \| Aset Tetap 1-400 \| Projek Berjalan 1-450) / Cr Hutang Usaha sebesar harga final; pembayaran Dr Hutang / Cr Kas. Penyusutan satu jurnal per bulan Dr Beban Penyusutan 5-400 / Cr Aset Tetap (metode neto). Skema lama mendebit beban dua kali untuk cicilan lintas periode. |
+
+Belum ditangani: HPP berbasis pemakaian (movement `sale` sudah membawa biaya FIFO), susut stok
+sebagai beban, hasil penjualan aset ke Arus Kas, dan kapitalisasi projek yang selesai.
 
 ## 13. Rencana Implementasi
 

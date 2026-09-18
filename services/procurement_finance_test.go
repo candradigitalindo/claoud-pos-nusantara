@@ -64,9 +64,11 @@ func cashOutOn(t *testing.T, day string) float64 {
 	if err != nil {
 		t.Fatalf("cash flow %s: %v", day, err)
 	}
+	// Seluruh kelas belanja dijumlahkan: yang diuji di sini adalah TANGGAL kas
+	// keluar, bukan kelasnya (bahan/jasa/modal/projek — lihat procurementClassExpr).
 	var sum float64
 	for _, r := range rep.Daily {
-		sum += r.COGSPayments + r.ServicePayments
+		sum += r.COGSPayments + r.ServicePayments + r.CapexPayments + r.ProjectPayments
 	}
 	return sum
 }
@@ -88,13 +90,17 @@ func TestCashFlowSplitsInstallmentsByPaymentDate(t *testing.T) {
 	}
 
 	// Cicilan pertama dipindah ke 40 hari lalu (beda bulan), kedua ke 5 hari lalu.
+	// Tanggal laporan dihitung dalam ZONA APLIKASI (tz_date), jadi hari yang
+	// diminta harus diturunkan dari zona yang sama — dalam UTC, pukul 23:30
+	// masih "kemarin" padahal bagi laporan sudah hari ini.
 	now := time.Now().UTC()
 	first, second := now.AddDate(0, 0, -40), now.AddDate(0, 0, -5)
 	backdatePayment(t, pr.ID, 400000, first)
 	backdatePayment(t, pr.ID, 600000, second)
 
-	dayFirst := first.Format("2006-01-02")
-	daySecond := second.Format("2006-01-02")
+	loc := GetTimezoneLocation()
+	dayFirst := first.In(loc).Format("2006-01-02")
+	daySecond := second.In(loc).Format("2006-01-02")
 
 	if got := cashOutOn(t, dayFirst); got != 400000 {
 		t.Errorf("kas keluar %s = %v, mau 400000 (cicilan pertama)", dayFirst, got)
@@ -184,7 +190,8 @@ func TestPartiallySplitMasterPaymentReachesCashFlow(t *testing.T) {
 		t.Fatalf("split: %v", err)
 	}
 
-	before := cashOutOn(t, time.Now().UTC().Format("2006-01-02"))
+	todayApp := time.Now().In(GetTimezoneLocation()).Format("2006-01-02")
+	before := cashOutOn(t, todayApp)
 
 	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "request_payment", ActorName: "purchasing"}); err != nil {
 		t.Fatalf("request_payment: %v", err)
@@ -195,7 +202,7 @@ func TestPartiallySplitMasterPaymentReachesCashFlow(t *testing.T) {
 		t.Fatalf("bayar master: %v", err)
 	}
 
-	after := cashOutOn(t, time.Now().UTC().Format("2006-01-02"))
+	after := cashOutOn(t, todayApp)
 	if after-before != 300000 {
 		t.Errorf("kas keluar bertambah %v, mau 300000 — pembayaran atas sisa item master tidak boleh hilang dari laporan", after-before)
 	}

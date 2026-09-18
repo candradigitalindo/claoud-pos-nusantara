@@ -1689,8 +1689,9 @@ func BuildCashFlowReportExcel(dateFrom, dateTo, outletID string, scopeIDs []stri
 
 	sum := report.Summary
 	setSection("PENERIMAAN OPERASI")
-	setKV("Penjualan", sum.SalesReceipts, st.money)
+	setKV("Penjualan (di luar bagian yang dibayar dari uang muka)", sum.SalesReceipts, st.money)
 	setKV("Pemasukan Kas Lainnya", sum.OtherReceipts, st.money)
+	setKV("Uang Muka Reservasi (DP/pelunasan tervalidasi)", sum.DepositReceipts, st.money)
 	setKV("Total Penerimaan", sum.TotalReceipts, st.moneyTot)
 	row++
 
@@ -1698,6 +1699,10 @@ func BuildCashFlowReportExcel(dateFrom, dateTo, outletID string, scopeIDs []stri
 	setKV("Pembelian Bahan Baku", sum.COGSPayments, st.money)
 	setKV("Pembayaran Jasa", sum.ServicePayments, st.money)
 	setKV("Pengeluaran Operasional", sum.OpexPayments, st.money)
+	setKV("Refund Uang Muka Reservasi", sum.DepositRefunds, st.money)
+	setSection("PENGELUARAN INVESTASI")
+	setKV("Belanja Modal (peralatan → aset tetap)", sum.CapexPayments, st.money)
+	setKV("Belanja Projek", sum.ProjectPayments, st.money)
 	setKV("Total Pengeluaran", sum.TotalPayments, st.moneyTot)
 	row++
 
@@ -1706,11 +1711,11 @@ func BuildCashFlowReportExcel(dateFrom, dateTo, outletID string, scopeIDs []stri
 
 	// ── Sheet Harian ─────────────────────────────────────────────────────
 	setHeaderRow(f, shDaily, []string{
-		"Tanggal", "Penjualan", "Kas Masuk Lain", "Total Masuk",
-		"Bahan Baku", "Jasa", "Operasional", "Total Keluar", "Arus Bersih",
+		"Tanggal", "Penjualan", "Kas Masuk Lain", "Uang Muka", "Total Masuk",
+		"Bahan Baku", "Jasa", "Operasional", "Belanja Modal", "Belanja Projek", "Refund UM", "Total Keluar", "Arus Bersih",
 	}, st.header)
 	f.SetColWidth(shDaily, "A", "A", 14)
-	f.SetColWidth(shDaily, "B", "I", 15)
+	f.SetColWidth(shDaily, "B", "M", 15)
 
 	// Service mengembalikan urutan DESC; untuk dibaca manusia urutkan naik.
 	daily := make([]models.CashFlowRow, len(report.Daily))
@@ -1718,42 +1723,35 @@ func BuildCashFlowReportExcel(dateFrom, dateTo, outletID string, scopeIDs []stri
 	for i, j := 0, len(daily)-1; i < j; i, j = i+1, j-1 {
 		daily[i], daily[j] = daily[j], daily[i]
 	}
-	var tSales, tOther, tCogs, tService, tOpex, tNet float64
+	// Nilai ditulis lewat irisan supaya urutan kolom hanya hidup di satu tempat
+	// (judul di atas) — bukan di deretan huruf sel yang mudah tergelincir.
+	dailyVals := func(d models.CashFlowRow) []float64 {
+		in := d.SalesReceipts + d.OtherReceipts + d.DepositReceipts
+		out := d.COGSPayments + d.ServicePayments + d.OpexPayments + d.CapexPayments + d.ProjectPayments + d.DepositRefunds
+		return []float64{d.SalesReceipts, d.OtherReceipts, d.DepositReceipts, in,
+			d.COGSPayments, d.ServicePayments, d.OpexPayments, d.CapexPayments, d.ProjectPayments, d.DepositRefunds, out, d.NetCashFlow}
+	}
+	totals := make([]float64, 12)
 	for i, d := range daily {
 		r := i + 2
-		in := d.SalesReceipts + d.OtherReceipts
-		out := d.COGSPayments + d.ServicePayments + d.OpexPayments
 		f.SetCellValue(shDaily, fmt.Sprintf("A%d", r), fmtDateID(d.Date))
-		f.SetCellValue(shDaily, fmt.Sprintf("B%d", r), d.SalesReceipts)
-		f.SetCellValue(shDaily, fmt.Sprintf("C%d", r), d.OtherReceipts)
-		f.SetCellValue(shDaily, fmt.Sprintf("D%d", r), in)
-		f.SetCellValue(shDaily, fmt.Sprintf("E%d", r), d.COGSPayments)
-		f.SetCellValue(shDaily, fmt.Sprintf("F%d", r), d.ServicePayments)
-		f.SetCellValue(shDaily, fmt.Sprintf("G%d", r), d.OpexPayments)
-		f.SetCellValue(shDaily, fmt.Sprintf("H%d", r), out)
-		f.SetCellValue(shDaily, fmt.Sprintf("I%d", r), d.NetCashFlow)
+		for j, v := range dailyVals(d) {
+			cell, _ := excelize.CoordinatesToCellName(j+2, r)
+			f.SetCellValue(shDaily, cell, v)
+			totals[j] += v
+		}
 		f.SetCellStyle(shDaily, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.num)
-		f.SetCellStyle(shDaily, fmt.Sprintf("B%d", r), fmt.Sprintf("I%d", r), st.money)
-		tSales += d.SalesReceipts
-		tOther += d.OtherReceipts
-		tCogs += d.COGSPayments
-		tService += d.ServicePayments
-		tOpex += d.OpexPayments
-		tNet += d.NetCashFlow
+		f.SetCellStyle(shDaily, fmt.Sprintf("B%d", r), fmt.Sprintf("M%d", r), st.money)
 	}
 	if len(daily) > 0 {
 		r := len(daily) + 2
 		f.SetCellValue(shDaily, fmt.Sprintf("A%d", r), "TOTAL")
-		f.SetCellValue(shDaily, fmt.Sprintf("B%d", r), tSales)
-		f.SetCellValue(shDaily, fmt.Sprintf("C%d", r), tOther)
-		f.SetCellValue(shDaily, fmt.Sprintf("D%d", r), tSales+tOther)
-		f.SetCellValue(shDaily, fmt.Sprintf("E%d", r), tCogs)
-		f.SetCellValue(shDaily, fmt.Sprintf("F%d", r), tService)
-		f.SetCellValue(shDaily, fmt.Sprintf("G%d", r), tOpex)
-		f.SetCellValue(shDaily, fmt.Sprintf("H%d", r), tCogs+tService+tOpex)
-		f.SetCellValue(shDaily, fmt.Sprintf("I%d", r), tNet)
+		for j, v := range totals {
+			cell, _ := excelize.CoordinatesToCellName(j+2, r)
+			f.SetCellValue(shDaily, cell, v)
+		}
 		f.SetCellStyle(shDaily, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.numTot)
-		f.SetCellStyle(shDaily, fmt.Sprintf("B%d", r), fmt.Sprintf("I%d", r), st.moneyTot)
+		f.SetCellStyle(shDaily, fmt.Sprintf("B%d", r), fmt.Sprintf("M%d", r), st.moneyTot)
 	} else {
 		f.SetCellValue(shDaily, "A2", "Tidak ada data arus kas pada periode ini.")
 		f.SetCellStyle(shDaily, "A2", "A2", st.note)
@@ -1857,8 +1855,14 @@ func BuildProfitLossReportExcel(dateFrom, dateTo, outletID string, scopeIDs []st
 	setSection("BEBAN OPERASIONAL")
 	setKV("Beban Jasa & Layanan", sum.ServiceExpense, st.money)
 	setKV("Beban Operasional Outlet", sum.OperatingExpense, st.money)
+	setKV("Beban Penyusutan Aset", sum.DepreciationExpense, st.money)
 	setKV("Total Beban Operasional", sum.TotalOpex, st.moneyTot)
 	setKV("Laba Operasional", sum.OperatingProfit, st.moneyTot)
+	row++
+
+	setSection("TIDAK DIBEBANKAN (menjadi aset, lihat Neraca)")
+	setKV("Belanja Modal (peralatan → aset tetap)", sum.CapexPayments, st.money)
+	setKV("Belanja Projek (→ projek berjalan)", sum.ProjectPayments, st.money)
 	row++
 
 	setSection("PAJAK & LABA BERSIH")
@@ -1910,22 +1914,24 @@ func BuildProfitLossReportExcel(dateFrom, dateTo, outletID string, scopeIDs []st
 	}
 
 	// ── Sheet Per Outlet ─────────────────────────────────────────────────
-	setHeaderRow(f, shOutlet, []string{"Outlet", "Pendapatan", "HPP", "Beban Opex", "Laba Bersih"}, st.header)
+	setHeaderRow(f, shOutlet, []string{"Outlet", "Pendapatan", "HPP", "Beban Opex", "Penyusutan", "Laba Bersih"}, st.header)
 	f.SetColWidth(shOutlet, "A", "A", 28)
-	f.SetColWidth(shOutlet, "B", "E", 15)
-	var oRev, oCogs, oOpex, oNet float64
+	f.SetColWidth(shOutlet, "B", "F", 15)
+	var oRev, oCogs, oOpex, oDep, oNet float64
 	for i, o := range report.ByOutlet {
 		r := i + 2
 		f.SetCellValue(shOutlet, fmt.Sprintf("A%d", r), o.OutletName)
 		f.SetCellValue(shOutlet, fmt.Sprintf("B%d", r), o.Revenue)
 		f.SetCellValue(shOutlet, fmt.Sprintf("C%d", r), o.COGS)
 		f.SetCellValue(shOutlet, fmt.Sprintf("D%d", r), o.OperatingExpense)
-		f.SetCellValue(shOutlet, fmt.Sprintf("E%d", r), o.NetProfit)
+		f.SetCellValue(shOutlet, fmt.Sprintf("E%d", r), o.Depreciation)
+		f.SetCellValue(shOutlet, fmt.Sprintf("F%d", r), o.NetProfit)
 		f.SetCellStyle(shOutlet, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.num)
-		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("E%d", r), st.money)
+		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("F%d", r), st.money)
 		oRev += o.Revenue
 		oCogs += o.COGS
 		oOpex += o.OperatingExpense
+		oDep += o.Depreciation
 		oNet += o.NetProfit
 	}
 	if len(report.ByOutlet) > 0 {
@@ -1934,9 +1940,10 @@ func BuildProfitLossReportExcel(dateFrom, dateTo, outletID string, scopeIDs []st
 		f.SetCellValue(shOutlet, fmt.Sprintf("B%d", r), oRev)
 		f.SetCellValue(shOutlet, fmt.Sprintf("C%d", r), oCogs)
 		f.SetCellValue(shOutlet, fmt.Sprintf("D%d", r), oOpex)
-		f.SetCellValue(shOutlet, fmt.Sprintf("E%d", r), oNet)
+		f.SetCellValue(shOutlet, fmt.Sprintf("E%d", r), oDep)
+		f.SetCellValue(shOutlet, fmt.Sprintf("F%d", r), oNet)
 		f.SetCellStyle(shOutlet, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.numTot)
-		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("E%d", r), st.moneyTot)
+		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("F%d", r), st.moneyTot)
 	} else {
 		f.SetCellValue(shOutlet, "A2", "Tidak ada data pada periode ini.")
 		f.SetCellStyle(shOutlet, "A2", "A2", st.note)
@@ -2023,11 +2030,15 @@ func BuildBalanceReportExcel(dateFrom, dateTo, outletID string, scopeIDs []strin
 	setSection("ASET")
 	setKV("Kas & Setara Kas (pendapatan + pemasukan − pengeluaran)", report.CashAndEquivalents, st.money)
 	setKV("Piutang Usaha (pesanan belum dibayar)", report.Receivables, st.money)
+	setKV("Persediaan (nilai buku stok gudang saat ini)", report.Inventory, st.money)
+	setKV("Aset Tetap (nilai buku per akhir periode)", report.FixedAssets, st.money)
+	setKV("Projek Berjalan (belanja projek belum berwujud aset)", report.ProjectsInProgress, st.money)
 	setKV("Total Aset", report.TotalAssets, st.moneyTot)
 	row++
 
 	setSection("KEWAJIBAN")
 	setKV("Hutang Usaha (pengadaan disetujui belum dibayar)", report.AccountsPayable, st.money)
+	setKV("Uang Muka Pelanggan (reservasi belum ditutup)", report.CustomerDeposits, st.money)
 	setKV("Hutang Pajak Restoran (PB1)", report.TaxPayable, st.money)
 	setKV("Total Kewajiban", report.TotalLiabilities, st.moneyTot)
 	row++
@@ -2055,44 +2066,36 @@ func BuildBalanceReportExcel(dateFrom, dateTo, outletID string, scopeIDs []strin
 
 	// ── Sheet Per Outlet ─────────────────────────────────────────────────
 	setHeaderRow(f, shOutlet, []string{
-		"Outlet", "Kas & Setara Kas", "Piutang", "Total Aset",
-		"Hutang Usaha", "Hutang Pajak", "Total Kewajiban", "Ekuitas",
+		"Outlet", "Kas & Setara Kas", "Piutang", "Persediaan", "Aset Tetap", "Projek Berjalan", "Total Aset",
+		"Hutang Usaha", "Uang Muka Pelanggan", "Hutang Pajak", "Total Kewajiban", "Ekuitas",
 	}, st.header)
 	f.SetColWidth(shOutlet, "A", "A", 28)
-	f.SetColWidth(shOutlet, "B", "H", 16)
-	var tCash, tRecv, tAssets, tAP, tTax, tLiab, tEq float64
+	f.SetColWidth(shOutlet, "B", "L", 16)
+	outletVals := func(o models.BalanceOutletRow) []float64 {
+		return []float64{o.CashAndEquivalents, o.Receivables, o.Inventory, o.FixedAssets, o.ProjectsInProgress, o.TotalAssets,
+			o.AccountsPayable, o.CustomerDeposits, o.TaxPayable, o.TotalLiabilities, o.TotalEquity}
+	}
+	outletTotals := make([]float64, 11)
 	for i, o := range report.Outlets {
 		r := i + 2
 		f.SetCellValue(shOutlet, fmt.Sprintf("A%d", r), o.OutletName)
-		f.SetCellValue(shOutlet, fmt.Sprintf("B%d", r), o.CashAndEquivalents)
-		f.SetCellValue(shOutlet, fmt.Sprintf("C%d", r), o.Receivables)
-		f.SetCellValue(shOutlet, fmt.Sprintf("D%d", r), o.TotalAssets)
-		f.SetCellValue(shOutlet, fmt.Sprintf("E%d", r), o.AccountsPayable)
-		f.SetCellValue(shOutlet, fmt.Sprintf("F%d", r), o.TaxPayable)
-		f.SetCellValue(shOutlet, fmt.Sprintf("G%d", r), o.TotalLiabilities)
-		f.SetCellValue(shOutlet, fmt.Sprintf("H%d", r), o.TotalEquity)
+		for j, v := range outletVals(o) {
+			cell, _ := excelize.CoordinatesToCellName(j+2, r)
+			f.SetCellValue(shOutlet, cell, v)
+			outletTotals[j] += v
+		}
 		f.SetCellStyle(shOutlet, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.num)
-		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("H%d", r), st.money)
-		tCash += o.CashAndEquivalents
-		tRecv += o.Receivables
-		tAssets += o.TotalAssets
-		tAP += o.AccountsPayable
-		tTax += o.TaxPayable
-		tLiab += o.TotalLiabilities
-		tEq += o.TotalEquity
+		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("L%d", r), st.money)
 	}
 	if len(report.Outlets) > 0 {
 		r := len(report.Outlets) + 2
 		f.SetCellValue(shOutlet, fmt.Sprintf("A%d", r), "TOTAL")
-		f.SetCellValue(shOutlet, fmt.Sprintf("B%d", r), tCash)
-		f.SetCellValue(shOutlet, fmt.Sprintf("C%d", r), tRecv)
-		f.SetCellValue(shOutlet, fmt.Sprintf("D%d", r), tAssets)
-		f.SetCellValue(shOutlet, fmt.Sprintf("E%d", r), tAP)
-		f.SetCellValue(shOutlet, fmt.Sprintf("F%d", r), tTax)
-		f.SetCellValue(shOutlet, fmt.Sprintf("G%d", r), tLiab)
-		f.SetCellValue(shOutlet, fmt.Sprintf("H%d", r), tEq)
+		for j, v := range outletTotals {
+			cell, _ := excelize.CoordinatesToCellName(j+2, r)
+			f.SetCellValue(shOutlet, cell, v)
+		}
 		f.SetCellStyle(shOutlet, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.numTot)
-		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("H%d", r), st.moneyTot)
+		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("L%d", r), st.moneyTot)
 	} else {
 		f.SetCellValue(shOutlet, "A2", "Tidak ada data pada periode ini.")
 		f.SetCellStyle(shOutlet, "A2", "A2", st.note)
