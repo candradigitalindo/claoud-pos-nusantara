@@ -272,6 +272,14 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	go logSync(outletID, "push_transaction", "transaction", 1, "success", "")
 	BroadcastSync("transaction", outletID)
 
+	// Transaksi yang menutup reservasi: tandai selesai + tautkan. Non-fatal —
+	// transaksinya sah walau tautannya gagal, dan admin masih bisa menutup manual.
+	if strings.TrimSpace(req.ReservationID) != "" {
+		if serr := SettleReservation(outletID, req.ReservationID, cloudID, cashierName); serr != nil {
+			log.Printf("settle reservasi %s dari tx %s: %v", req.ReservationID, cloudID, serr)
+		}
+	}
+
 	// Auto-deduct stok bahan baku via resep produk (lenient: gagal dicatat,
 	// transaksi tetap commit — selisih stok lebih baik daripada transaksi gagal sync).
 	// Catatan: saat ini akan no-op untuk item tanpa product_id (app outlet belum

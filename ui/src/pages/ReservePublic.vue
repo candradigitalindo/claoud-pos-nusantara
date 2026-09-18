@@ -19,7 +19,7 @@
           </div>
           <div>
             <p class="rp-eyebrow">Reservasi Online</p>
-            <h1 class="rp-title">{{ menu?.outlet_name || 'Memuat…' }}</h1>
+            <h1 class="rp-title">{{ status?.outlet_name || menu?.outlet_name || 'Memuat…' }}</h1>
           </div>
         </div>
       </div>
@@ -28,19 +28,69 @@
     <div v-if="loading" class="rp-state">Memuat menu…</div>
     <div v-else-if="loadError" class="rp-state">{{ loadError }}</div>
 
-    <!-- Success -->
-    <div v-else-if="done" class="rp-wrap">
+    <!-- Status reservasi: dipakai setelah kirim DAN saat dibuka lewat link ?id= -->
+    <div v-else-if="status" class="rp-wrap">
       <div class="glass rp-success">
         <div class="rp-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
-        <h2>Reservasi terkirim!</h2>
-        <p>Terima kasih, {{ done.customer_name }}. Permintaan Anda sudah kami terima dan akan segera dikonfirmasi.</p>
+        <h2>{{ justCreated ? 'Reservasi terkirim!' : 'Status Reservasi' }}</h2>
+        <p v-if="justCreated">Terima kasih, {{ status.customer_name }}. Simpan tautan di bawah untuk memantau reservasi dan mengunggah bukti DP.</p>
+        <p v-else>Halo {{ status.customer_name }}, ini keadaan reservasi Anda.</p>
+        <span :class="['rp-badge', 'rp-badge--' + status.status]">{{ STATUS_LABEL[status.status] || status.status }}</span>
         <div class="rp-recap">
-          <div><span>Jadwal</span><b>{{ done.reservation_date ? fmtDate(done.reservation_date) : '-' }} {{ done.reservation_time }}</b></div>
-          <div><span>Total</span><b>{{ rupiah(done.total) }}</b></div>
-          <div><span>Sisa</span><b>{{ rupiah(done.remaining) }}</b></div>
+          <div><span>Jadwal</span><b>{{ status.reservation_date ? fmtDate(status.reservation_date) : '-' }} {{ status.reservation_time }}</b></div>
+          <div><span>Tamu</span><b>{{ status.pax }} orang</b></div>
+          <div><span>Total</span><b>{{ rupiah(status.total) }}</b></div>
+          <div v-if="status.down_payment > 0"><span>DP diminta</span><b>{{ rupiah(status.down_payment) }}</b></div>
+          <div><span>Sudah tervalidasi</span><b>{{ rupiah(status.paid_amount) }}</b></div>
+          <div v-if="status.pending_amount > 0"><span>Menunggu validasi</span><b>{{ rupiah(status.pending_amount) }}</b></div>
+          <div><span>Sisa</span><b>{{ rupiah(status.remaining) }}</b></div>
         </div>
-        <button class="rp-btn-ghost" @click="resetAll">Buat reservasi lain</button>
+        <div class="rp-link">
+          <span>Tautan cek status</span>
+          <input :value="statusLink" readonly @focus="$event.target.select()" />
+          <button type="button" class="rp-btn-ghost" @click="copyStatusLink">{{ copied ? 'Tersalin' : 'Salin' }}</button>
+        </div>
       </div>
+
+      <!-- Bayar DP / pelunasan: bukti lahir 'menunggu validasi' sampai admin mengesahkannya. -->
+      <section v-if="canPay" class="glass rp-pay">
+        <h3 class="rp-section">{{ status.dp_paid ? 'Pelunasan' : 'Bayar DP' }}</h3>
+        <p class="rp-pay-hint">
+          <template v-if="!status.dp_paid">Reservasi dikonfirmasi setelah DP <b>{{ rupiah(dpDue) }}</b> kami terima dan validasi.</template>
+          <template v-else>Sisa <b>{{ rupiah(status.remaining) }}</b> bisa dilunasi sekarang atau di kasir saat datang.</template>
+        </p>
+        <div v-if="status.bank_accounts?.length" class="rp-banks">
+          <div v-for="b in status.bank_accounts" :key="b.id" class="rp-bank">
+            <b>{{ b.bank_name }}</b><span>{{ b.account_number }}</span><small>a.n. {{ b.account_holder }}</small>
+          </div>
+        </div>
+        <p v-else class="rp-pay-hint">Hubungi kami untuk rekening tujuan, lalu unggah buktinya di sini.</p>
+        <div class="rp-fields">
+          <div><label>Nominal transfer <span>*</span></label><input v-model.number="pay.amount" type="number" inputmode="numeric" min="1" /></div>
+          <div v-if="status.bank_accounts?.length"><label>Transfer ke rekening</label>
+            <select v-model="pay.bank_account_id"><option value="">— pilih —</option><option v-for="b in status.bank_accounts" :key="b.id" :value="b.id">{{ b.bank_name }} {{ b.account_number }}</option></select></div>
+          <div><label>Tanggal transfer</label><input v-model="pay.paid_at" type="date" /></div>
+          <div><label>Foto bukti transfer <span>*</span></label><input type="file" accept="image/*" @change="onProof" /></div>
+          <div><label>Catatan</label><input v-model="pay.notes" placeholder="opsional" /></div>
+        </div>
+        <p v-if="payError" class="rp-err">{{ payError }}</p>
+        <p v-if="payMsg" class="rp-ok">{{ payMsg }}</p>
+        <button class="rp-next" :disabled="paySubmitting" @click="submitPay">{{ paySubmitting ? 'Mengirim…' : 'Kirim Bukti Pembayaran' }}</button>
+      </section>
+
+      <section v-if="status.payments?.length" class="glass rp-pay">
+        <h3 class="rp-section">Riwayat Pembayaran</h3>
+        <ul class="rp-order-list">
+          <li v-for="p in status.payments" :key="p.id">
+            <span class="rp-oi-name">{{ PAY_TYPE[p.type] || p.type }} · {{ p.paid_at }}</span>
+            <span :class="['rp-badge', 'rp-badge--' + p.status]">{{ PAY_STATUS[p.status] || p.status }}</span>
+            <span class="rp-oi-sub">{{ rupiah(p.amount) }}</span>
+          </li>
+        </ul>
+        <p v-for="p in status.payments.filter(x => x.status === 'rejected' && x.rejected_reason)" :key="'r' + p.id" class="rp-err">Ditolak: {{ p.rejected_reason }}</p>
+      </section>
+
+      <div class="rp-actions"><button class="rp-btn-ghost" @click="resetAll">Buat reservasi lain</button></div>
     </div>
 
     <template v-else-if="menu">
@@ -122,7 +172,7 @@
     </template>
 
     <!-- Sticky summary bar (step 2 only) -->
-    <div v-if="menu && !done && step === 2" class="rp-bar">
+    <div v-if="menu && !status && step === 2" class="rp-bar">
       <div class="rp-bar-in">
         <div class="rp-bar-info"><span class="rp-bar-count">{{ itemCount }} item</span><span class="rp-bar-total">{{ rupiah(total) }}</span></div>
         <button class="rp-btn" :disabled="submitting" @click="submit">{{ submitting ? 'Mengirim…' : 'Kirim Reservasi' }}</button>
@@ -145,7 +195,21 @@ const loadError = ref('')
 const qty = reactive({})
 const submitting = ref(false)
 const formError = ref('')
-const done = ref(null)
+// status = keadaan reservasi dari server (setelah kirim, atau dibuka lewat ?id=).
+const status = ref(null)
+const justCreated = ref(false)
+const copied = ref(false)
+const pay = reactive({ amount: 0, bank_account_id: '', paid_at: new Date().toISOString().slice(0, 10), notes: '', file: null })
+const paySubmitting = ref(false)
+const payError = ref('')
+const payMsg = ref('')
+const STATUS_LABEL = { pending: 'Menunggu DP', confirmed: 'Dikonfirmasi', done: 'Selesai', cancelled: 'Dibatalkan' }
+const PAY_TYPE = { dp: 'DP', pelunasan: 'Pelunasan', refund: 'Refund' }
+const PAY_STATUS = { pending: 'Menunggu validasi', validated: 'Tervalidasi', rejected: 'Ditolak' }
+const statusLink = computed(() => status.value ? `${window.location.origin}/r/${slug}?id=${status.value.id}` : '')
+const dpDue = computed(() => Math.max((status.value?.down_payment || 0) - (status.value?.paid_amount || 0), 0))
+const canPay = computed(() => !!status.value && ['pending', 'confirmed'].includes(status.value.status)
+  && (status.value.remaining - status.value.pending_amount) > 0)
 const activeCat = ref('')
 const searchQuery = ref('')
 const step = ref(1) // 1 = isi data, 2 = pilih menu
@@ -202,6 +266,42 @@ function goMenu() {
   step.value = 2
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
+async function loadStatus(id, created = false) {
+  const res = await publicApi.status(slug, id)
+  if (!res.success) throw new Error(res.error || 'Gagal')
+  status.value = res.data
+  justCreated.value = created
+  pay.amount = status.value.dp_paid ? Math.max(status.value.remaining - status.value.pending_amount, 0) : dpDue.value
+  pay.bank_account_id = status.value.bank_accounts?.[0]?.id || ''
+  pay.file = null
+  // Alamat halaman menjadi tautan status supaya bisa disimpan/dibagikan.
+  window.history.replaceState(null, '', `/r/${slug}?id=${id}`)
+}
+function onProof(e) { pay.file = e.target.files?.[0] || null }
+async function submitPay() {
+  payError.value = ''; payMsg.value = ''
+  if (!(pay.amount > 0)) { payError.value = 'Isi nominal yang ditransfer.'; return }
+  if (!pay.file) { payError.value = 'Unggah foto bukti transfer.'; return }
+  const fd = new FormData()
+  fd.append('file', pay.file)
+  fd.append('amount', String(pay.amount))
+  fd.append('bank_account_id', pay.bank_account_id || '')
+  fd.append('paid_at', pay.paid_at || '')
+  fd.append('notes', pay.notes || '')
+  paySubmitting.value = true
+  try {
+    const res = await publicApi.pay(slug, status.value.id, fd)
+    if (!res.success) throw new Error(res.error || 'Gagal')
+    payMsg.value = res.message || 'Bukti diterima, menunggu validasi.'
+    await loadStatus(status.value.id)
+  } catch (e) {
+    payError.value = e?.response?.data?.error || e?.message || 'Gagal mengirim bukti.'
+  } finally { paySubmitting.value = false }
+}
+async function copyStatusLink() {
+  try { await navigator.clipboard.writeText(statusLink.value); copied.value = true; setTimeout(() => copied.value = false, 1500) } catch {}
+}
+
 async function submit() {
   formError.value = ''
   if (!f.customer_name.trim()) { step.value = 1; formError.value = 'Nama wajib diisi.'; return }
@@ -211,19 +311,28 @@ async function submit() {
   try {
     const res = await publicApi.reserve(slug, { ...f, items })
     if (!res.success) throw new Error(res.error || 'Gagal')
-    done.value = res.data
+    await loadStatus(res.data.id, true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (e) {
     formError.value = e?.response?.data?.error || 'Gagal mengirim reservasi.'
   } finally { submitting.value = false }
 }
 function resetAll() {
-  done.value = null; Object.keys(qty).forEach(k => delete qty[k])
+  status.value = null; justCreated.value = false; payMsg.value = ''; payError.value = ''
+  window.history.replaceState(null, '', `/r/${slug}`)
+  Object.keys(qty).forEach(k => delete qty[k])
   f.customer_name = ''; f.customer_phone = ''; f.pax = 2; f.reservation_date = ''; f.reservation_time = ''; f.notes = ''
   activeCat.value = ''; searchQuery.value = ''; step.value = 1
 }
 
-onMounted(loadMenu)
+onMounted(async () => {
+  await loadMenu()
+  // Dibuka lewat tautan status (?id=): langsung tampilkan keadaan reservasi.
+  const id = route.query.id
+  if (id && !loadError.value) {
+    try { await loadStatus(String(id)) } catch { loadError.value = 'Reservasi tidak ditemukan.' }
+  }
+})
 </script>
 
 <style scoped>
@@ -327,6 +436,29 @@ onMounted(loadMenu)
 .rp-bar-total { font-size: 1.05rem; font-weight: 900; color: #fff; }
 .rp-btn { margin-left: auto; background: linear-gradient(145deg, #7eb89a, #5d9b78); color: #14271d; border: none; padding: .75rem 1.4rem; border-radius: .75rem; font-size: .92rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(126,184,154,.3); }
 .rp-btn:disabled { opacity: .6; }
+
+/* Status / uang muka */
+.rp-badge { display: inline-block; margin-top: .6rem; padding: .18rem .65rem; border-radius: 999px; font-size: .72rem; font-weight: 800; letter-spacing: .02em; background: rgba(255,255,255,.12); color: #fff; }
+.rp-badge--pending { background: rgba(245,158,11,.25); color: #ffe9b0; }
+.rp-badge--confirmed, .rp-badge--validated { background: rgba(126,184,154,.3); color: #cdeede; }
+.rp-badge--done { background: rgba(126,184,154,.9); color: #14271d; }
+.rp-badge--cancelled, .rp-badge--rejected { background: rgba(239,68,68,.25); color: #fecaca; }
+.rp-link { margin-top: 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; text-align: left; }
+.rp-link span { width: 100%; font-size: .72rem; font-weight: 700; color: rgba(168,203,191,.85); }
+.rp-link input { flex: 1; min-width: 0; padding: .55rem .7rem; border-radius: .6rem; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.07); color: #fff; font-size: .78rem; font-family: ui-monospace, monospace; }
+.rp-pay { border-radius: 1rem; padding: 1.1rem; margin-top: 1.1rem; }
+.rp-pay-hint { font-size: .86rem; color: rgba(255,255,255,.7); margin: -.3rem 0 .9rem; }
+.rp-pay-hint b { color: #fff; }
+.rp-banks { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.rp-bank { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .7rem; padding: .6rem .8rem; border-radius: .7rem; background: rgba(126,184,154,.12); border: 1px solid rgba(126,184,154,.25); }
+.rp-bank b { color: #fff; }
+.rp-bank span { font-family: ui-monospace, monospace; font-size: .95rem; font-weight: 700; color: #cdeede; letter-spacing: .04em; }
+.rp-bank small { width: 100%; font-size: .74rem; color: rgba(255,255,255,.6); }
+.rp-fields select { width: 100%; padding: .65rem .75rem; border-radius: .65rem; border: 1px solid rgba(255,255,255,.16); font-size: .9rem; outline: none; background: rgba(255,255,255,.07); color: #fff; }
+.rp-fields select option { color: #111; }
+.rp-fields input[type=file] { padding: .5rem; font-size: .82rem; }
+.rp-ok { color: #cdeede; font-size: .85rem; margin-top: .7rem; }
+.rp-actions { display: flex; justify-content: center; margin-top: 1.1rem; }
 
 /* Success */
 .rp-success { border-radius: 1rem; padding: 2rem 1.3rem; text-align: center; max-width: 760px; margin: 1.1rem auto; }

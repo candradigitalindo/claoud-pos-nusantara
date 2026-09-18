@@ -27,6 +27,9 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	public := api.Group("/public", middleware.PublicRateLimiter())
 	public.Get("/outlets/:slug/menu", handlers.PublicGetMenu)
 	public.Post("/outlets/:slug/reservations", handlers.PublicCreateReservation)
+	// Cek status + unggah bukti DP oleh pelanggan (id reservasi = ULID, tidak bisa ditebak).
+	public.Get("/outlets/:slug/reservations/:id", handlers.PublicGetReservation)
+	public.Post("/outlets/:slug/reservations/:id/payments", handlers.PublicSubmitReservationPayment)
 
 	// Outlet self-discovery: GET /api/v1/outlet/me — returns outlet info from API key alone
 	api.Get("/outlet/me", middleware.AuthOutlet(), func(c *fiber.Ctx) error {
@@ -38,6 +41,11 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Outlet info (self-service)
 	outlet.Get("/info", handlers.GetOutletInfo)
+
+	// Reservasi untuk app POS: daftar hari ini + menutup reservasi dari transaksi.
+	// Transaksi juga bisa membawa reservation_id di payload (SaveTransaction).
+	outlet.Get("/reservations", handlers.OutletListReservations)
+	outlet.Post("/reservations/:rid/settle", handlers.OutletSettleReservation)
 
 	// Orders
 	outlet.Post("/orders", handlers.PushOrder)
@@ -269,7 +277,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Delete("/purchase-requests/:id", middleware.RequirePermission("procurement.requests.submit"), handlers.DeletePurchaseRequest)
 
 	// File upload — dipakai untuk bukti pembayaran pengadaan
-	admin.Post("/upload", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.view", "assets.create", "assets.update"), handlers.UploadFile)
+	admin.Post("/upload", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.view", "assets.create", "assets.update", "reservations.update"), handlers.UploadFile)
 
 	// Bank Accounts
 	admin.Get("/bank-accounts", middleware.RequirePermission("finance.bank.view"), handlers.ListBankAccounts)
@@ -371,13 +379,21 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/customers", middleware.RequirePermission("customers.view"), handlers.ListCustomers)
 	admin.Get("/customers/:id", middleware.RequirePermission("customers.view"), handlers.GetCustomer)
 
-	// Reservasi (Penjualan), scoped per outlet
+	// Reservasi (Penjualan), scoped per outlet. Rute statis /settings didaftarkan
+	// sebelum /:id supaya tidak tertangkap sebagai id.
+	admin.Get("/reservations/settings", middleware.RequirePermission("reservations.view"), handlers.GetReservationSettings)
+	admin.Put("/reservations/settings", middleware.RequirePermission("reservations.update"), handlers.UpdateReservationSettings)
 	admin.Get("/reservations", middleware.RequirePermission("reservations.view"), handlers.ListReservations)
 	admin.Get("/reservations/:id", middleware.RequirePermission("reservations.view"), handlers.GetReservation)
 	admin.Post("/reservations", middleware.RequirePermission("reservations.create"), handlers.CreateReservation)
 	admin.Put("/reservations/:id", middleware.RequirePermission("reservations.update"), handlers.UpdateReservation)
 	admin.Patch("/reservations/:id/status", middleware.RequirePermission("reservations.update"), handlers.UpdateReservationStatus)
 	admin.Delete("/reservations/:id", middleware.RequirePermission("reservations.delete"), handlers.DeleteReservation)
+	// Uang muka: catat (admin), validasi/tolak bukti dari pelanggan.
+	admin.Get("/reservations/:id/payments", middleware.RequirePermission("reservations.view"), handlers.ListReservationPayments)
+	admin.Post("/reservations/:id/payments", middleware.RequirePermission("reservations.update"), handlers.AddReservationPayment)
+	admin.Post("/reservations/:id/payments/:pid/validate", middleware.RequirePermission("reservations.update"), handlers.ValidateReservationPayment)
+	admin.Post("/reservations/:id/payments/:pid/reject", middleware.RequirePermission("reservations.update"), handlers.RejectReservationPayment)
 
 	// Foto produk
 	admin.Post("/products/:id/photo", middleware.RequirePermission("products.update"), handlers.UploadProductPhoto)
@@ -420,8 +436,10 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/stock-transfers", middleware.RequirePermission("stocktransfers.view"), handlers.ListStockTransfers)
 	admin.Get("/stock-transfers/:id", middleware.RequirePermission("stocktransfers.view"), handlers.GetStockTransfer)
 	admin.Post("/stock-transfers", middleware.RequirePermission("stocktransfers.create"), handlers.CreateStockTransfer)
-	admin.Put("/stock-transfers/:id/status", middleware.RequirePermission("stocktransfers.update"), handlers.UpdateTransferStatus)
-	admin.Put("/stock-transfers/:id/items/:itemId/received", middleware.RequirePermission("stocktransfers.update"), handlers.UpdateReceivedQty)
+	// Tahap transfer punya izin masing-masing (setujui / kirim / terima);
+	// pemeriksaannya per status ada di dalam handler.
+	admin.Put("/stock-transfers/:id/status", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.approve", "stocktransfers.receive"), handlers.UpdateTransferStatus)
+	admin.Put("/stock-transfers/:id/items/:itemId/received", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.receive"), handlers.UpdateReceivedQty)
 
 	// Recipes
 	admin.Get("/products/:id/recipes", middleware.RequirePermission("recipes.view"), handlers.GetProductRecipes)

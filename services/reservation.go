@@ -3,7 +3,9 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"cloud-pos/database"
 	"cloud-pos/models"
@@ -53,21 +55,35 @@ func scanReservation(scan func(dest ...interface{}) error) (*models.Reservation,
 	var itemsJSON string
 	if err := scan(&r.ID, &r.OutletID, &r.OutletName, &r.CustomerName, &r.CustomerPhone, &r.Pax,
 		&itemsJSON, &r.Subtotal, &r.DownPayment, &r.Total, &r.ReservationDate, &r.ReservationTime,
-		&r.Status, &r.Notes, &r.Source, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		&r.Status, &r.Notes, &r.Source, &r.CreatedAt, &r.UpdatedAt,
+		&r.PaidAmount, &r.PendingAmount, &r.CancelDisposition, &r.ConfirmedAt, &r.CancelledAt,
+		&r.SettledAt, &r.PosTransactionID); err != nil {
 		return nil, err
 	}
 	json.Unmarshal([]byte(itemsJSON), &r.Items)
 	if r.Items == nil {
 		r.Items = []models.ReservationItem{}
 	}
-	r.Remaining = r.Total - r.DownPayment
+	// Sisa dihitung dari uang yang TERVALIDASI, bukan dari DP yang diminta.
+	r.Remaining = math.Max(r.Total-r.PaidAmount, 0)
+	r.DpPaid = r.DownPayment <= 0 || r.PaidAmount+0.009 >= r.DownPayment
 	return &r, nil
 }
 
-const reservationCols = `r.id, r.outlet_id, COALESCE(o.name,''), r.customer_name, r.customer_phone, r.pax,
+// reservationCols disusun sebagai fungsi karena stempel waktu ditampilkan
+// dalam zona aplikasi, yang bisa diubah lewat pengaturan tanpa rilis ulang.
+func reservationCols() string {
+	return `r.id, r.outlet_id, COALESCE(o.name,''), r.customer_name, r.customer_phone, r.pax,
 	COALESCE(r.items::text,'[]'), r.subtotal, r.down_payment, r.total,
 	COALESCE(TO_CHAR(r.reservation_date,'YYYY-MM-DD'),''), r.reservation_time, r.status, r.notes, r.source,
-	r.created_at, r.updated_at`
+	r.created_at, r.updated_at,
+	COALESCE((SELECT SUM(CASE WHEN p.type = 'refund' THEN -p.amount ELSE p.amount END)
+	          FROM reservation_payments p WHERE p.reservation_id = r.id AND p.status = 'validated'), 0),
+	COALESCE((SELECT SUM(p.amount) FROM reservation_payments p
+	          WHERE p.reservation_id = r.id AND p.status = 'pending' AND p.type <> 'refund'), 0),
+	COALESCE(r.cancel_disposition, ''), ` + tzStamp("r.confirmed_at") + `, ` + tzStamp("r.cancelled_at") + `,
+	` + tzStamp("r.settled_at") + `, TRIM(COALESCE(r.pos_transaction_id, ''))`
+}
 
 func ListReservations(outletID, status, dateFrom, dateTo string, outletScope []string) ([]models.Reservation, error) {
 	conds := []string{"1=1"}
@@ -99,7 +115,7 @@ func ListReservations(outletID, status, dateFrom, dateTo string, outletScope []s
 	}
 	q := fmt.Sprintf(`SELECT %s FROM reservations r LEFT JOIN outlets o ON o.id = r.outlet_id
 		WHERE %s ORDER BY r.reservation_date DESC NULLS LAST, r.reservation_time DESC, r.created_at DESC`,
-		reservationCols, strings.Join(conds, " AND "))
+		reservationCols(), strings.Join(conds, " AND "))
 	rows, err := database.DB.Query(q, args...)
 	if err != nil {
 		return nil, err
@@ -119,8 +135,14 @@ func ListReservations(outletID, status, dateFrom, dateTo string, outletScope []s
 func GetReservation(id string, outletScope []string) (*models.Reservation, error) {
 	sc, sa := resvScopeCond("r", outletScope, 2)
 	args := append([]interface{}{id}, sa...)
-	q := fmt.Sprintf(`SELECT %s FROM reservations r LEFT JOIN outlets o ON o.id = r.outlet_id WHERE r.id = $1%s`, reservationCols, sc)
-	return scanReservation(database.DB.QueryRow(q, args...).Scan)
+	q := fmt.Sprintf(`SELECT %s FROM reservations r LEFT JOIN outlets o ON o.id = r.outlet_id WHERE r.id = $1%s`, reservationCols(), sc)
+	r, err := scanReservation(database.DB.QueryRow(q, args...).Scan)
+	if err != nil {
+		return nil, err
+	}
+	// Detail selalu membawa riwayat pembayarannya: itulah jejak uang mukanya.
+	r.Payments, _ = ListReservationPayments(r.ID)
+	return r, nil
 }
 
 func saveReservation(id string, req models.ReservationRequest, source string) (*models.Reservation, error) {
@@ -141,32 +163,53 @@ func saveReservation(id string, req models.ReservationRequest, source string) (*
 	items, subtotal := resolveReservationItems(req.OutletID, req.Items)
 	itemsJSON, _ := json.Marshal(items)
 	total := subtotal
-	status := req.Status
-	if status == "" {
-		status = "pending"
+	// DP yang diminta. Dari halaman publik mengikuti kebijakan persen DP;
+	// admin boleh menentukan sendiri, tapi tidak melebihi total.
+	if source == "public" && id == "" {
+		req.DownPayment = math.Round(total * ReservationDpPercent() / 100)
+	}
+	if req.DownPayment < 0 || req.DownPayment > total+0.009 {
+		return nil, fmt.Errorf("DP yang diminta tidak boleh negatif atau melebihi total")
+	}
+	// Status hanya boleh ditentukan saat DIBUAT, dan 'confirmed' langsung hanya
+	// sah bila tidak ada DP yang diminta. Setelah itu status bergerak lewat
+	// UpdateReservationStatus, mengikuti pembayaran — bukan dropdown bebas.
+	status := "pending"
+	if id == "" && req.Status == "confirmed" {
+		if req.DownPayment > 0 {
+			return nil, Invalid("reservasi dengan DP hanya bisa dikonfirmasi setelah DP-nya tervalidasi")
+		}
+		status = "confirmed"
 	}
 	if id == "" {
 		id = NewULID()
+		var confirmedAt interface{}
+		if status == "confirmed" {
+			confirmedAt = time.Now().UTC()
+		}
 		_, err := database.DB.Exec(`
 			INSERT INTO reservations (id, outlet_id, customer_name, customer_phone, pax, items,
-				subtotal, down_payment, total, reservation_date, reservation_time, status, notes, source, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NULLIF($10,'')::date, $11,$12,$13,$14, NOW(), NOW())`,
+				subtotal, down_payment, total, reservation_date, reservation_time, status, notes, source, confirmed_at, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NULLIF($10,'')::date, $11,$12,$13,$14,$15, NOW(), NOW())`,
 			id, req.OutletID, req.CustomerName, req.CustomerPhone, req.Pax, string(itemsJSON),
-			subtotal, req.DownPayment, total, req.ReservationDate, req.ReservationTime, status, req.Notes, source)
+			subtotal, req.DownPayment, total, req.ReservationDate, req.ReservationTime, status, req.Notes, source, confirmedAt)
 		if err != nil {
 			return nil, err
 		}
 	} else {
+		// Status TIDAK disentuh di sini (lihat UpdateReservationStatus).
 		_, err := database.DB.Exec(`
 			UPDATE reservations SET customer_name=$1, customer_phone=$2, pax=$3, items=$4,
 				subtotal=$5, down_payment=$6, total=$7, reservation_date=NULLIF($8,'')::date,
-				reservation_time=$9, status=$10, notes=$11, updated_at=NOW()
-			WHERE id=$12`,
+				reservation_time=$9, notes=$10, updated_at=NOW()
+			WHERE id=$11`,
 			req.CustomerName, req.CustomerPhone, req.Pax, string(itemsJSON),
-			subtotal, req.DownPayment, total, req.ReservationDate, req.ReservationTime, status, req.Notes, id)
+			subtotal, req.DownPayment, total, req.ReservationDate, req.ReservationTime, req.Notes, id)
 		if err != nil {
 			return nil, err
 		}
+		// Menurunkan DP yang diminta setelah uang masuk bisa membuat syarat
+		// konfirmasi mendadak terpenuhi — biarkan, tapi konfirmasi tetap eksplisit.
 	}
 	return GetReservation(id, nil)
 }
@@ -188,31 +231,77 @@ func CreateReservation(req models.ReservationRequest, outletScope []string) (*mo
 }
 
 func UpdateReservation(id string, req models.ReservationRequest, outletScope []string) (*models.Reservation, error) {
-	if _, err := GetReservation(id, outletScope); err != nil {
+	existing, err := GetReservation(id, outletScope)
+	if err != nil {
 		return nil, fmt.Errorf("reservasi tidak ditemukan")
 	}
-	existing, _ := GetReservation(id, outletScope)
+	if existing.Status == "done" || existing.Status == "cancelled" {
+		return nil, Invalid("reservasi yang sudah selesai/dibatalkan tidak bisa diubah")
+	}
 	req.OutletID = existing.OutletID // outlet immutable on edit
 	return saveReservation(id, req, existing.Source)
 }
 
-func UpdateReservationStatus(id, status string, outletScope []string) (*models.Reservation, error) {
+// UpdateReservationStatus menggerakkan status MENGIKUTI pembayaran:
+//
+//	pending ──DP tervalidasi──▶ confirmed ──dilayani (POS/admin)──▶ done
+//	   │                            │
+//	   └──────── cancelled ─────────┘  (wajib pilih: refund | hangus bila sudah ada uang masuk)
+//
+// done dan cancelled bersifat final. Konfirmasi tanpa DP tervalidasi ditolak,
+// supaya "Dikonfirmasi" benar-benar berarti uangnya sudah ada.
+func UpdateReservationStatus(id, status, disposition, actor string, outletScope []string) (*models.Reservation, error) {
 	r, err := GetReservation(id, outletScope)
 	if err != nil {
 		return nil, fmt.Errorf("reservasi tidak ditemukan")
 	}
-	if _, err := database.DB.Exec(`UPDATE reservations SET status=$1, updated_at=NOW() WHERE id=$2`, status, id); err != nil {
+	if r.Status == "done" || r.Status == "cancelled" {
+		return nil, Invalid("reservasi sudah %s dan tidak bisa diubah lagi", map[string]string{"done": "selesai", "cancelled": "dibatalkan"}[r.Status])
+	}
+	if r.PendingAmount > 0 && status != "cancelled" {
+		return nil, Invalid("masih ada bukti pembayaran yang menunggu validasi — validasi atau tolak dulu")
+	}
+	switch status {
+	case "confirmed":
+		if !r.DpPaid {
+			return nil, Invalid("DP yang diminta %.0f belum tervalidasi (baru %.0f) — catat/validasi pembayarannya dulu", r.DownPayment, r.PaidAmount)
+		}
+		_, err = database.DB.Exec(`UPDATE reservations SET status='confirmed', confirmed_at=COALESCE(confirmed_at, (now() AT TIME ZONE 'UTC')), updated_at=NOW() WHERE id=$1`, id)
+	case "done":
+		_, err = database.DB.Exec(`UPDATE reservations SET status='done', settled_at=COALESCE(settled_at, (now() AT TIME ZONE 'UTC')), updated_at=NOW() WHERE id=$1`, id)
+	case "cancelled":
+		if r.PaidAmount > 0 {
+			if disposition != "refund" && disposition != "hangus" {
+				return nil, Invalid("sudah ada uang masuk %.0f — tentukan nasibnya: 'refund' (dikembalikan, catat refundnya) atau 'hangus' (menjadi pendapatan lain)", r.PaidAmount)
+			}
+		} else {
+			disposition = ""
+		}
+		_, err = database.DB.Exec(`UPDATE reservations SET status='cancelled', cancel_disposition=$2, cancelled_at=(now() AT TIME ZONE 'UTC'), updated_at=NOW() WHERE id=$1`, id, disposition)
+	case "pending":
+		return nil, Invalid("status tidak bisa dikembalikan ke menunggu")
+	default:
+		return nil, Invalid("status '%s' tidak dikenal", status)
+	}
+	if err != nil {
 		return nil, err
 	}
-	r.Status = status
-	return r, nil
+	return GetReservation(id, outletScope)
 }
 
 func DeleteReservation(id string, outletScope []string) error {
-	if _, err := GetReservation(id, outletScope); err != nil {
+	r, err := GetReservation(id, outletScope)
+	if err != nil {
 		return fmt.Errorf("reservasi tidak ditemukan")
 	}
-	_, err := database.DB.Exec(`DELETE FROM reservations WHERE id=$1`, id)
+	// Jejak uang tidak boleh ikut terhapus: reservasi yang sudah menerima
+	// pembayaran tervalidasi dibatalkan lewat status, bukan dihapus.
+	for _, p := range r.Payments {
+		if p.Status == "validated" {
+			return Invalid("reservasi ini sudah punya pembayaran tervalidasi — batalkan lewat status, jangan dihapus")
+		}
+	}
+	_, err = database.DB.Exec(`DELETE FROM reservations WHERE id=$1`, id)
 	return err
 }
 

@@ -1221,7 +1221,7 @@ func RunMigrations() error {
 			"warehouses.create", "stockitems.create", "stocktransfers.create",
 			"stockwastes.create", "stockledger.adjust", "recipes.create",
 		},
-		"warehouse.update": {"warehouses.update", "stockitems.update", "stocktransfers.update", "recipes.update"},
+		"warehouse.update": {"warehouses.update", "stockitems.update", "stocktransfers.update", "stocktransfers.approve", "stocktransfers.receive", "recipes.update"},
 		"warehouse.delete": {"warehouses.delete", "stockitems.delete", "recipes.delete"},
 
 		"procurement.view":       {"procurement.dashboard.view", "procurement.requests.view", "vendors.view"},
@@ -2698,6 +2698,75 @@ func RunMigrations() error {
 			ON CONFLICT (name) DO NOTHING`)
 		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_asset_categories', 'done') ON CONFLICT (key) DO NOTHING`)
 		log.Printf("Aset: master kategori di-seed")
+	}
+
+	// ── Kontrol transfer disamakan: mutasi aset berfoto, transfer stok berizin ──
+	// Mutasi aset kini wajib berfoto saat kirim, sama seperti transfer stok dan
+	// serah terima ke PIC.
+	if _, err := DB.Exec(`ALTER TABLE asset_transfers ADD COLUMN IF NOT EXISTS photo_url TEXT DEFAULT ''`); err != nil {
+		log.Printf("Asset transfer photo migration skipped: %v", err)
+	}
+
+	// Izin transfer stok dipecah: 'approve' dan 'receive' terpisah dari 'update'
+	// (one-shot, marker — WAJIB di paling akhir, lihat catatan re-seed di atas).
+	// Semua peran yang hari ini memegang 'update' — dan karena itu sudah bisa
+	// menyetujui & menerima — mendapat keduanya, supaya tidak ada alur yang
+	// mendadak terhenti. Pemisahan orangnya diatur admin lewat halaman Role.
+	var stSplit int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_stocktransfers_split_perm'").Scan(&stSplit)
+	if stSplit == 0 {
+		for _, p := range []string{"stocktransfers.approve", "stocktransfers.receive"} {
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, $1 FROM role_permissions WHERE permission = 'stocktransfers.update'
+				ON CONFLICT DO NOTHING`, p)
+			DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES ('admin', $1), ('superadmin', $1)
+				ON CONFLICT DO NOTHING`, p)
+		}
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_stocktransfers_split_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Gudang: izin transfer stok dipecah (approve/receive diwariskan dari update)")
+	}
+
+	// ── Reservasi: uang muka tervalidasi ───────────────────────────────────
+	// Sebelum ini DP hanya angka bebas di kolom down_payment: tanpa bukti,
+	// tanpa tanggal, tanpa siapa yang memvalidasi, dan tidak pernah sampai ke
+	// laporan keuangan. Sekarang down_payment = DP yang DIMINTA; uang yang
+	// benar-benar masuk hidup di reservation_payments dan diperlakukan sebagai
+	// kewajiban (Uang Muka Pelanggan) sampai reservasinya ditutup di POS.
+	for _, m := range []string{
+		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS cancel_disposition VARCHAR(10) DEFAULT ''`,
+		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP`,
+		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`,
+		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS settled_at TIMESTAMP`,
+		// VARCHAR, bukan CHAR(26): id transaksi = local_id dari app POS (sampai 50
+		// karakter), dan CHAR mem-padding nilai pendek dengan spasi.
+		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS pos_transaction_id VARCHAR(50)`,
+		`ALTER TABLE reservations ALTER COLUMN pos_transaction_id TYPE VARCHAR(50)`,
+		`CREATE TABLE IF NOT EXISTS reservation_payments (
+			id              CHAR(26) PRIMARY KEY,
+			reservation_id  CHAR(26) NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+			outlet_id       CHAR(26) NOT NULL,
+			type            VARCHAR(12) NOT NULL,
+			amount          DECIMAL(15,2) NOT NULL,
+			method          VARCHAR(20) DEFAULT 'transfer',
+			bank_account_id CHAR(26),
+			proof_url       TEXT DEFAULT '',
+			paid_at         TIMESTAMP NOT NULL,
+			status          VARCHAR(12) NOT NULL DEFAULT 'pending',
+			submitted_by    VARCHAR(100) DEFAULT '',
+			validated_by    VARCHAR(100) DEFAULT '',
+			validated_at    TIMESTAMP,
+			rejected_reason TEXT DEFAULT '',
+			notes           TEXT DEFAULT '',
+			created_at      TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_reservation_payments_resv ON reservation_payments(reservation_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_reservation_payments_paid ON reservation_payments(status, paid_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_reservations_cancelled ON reservations(cancelled_at) WHERE cancelled_at IS NOT NULL`,
+		`INSERT INTO app_settings (key, value) VALUES ('reservation_dp_percent', '50') ON CONFLICT (key) DO NOTHING`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Reservation payments migration skipped: %v", err)
+		}
 	}
 
 	return nil

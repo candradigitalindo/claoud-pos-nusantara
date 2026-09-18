@@ -45,6 +45,9 @@ type PushTransactionRequest struct {
 	CashierName       string              `json:"cashier_name"`  // nama kasir pemroses bayar
 	CreatedBy         string              `json:"created_by"`    // = cashier_name (fallback bila cashier_name kosong)
 	OrdererName       string              `json:"orderer_name"`  // label "Pemesan" gabungan (seperti struk)
+	// ReservationID opsional: transaksi ini menutup sebuah reservasi. Uang
+	// mukanya dikirim sebagai baris payments[] bermetode 'reservasi_dp'.
+	ReservationID     string              `json:"reservation_id"`
 	Items             []TransactionItem   `json:"items"`
 	Version           int                 `json:"version"`
 	CreatedAt         string              `json:"created_at"`

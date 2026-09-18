@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,21 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/oklog/ulid/v2"
 )
+
+// storeUpload menyimpan berkas ke uploads/YYYY-MM/<ulid><ext> dan
+// mengembalikan URL publiknya. Pemeriksaan ukuran/jenis dilakukan pemanggil.
+func storeUpload(c *fiber.Ctx, file *multipart.FileHeader, ext string) (string, error) {
+	datePath := time.Now().Format("2006-01")
+	dir := filepath.Join("uploads", datePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("gagal menyiapkan folder upload")
+	}
+	filename := fmt.Sprintf("%s%s", ulid.Make().String(), ext)
+	if err := c.SaveFile(file, filepath.Join(dir, filename)); err != nil {
+		return "", fmt.Errorf("gagal menyimpan file")
+	}
+	return fmt.Sprintf("/uploads/%s/%s", datePath, filename), nil
+}
 
 func UploadFile(c *fiber.Ctx) error {
 	file, err := c.FormFile("file")
@@ -34,28 +50,10 @@ func UploadFile(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Isi file tidak sesuai formatnya."})
 	}
 
-	// Ensure uploads directory exists
-	uploadDir := "uploads"
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Gagal menyiapkan folder upload."})
+	url, err := storeUpload(c, file, ext)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: err.Error()})
 	}
-
-	// Generate unique filename
-	id := ulid.Make().String()
-	datePath := time.Now().Format("2006-01")
-	dir := filepath.Join(uploadDir, datePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Gagal menyiapkan folder upload."})
-	}
-
-	filename := fmt.Sprintf("%s%s", id, ext)
-	savePath := filepath.Join(dir, filename)
-
-	if err := c.SaveFile(file, savePath); err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Gagal menyimpan file."})
-	}
-
-	url := fmt.Sprintf("/uploads/%s/%s", datePath, filename)
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data: fiber.Map{

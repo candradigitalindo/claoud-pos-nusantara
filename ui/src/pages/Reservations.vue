@@ -3,7 +3,7 @@
     <div class="flex items-start justify-between flex-wrap gap-3">
       <div>
         <h1 class="text-xl font-bold text-gray-900">Reservasi</h1>
-        <p class="text-sm text-gray-500 mt-0.5">Kelola reservasi: tamu, menu dipesan, DP, total & sisa pembayaran.</p>
+        <p class="text-sm text-gray-500 mt-0.5">Tamu, menu dipesan, DP yang diminta, uang yang sudah tervalidasi, dan sisanya.</p>
       </div>
       <AppButton v-if="canCreate" @click="openCreate">+ Reservasi Baru</AppButton>
     </div>
@@ -26,6 +26,13 @@
         <button @click="copyLink" class="px-2 py-1 rounded font-medium" :class="copied ? 'text-emerald-600 bg-emerald-50' : 'text-gray-600 bg-gray-100'">{{ copied ? 'Tersalin!' : 'Salin' }}</button>
         <a :href="publicUrl" target="_blank" rel="noopener" class="px-2 py-1 rounded font-medium text-emerald-700 bg-emerald-50">Buka</a>
       </div>
+      <!-- Kebijakan DP untuk reservasi dari halaman publik; admin bisa mengubah per reservasi. -->
+      <div v-if="canUpdate" class="mt-3 flex items-center gap-2 flex-wrap text-xs border-t border-gray-100 pt-3">
+        <span class="text-gray-500">DP yang diminta dari halaman publik:</span>
+        <input v-model.number="dpPercentInput" type="number" min="0" max="100" class="form-input !w-20 !py-1 text-right" /> <span class="text-gray-500">% dari total</span>
+        <button @click="saveSettings" :disabled="savingSettings" class="px-2 py-1 rounded font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100">Simpan</button>
+        <span v-if="!settings.bank_accounts?.length" class="text-amber-700">Belum ada rekening aktif di Keuangan → Rekening Bank; pelanggan tidak tahu harus transfer ke mana.</span>
+      </div>
     </AppCard>
 
     <!-- List -->
@@ -44,9 +51,10 @@
               <span class="st-badge shrink-0" :class="stCls(r.status)">{{ STATUS[r.status] || r.status }}</span>
             </div>
             <p class="text-xs text-gray-500">📅 {{ r.reservation_date ? formatDateStr(r.reservation_date) : '—' }} {{ r.reservation_time }}</p>
-            <p class="text-xs text-gray-600">Total <b>{{ formatRupiah(r.total) }}</b> · DP {{ formatRupiah(r.down_payment) }} · Sisa <b class="text-amber-600">{{ formatRupiah(r.remaining) }}</b></p>
+            <p class="text-xs text-gray-600">Total <b>{{ formatRupiah(r.total) }}</b> · Dibayar {{ formatRupiah(r.paid_amount) }} · Sisa <b class="text-amber-600">{{ formatRupiah(r.remaining) }}</b></p>
+            <p v-if="r.pending_amount > 0" class="text-xs font-semibold text-amber-700">Bukti {{ formatRupiah(r.pending_amount) }} menunggu validasi</p>
             <div class="flex gap-2 pt-1">
-              <button @click="openEdit(r)" class="flex-1 text-center text-xs font-medium px-2 py-1.5 rounded-lg bg-gray-100 text-gray-700">Detail / Edit</button>
+              <button @click="openEdit(r)" class="flex-1 text-center text-xs font-medium px-2 py-1.5 rounded-lg bg-gray-100 text-gray-700">Detail</button>
               <button v-if="canDelete" @click="confirmDelete(r)" class="text-center text-xs font-medium px-3 py-1.5 rounded-lg bg-red-50 text-red-600">Hapus</button>
             </div>
           </li>
@@ -63,6 +71,10 @@
           <span class="text-xs text-gray-400 block">{{ row.reservation_time }}</span>
         </template>
         <template #cell-total="{ row }">{{ formatRupiah(row.total) }}</template>
+        <template #cell-paid="{ row }">
+          <span>{{ formatRupiah(row.paid_amount) }}</span>
+          <span v-if="row.pending_amount > 0" class="block text-[11px] font-semibold text-amber-700">+{{ formatRupiah(row.pending_amount) }} menunggu</span>
+        </template>
         <template #cell-remaining="{ row }"><span :class="row.remaining > 0 ? 'text-amber-600 font-semibold' : 'text-gray-400'">{{ formatRupiah(row.remaining) }}</span></template>
         <template #cell-status="{ row }"><span class="st-badge" :class="stCls(row.status)">{{ STATUS[row.status] || row.status }}</span></template>
         <template #cell-source="{ row }"><span class="text-xs" :class="row.source==='public' ? 'text-emerald-600' : 'text-gray-400'">{{ row.source==='public' ? 'Publik' : 'Admin' }}</span></template>
@@ -95,80 +107,187 @@
     </AppCard>
 
     <!-- ── Reservation Modal ── -->
-    <AppModal v-model="modal" :title="editing ? 'Detail Reservasi' : 'Reservasi Baru'">
-      <form class="space-y-3" @submit.prevent="save">
-        <div v-if="!editing">
-          <label class="lbl">Outlet <span class="text-red-500">*</span></label>
-          <SearchSelect v-model="form.outlet_id" :options="outlets" placeholder="Pilih outlet…" searchPlaceholder="Cari outlet…" @change="onOutletChange" />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="lbl">Nama Pemesan <span class="text-red-500">*</span></label>
-            <input v-model="form.customer_name" class="form-input" required />
-          </div>
-          <div>
-            <label class="lbl">No. HP</label>
-            <input v-model="form.customer_phone" class="form-input" />
-          </div>
-        </div>
-        <div class="grid grid-cols-3 gap-3">
-          <div>
-            <label class="lbl">Jumlah Tamu</label>
-            <input v-model.number="form.pax" type="number" min="1" class="form-input" />
-          </div>
-          <div>
-            <label class="lbl">Tanggal</label>
-            <input v-model="form.reservation_date" type="date" class="form-input" />
-          </div>
-          <div>
-            <label class="lbl">Jam</label>
-            <input v-model="form.reservation_time" type="time" class="form-input" />
-          </div>
+    <AppModal v-model="modal" :title="editing ? `Reservasi · ${editing.customer_name}` : 'Reservasi Baru'" size="2xl">
+      <div class="space-y-4">
+        <div v-if="editing" class="flex flex-wrap items-center gap-2">
+          <span class="st-badge" :class="stCls(editing.status)">{{ STATUS[editing.status] || editing.status }}</span>
+          <span v-if="editing.status === 'cancelled' && editing.cancel_disposition" class="text-xs text-gray-500">uang muka: {{ editing.cancel_disposition === 'refund' ? 'dikembalikan (refund)' : 'hangus' }}</span>
+          <span v-if="editing.confirmed_at" class="text-xs text-gray-400">· dikonfirmasi {{ editing.confirmed_at }}</span>
+          <span v-if="editing.settled_at" class="text-xs text-gray-400">· selesai {{ editing.settled_at }}<template v-if="editing.pos_transaction_id"> (POS {{ editing.pos_transaction_id }})</template></span>
+          <a v-if="editing.source === 'public' && statusLinkFor(editing)" :href="statusLinkFor(editing)" target="_blank" rel="noopener" class="ml-auto text-xs font-medium text-emerald-700 underline">Link status pelanggan</a>
         </div>
 
-        <!-- Product picker -->
-        <div>
-          <label class="lbl">Menu Dipesan</label>
-          <SearchSelect v-if="form.outlet_id" v-model="pickProduct" :options="productOptions" placeholder="+ Tambah produk…" searchPlaceholder="Cari produk…" @change="addProduct" />
-          <p v-else class="text-xs text-gray-400">Pilih outlet dulu untuk memuat menu.</p>
-          <ul v-if="form.items.length" class="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg">
-            <li v-for="(it,i) in form.items" :key="i" class="flex items-center gap-2 px-3 py-2">
-              <span class="flex-1 min-w-0 text-sm truncate">{{ it.product_name }}<span class="text-xs text-gray-400 block">{{ formatRupiah(it.price) }}</span></span>
-              <input v-model.number="it.qty" type="number" min="1" class="w-14 form-input !py-1 text-center" />
-              <span class="w-24 text-right text-sm font-medium">{{ formatRupiah(it.price * it.qty) }}</span>
-              <button type="button" @click="form.items.splice(i,1)" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+        <form class="space-y-3" @submit.prevent="save">
+          <div v-if="!editing">
+            <label class="lbl">Outlet <span class="text-red-500">*</span></label>
+            <SearchSelect v-model="form.outlet_id" :options="outlets" placeholder="Pilih outlet…" searchPlaceholder="Cari outlet…" @change="onOutletChange" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="lbl">Nama Pemesan <span class="text-red-500">*</span></label>
+              <input v-model="form.customer_name" class="form-input" required :disabled="locked" />
+            </div>
+            <div>
+              <label class="lbl">No. HP</label>
+              <input v-model="form.customer_phone" class="form-input" :disabled="locked" />
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="lbl">Jumlah Tamu</label>
+              <input v-model.number="form.pax" type="number" min="1" class="form-input" :disabled="locked" />
+            </div>
+            <div>
+              <label class="lbl">Tanggal</label>
+              <input v-model="form.reservation_date" type="date" class="form-input" :disabled="locked" />
+            </div>
+            <div>
+              <label class="lbl">Jam</label>
+              <input v-model="form.reservation_time" type="time" class="form-input" :disabled="locked" />
+            </div>
+          </div>
+
+          <!-- Product picker -->
+          <div>
+            <label class="lbl">Menu Dipesan</label>
+            <SearchSelect v-if="form.outlet_id && !locked" v-model="pickProduct" :options="productOptions" placeholder="+ Tambah produk…" searchPlaceholder="Cari produk…" @change="addProduct" />
+            <p v-else-if="!form.outlet_id" class="text-xs text-gray-400">Pilih outlet dulu untuk memuat menu.</p>
+            <ul v-if="form.items.length" class="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg">
+              <li v-for="(it,i) in form.items" :key="i" class="flex items-center gap-2 px-3 py-2">
+                <span class="flex-1 min-w-0 text-sm truncate">{{ it.product_name }}<span class="text-xs text-gray-400 block">{{ formatRupiah(it.price) }}</span></span>
+                <input v-model.number="it.qty" type="number" min="1" class="w-14 form-input !py-1 text-center" :disabled="locked" />
+                <span class="w-24 text-right text-sm font-medium">{{ formatRupiah(it.price * it.qty) }}</span>
+                <button v-if="!locked" type="button" @click="form.items.splice(i,1)" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Money summary -->
+          <div class="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <label class="lbl">DP yang diminta</label>
+              <input :value="dpDisplay" @input="onDpInput" type="text" inputmode="numeric" class="form-input" placeholder="Rp 0" :disabled="locked" />
+              <p class="mt-1 text-[11px] text-gray-400">Uang yang benar-benar masuk dicatat di bagian Uang Muka di bawah, bukan di sini.</p>
+            </div>
+            <div v-if="!editing">
+              <label class="lbl">Status awal</label>
+              <select v-model="form.status" class="form-input">
+                <option value="pending">Menunggu DP</option>
+                <option value="confirmed" :disabled="(form.down_payment || 0) > 0">Langsung dikonfirmasi (tanpa DP)</option>
+              </select>
+            </div>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 text-sm space-y-1">
+            <div class="flex justify-between"><span class="text-gray-500">Total</span><span class="font-medium">{{ formatRupiah(computedTotal) }}</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">DP diminta</span><span>{{ formatRupiah(form.down_payment || 0) }}</span></div>
+            <template v-if="editing">
+              <div class="flex justify-between"><span class="text-gray-500">Tervalidasi</span><span class="text-emerald-700">− {{ formatRupiah(editing.paid_amount) }}</span></div>
+              <div v-if="editing.pending_amount > 0" class="flex justify-between"><span class="text-gray-500">Menunggu validasi</span><span class="text-amber-700">{{ formatRupiah(editing.pending_amount) }}</span></div>
+              <div class="flex justify-between border-t border-gray-200 pt-1"><span class="font-semibold">Sisa</span><span class="font-bold text-amber-600">{{ formatRupiah(editing.remaining) }}</span></div>
+            </template>
+            <div v-else class="flex justify-between border-t border-gray-200 pt-1"><span class="font-semibold">Sisa setelah DP</span><span class="font-bold text-amber-600">{{ formatRupiah(Math.max(0, computedTotal - (form.down_payment||0))) }}</span></div>
+          </div>
+          <div>
+            <label class="lbl">Catatan</label>
+            <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Opsional" :disabled="locked"></textarea>
+          </div>
+          <div v-if="!locked" class="flex justify-end">
+            <AppButton type="submit" :loading="saving">{{ editing ? 'Simpan Perubahan' : 'Buat Reservasi' }}</AppButton>
+          </div>
+        </form>
+
+        <!-- ── Uang muka ── -->
+        <div v-if="editing" class="rounded-xl border border-gray-200">
+          <div class="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-t-xl">
+            <span class="text-xs font-bold uppercase tracking-wide text-gray-600">Uang Muka & Pelunasan</span>
+            <button v-if="canUpdate && canRecordPayment && !showPay" type="button" class="text-xs font-semibold text-emerald-700" @click="openPay">+ Catat Pembayaran</button>
+          </div>
+          <ul v-if="editing.payments?.length" class="divide-y divide-gray-100">
+            <li v-for="p in editing.payments" :key="p.id" class="px-3 py-2 text-sm">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-medium">{{ PAY_TYPE[p.type] || p.type }}</span>
+                <span class="text-gray-700">{{ formatRupiah(p.amount) }}</span>
+                <span class="text-xs text-gray-400">{{ p.method }}<template v-if="p.bank_label"> · {{ p.bank_label }}</template> · {{ p.paid_at }}</span>
+                <span class="st-badge" :class="payCls(p.status)">{{ PAY_STATUS[p.status] || p.status }}</span>
+                <a v-if="p.proof_url" :href="p.proof_url" target="_blank" rel="noopener" class="text-xs text-emerald-700 underline">bukti</a>
+                <span class="ml-auto text-[11px] text-gray-400">{{ p.status === 'pending' ? 'dari ' + p.submitted_by : (p.validated_by ? 'oleh ' + p.validated_by : '') }}</span>
+              </div>
+              <p v-if="p.notes" class="text-xs text-gray-500 mt-0.5">{{ p.notes }}</p>
+              <p v-if="p.rejected_reason" class="text-xs text-red-600 mt-0.5">Ditolak: {{ p.rejected_reason }}</p>
+              <div v-if="p.status === 'pending' && canUpdate" class="mt-1.5 flex gap-2">
+                <button type="button" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="validatePayment(p)">Validasi</button>
+                <button type="button" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="rejectPayment(p)">Tolak</button>
+              </div>
             </li>
           </ul>
+          <p v-else class="px-3 py-3 text-xs text-gray-400">Belum ada uang masuk yang tercatat.</p>
+
+          <div v-if="showPay" class="border-t border-gray-100 p-3 space-y-3 bg-emerald-50/40">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="lbl">Jenis</label>
+                <select v-model="payForm.type" class="form-input">
+                  <option v-if="editing.status !== 'cancelled'" value="dp">DP</option>
+                  <option v-if="editing.status !== 'cancelled'" value="pelunasan">Pelunasan</option>
+                  <option v-if="editing.status === 'cancelled' && editing.cancel_disposition === 'refund'" value="refund">Refund ke pelanggan</option>
+                </select>
+              </div>
+              <div>
+                <label class="lbl">Nominal</label>
+                <input v-model.number="payForm.amount" type="number" inputmode="numeric" min="1" class="form-input" />
+              </div>
+              <div>
+                <label class="lbl">Metode</label>
+                <select v-model="payForm.method" class="form-input">
+                  <option value="transfer">Transfer</option><option value="qris">QRIS</option><option value="cash">Tunai</option><option value="lainnya">Lainnya</option>
+                </select>
+              </div>
+              <div>
+                <label class="lbl">Rekening</label>
+                <select v-model="payForm.bank_account_id" class="form-input">
+                  <option value="">—</option>
+                  <option v-for="b in settings.bank_accounts" :key="b.id" :value="b.id">{{ b.bank_name }} {{ b.account_number }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="lbl">Tanggal bayar</label>
+                <input v-model="payForm.paid_at" type="date" class="form-input" />
+              </div>
+              <div>
+                <label class="lbl">Catatan</label>
+                <input v-model="payForm.notes" class="form-input" placeholder="opsional" />
+              </div>
+            </div>
+            <PhotoCapture v-model="payForm.proof_url" label="Bukti pembayaran" :required="payForm.method !== 'cash'"
+              hint="Wajib untuk transfer/QRIS. Untuk tunai boleh dikosongkan." />
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn-ghost" @click="showPay = false">Batal</button>
+              <AppButton :loading="acting" @click="addPayment">Simpan sebagai tervalidasi</AppButton>
+            </div>
+          </div>
         </div>
 
-        <!-- Money summary -->
-        <div class="grid grid-cols-2 gap-3 items-end">
-          <div>
-            <label class="lbl">Down Payment (DP)</label>
-            <input :value="dpDisplay" @input="onDpInput" type="text" inputmode="numeric" class="form-input" placeholder="Rp 0" />
-          </div>
-          <div>
-            <label class="lbl">Status</label>
-            <select v-model="form.status" class="form-input">
-              <option v-for="(l,k) in STATUS" :key="k" :value="k">{{ l }}</option>
-            </select>
+        <!-- ── Batalkan: nasib uang muka ── -->
+        <div v-if="cancelChoice" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm space-y-2">
+          <p class="font-semibold text-red-800">Sudah ada uang masuk {{ formatRupiah(editing.paid_amount) }}. Apa nasibnya?</p>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700" :disabled="acting" @click="setStatus('cancelled', 'refund')">Dikembalikan (catat refund setelah ini)</button>
+            <button type="button" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white" :disabled="acting" @click="setStatus('cancelled', 'hangus')">Hangus (jadi pendapatan lain)</button>
+            <button type="button" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-gray-600" @click="cancelChoice = false">Batal</button>
           </div>
         </div>
-        <div class="rounded-lg bg-gray-50 p-3 text-sm space-y-1">
-          <div class="flex justify-between"><span class="text-gray-500">Subtotal</span><span class="font-medium">{{ formatRupiah(computedTotal) }}</span></div>
-          <div class="flex justify-between"><span class="text-gray-500">DP</span><span>− {{ formatRupiah(form.down_payment || 0) }}</span></div>
-          <div class="flex justify-between border-t border-gray-200 pt-1"><span class="font-semibold">Sisa Pembayaran</span><span class="font-bold text-amber-600">{{ formatRupiah(Math.max(0, computedTotal - (form.down_payment||0))) }}</span></div>
-        </div>
-        <div>
-          <label class="lbl">Catatan</label>
-          <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Opsional"></textarea>
-        </div>
+      </div>
 
-        <div class="flex justify-end gap-2 pt-1">
+      <template #footer>
+        <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center">
           <button type="button" class="btn-ghost" @click="modal=false">Tutup</button>
-          <AppButton type="submit" :loading="saving">{{ editing ? 'Simpan' : 'Buat Reservasi' }}</AppButton>
+          <div v-if="editing && canUpdate && !locked" class="flex flex-wrap gap-2 sm:ml-auto">
+            <button type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="askCancel">Batalkan</button>
+            <button v-if="editing.status === 'pending'" type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50" :disabled="acting || !editing.dp_paid" :title="editing.dp_paid ? '' : 'DP belum tervalidasi'" @click="setStatus('confirmed')">Konfirmasi</button>
+            <button type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="setStatus('done')">Selesai (dilayani)</button>
+          </div>
         </div>
-      </form>
+      </template>
     </AppModal>
   </div>
 </template>
@@ -180,7 +299,7 @@ import { productsApi } from '@/api/products.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
-import { formatRupiah, formatDateStr } from '@/utils/format.js'
+import { formatRupiah, formatDateStr, todayDateString } from '@/utils/format.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
@@ -188,14 +307,20 @@ import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
 import DateRangePicker from '@/components/ui/DateRangePicker.vue'
+import PhotoCapture from '@/components/PhotoCapture.vue'
 
 const toast = useToastStore()
 const auth = useAuthStore()
 const canCreate = auth.hasPermission('reservations.create')
+const canUpdate = auth.hasPermission('reservations.update')
 const canDelete = auth.hasPermission('reservations.delete')
 
-const STATUS = { pending: 'Menunggu', confirmed: 'Dikonfirmasi', done: 'Selesai', cancelled: 'Dibatalkan' }
+// Status mengikuti pembayaran: 'pending' = menunggu DP, 'confirmed' = DP tervalidasi.
+const STATUS = { pending: 'Menunggu DP', confirmed: 'Dikonfirmasi', done: 'Selesai', cancelled: 'Dibatalkan' }
+const PAY_TYPE = { dp: 'DP', pelunasan: 'Pelunasan', refund: 'Refund' }
+const PAY_STATUS = { pending: 'Menunggu validasi', validated: 'Tervalidasi', rejected: 'Ditolak' }
 function stCls(s) { return { 'st-pending': s==='pending', 'st-confirmed': s==='confirmed', 'st-done': s==='done', 'st-cancelled': s==='cancelled' } }
+function payCls(s) { return { 'st-pending': s==='pending', 'st-done': s==='validated', 'st-cancelled': s==='rejected' } }
 
 const COLUMNS = [
   { key: 'customer_name', label: 'Pemesan' },
@@ -203,6 +328,7 @@ const COLUMNS = [
   { key: 'pax',           label: 'Tamu' },
   { key: 'schedule',      label: 'Jadwal' },
   { key: 'total',         label: 'Total' },
+  { key: 'paid',          label: 'Dibayar' },
   { key: 'remaining',     label: 'Sisa' },
   { key: 'status',        label: 'Status' },
   { key: 'source',        label: 'Sumber' },
@@ -227,11 +353,29 @@ const publicUrl = computed(() => selectedOutletObj.value?.slug ? `${window.locat
 const outletsWithSlug = computed(() => outlets.value.filter(o => o.slug))
 const copiedId = ref('')
 function urlFor(o) { return `${window.location.origin}/r/${o.slug}` }
+function statusLinkFor(r) {
+  const o = outlets.value.find(x => x.id === r.outlet_id)
+  return o?.slug ? `${window.location.origin}/r/${o.slug}?id=${r.id}` : ''
+}
 async function copyOutlet(o) {
   try { await navigator.clipboard.writeText(urlFor(o)); copiedId.value = o.id; setTimeout(() => { if (copiedId.value === o.id) copiedId.value = '' }, 1500) } catch {}
 }
 
 function asArray(d) { return Array.isArray(d) ? d : (d?.data || []) }
+function asObject(d) { return d?.data ?? d }
+
+// Kebijakan DP + rekening tujuan (dipakai form catat pembayaran).
+const settings = ref({ dp_percent: 50, bank_accounts: [] })
+const dpPercentInput = ref(50)
+const savingSettings = ref(false)
+async function loadSettings() {
+  try { settings.value = asObject(await reservationsApi.settings()) || settings.value; dpPercentInput.value = settings.value.dp_percent } catch {}
+}
+async function saveSettings() {
+  savingSettings.value = true
+  try { settings.value = asObject(await reservationsApi.updateSettings({ dp_percent: Number(dpPercentInput.value) })); toast.success('Kebijakan DP disimpan') }
+  catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { savingSettings.value = false }
+}
 
 async function load() {
   loading.value = true; errorMsg.value = ''
@@ -255,10 +399,23 @@ async function copyLink() {
 const modal = ref(false)
 const editing = ref(null)
 const saving = ref(false)
+const acting = ref(false)
 const form = ref({})
 const pickProduct = ref('')
 const products = ref([])
 const dpDisplay = ref('')
+const showPay = ref(false)
+const cancelChoice = ref(false)
+const payForm = ref({})
+
+// Reservasi selesai/batal dikunci server; layar mengikuti.
+const locked = computed(() => !!editing.value && (editing.value.status === 'done' || editing.value.status === 'cancelled'))
+const canRecordPayment = computed(() => {
+  const e = editing.value
+  if (!e) return false
+  if (e.status === 'pending' || e.status === 'confirmed') return e.remaining > 0
+  return e.status === 'cancelled' && e.cancel_disposition === 'refund' && e.paid_amount > 0
+})
 
 function fmtRupiahInput(v) { const d = String(v ?? '').replace(/[^\d]/g, ''); return d ? 'Rp ' + new Intl.NumberFormat('id-ID').format(Number(d)) : '' }
 function onDpInput(e) {
@@ -266,6 +423,7 @@ function onDpInput(e) {
   const num = d ? parseInt(d, 10) : 0
   form.value.down_payment = num
   dpDisplay.value = num ? fmtRupiahInput(num) : ''
+  if (num > 0 && form.value.status === 'confirmed') form.value.status = 'pending'
 }
 
 const productOptions = computed(() => products.value.map(p => ({ id: p.id, name: `${p.name} — ${formatRupiah(p.price)}` })))
@@ -290,15 +448,27 @@ function addProduct() {
 
 async function openCreate() {
   editing.value = null; form.value = blank(); pickProduct.value = ''; dpDisplay.value = ''
+  showPay.value = false; cancelChoice.value = false
   await loadProducts(form.value.outlet_id)
   modal.value = true
 }
-async function openEdit(r) {
-  editing.value = r
+function fillForm(r) {
   form.value = { outlet_id: r.outlet_id, customer_name: r.customer_name, customer_phone: r.customer_phone, pax: r.pax, reservation_date: r.reservation_date || '', reservation_time: r.reservation_time || '', items: (r.items||[]).map(i=>({...i})), down_payment: r.down_payment, status: r.status, notes: r.notes }
   dpDisplay.value = r.down_payment ? fmtRupiahInput(r.down_payment) : ''
-  await loadProducts(r.outlet_id)
+}
+async function openEdit(r) {
+  showPay.value = false; cancelChoice.value = false
+  // Detail membawa riwayat pembayaran; baris daftar tidak.
+  try { editing.value = asObject(await reservationsApi.get(r.id)) } catch { editing.value = r }
+  fillForm(editing.value)
+  await loadProducts(editing.value.outlet_id)
   modal.value = true
+}
+async function refreshDetail() {
+  if (!editing.value) return
+  editing.value = asObject(await reservationsApi.get(editing.value.id))
+  fillForm(editing.value)
+  await load()
 }
 async function save() {
   if (!form.value.customer_name?.trim()) { toast.error('Nama pemesan wajib diisi'); return }
@@ -306,25 +476,77 @@ async function save() {
   saving.value = true
   try {
     const payload = { ...form.value, items: form.value.items.map(i => ({ product_id: i.product_id, qty: i.qty })) }
-    if (editing.value) await reservationsApi.update(editing.value.id, payload)
-    else await reservationsApi.create(payload)
-    toast.success(editing.value ? 'Reservasi diperbarui' : 'Reservasi dibuat')
-    modal.value = false
-    await load()
+    if (editing.value) { await reservationsApi.update(editing.value.id, payload); await refreshDetail(); toast.success('Reservasi diperbarui') }
+    else { await reservationsApi.create(payload); toast.success('Reservasi dibuat'); modal.value = false; await load() }
   } catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { saving.value = false }
 }
+
+// ── Uang muka ──
+function openPay() {
+  const e = editing.value
+  const isRefund = e.status === 'cancelled'
+  const dpDue = Math.max((e.down_payment || 0) - (e.paid_amount || 0), 0)
+  payForm.value = {
+    type: isRefund ? 'refund' : (dpDue > 0 ? 'dp' : 'pelunasan'),
+    amount: isRefund ? e.paid_amount : (dpDue > 0 ? Math.min(dpDue, e.remaining) : Math.max(e.remaining - e.pending_amount, 0)),
+    method: 'transfer', bank_account_id: settings.value.bank_accounts?.[0]?.id || '',
+    paid_at: todayDateString(), proof_url: '', notes: '',
+  }
+  showPay.value = true
+}
+async function addPayment() {
+  if (!(payForm.value.amount > 0)) { toast.error('Nominal harus lebih dari 0'); return }
+  if (payForm.value.method !== 'cash' && !payForm.value.proof_url) { toast.error('Bukti pembayaran wajib untuk transfer/QRIS'); return }
+  acting.value = true
+  try {
+    await reservationsApi.addPayment(editing.value.id, payForm.value)
+    showPay.value = false
+    await refreshDetail()
+    toast.success('Pembayaran dicatat')
+  } catch (e) { toast.error(e?.message || 'Gagal mencatat pembayaran') } finally { acting.value = false }
+}
+async function validatePayment(p) {
+  acting.value = true
+  try { await reservationsApi.validatePayment(editing.value.id, p.id); await refreshDetail(); toast.success('Pembayaran tervalidasi') }
+  catch (e) { toast.error(e?.message || 'Gagal memvalidasi') } finally { acting.value = false }
+}
+async function rejectPayment(p) {
+  const reason = window.prompt('Alasan penolakan (dibaca pelanggan):') || ''
+  if (!reason.trim()) return
+  acting.value = true
+  try { await reservationsApi.rejectPayment(editing.value.id, p.id, reason); await refreshDetail(); toast.success('Bukti ditolak') }
+  catch (e) { toast.error(e?.message || 'Gagal menolak') } finally { acting.value = false }
+}
+
+// ── Status ──
+function askCancel() {
+  if (editing.value.paid_amount > 0) { cancelChoice.value = true; return }
+  if (window.confirm('Batalkan reservasi ini?')) setStatus('cancelled')
+}
+async function setStatus(status, disposition = '') {
+  if (status === 'done' && !window.confirm('Tandai selesai (tamu sudah dilayani)? Biasanya ini ditutup otomatis oleh transaksi POS.')) return
+  acting.value = true
+  try {
+    await reservationsApi.setStatus(editing.value.id, status, disposition)
+    cancelChoice.value = false
+    await refreshDetail()
+    toast.success('Status diperbarui')
+  } catch (e) { toast.error(e?.message || 'Gagal mengubah status') } finally { acting.value = false }
+}
+
 async function confirmDelete(r) {
   if (!window.confirm(`Hapus reservasi "${r.customer_name}"?`)) return
   try { await reservationsApi.remove(r.id); toast.success('Reservasi dihapus'); await load() }
   catch (e) { toast.error(e?.message || 'Gagal menghapus') }
 }
 
-onMounted(async () => { await loadOutlets(); await load() })
+onMounted(async () => { await loadOutlets(); await Promise.all([load(), loadSettings()]) })
 </script>
 
 <style scoped>
 .form-input { width: 100%; padding: .5rem .7rem; border-radius: .6rem; font-size: .85rem; border: 1px solid rgba(0,0,0,.14); background: #fff; color: #111827; outline: none; }
 .form-input:focus { border-color: rgba(5,150,105,.5); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
+.form-input:disabled { background: #f9fafb; color: #6b7280; }
 .lbl { display: block; font-size: .72rem; font-weight: 700; color: #4b5563; margin-bottom: .25rem; }
 .btn-ghost { padding: .5rem 1rem; border-radius: .6rem; font-size: .85rem; font-weight: 600; color: #374151; background: #f3f4f6; }
 .btn-ghost:hover { background: #e5e7eb; }
