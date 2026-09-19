@@ -11,6 +11,7 @@ package services
 // pendapatan diakui penuh pada hari kunjungan.
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 	"strings"
@@ -330,9 +331,19 @@ func ListOutletReservations(outletID, date string) ([]models.OutletReservation, 
 		if r.Status != "pending" && r.Status != "confirmed" {
 			continue
 		}
+		// POS mengenal produk lewat local_id-nya, bukan id cloud.
+		items := make([]models.ReservationItem, 0, len(r.Items))
+		for _, it := range r.Items {
+			if it.ProductID != "" {
+				var localID sql.NullString
+				database.DB.QueryRow(`SELECT local_id FROM cloud_products WHERE id = $1`, it.ProductID).Scan(&localID)
+				it.ProductLocalID = strings.TrimSpace(localID.String)
+			}
+			items = append(items, it)
+		}
 		out = append(out, models.OutletReservation{
 			ID: r.ID, CustomerName: r.CustomerName, CustomerPhone: r.CustomerPhone, Pax: r.Pax,
-			ReservationDate: r.ReservationDate, ReservationTime: r.ReservationTime, Items: r.Items,
+			ReservationDate: r.ReservationDate, ReservationTime: r.ReservationTime, Items: items,
 			Total: r.Total, PaidAmount: r.PaidAmount, Remaining: r.Remaining, Status: r.Status, Notes: r.Notes,
 		})
 	}

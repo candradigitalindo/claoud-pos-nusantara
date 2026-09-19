@@ -4,10 +4,14 @@ import "time"
 
 type ReservationItem struct {
 	ProductID   string  `json:"product_id"`
-	ProductName string  `json:"product_name"`
-	Qty         int     `json:"qty"`
-	Price       float64 `json:"price"`
-	Subtotal    float64 `json:"subtotal"`
+	// ProductLocalID = cloud_products.local_id, id produk yang dikenal app POS.
+	// Hanya diisi pada endpoint untuk POS (ListOutletReservations); POS
+	// mencocokkan menu lewat id ini, sama seperti pesanan online.
+	ProductLocalID string  `json:"product_local_id,omitempty"`
+	ProductName    string  `json:"product_name"`
+	Qty            int     `json:"qty"`
+	Price          float64 `json:"price"`
+	Subtotal       float64 `json:"subtotal"`
 }
 
 // Reservation — pesanan di muka dari pelanggan.
