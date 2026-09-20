@@ -22,7 +22,10 @@
             <span v-if="periode">· {{ periode }}</span>
           </div>
         </div>
-        <AppButton v-if="canSubmit" @click="showNewPurchase = true">+ Belanja Tahap Baru</AppButton>
+        <div class="flex flex-wrap gap-2">
+          <AppButton v-if="canManage && !rabSet && projectOpen" variant="secondary" @click="openRabEditor">{{ rabItems.length ? 'Ubah RAB' : 'Susun RAB' }}</AppButton>
+          <AppButton v-if="canSubmit" :disabled="!rabSet || !projectOpen" :title="rabSet ? '' : 'Tetapkan RAB dulu sebelum membuat belanja tahap'" @click="showNewPurchase = true">+ Belanja Tahap Baru</AppButton>
+        </div>
       </div>
 
       <!-- Rekap RAB -->
@@ -38,6 +41,119 @@
         <p v-if="project.notes" class="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600">
           <span class="text-gray-400">Catatan:</span> {{ project.notes }}
         </p>
+      </AppCard>
+
+      <!-- RAB per baris: pos anggaran dan serapannya -->
+      <AppCard :padding="false">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
+          <div class="min-w-0">
+            <h2 class="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800">
+              RAB — Rencana Anggaran Biaya
+              <span :class="rabBadgeCls">{{ rabBadgeText }}</span>
+            </h2>
+            <p class="text-[11px] text-gray-400">
+              <template v-if="rabSet">Ditetapkan<span v-if="project.rab_set_by"> oleh {{ project.rab_set_by }}</span><span v-if="project.rab_set_at"> · {{ project.rab_set_at }}</span>. Belanja tahap menyerap baris di bawah; ubah lewat “Buka Revisi”.</template>
+              <template v-else-if="project.rab_version > 0">Sedang direvisi (terakhir v{{ project.rab_version }}). Belanja tahap baru ditahan sampai ditetapkan lagi.</template>
+              <template v-else>Belum ditetapkan. Susun baris pekerjaan (volume × harga satuan), lalu tetapkan agar belanja tahap bisa dibuat.</template>
+            </p>
+          </div>
+          <div v-if="canManage && projectOpen" class="flex flex-wrap gap-2">
+            <template v-if="!rabSet">
+              <AppButton size="sm" variant="secondary" @click="openRabEditor">{{ rabItems.length ? 'Ubah RAB' : 'Susun RAB' }}</AppButton>
+              <AppButton size="sm" :disabled="!rabItems.length" :loading="rabBusy" @click="setRab">Tetapkan RAB</AppButton>
+            </template>
+            <AppButton v-else size="sm" variant="secondary" :loading="rabBusy" @click="reopenRab">Buka Revisi RAB</AppButton>
+          </div>
+        </div>
+
+        <div v-if="!rabItems.length" class="p-6 text-center text-sm text-gray-400">
+          Belum ada baris RAB.<span v-if="canManage && projectOpen"> Klik <b>Susun RAB</b> untuk memulai.</span>
+        </div>
+        <template v-else>
+          <!-- Ponsel -->
+          <div class="sm:hidden">
+            <div v-for="(g, gi) in rabGroups" :key="gi">
+              <div class="flex items-center justify-between gap-2 bg-gray-50 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                <span class="min-w-0 truncate">{{ romawi(gi) }}. {{ g.section || 'Tanpa bagian' }}</span>
+                <span class="shrink-0">{{ formatRupiah(g.total) }}</span>
+              </div>
+              <ul class="divide-y divide-gray-100">
+                <li v-for="r in g.rows" :key="r.id" class="px-4 py-2.5">
+                  <div class="flex items-start justify-between gap-2">
+                    <p class="min-w-0 break-words text-sm font-medium text-gray-900">{{ r.name }} <span class="text-[10px] font-semibold uppercase text-gray-400">{{ r.kind }}</span></p>
+                    <p class="shrink-0 text-sm font-semibold text-gray-900">{{ formatRupiah(r.subtotal) }}</p>
+                  </div>
+                  <p class="text-[11px] text-gray-500">{{ r.qty }} {{ r.unit }} × {{ formatRupiah(r.unit_price) }}<span v-if="r.notes"> · {{ r.notes }}</span></p>
+                  <BudgetBar class="mt-1.5" :budget="r.subtotal" :committed="r.committed" :paid="r.paid" :estimated="r.estimated" />
+                  <p class="mt-1 text-[11px]" :class="r.remaining < 0 ? 'font-semibold text-red-600' : 'text-gray-500'">Sisa {{ formatRupiah(r.remaining) }}<span v-if="r.request_count"> · {{ r.request_count }} pengajuan</span></p>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Desktop -->
+          <div class="hidden overflow-x-auto sm:block">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b border-gray-200 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                  <th class="px-4 py-2">Uraian</th>
+                  <th class="px-2 py-2">Jenis</th>
+                  <th class="px-2 py-2 text-right">Vol</th>
+                  <th class="px-2 py-2">Sat</th>
+                  <th class="px-2 py-2 text-right">Harga Sat.</th>
+                  <th class="px-2 py-2 text-right">RAB</th>
+                  <th class="px-2 py-2 text-right">Komitmen</th>
+                  <th class="px-2 py-2 text-right">Terbayar</th>
+                  <th class="px-4 py-2 text-right">Sisa</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="(g, gi) in rabGroups" :key="gi">
+                  <tr class="bg-gray-50 text-[11px] font-bold uppercase tracking-wide text-gray-600">
+                    <td colspan="5" class="px-4 py-1.5">{{ romawi(gi) }}. {{ g.section || 'Tanpa bagian' }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ formatRupiah(g.total) }}</td>
+                    <td class="px-2 py-1.5 text-right font-semibold text-gray-500">{{ formatRupiah(g.committed) }}</td>
+                    <td class="px-2 py-1.5 text-right font-semibold text-gray-500">{{ formatRupiah(g.paid) }}</td>
+                    <td class="px-4 py-1.5 text-right" :class="g.total - g.committed < 0 ? 'text-red-600' : ''">{{ formatRupiah(g.total - g.committed) }}</td>
+                  </tr>
+                  <tr v-for="r in g.rows" :key="r.id" class="border-b border-gray-100">
+                    <td class="px-4 py-2">
+                      <p class="font-medium text-gray-900">{{ r.name }}</p>
+                      <p v-if="r.notes" class="text-[11px] text-gray-400">{{ r.notes }}</p>
+                      <div class="mt-1 h-1 w-28 overflow-hidden rounded-full bg-gray-100" :title="`${Math.round(r.absorbed_pct)}% terserap`">
+                        <div class="h-full rounded-full" :class="r.over_budget ? 'bg-red-500' : 'bg-blue-400'" :style="{ width: Math.min(100, r.absorbed_pct || 0) + '%' }"></div>
+                      </div>
+                    </td>
+                    <td class="px-2 py-2 capitalize text-gray-600">{{ r.kind }}</td>
+                    <td class="px-2 py-2 text-right text-gray-700">{{ r.qty }}</td>
+                    <td class="px-2 py-2 text-gray-600">{{ r.unit }}</td>
+                    <td class="px-2 py-2 text-right text-gray-700">{{ formatRupiah(r.unit_price) }}</td>
+                    <td class="px-2 py-2 text-right font-medium text-gray-900">{{ formatRupiah(r.subtotal) }}</td>
+                    <td class="px-2 py-2 text-right" :class="r.over_budget ? 'font-semibold text-red-600' : 'text-blue-700'">
+                      {{ formatRupiah(r.committed) }}
+                      <span v-if="r.estimated > 0" class="block text-[10px] text-amber-600">{{ formatRupiah(r.estimated) }} HPS</span>
+                    </td>
+                    <td class="px-2 py-2 text-right text-emerald-700">{{ formatRupiah(r.paid) }}</td>
+                    <td class="px-4 py-2 text-right font-semibold" :class="r.remaining < 0 ? 'text-red-600' : 'text-gray-800'">{{ formatRupiah(r.remaining) }}</td>
+                  </tr>
+                </template>
+              </tbody>
+              <tfoot>
+                <tr class="border-t-2 border-gray-200 bg-gray-50 font-semibold text-gray-900">
+                  <td colspan="5" class="px-4 py-2">Total RAB</td>
+                  <td class="px-2 py-2 text-right">{{ formatRupiah(project.budget) }}</td>
+                  <td class="px-2 py-2 text-right text-blue-700">{{ formatRupiah(rabCommitted) }}</td>
+                  <td class="px-2 py-2 text-right text-emerald-700">{{ formatRupiah(rabPaid) }}</td>
+                  <td class="px-4 py-2 text-right" :class="project.budget - rabCommitted < 0 ? 'text-red-600' : ''">{{ formatRupiah(project.budget - rabCommitted) }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p v-if="project.off_rab_committed > 0" class="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+            Belanja di luar RAB: <b>{{ formatRupiah(project.off_rab_committed) }}</b> (terbayar {{ formatRupiah(project.off_rab_paid) }}) —
+            item pengajuan yang tidak menunjuk baris RAB mana pun. Tetap terhitung dalam komitmen projek.
+          </p>
+        </template>
       </AppCard>
 
       <!-- Daftar belanja tahap -->
@@ -140,6 +256,21 @@
       </AppCard>
     </template>
 
+    <!-- Editor susunan RAB -->
+    <AppModal v-model="showRabEditor" :title="`Susun RAB · ${project?.name || ''}`" size="2xl">
+      <AppAlert type="error" :message="rabError" />
+      <p class="mb-3 text-xs text-gray-500">
+        Susun per bagian pekerjaan; volume × harga satuan menjadi jumlah tiap baris, dan total RAB = jumlah seluruh baris.
+        Jenis baris menentukan pengajuan mana yang boleh menyerapnya (barang / jasa / umum untuk keduanya).
+        Baris yang sudah dipakai pengajuan tidak bisa dihapus, hanya diubah.
+      </p>
+      <ProjectRabEditor v-model="rabDraft" />
+      <template #footer>
+        <AppButton variant="secondary" @click="showRabEditor = false">Batal</AppButton>
+        <AppButton :loading="rabBusy" @click="saveRab">Simpan RAB</AppButton>
+      </template>
+    </AppModal>
+
     <!-- Arahkan ke halaman pengadaan untuk membuat belanja tahap baru.
          Form pengajuan tetap satu-satunya tempat membuat PR, jadi tidak ada
          duplikasi alur di sini. -->
@@ -170,9 +301,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { projectsApi } from '@/api/projects.js'
 import { formatRupiah, formatDateTime } from '@/utils/format.js'
 import { useAuthStore } from '@/stores/auth.js'
+import { useToastStore } from '@/stores/toast.js'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppCard   from '@/components/ui/AppCard.vue'
 import ProjectMaterialPanel from '@/components/ProjectMaterialPanel.vue'
+import ProjectRabEditor from '@/components/ProjectRabEditor.vue'
 import { assetsApi } from '@/api/assets.js'
 import AppTable  from '@/components/ui/AppTable.vue'
 import AppModal  from '@/components/ui/AppModal.vue'
@@ -183,7 +316,77 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
+const toast = useToastStore()
+
 const canSubmit = computed(() => authStore.hasPermission('procurement.requests.submit'))
+const canManage = computed(() => authStore.hasPermission('procurement.projects.manage'))
+
+// ── RAB per baris ──
+const rabItems = ref([])
+const rabSet = computed(() => project.value?.rab_status === 'ditetapkan')
+const projectOpen = computed(() => project.value && project.value.status !== 'selesai' && project.value.status !== 'batal')
+const rabBadgeText = computed(() => {
+  const p = project.value
+  if (!p) return ''
+  if (rabSet.value) return `Ditetapkan v${p.rab_version}`
+  return p.rab_version > 0 ? `Revisi (v${p.rab_version})` : 'Draft'
+})
+const rabBadgeCls = computed(() =>
+  `inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${rabSet.value ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`)
+
+// Kelompokkan baris per bagian pekerjaan, urutan sesuai seq.
+const rabGroups = computed(() => {
+  const out = []
+  const idx = new Map()
+  for (const r of rabItems.value) {
+    const sec = r.section || ''
+    if (!idx.has(sec)) { idx.set(sec, out.length); out.push({ section: sec, rows: [], total: 0, committed: 0, paid: 0 }) }
+    const g = out[idx.get(sec)]
+    g.rows.push(r); g.total += r.subtotal || 0; g.committed += r.committed || 0; g.paid += r.paid || 0
+  }
+  return out
+})
+const rabCommitted = computed(() => rabItems.value.reduce((s, r) => s + (r.committed || 0), 0))
+const rabPaid = computed(() => rabItems.value.reduce((s, r) => s + (r.paid || 0), 0))
+const ROMAWI = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV']
+const romawi = (i) => ROMAWI[i] || String(i + 1)
+
+const showRabEditor = ref(false)
+const rabDraft = ref([])
+const rabError = ref('')
+const rabBusy = ref(false)
+
+function openRabEditor() {
+  rabDraft.value = rabItems.value.map(r => ({ id: r.id, section: r.section, name: r.name, kind: r.kind, unit: r.unit, qty: r.qty, unit_price: r.unit_price, notes: r.notes }))
+  rabError.value = ''
+  showRabEditor.value = true
+}
+async function saveRab() {
+  const rows = rabDraft.value.filter(r => (r.name || '').trim())
+  if (!rows.length) { rabError.value = 'Isi minimal satu baris RAB.'; return }
+  rabBusy.value = true; rabError.value = ''
+  try {
+    await projectsApi.saveRab(project.value.id, rows)
+    toast.success('RAB disimpan')
+    showRabEditor.value = false
+    await fetchDetail()
+  } catch (e) { rabError.value = e.message || 'Gagal menyimpan RAB' }
+  finally { rabBusy.value = false }
+}
+async function setRab() {
+  if (!window.confirm(`Tetapkan RAB ${formatRupiah(project.value.budget)}? Setelah ini baris dikunci dan belanja tahap bisa dibuat.`)) return
+  rabBusy.value = true
+  try { await projectsApi.setRab(project.value.id); toast.success('RAB ditetapkan'); await fetchDetail() }
+  catch (e) { toast.error(e.message || 'Gagal menetapkan RAB') }
+  finally { rabBusy.value = false }
+}
+async function reopenRab() {
+  if (!window.confirm('Buka RAB untuk direvisi? Belanja tahap baru ditahan sampai RAB ditetapkan lagi.')) return
+  rabBusy.value = true
+  try { await projectsApi.reopenRab(project.value.id); toast.success('RAB dibuka untuk revisi'); await fetchDetail() }
+  catch (e) { toast.error(e.message || 'Gagal membuka RAB') }
+  finally { rabBusy.value = false }
+}
 
 const loading = ref(false)
 const errorMsg = ref('')
@@ -273,7 +476,8 @@ const tiles = computed(() => {
   const p = project.value
   if (!p) return []
   return [
-    { label: 'RAB',         value: p.budget,      cls: 'text-gray-900' },
+    { label: 'RAB',         value: p.budget,      cls: 'text-gray-900',
+      hint: rabSet.value ? `v${p.rab_version} · ${p.rab_item_count} baris` : (p.rab_item_count ? `${p.rab_item_count} baris, belum ditetapkan` : 'belum disusun') },
     { label: 'Komitmen',    value: p.committed,   cls: p.over_budget ? 'text-red-600' : 'text-blue-700',
       hint: komitmenHint(p) },
     { label: 'Terbayar',    value: p.paid,        cls: 'text-emerald-700' },
@@ -296,6 +500,7 @@ async function fetchDetail() {
   try {
     const res = await projectsApi.get(route.params.id)
     project.value = res?.project ?? null
+    rabItems.value = res?.rab_items ?? []
     requests.value = res?.requests ?? []
     // Aset hasil projek ditelusuri lewat nomor pengajuan yang tercatat di
     // catatan aset ("Pengadaan: <nomor>") saat serah terima.

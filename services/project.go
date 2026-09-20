@@ -78,6 +78,13 @@ func dateStr(t sql.NullTime) string {
 	return t.Time.Format("2006-01-02")
 }
 
+func timeStr(t sql.NullTime) string {
+	if !t.Valid {
+		return ""
+	}
+	return t.Time.In(GetTimezoneLocation()).Format("2006-01-02 15:04")
+}
+
 // ListProjects mengembalikan projek beserta rekapnya.
 //
 // outletIDs/wuIDs berasal dari scope role. Reuse prScopeCond (lihat vendor.go):
@@ -105,6 +112,8 @@ func ListProjects(status, search string, outletIDs, wuIDs []string) ([]models.Pr
 	rows, err := database.DB.Query(fmt.Sprintf(`
 		SELECT p.id, p.project_number, p.name, p.outlet_id, COALESCE(o.name,''),
 		       p.work_unit_id, COALESCE(wu.name,''), p.pic, p.budget,
+		       COALESCE(p.rab_status,'draft'), COALESCE(p.rab_version,0), p.rab_set_at, COALESCE(p.rab_set_by,''),
+		       (SELECT COUNT(*) FROM project_rab_items r WHERE r.project_id = p.id),
 		       p.start_date, p.target_date, p.status, p.notes, p.created_by,
 		       p.created_at, p.updated_at,
 		       COALESCE(s.request_count, 0), COALESCE(s.committed, 0), COALESCE(s.estimated, 0),
@@ -129,10 +138,11 @@ func ListProjects(status, search string, outletIDs, wuIDs []string) ([]models.Pr
 	projects := make([]models.Project, 0)
 	for rows.Next() {
 		var p models.Project
-		var start, target sql.NullTime
+		var start, target, rabSetAt sql.NullTime
 		if err := rows.Scan(
 			&p.ID, &p.ProjectNumber, &p.Name, &p.OutletID, &p.OutletName,
 			&p.WorkUnitID, &p.WorkUnitName, &p.PIC, &p.Budget,
+			&p.RabStatus, &p.RabVersion, &rabSetAt, &p.RabSetBy, &p.RabItemCount,
 			&start, &target, &p.Status, &p.Notes, &p.CreatedBy,
 			&p.CreatedAt, &p.UpdatedAt,
 			&p.RequestCount, &p.Committed, &p.Estimated, &p.Paid, &p.Outstanding,
@@ -140,6 +150,7 @@ func ListProjects(status, search string, outletIDs, wuIDs []string) ([]models.Pr
 			return nil, err
 		}
 		p.StartDate, p.TargetDate = dateStr(start), dateStr(target)
+		p.RabSetAt = timeStr(rabSetAt)
 		fillDerived(&p)
 		projects = append(projects, p)
 	}
@@ -149,10 +160,12 @@ func ListProjects(status, search string, outletIDs, wuIDs []string) ([]models.Pr
 // GetProject mengambil satu projek beserta rekapnya (tanpa daftar belanja).
 func GetProject(id string) (*models.Project, error) {
 	var p models.Project
-	var start, target sql.NullTime
+	var start, target, rabSetAt sql.NullTime
 	err := database.DB.QueryRow(fmt.Sprintf(`
 		SELECT p.id, p.project_number, p.name, p.outlet_id, COALESCE(o.name,''),
 		       p.work_unit_id, COALESCE(wu.name,''), p.pic, p.budget,
+		       COALESCE(p.rab_status,'draft'), COALESCE(p.rab_version,0), p.rab_set_at, COALESCE(p.rab_set_by,''),
+		       (SELECT COUNT(*) FROM project_rab_items r WHERE r.project_id = p.id),
 		       p.start_date, p.target_date, p.status, p.notes, p.created_by,
 		       p.created_at, p.updated_at,
 		       COALESCE(s.request_count, 0), COALESCE(s.committed, 0), COALESCE(s.estimated, 0),
@@ -167,6 +180,7 @@ func GetProject(id string) (*models.Project, error) {
 	`, summarySelect(), projectPRFilter), id).Scan(
 		&p.ID, &p.ProjectNumber, &p.Name, &p.OutletID, &p.OutletName,
 		&p.WorkUnitID, &p.WorkUnitName, &p.PIC, &p.Budget,
+		&p.RabStatus, &p.RabVersion, &rabSetAt, &p.RabSetBy, &p.RabItemCount,
 		&start, &target, &p.Status, &p.Notes, &p.CreatedBy,
 		&p.CreatedAt, &p.UpdatedAt,
 		&p.RequestCount, &p.Committed, &p.Estimated, &p.Paid, &p.Outstanding,
@@ -175,6 +189,7 @@ func GetProject(id string) (*models.Project, error) {
 		return nil, fmt.Errorf("projek tidak ditemukan")
 	}
 	p.StartDate, p.TargetDate = dateStr(start), dateStr(target)
+	p.RabSetAt = timeStr(rabSetAt)
 	fillDerived(&p)
 	return &p, nil
 }
@@ -193,7 +208,12 @@ func GetProjectDetail(id string, outletIDs, wuIDs []string) (*models.ProjectDeta
 	if err != nil {
 		return nil, err
 	}
-	return &models.ProjectDetailResponse{Project: *p, Requests: list.Requests}, nil
+	rab, err := listRabItems(database.DB, id)
+	if err != nil {
+		return nil, err
+	}
+	p.OffRabCommitted, p.OffRabPaid = fillRabAbsorption(rab, list.Requests)
+	return &models.ProjectDetailResponse{Project: *p, RabItems: rab, Requests: list.Requests}, nil
 }
 
 // resolveProjectOutlet mengisi outlet_id dari unit kerja bila pengguna hanya
@@ -252,6 +272,11 @@ func CreateProject(req models.CreateProjectRequest, createdBy string) (*models.P
 			req.PIC, req.Budget, nilIfEmpty(req.StartDate), nilIfEmpty(req.TargetDate),
 			status, req.Notes, createdBy, now)
 		if lastErr == nil {
+			if req.Budget > 0 {
+				if err := seedLumpSumRab(id, req.Budget, createdBy); err != nil {
+					return nil, err
+				}
+			}
 			return GetProject(id)
 		}
 		if !strings.Contains(lastErr.Error(), "uq_projects_number") {
@@ -261,17 +286,35 @@ func CreateProject(req models.CreateProjectRequest, createdBy string) (*models.P
 	return nil, lastErr
 }
 
+// seedLumpSumRab: jalan pintas API — anggaran satu angka menjadi satu baris RAB
+// jenis 'umum' yang langsung ditetapkan, supaya pemanggil lama tetap bisa
+// langsung membuat pengajuan.
+func seedLumpSumRab(projectID string, budget float64, actor string) error {
+	now := time.Now().UTC()
+	if _, err := database.DB.Exec(`
+		INSERT INTO project_rab_items (id, project_id, seq, section, name, kind, unit, qty, unit_price, subtotal, notes, created_at, updated_at)
+		VALUES ($1, $2, 0, 'Anggaran', 'Anggaran projek (satu angka)', 'umum', 'ls', 1, $3, $3, '', $4, $4)`,
+		NewULID(), projectID, round2(budget), now); err != nil {
+		return err
+	}
+	_, err := database.DB.Exec(`
+		UPDATE projects SET budget = $1, rab_status = $2, rab_version = 1, rab_set_at = $3, rab_set_by = $4, updated_at = $3
+		WHERE id = $5`, round2(budget), RabSet, now, actor, projectID)
+	return err
+}
+
 func UpdateProject(id string, req models.UpdateProjectRequest) (*models.Project, error) {
 	status, err := validateProjectInput(req.Name, req.Budget, req.Status)
 	if err != nil {
 		return nil, err
 	}
+	// budget sengaja tidak ikut: total RAB hanya berubah lewat barisnya.
 	res, err := database.DB.Exec(`
-		UPDATE projects SET name=$1, outlet_id=$2, work_unit_id=$3, pic=$4, budget=$5,
-		       start_date=$6, target_date=$7, status=$8, notes=$9, updated_at=$10
-		WHERE id=$11
+		UPDATE projects SET name=$1, outlet_id=$2, work_unit_id=$3, pic=$4,
+		       start_date=$5, target_date=$6, status=$7, notes=$8, updated_at=$9
+		WHERE id=$10
 	`, strings.TrimSpace(req.Name), nilIfEmpty(resolveProjectOutlet(req.OutletID, req.WorkUnitID)), nilIfEmpty(req.WorkUnitID),
-		req.PIC, req.Budget, nilIfEmpty(req.StartDate), nilIfEmpty(req.TargetDate),
+		req.PIC, nilIfEmpty(req.StartDate), nilIfEmpty(req.TargetDate),
 		status, req.Notes, time.Now().UTC(), id)
 	if err != nil {
 		return nil, err

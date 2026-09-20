@@ -39,8 +39,9 @@ dua tempat berbeda, dan sistem menolak pengajuan campuran sejak dibuat.
 1. Satu pengajuan berisi satu atau beberapa **Nama Pengadaan**, masing-masing berisi rincian item.
 2. **Setiap item wajib punya HPS (Harga Perkiraan Sendiri) dan Sumber HPS.** HPS tanpa sumber
    adalah angka yang tidak bisa diperiksa siapa pun.
-3. Pengajuan yang terkait projek renovasi/pembangunan **wajib memilih projeknya**, agar
-   belanjanya masuk ke serapan RAB projek itu.
+3. Pengajuan yang terkait projek renovasi/pembangunan **wajib memilih projeknya** dan, pada tiap
+   item, **baris RAB yang diserapnya**. Projek yang RAB-nya belum ditetapkan tidak menerima
+   pengajuan (lihat §11).
 4. Barang dapur dan peralatan **diajukan terpisah**.
 
 ### Sumber HPS — apa yang ditulis
@@ -88,7 +89,8 @@ Status pengajuan menjadi **Pending**.
 1. **Kebutuhannya nyata** — bukan barang yang sudah ada di outlet lain dan bisa dimutasi.
 2. **HPS masuk akal** dan **sumbernya bisa dibuka/dihubungi**.
 3. **Jumlahnya wajar** terhadap kebutuhan operasional.
-4. Untuk belanja projek: **RAB projek masih cukup** (terlihat di halaman Projek).
+4. Untuk belanja projek: **sisa baris RAB yang diserap masih cukup** (terlihat di halaman Projek,
+   tabel RAB per baris; item yang melebihi sisa barisnya ditandai merah di form).
 
 ### Ketentuan penolakan
 
@@ -232,7 +234,7 @@ datang sebelum maupun sesudah dibayar.
 | **Keuangan** | `finance.payments.view` |
 | **Logistik / Gudang** | `stockledger.adjust`, `stocktransfers.*` |
 | **Asset Officer** | `assets.create`, `assets.update`, `procurement.requests.submit` |
-| **PIC Projek** | `procurement.projects.view`, `procurement.projects.manage` |
+| **PIC Projek** | `procurement.projects.view`, `procurement.projects.manage` (susun & tetapkan RAB) |
 
 Bila sebuah tombol tidak muncul, hak aksesnya belum diberikan — minta admin membukanya lewat
 menu **Role**.
@@ -264,3 +266,60 @@ dan terpantau di laporan "Pengadaan Belum Lengkap".
 
 *Panduan ini mengikuti alur yang berjalan di aplikasi per 18 September 2026. Bila alurnya
 berubah, dokumen ini ikut ditinjau.*
+
+---
+
+## 11. Belanja Projek — RAB per Baris
+
+Projek pembangunan/renovasi tidak lagi memegang RAB sebagai satu angka. RAB disusun per baris
+pekerjaan, ditetapkan, dan setiap item belanja menunjuk baris yang ia serap — sehingga yang
+terlihat bukan hanya "sisa RAB", melainkan **pos mana yang sudah habis dan pos mana yang belum
+tersentuh**.
+
+### Alur
+
+```
+  ┌──────────────┐   ┌──────────────┐   ┌────────────────┐   ┌──────────────────────┐
+  │ BUAT PROJEK  │──▶│  SUSUN RAB   │──▶│ TETAPKAN RAB   │──▶│  BELANJA TAHAP       │
+  └──────────────┘   └──────────────┘   └────────────────┘   └──────────────────────┘
+   nama, unit,        bagian pekerjaan   baris dikunci,       pengajuan barang/jasa
+   PIC, jadwal        → uraian, volume   versi naik,          biasa; tiap item
+   (status draft)     × harga satuan     projek → berjalan    memilih baris RAB
+```
+
+| Langkah | Siapa | Menu |
+|---|---|---|
+| Buat projek | PIC Projek (`procurement.projects.manage`) | Pengadaan → Projek → **+ Buat Projek** |
+| Susun RAB | PIC Projek | Detail projek → **Susun RAB** |
+| Tetapkan RAB | PIC Projek | Detail projek → **Tetapkan RAB** |
+| Belanja tahap | Pengaju (`procurement.requests.submit`) | Detail projek → **+ Belanja Tahap Baru**, atau form pengadaan biasa dengan projek dipilih |
+
+### Ketentuan RAB
+
+1. Satu baris = **uraian + jenis + volume × harga satuan**. Bagian pekerjaan (Pekerjaan
+   Persiapan, Sipil, Mekanikal & Elektrikal, dst.) hanya pengelompokan.
+2. **Jenis baris** menentukan pengajuan mana yang boleh menyerapnya: `barang` hanya oleh
+   pengajuan barang, `jasa` hanya oleh pengajuan jasa, `umum` oleh keduanya (mis. "Tak terduga").
+3. Total RAB = jumlah seluruh baris. Angka ini yang tampil sebagai RAB projek di daftar, neraca
+   (Projek Berjalan), dan rekap serapan.
+4. **Belanja tahap hanya bisa dibuat setelah RAB ditetapkan.** Pengajuan untuk projek yang
+   RAB-nya masih draft atau sedang direvisi ditolak sistem.
+5. Mengubah RAB yang sudah ditetapkan: **Buka Revisi** → ubah baris → **Tetapkan** lagi (versi
+   naik). Baris yang sudah dipakai pengajuan tidak bisa dihapus, hanya diubah volume/harganya.
+6. Projek lama yang RAB-nya satu angka otomatis mendapat satu baris `umum` senilai angka itu
+   (sudah ditetapkan), sehingga belanjanya tetap berjalan.
+
+### Ketentuan item belanja projek
+
+1. Pada form pengajuan, setelah projek dipilih, setiap item punya pilihan **Baris RAB**. Memilih
+   baris mengisi nama (bila kosong), satuan, HPS satuan, dan Sumber HPS (`RAB PRJ-… v1: …`).
+2. Item boleh dibiarkan **di luar RAB** bila memang tidak ada posnya. Nilainya tetap membebani
+   projek, tetapi tampil terpisah sebagai "Belanja di luar RAB" — bahan evaluasi, bukan
+   pelanggaran.
+3. Item yang nilainya **melebihi sisa baris** ditandai merah di form. Sistem tidak memblokir,
+   karena harga bisa naik; penyetuju yang memutuskan (lihat §3).
+4. Pecahan vendor dan pengisian harga final tetap membawa rujukan baris RAB-nya. Serapan baris
+   memakai harga final begitu diisi, HPS selama belum.
+5. Pembayaran dicatat per dokumen, jadi angka **Terbayar per baris** adalah alokasi proporsional
+   dari pembayaran dokumen ke item-itemnya.
+

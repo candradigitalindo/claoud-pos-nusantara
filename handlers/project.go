@@ -90,3 +90,44 @@ func DeleteProject(c *fiber.Ctx) error {
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"deleted": true}})
 }
+
+// ── RAB per baris ─────────────────────────────────────────────────────────
+
+// GetProjectRab dipakai halaman projek dan form pengajuan (untuk memilih baris
+// RAB beserta sisanya), jadi izinnya seluas daftar projek.
+func GetProjectRab(c *fiber.Ctx) error {
+	res, err := services.GetProjectRab(c.Params("id"), getOutletScope(c), getWorkUnitScope(c))
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{Success: false, Error: err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: res})
+}
+
+func SaveProjectRab(c *fiber.Ctx) error {
+	var req models.SaveProjectRabRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format data tidak valid"})
+	}
+	items, err := services.SaveProjectRab(c.Params("id"), req)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: items})
+}
+
+func SetProjectRab(c *fiber.Ctx) error {
+	actor, _ := c.Locals("admin_username").(string)
+	p, err := services.SetProjectRab(c.Params("id"), actor)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: p})
+}
+
+func ReopenProjectRab(c *fiber.Ctx) error {
+	p, err := services.ReopenProjectRab(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: p})
+}

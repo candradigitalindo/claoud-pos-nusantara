@@ -255,6 +255,12 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/projects", middleware.RequirePermission("procurement.projects.manage"), handlers.CreateProject)
 	admin.Put("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), handlers.UpdateProject)
 	admin.Delete("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), handlers.DeleteProject)
+	// RAB per baris: dilihat oleh siapa pun yang boleh mengajukan/melihat
+	// pengadaan (form pengajuan memilih baris RAB), diubah oleh pengelola projek.
+	admin.Get("/projects/:id/rab", middleware.RequireAnyPermission("procurement.projects.view", "procurement.requests.submit", "procurement.requests.view"), handlers.GetProjectRab)
+	admin.Put("/projects/:id/rab", middleware.RequirePermission("procurement.projects.manage"), handlers.SaveProjectRab)
+	admin.Post("/projects/:id/rab/set", middleware.RequirePermission("procurement.projects.manage"), handlers.SetProjectRab)
+	admin.Post("/projects/:id/rab/reopen", middleware.RequirePermission("procurement.projects.manage"), handlers.ReopenProjectRab)
 
 	// Material projek — barang habis pakai milik projek (docs §8.8–8.9).
 	// Izinnya memakai kunci Projek yang sudah ada (keputusan B, docs §15.1).

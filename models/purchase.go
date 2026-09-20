@@ -13,6 +13,9 @@ type PurchaseSubItem struct {
 	HpsSubtotal   float64 `json:"hps_subtotal"`
 	FinalPrice    float64 `json:"final_price"`
 	FinalSubtotal float64 `json:"final_subtotal"`
+	// RabItemID menunjuk baris RAB projek yang dibelanjakan item ini. Kosong =
+	// belanja di luar RAB (tetap dihitung ke projek, tetapi ditandai terpisah).
+	RabItemID string `json:"rab_item_id,omitempty"`
 }
 
 // PurchaseRequestItem represents a procurement entry ("Nama Pengadaan") with aggregated totals.

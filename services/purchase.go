@@ -383,6 +383,11 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 	if err := validateItems(input.Items); err != nil {
 		return nil, err
 	}
+	// Belanja projek hanya boleh lahir setelah RAB-nya ditetapkan, dan tiap
+	// rujukan baris RAB harus milik projek itu dengan jenis yang cocok.
+	if err := validateProjectRab(input.ProjectID, input.RequestType, input.Items, true); err != nil {
+		return nil, err
+	}
 	// Pengadaan barang dipisah sejak awal: dapur ke Gudang Induk, peralatan ke
 	// bagian Aset. Lihat ClassifyPurchaseItems untuk alasannya.
 	goodsKind := ""
@@ -1011,7 +1016,11 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 		return nil, err
 	}
 	var reqType string
-	database.DB.QueryRow("SELECT request_type FROM purchase_requests WHERE id = $1", id).Scan(&reqType)
+	var projectID sql.NullString
+	database.DB.QueryRow("SELECT request_type, project_id FROM purchase_requests WHERE id = $1", id).Scan(&reqType, &projectID)
+	if err := validateProjectRab(projectID.String, reqType, input.Items, false); err != nil {
+		return nil, err
+	}
 	if reqType == "barang" {
 		k, kerr := ClassifyPurchaseItems(input.Items)
 		if kerr != nil {

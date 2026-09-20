@@ -3,7 +3,7 @@
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h1 class="text-lg sm:text-xl font-bold text-gray-900">Projek</h1>
-        <p class="text-xs text-gray-500 mt-0.5">Pembangunan &amp; renovasi — RAB satu angka, belanjanya bertahap lewat pengadaan.</p>
+        <p class="text-xs text-gray-500 mt-0.5">Pembangunan &amp; renovasi — RAB disusun per baris pekerjaan, ditetapkan, lalu dibelanjakan bertahap lewat pengadaan.</p>
       </div>
       <AppButton v-if="canManage" @click="openCreate">+ Buat Projek</AppButton>
     </div>
@@ -62,6 +62,8 @@
               <dd class="text-gray-700">{{ p.pic || '-' }}</dd>
               <dt class="text-gray-400">Belanja</dt>
               <dd class="text-gray-700">{{ p.request_count }} pengajuan</dd>
+              <dt class="text-gray-400">RAB</dt>
+              <dd><span :class="rabBadge(p)">{{ rabLabel(p) }}</span> <span class="text-gray-700">{{ formatRupiah(p.budget) }}</span></dd>
             </dl>
             <BudgetBar class="mt-2" :budget="p.budget" :committed="p.committed" :paid="p.paid" :estimated="p.estimated" />
             <div class="mt-2 flex items-end justify-between gap-2 border-t border-gray-100 pt-2">
@@ -96,7 +98,7 @@
         </template>
         <template #cell-budget="{ row }">
           <div class="min-w-[160px]">
-            <p class="text-sm font-medium text-gray-900">{{ formatRupiah(row.budget) }}</p>
+            <p class="flex items-center gap-1.5 text-sm font-medium text-gray-900">{{ formatRupiah(row.budget) }} <span :class="rabBadge(row)">{{ rabLabel(row) }}</span></p>
             <BudgetBar class="mt-1" :budget="row.budget" :committed="row.committed" :paid="row.paid" :estimated="row.estimated" />
           </div>
         </template>
@@ -136,10 +138,14 @@
           <AppInput v-model="form.pic" label="PIC / Penanggung Jawab" placeholder="Nama penanggung jawab" />
         </div>
 
-        <div class="flex flex-col gap-1">
-          <label class="text-sm font-medium text-gray-700">RAB (Rencana Anggaran Biaya)</label>
-          <RupiahInput v-model="form.budget" placeholder="Total anggaran projek" />
-          <p class="text-xs text-gray-400">Satu angka total. Serapannya dihitung otomatis dari pengadaan yang ditautkan ke projek ini.</p>
+        <div class="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          <template v-if="editingId">
+            RAB saat ini <b>{{ formatRupiah(editingBudget) }}</b>. Susunan barisnya diubah di halaman detail projek (“Ubah RAB” / “Buka Revisi”).
+          </template>
+          <template v-else>
+            RAB disusun <b>per baris</b> (bagian pekerjaan → uraian, volume × harga satuan) di halaman detail setelah projek dibuat, lalu <b>ditetapkan</b>.
+            Belanja tahap baru bisa dibuat setelah RAB ditetapkan.
+          </template>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -197,7 +203,6 @@ import AppTable      from '@/components/ui/AppTable.vue'
 import AppModal      from '@/components/ui/AppModal.vue'
 import AppInput      from '@/components/ui/AppInput.vue'
 import AppAlert      from '@/components/ui/AppAlert.vue'
-import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import BudgetBar     from '@/components/BudgetBar.vue'
 
@@ -246,6 +251,11 @@ function statusBadge(s) {
   return `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${m.cls}`
 }
 function statusLabel(s) { return (statusMap[s] || statusMap.berjalan).label }
+function rabLabel(p) { return p.rab_status === 'ditetapkan' ? `RAB v${p.rab_version}` : (p.rab_version > 0 ? 'RAB revisi' : 'RAB draft') }
+function rabBadge(p) {
+  const on = p.rab_status === 'ditetapkan'
+  return `inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${on ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`
+}
 
 const COLUMNS = [
   { key: 'project_number',   label: 'Nomor' },
@@ -278,9 +288,12 @@ const totals = computed(() => {
   ]
 })
 
+// RAB tidak diisi di sini: disusun per baris di halaman detail, dan status
+// awal 'draft' sampai RAB ditetapkan (server menaikkannya ke 'berjalan').
 function emptyForm() {
-  return { name: '', work_unit_id: '', pic: '', budget: 0, start_date: '', target_date: '', status: 'berjalan', notes: '' }
+  return { name: '', work_unit_id: '', pic: '', start_date: '', target_date: '', status: 'draft', notes: '' }
 }
+const editingBudget = ref(0)
 
 const showForm = ref(false)
 const editingId = ref(null)
@@ -321,9 +334,10 @@ function openCreate() {
 
 function openEdit(p) {
   editingId.value = p.id
+  editingBudget.value = p.budget || 0
   form.value = {
     name: p.name, work_unit_id: p.work_unit_id || '', pic: p.pic || '',
-    budget: p.budget || 0, start_date: p.start_date || '', target_date: p.target_date || '',
+    start_date: p.start_date || '', target_date: p.target_date || '',
     status: p.status, notes: p.notes || '',
   }
   formError.value = ''
@@ -338,8 +352,11 @@ async function submitForm() {
       await projectsApi.update(editingId.value, form.value)
       toast.success('Projek diperbarui')
     } else {
-      await projectsApi.create(form.value)
-      toast.success('Projek dibuat')
+      const created = await projectsApi.create(form.value)
+      toast.success('Projek dibuat — susun RAB-nya sekarang')
+      showForm.value = false
+      // Langsung ke detail: langkah berikutnya adalah menyusun RAB.
+      if (created?.id) { router.push(`/projects/${created.id}`); return }
     }
     showForm.value = false
     await fetchList()

@@ -131,7 +131,15 @@
           <label class="text-sm font-medium text-gray-700">Projek <span class="font-normal text-gray-400">(opsional)</span></label>
           <SearchSelect v-model="form.project_id" :options="projectOptions"
             placeholder="Tanpa projek" searchPlaceholder="Cari projek…" />
-          <p class="text-xs text-gray-400">Isi bila belanja ini bagian dari projek pembangunan/renovasi — nilainya ikut terhitung ke RAB projek.</p>
+          <p class="text-xs text-gray-400">Isi bila belanja ini bagian dari projek pembangunan/renovasi — tiap item lalu memilih baris RAB yang diserapnya.</p>
+        </div>
+        <div v-if="rabNotSet" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          RAB projek <b>{{ projectRab.project_number }}</b> belum ditetapkan — pengajuan untuk projek ini ditolak server.
+          Susun dan tetapkan RAB di halaman Projek dulu.
+        </div>
+        <div v-else-if="form.project_id && projectRab" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          RAB <b>{{ projectRab.project_number }}</b> v{{ projectRab.rab_version }} · {{ rabLines.length }} baris bisa diserap pengajuan ini.
+          Pilih baris RAB pada tiap item agar serapannya tercatat per pos; memilih baris mengisi nama, satuan, HPS, dan sumber HPS.
         </div>
 
         <!-- Items List -->
@@ -153,6 +161,16 @@
                     <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Detail Item</p>
                     <div v-for="(sub, j) in item.items" :key="j"
                       class="grid grid-cols-2 gap-1.5 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+                      <div v-if="form.project_id && rabLines.length" class="col-span-2 sm:col-span-12">
+                        <div class="flex items-center gap-1.5">
+                          <span class="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">RAB</span>
+                          <select v-model="sub.rab_item_id" class="input-sm w-full" @change="applyRabLine(sub)">
+                            <option value="">— Di luar RAB (tidak menyerap baris mana pun) —</option>
+                            <option v-for="l in rabLines" :key="l.id" :value="l.id">{{ rabOptionLabel(l) }}</option>
+                          </select>
+                        </div>
+                        <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600">{{ rabWarn(sub) }}</p>
+                      </div>
                       <input v-model="sub.name" placeholder="Nama item" class="input-sm col-span-2 sm:col-span-4" />
                       <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm sm:col-span-2" />
                       <input v-model="sub.unit" placeholder="Satuan" class="input-sm sm:col-span-1" />
@@ -375,7 +393,10 @@
               <div class="space-y-2 sm:hidden">
                 <div v-for="(sub, j) in item.items" :key="j" class="rounded-lg border border-gray-200 bg-white p-2.5">
                   <div class="flex items-start justify-between gap-2">
-                    <p class="min-w-0 break-words text-xs font-medium text-gray-800">{{ j + 1 }}. {{ sub.name }}</p>
+                    <div class="min-w-0">
+                      <p class="break-words text-xs font-medium text-gray-800">{{ j + 1 }}. {{ sub.name }}</p>
+                      <span v-if="sub.rab_item_id" class="rab-chip">RAB · {{ rabName(sub.rab_item_id) }}</span>
+                    </div>
                     <button v-if="detail.status === 'pending'" class="act-del shrink-0" @click="removeDetailSubItem(i, j)" title="Hapus item">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                     </button>
@@ -439,7 +460,10 @@
                         </button>
                       </td>
                       <td class="py-1.5 pr-2 text-gray-400">{{ j + 1 }}</td>
-                      <td class="py-1.5 pr-2 text-gray-800">{{ sub.name }}</td>
+                      <td class="py-1.5 pr-2 text-gray-800">
+                        {{ sub.name }}
+                        <span v-if="sub.rab_item_id" class="rab-chip block w-fit">RAB · {{ rabName(sub.rab_item_id) }}</span>
+                      </td>
                       <td class="py-1.5 pr-2 text-right">
                         <input v-if="detail.status === 'pending'" v-model.number="sub.qty" type="number" min="1" class="w-24 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
                         <span v-else>{{ sub.qty }}</span>
@@ -708,7 +732,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
 import { workUnitsApi } from '@/api/workUnits.js'
@@ -980,15 +1004,15 @@ function canDelete(s) {
 function emptyForm() {
   return {
     outlet_id: '', work_unit_id: '', requested_by: '', vendor_id: '', vendor_name: '', project_id: '',
-    items: [{ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '' }] }],
+    items: [{ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '', rab_item_id: '' }] }],
     notes: '',
   }
 }
 function addItem() {
-  form.value.items.push({ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '' }] })
+  form.value.items.push({ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '', rab_item_id: '' }] })
 }
 function removeItem(i) { if (form.value.items.length > 1) form.value.items.splice(i, 1) }
-function addSubItem(i) { form.value.items[i].items.push({ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '' }) }
+function addSubItem(i) { form.value.items[i].items.push({ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '', rab_item_id: '' }) }
 function removeSubItem(i, j) { if (form.value.items[i].items.length > 1) form.value.items[i].items.splice(j, 1) }
 function adminName() { return authStore.admin?.name || 'Admin' }
 
@@ -1003,6 +1027,55 @@ const projectOptions = computed(() => [
     .filter(p => p.status === 'berjalan' || p.status === 'draft')
     .map(p => ({ id: p.id, name: p.project_number ? `${p.name} — ${p.project_number}` : p.name })),
 ])
+
+// ── Baris RAB projek yang dipilih di form ──
+// Pengajuan barang hanya boleh menyerap baris barang/umum; jasa → jasa/umum.
+const projectRab = ref(null)
+const rabLines = computed(() => (projectRab.value?.items || []).filter(l => l.kind === 'umum' || l.kind === REQUEST_TYPE))
+const rabById = computed(() => Object.fromEntries((projectRab.value?.items || []).map(l => [l.id, l])))
+const rabNotSet = computed(() => !!form.value.project_id && !!projectRab.value && projectRab.value.rab_status !== 'ditetapkan')
+async function loadProjectRab(id) {
+  projectRab.value = null
+  if (!id) return
+  try { projectRab.value = await projectsApi.rab(id) } catch { projectRab.value = null }
+}
+watch(() => form.value.project_id, (id) => {
+  loadProjectRab(id)
+  if (!id) for (const it of form.value.items || []) for (const sub of it.items || []) sub.rab_item_id = ''
+})
+function rabOptionLabel(l) {
+  return `${l.section ? l.section + ' / ' : ''}${l.name} · sisa ${formatRupiah(l.remaining)}${l.unit ? ` (${l.qty} ${l.unit} @ ${formatRupiah(l.unit_price)})` : ''}`
+}
+// Memilih baris RAB mengisi nama (bila kosong), satuan, HPS satuan, dan sumber HPS.
+function applyRabLine(sub) {
+  const l = rabById.value[sub.rab_item_id]
+  if (!l) return
+  if (!String(sub.name || '').trim()) sub.name = l.name
+  if (l.unit) sub.unit = l.unit
+  sub.hps_price = l.unit_price
+  sub.hps_source = `RAB ${projectRab.value.project_number} v${projectRab.value.rab_version}: ${l.section ? l.section + ' / ' : ''}${l.name}`
+}
+function rabWarn(sub) {
+  const l = rabById.value[sub.rab_item_id]
+  if (!l) return ''
+  const v = (sub.qty || 0) * (sub.hps_price || 0)
+  return v > l.remaining ? `Melebihi sisa baris RAB (${formatRupiah(l.remaining)}) — periksa volume/HPS atau revisi RAB.` : ''
+}
+
+// Nama baris RAB untuk detail pengajuan (projek detail bisa berbeda dari form).
+const detailRabById = ref({})
+watch(() => detail.value?.project_id, async (id) => {
+  detailRabById.value = {}
+  if (!id) return
+  try {
+    const r = await projectsApi.rab(id)
+    detailRabById.value = Object.fromEntries((r?.items || []).map(l => [l.id, l]))
+  } catch { detailRabById.value = {} }
+})
+function rabName(id) {
+  const l = detailRabById.value[id]
+  return l ? `${l.section ? l.section + ' / ' : ''}${l.name}` : 'baris RAB'
+}
 
 async function fetchProjects() {
   try {
@@ -1289,4 +1362,5 @@ dl dd, dl dt { min-width: 0; overflow-wrap: anywhere; }
 .act-edit:hover { background: rgba(45,143,86,.2); }
 .act-del  { background: rgba(220,38,38,.07); color: #dc2626; }
 .act-del:hover { background: rgba(220,38,38,.15); }
+.rab-chip { display: inline-block; margin-top: .15rem; padding: .05rem .4rem; border-radius: .3rem; background: #ecfdf5; color: #047857; font-size: .62rem; font-weight: 700; }
 </style>

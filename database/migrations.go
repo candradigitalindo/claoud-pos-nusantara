@@ -2769,5 +2769,53 @@ func RunMigrations() error {
 		}
 	}
 
+	// ── RAB projek per baris ──
+	// projects.budget tetap ada sebagai Σ subtotal baris (disinkronkan
+	// services), supaya neraca dan daftar tidak perlu join baru.
+	for _, m := range []string{
+		`ALTER TABLE projects ADD COLUMN IF NOT EXISTS rab_status VARCHAR(20) NOT NULL DEFAULT 'draft'`,
+		`ALTER TABLE projects ADD COLUMN IF NOT EXISTS rab_version INT NOT NULL DEFAULT 0`,
+		`ALTER TABLE projects ADD COLUMN IF NOT EXISTS rab_set_at TIMESTAMP`,
+		`ALTER TABLE projects ADD COLUMN IF NOT EXISTS rab_set_by VARCHAR(150) NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS project_rab_items (
+			id         CHAR(26) PRIMARY KEY,
+			project_id CHAR(26) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			seq        INT NOT NULL DEFAULT 0,
+			section    VARCHAR(150) NOT NULL DEFAULT '',
+			name       VARCHAR(200) NOT NULL,
+			kind       VARCHAR(10) NOT NULL DEFAULT 'barang',
+			unit       VARCHAR(30) NOT NULL DEFAULT '',
+			qty        DECIMAL(15,3) NOT NULL DEFAULT 1,
+			unit_price DECIMAL(15,2) NOT NULL DEFAULT 0,
+			subtotal   DECIMAL(15,2) NOT NULL DEFAULT 0,
+			notes      TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_project_rab_items_project ON project_rab_items(project_id, seq)`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Project RAB migration skipped: %v", err)
+		}
+	}
+	// One-shot: projek lama yang RAB-nya masih satu angka mendapat satu baris
+	// 'umum' senilai angka itu dan langsung berstatus ditetapkan, supaya
+	// pengajuan untuk projek lama tidak mendadak ditolak. Projek ber-RAB 0 tetap
+	// draft: memang belum punya anggaran.
+	var rabSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_project_rab_legacy'").Scan(&rabSeeded)
+	if rabSeeded == 0 {
+		DB.Exec(`
+			INSERT INTO project_rab_items (id, project_id, seq, section, name, kind, unit, qty, unit_price, subtotal, notes)
+			SELECT UPPER(SUBSTR(MD5(p.id || clock_timestamp()::text), 1, 26)), p.id, 0, 'Anggaran',
+			       'Anggaran projek (migrasi dari RAB satu angka)', 'umum', 'ls', 1, p.budget, p.budget, ''
+			FROM projects p
+			WHERE p.budget > 0 AND NOT EXISTS (SELECT 1 FROM project_rab_items r WHERE r.project_id = p.id)`)
+		DB.Exec(`
+			UPDATE projects SET rab_status = 'ditetapkan', rab_version = 1, rab_set_at = (now() AT TIME ZONE 'UTC'), rab_set_by = 'migrasi'
+			WHERE budget > 0 AND rab_status = 'draft'`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_project_rab_legacy', 'done') ON CONFLICT (key) DO NOTHING`)
+	}
+
 	return nil
 }
