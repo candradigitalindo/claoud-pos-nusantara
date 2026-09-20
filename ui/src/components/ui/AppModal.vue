@@ -53,11 +53,11 @@
         >
           <!-- Header -->
           <div class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0">
-            <h2 :id="titleId" class="text-base sm:text-lg font-semibold text-gray-900">
+            <h2 :id="titleId" class="min-w-0 truncate text-base sm:text-lg font-semibold text-gray-900">
               {{ title }}
             </h2>
             <button
-              class="text-gray-400 hover:text-gray-600 transition-colors"
+              class="shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
               @click="close"
               aria-label="Tutup"
             >

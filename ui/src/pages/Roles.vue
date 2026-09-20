@@ -58,16 +58,17 @@
           </div>
 
           <div class="role-actions" @click.stop>
-            <button class="act-btn act-btn--edit" title="Edit Role" @click.stop="openEditRole(role)">
+            <button class="act-btn act-btn--edit" title="Edit Role" aria-label="Edit Role" @click.stop="openEditRole(role)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             </button>
-            <button class="act-btn act-btn--copy" title="Duplikat Role" @click.stop="openCopyRole(role)">
+            <button class="act-btn act-btn--copy" title="Duplikat Role" aria-label="Duplikat Role" @click.stop="openCopyRole(role)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             </button>
             <button
               class="act-btn"
               :class="role.is_system ? 'act-btn--disabled' : 'act-btn--del'"
               :title="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
+              :aria-label="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
               @click.stop="!role.is_system && confirmDelete(role)"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -747,7 +748,7 @@ watch(showCreate, v => {
 .rp { display: flex; flex-direction: column; gap: 1.25rem; }
 
 .rp-hd {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .75rem 1rem;
 }
 .rp-title { font-size: 1.35rem; font-weight: 800; color: #111827; margin: 0; }
 .rp-sub   { font-size: .8rem; color: #6b7280; margin: .2rem 0 0; }
@@ -1119,12 +1120,37 @@ watch(showCreate, v => {
 .modal-fade-leave-to .modal   { transform: scale(.96) translateY(-8px); }
 
 /* ─── Responsive ────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .panel-body { grid-template-columns: 1fr; }
   .scope-col  { border-right: none; border-bottom: 1.5px solid #f3f4f6; }
+}
+@media (max-width: 640px) {
+  .rp-title { font-size: 1.15rem; }
+  .btn-new  { padding: .5rem .85rem; }
+
+  /* Kartu role: baris 1 avatar + info, baris 2 tombol aksi selebar kartu */
+  .role-summary { flex-wrap: wrap; gap: .75rem; padding: .85rem 1rem; }
+  .role-avatar  { width: 2.25rem; height: 2.25rem; font-size: 1rem; border-radius: .6rem; }
+  .role-meta    { flex: 1 1 0; }
+  .role-desc    { white-space: normal; max-width: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .role-actions { flex-basis: 100%; }
+  .act-btn      { width: 2.25rem; height: 2.25rem; }
+  .act-expand   { flex: 1; justify-content: center; padding: .5rem .75rem; }
+
+  /* Panel Kelola Akses */
+  .sys-notice { margin: .85rem .85rem 0; padding: .65rem .75rem; }
+  .scope-col, .perm-col { padding: .85rem; }
+  .scope-tags { padding: .5rem; }
+
+  /* Modal: sisakan ruang untuk matriks */
+  .modal-backdrop { padding: .6rem; align-items: flex-start; padding-top: max(.6rem, env(safe-area-inset-top)); }
+  .modal { max-height: calc(100vh - 1.2rem); }
+  .modal-hd { padding: .85rem 1rem; }
+  .modal-bd { padding: .85rem .85rem 1rem; }
+  .modal-ft { padding: .75rem .85rem; }
+  .modal-ft .btn-submit, .modal-ft .btn-danger { flex: 1; justify-content: center; }
   .form-row   { grid-template-columns: 1fr; }
   .scope-row  { grid-template-columns: 1fr; }
-  .matrix th, .matrix td { padding: .4rem .35rem; }
-  .mod-name { font-size: .72rem; }
+  .wu-list { max-height: 12rem; }
 }
 </style>

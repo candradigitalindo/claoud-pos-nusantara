@@ -12,64 +12,93 @@
 -->
 <template>
   <div class="pm">
-    <div v-for="cat in CATEGORIES" :key="cat.label" class="pm-cat" :class="{ 'pm-cat--dim': disabled }">
-      <div class="pm-cat-hd">
+    <!-- Ringkasan + pencarian -->
+    <div class="pm-top">
+      <div class="pm-sum">
+        <div class="pm-sum-line">
+          <span class="pm-sum-num">{{ activeTotal }}<small>/{{ allTotal }}</small></span>
+          <span class="pm-sum-txt">hak akses aktif · {{ fullCats }}/{{ CATEGORIES.length }} kategori penuh</span>
+        </div>
+        <div class="pm-bar" role="progressbar" :aria-valuenow="activeTotal" :aria-valuemax="allTotal"><span :style="{ width: pct + '%' }" /></div>
+      </div>
+      <div class="pm-tools">
+        <label class="pm-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input v-model.trim="q" type="search" placeholder="Cari submenu… (resep, neraca, vendor)" aria-label="Cari submenu" />
+        </label>
+        <button type="button" class="pm-fold" @click="toggleAll">{{ allClosed ? 'Buka semua' : 'Lipat semua' }}</button>
+      </div>
+    </div>
+
+    <!-- Legenda kolom (tampil saat label kolom disembunyikan di layar sempit) -->
+    <div class="pm-legend" aria-hidden="true">
+      <span v-for="op in OPS" :key="op.key" class="th-pill" :class="`th-pill--${op.cls}`"><span class="op-svg" v-html="op.icon" />{{ op.label }}</span>
+    </div>
+
+    <p v-if="q && !visibleCats.length" class="pm-empty">Tidak ada submenu yang cocok dengan “{{ q }}”.</p>
+
+    <div v-for="cat in visibleCats" :key="cat.label" class="pm-cat" :class="{ 'pm-cat--dim': disabled, 'pm-cat--closed': isClosed(cat) }">
+      <button type="button" class="pm-cat-hd" :aria-expanded="!isClosed(cat)" @click="toggleCat(cat)">
         <span class="pm-cat-ic" v-html="cat.icon" />
         <span class="pm-cat-title">{{ cat.label }}</span>
-        <span class="pm-cat-count" :class="{ 'pm-cat-count--full': catActive(cat) === catTotal(cat) && catTotal(cat) > 0, 'pm-cat-count--zero': catActive(cat) === 0 }">
-          {{ catActive(cat) }}/{{ catTotal(cat) }}
+        <span class="pm-cat-count" :class="{ 'pm-cat-count--full': catActive(cat.all) === catTotal(cat.all) && catTotal(cat.all) > 0, 'pm-cat-count--zero': catActive(cat.all) === 0 }">
+          {{ catActive(cat.all) }}/{{ catTotal(cat.all) }}
         </span>
-      </div>
+        <svg class="pm-cat-chev" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      </button>
 
-      <!-- CRUD table -->
-      <div v-if="crudItems(cat).length" class="matrix-wrap">
-        <table class="matrix">
-          <thead>
-            <tr>
-              <th class="th-mod">Submenu</th>
-              <th v-for="op in OPS" :key="op.key" :class="`th-${op.cls}`">
-                <span class="th-pill" :class="`th-pill--${op.cls}`"><span class="op-svg" v-html="op.icon" />{{ op.label }}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="m in crudItems(cat)" :key="m.module">
-              <td class="td-mod"><span class="mod-ic" v-html="m.icon" /><span class="mod-name">{{ m.label }}</span></td>
-              <td v-for="op in OPS" :key="op.key" class="td-op">
-                <button
-                  v-if="(m.ops || ALL_OPS).includes(op.key)"
-                  type="button"
-                  class="op-pill" :class="[`op-pill--${op.cls}`, { 'op-pill--on': has(`${m.module}.${op.key}`) }]"
-                  @click="emitToggle(`${m.module}.${op.key}`)"
-                >
-                  <span class="op-svg" v-html="has(`${m.module}.${op.key}`) ? CHECK : CROSS" />
+      <div v-show="!isClosed(cat)" class="pm-cat-body">
+        <!-- CRUD table -->
+        <div v-if="crudItems(cat).length" class="matrix-wrap">
+          <table class="matrix">
+            <thead>
+              <tr>
+                <th class="th-mod">Submenu</th>
+                <th v-for="op in OPS" :key="op.key" :class="`th-${op.cls}`">
+                  <span class="th-pill" :class="`th-pill--${op.cls}`" :title="op.label"><span class="op-svg" v-html="op.icon" /><span class="th-txt">{{ op.label }}</span></span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in crudItems(cat)" :key="m.module">
+                <td class="td-mod"><span class="mod-ic" v-html="m.icon" /><span class="mod-name">{{ m.label }}</span></td>
+                <td v-for="op in OPS" :key="op.key" class="td-op">
+                  <button
+                    v-if="(m.ops || ALL_OPS).includes(op.key)"
+                    type="button"
+                    class="op-pill" :class="[`op-pill--${op.cls}`, { 'op-pill--on': has(`${m.module}.${op.key}`) }]"
+                    :aria-label="`${op.label} ${m.label}`" :aria-pressed="has(`${m.module}.${op.key}`)"
+                    @click="emitToggle(`${m.module}.${op.key}`)"
+                  >
+                    <span class="op-svg" v-html="has(`${m.module}.${op.key}`) ? CHECK : CROSS" />
+                  </button>
+                  <span v-else class="op-na" title="Aksi ini tidak tersedia untuk submenu ini">–</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Single / toggle-chip rows -->
+        <div v-if="optItems(cat).length" class="opt-rows">
+          <div v-for="it in optItems(cat)" :key="it.label" class="opt-row">
+            <span class="opt-label"><span class="opt-ic" v-html="it.icon" />{{ it.label }}</span>
+            <div class="opt-pills">
+              <template v-if="it.type === 'single'">
+                <button type="button" class="opt-pill" :class="{ 'opt-pill--on': has(it.key) }" :aria-pressed="has(it.key)" @click="emitToggle(it.key)">
+                  <span class="op-svg" v-if="has(it.key)" v-html="CHECK" />{{ has(it.key) ? 'Aktif' : 'Nonaktif' }}
                 </button>
-                <span v-else class="op-na" title="Aksi ini tidak tersedia untuk submenu ini">–</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Single / toggle-chip rows -->
-      <div v-if="optItems(cat).length" class="opt-rows">
-        <div v-for="it in optItems(cat)" :key="it.label" class="opt-row">
-          <span class="opt-label"><span class="opt-ic" v-html="it.icon" />{{ it.label }}</span>
-          <div class="opt-pills">
-            <template v-if="it.type === 'single'">
-              <button type="button" class="opt-pill" :class="{ 'opt-pill--on': has(it.key) }" @click="emitToggle(it.key)">
-                <span class="op-svg" v-if="has(it.key)" v-html="CHECK" />{{ has(it.key) ? 'Aktif' : 'Nonaktif' }}
-              </button>
-            </template>
-            <template v-else>
-              <button
-                v-for="t in it.toggles" :key="t.key"
-                type="button" class="opt-pill" :class="{ 'opt-pill--on': has(t.key) }"
-                @click="emitToggle(t.key)"
-              >
-                <span class="op-svg" v-if="has(t.key)" v-html="CHECK" />{{ t.label }}
-              </button>
-            </template>
+              </template>
+              <template v-else>
+                <button
+                  v-for="t in it.toggles" :key="t.key"
+                  type="button" class="opt-pill" :class="{ 'opt-pill--on': has(t.key) }" :aria-pressed="has(t.key)"
+                  @click="emitToggle(t.key)"
+                >
+                  <span class="op-svg" v-if="has(t.key)" v-html="CHECK" />{{ t.label }}
+                </button>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -78,6 +107,8 @@
 </template>
 
 <script setup>
+import { ref, computed } from 'vue'
+
 const props = defineProps({
   permissions: { type: Array, default: () => [] },
   disabled:    { type: Boolean, default: false },
@@ -361,6 +392,7 @@ const CATEGORIES = [
       { type: 'toggles', label: 'Zona Waktu', icon: IC.clock, toggles: [{ key: 'settings.timezone.view', label: 'Lihat' }, { key: 'settings.timezone.update', label: 'Ubah' }] },
       { type: 'toggles', label: 'Pajak', icon: IC.tax, toggles: [{ key: 'settings.tax.view', label: 'Lihat' }, { key: 'settings.tax.update', label: 'Ubah' }] },
       { type: 'single', key: 'devices.view', label: 'Perangkat (Monitoring)', icon: IC.gauge },
+      { type: 'crud', module: 'cameras', label: 'Kamera CCTV (API)', icon: IC.gauge },
     ],
   },
 ]
@@ -378,6 +410,40 @@ function catTotal(cat)  { return catKeys(cat).length }
 function catActive(cat) { return catKeys(cat).filter(has).length }
 function crudItems(cat) { return cat.items.filter(i => i.type === 'crud') }
 function optItems(cat)  { return cat.items.filter(i => i.type !== 'crud') }
+
+// ── Ringkasan ────────────────────────────────────────────────────────────
+const ALL_KEYS = CATEGORIES.flatMap(catKeys)
+const allTotal = ALL_KEYS.length
+const activeTotal = computed(() => ALL_KEYS.filter(has).length)
+const fullCats = computed(() => CATEGORIES.filter(c => catTotal(c) > 0 && catActive(c) === catTotal(c)).length)
+const pct = computed(() => allTotal ? Math.round(activeTotal.value / allTotal * 100) : 0)
+
+// ── Pencarian submenu (label submenu, kategori, atau label toggle) ────────
+const q = ref('')
+function itemMatch(it, needle) {
+  if (it.label.toLowerCase().includes(needle)) return true
+  return it.type === 'toggles' && it.toggles.some(t => t.label.toLowerCase().includes(needle))
+}
+// `all` menunjuk kategori asli supaya hitungan tidak ikut terfilter.
+const visibleCats = computed(() => {
+  const needle = q.value.toLowerCase()
+  return CATEGORIES.map(cat => {
+    const items = !needle || cat.label.toLowerCase().includes(needle) ? cat.items : cat.items.filter(it => itemMatch(it, needle))
+    return { ...cat, items, all: cat }
+  }).filter(c => c.items.length)
+})
+
+// ── Lipat kategori: di layar sempit mulai terlipat agar daftar tidak memanjang ──
+const narrow = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches
+const closed = ref(new Set(narrow ? CATEGORIES.map(c => c.label) : []))
+function isClosed(cat) { return !q.value && closed.value.has(cat.label) }
+function toggleCat(cat) {
+  const next = new Set(closed.value)
+  next.has(cat.label) ? next.delete(cat.label) : next.add(cat.label)
+  closed.value = next
+}
+const allClosed = computed(() => !q.value && closed.value.size >= CATEGORIES.length)
+function toggleAll() { closed.value = new Set(allClosed.value ? [] : CATEGORIES.map(c => c.label)) }
 </script>
 
 <style scoped>
@@ -385,17 +451,40 @@ function optItems(cat)  { return cat.items.filter(i => i.type !== 'crud') }
 
 .pm-cat { border: 1.5px solid #eef0f3; border-radius: .85rem; background: #fff; padding: .7rem .8rem .8rem; transition: border-color .15s, box-shadow .15s; }
 .pm-cat:hover { border-color: #e2e8f0; box-shadow: 0 2px 10px rgba(15,23,42,.04); }
-.pm-cat--dim { opacity: .55; pointer-events: none; }
+.pm-cat--dim .pm-cat-body { opacity: .55; pointer-events: none; }
 
-.pm-cat-hd { display: flex; align-items: center; gap: .55rem; margin-bottom: .65rem; }
+/* Ringkasan + alat */
+.pm-top { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; padding: .7rem .85rem; border: 1.5px solid #e0e7ff; border-radius: .85rem; background: linear-gradient(135deg, #f5f7ff, #eef2ff); }
+.pm-sum { flex: 1 1 220px; min-width: 0; }
+.pm-sum-line { display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap; }
+.pm-sum-num { font-size: 1.05rem; font-weight: 800; color: #3730a3; line-height: 1; }
+.pm-sum-num small { font-size: .7rem; font-weight: 700; color: #818cf8; }
+.pm-sum-txt { font-size: .7rem; font-weight: 600; color: #4b5563; }
+.pm-bar { margin-top: .4rem; height: 5px; border-radius: 999px; background: #e0e7ff; overflow: hidden; }
+.pm-bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6366f1, #22c55e); transition: width .2s; }
+.pm-tools { display: flex; align-items: center; gap: .5rem; flex: 1 1 240px; min-width: 0; }
+.pm-search { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; padding: .35rem .6rem; border: 1.5px solid #c7d2fe; border-radius: .6rem; background: #fff; color: #6b7280; }
+.pm-search:focus-within { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+.pm-search svg { width: 14px; height: 14px; flex-shrink: 0; }
+.pm-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: .76rem; color: #111827; }
+.pm-fold { flex-shrink: 0; padding: .4rem .6rem; border: 1.5px solid #c7d2fe; border-radius: .6rem; background: #fff; color: #4338ca; font-size: .7rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.pm-fold:hover { background: #eef2ff; }
+.pm-legend { display: none; flex-wrap: wrap; gap: .35rem; padding: 0 .2rem; }
+.pm-empty { padding: 1rem; border: 1.5px dashed #e5e7eb; border-radius: .75rem; text-align: center; font-size: .76rem; color: #9ca3af; }
+
+.pm-cat-hd { display: flex; width: 100%; align-items: center; gap: .55rem; margin-bottom: .65rem; padding: 0; border: none; background: none; text-align: left; cursor: pointer; }
+.pm-cat--closed .pm-cat-hd { margin-bottom: 0; }
+.pm-cat-chev { width: 16px; height: 16px; flex-shrink: 0; color: #94a3b8; transition: transform .18s; }
+.pm-cat--closed .pm-cat-chev { transform: rotate(-90deg); }
+.pm-cat-body { display: flex; flex-direction: column; gap: .5rem; }
 .pm-cat-ic { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: .55rem; background: linear-gradient(135deg, #eef2ff, #e0e7ff); color: #4f46e5; flex-shrink: 0; }
 .pm-cat-ic :deep(svg) { width: 16px; height: 16px; }
 .pm-cat-title { font-size: .82rem; font-weight: 700; color: #1e293b; letter-spacing: -.01em; }
-.pm-cat-count { margin-left: auto; font-size: .66rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; background: #f1f5f9; color: #94a3b8; }
+.pm-cat-count { margin-left: auto; flex-shrink: 0; font-size: .66rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px; background: #f1f5f9; color: #94a3b8; }
 .pm-cat-count--full { background: #dcfce7; color: #15803d; }
 .pm-cat-count--zero { background: #f1f5f9; color: #cbd5e1; }
 
-.matrix-wrap { border: 1.5px solid #eef0f3; border-radius: .6rem; overflow: hidden; }
+.matrix-wrap { border: 1.5px solid #eef0f3; border-radius: .6rem; overflow: hidden; overflow-x: auto; }
 .matrix { width: 100%; border-collapse: collapse; font-size: .78rem; }
 .matrix thead tr { background: #f8fafc; }
 .matrix th { padding: .45rem .7rem; text-align: center; font-weight: 700; border-bottom: 1.5px solid #eef0f3; }
@@ -431,7 +520,7 @@ function optItems(cat)  { return cat.items.filter(i => i.type !== 'crud') }
 .op-pill--u:not(.op-pill--on):hover { background: #fffbeb; border-color: #fde68a; color: #f59e0b; }
 .op-pill--d:not(.op-pill--on):hover { background: #fff1f2; border-color: #fecaca; color: #f87171; }
 
-.opt-rows { display: flex; flex-direction: column; gap: .4rem; margin-top: .5rem; }
+.opt-rows { display: flex; flex-direction: column; gap: .4rem; }
 .opt-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .4rem .55rem; border-radius: .55rem; background: #f8fafc; border: 1px solid #f1f5f9; }
 .opt-label { display: inline-flex; align-items: center; gap: .4rem; font-size: .74rem; font-weight: 600; color: #475569; min-width: 160px; }
 .opt-ic { display: inline-flex; color: #94a3b8; }
@@ -445,9 +534,24 @@ function optItems(cat)  { return cat.items.filter(i => i.type !== 'crud') }
 .opt-pill .op-svg :deep(svg) { width: 9px; height: 9px; }
 
 @media (max-width: 640px) {
-  .matrix th, .matrix td { padding: .35rem .3rem; }
-  .mod-name { font-size: .72rem; }
-  .opt-label { min-width: 0; }
+  .pm { gap: .6rem; }
+  .pm-cat { padding: .6rem .6rem .7rem; }
+  .pm-top { padding: .6rem .7rem; }
+  .matrix th, .matrix td { padding: .35rem .25rem; }
+  .td-mod { padding-left: .45rem; gap: .35rem; }
+  .th-mod { width: auto; }
+  .mod-name { font-size: .72rem; line-height: 1.25; }
+  .opt-row { padding: .45rem .5rem; }
+  .opt-label { min-width: 0; width: 100%; }
   .opt-pills { margin-left: 0; }
+  .opt-pill { padding: .35rem .7rem; }
+  .op-pill { width: 2rem; height: 2rem; }
+}
+@media (max-width: 420px) {
+  /* Kolom aksi terlalu sempit untuk label; sisakan ikon, label ada di legenda. */
+  .th-txt { display: none; }
+  .th-pill { padding: .25rem .4rem; }
+  .th-pill .op-svg :deep(svg) { width: 12px; height: 12px; }
+  .pm-legend { display: flex; }
 }
 </style>

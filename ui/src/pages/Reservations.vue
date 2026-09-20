@@ -109,120 +109,182 @@
     <!-- ── Reservation Modal ── -->
     <AppModal v-model="modal" :title="editing ? `Reservasi · ${editing.customer_name}` : 'Reservasi Baru'" size="2xl">
       <div class="space-y-4">
-        <div v-if="editing" class="flex flex-wrap items-center gap-2">
-          <span class="st-badge" :class="stCls(editing.status)">{{ STATUS[editing.status] || editing.status }}</span>
-          <span v-if="editing.status === 'cancelled' && editing.cancel_disposition" class="text-xs text-gray-500">uang muka: {{ editing.cancel_disposition === 'refund' ? 'dikembalikan (refund)' : 'hangus' }}</span>
-          <span v-if="editing.confirmed_at" class="text-xs text-gray-400">· dikonfirmasi {{ editing.confirmed_at }}</span>
-          <span v-if="editing.settled_at" class="text-xs text-gray-400">· selesai {{ editing.settled_at }}<template v-if="editing.pos_transaction_id"> (POS {{ editing.pos_transaction_id }})</template></span>
-          <a v-if="editing.source === 'public' && statusLinkFor(editing)" :href="statusLinkFor(editing)" target="_blank" rel="noopener" class="ml-auto text-xs font-medium text-emerald-700 underline">Link status pelanggan</a>
+        <!-- Ringkasan status (mode detail) -->
+        <div v-if="editing" class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="st-badge" :class="stCls(editing.status)">{{ STATUS[editing.status] || editing.status }}</span>
+            <span v-if="editing.outlet_name" class="meta-chip">{{ editing.outlet_name }}</span>
+            <span class="meta-chip">{{ editing.source === 'public' ? 'Dari halaman publik' : 'Dibuat admin' }}</span>
+            <span v-if="editing.status === 'cancelled' && editing.cancel_disposition" class="meta-chip meta-chip--red">Uang muka {{ editing.cancel_disposition === 'refund' ? 'dikembalikan (refund)' : 'hangus' }}</span>
+            <a v-if="editing.source === 'public' && statusLinkFor(editing)" :href="statusLinkFor(editing)" target="_blank" rel="noopener" class="sm:ml-auto text-xs font-semibold text-emerald-700 underline">Link status pelanggan</a>
+          </div>
+          <p class="text-[11px] leading-relaxed text-gray-500">
+            {{ statusHint(editing) }}
+            <template v-if="editing.confirmed_at"> Dikonfirmasi {{ editing.confirmed_at }}.</template>
+            <template v-if="editing.settled_at"> Selesai {{ editing.settled_at }}<template v-if="editing.pos_transaction_id"> (transaksi POS {{ editing.pos_transaction_id }})</template>.</template>
+          </p>
         </div>
 
-        <form class="space-y-3" @submit.prevent="save">
-          <div v-if="!editing">
-            <label class="lbl">Outlet <span class="text-red-500">*</span></label>
-            <SearchSelect v-model="form.outlet_id" :options="outlets" placeholder="Pilih outlet…" searchPlaceholder="Cari outlet…" @change="onOutletChange" />
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="lbl">Nama Pemesan <span class="text-red-500">*</span></label>
-              <input v-model="form.customer_name" class="form-input" required :disabled="locked" />
+        <form id="resv-form" class="space-y-4" @submit.prevent="save">
+          <!-- 1. Outlet & jadwal -->
+          <section class="sec">
+            <header class="sec-hd">
+              <span class="sec-no">1</span>
+              <div class="min-w-0">
+                <h3 class="sec-title">Outlet & Jadwal</h3>
+                <p class="sec-sub">Menu yang bisa dipilih dan link status pelanggan mengikuti outlet ini.</p>
+              </div>
+            </header>
+            <div v-if="!editing">
+              <label class="lbl">Outlet <span class="text-red-500">*</span></label>
+              <SearchSelect v-model="form.outlet_id" :options="outlets" placeholder="Pilih outlet…" searchPlaceholder="Cari outlet…" @change="onOutletChange" />
             </div>
-            <div>
-              <label class="lbl">No. HP</label>
-              <input v-model="form.customer_phone" class="form-input" :disabled="locked" />
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="lbl">Tanggal</label>
+                <input v-model="form.reservation_date" type="date" class="form-input" :disabled="locked" />
+              </div>
+              <div>
+                <label class="lbl">Jam</label>
+                <input v-model="form.reservation_time" type="time" class="form-input" :disabled="locked" />
+              </div>
+              <div class="col-span-2 sm:col-span-1">
+                <label class="lbl">Jumlah Tamu</label>
+                <input v-model.number="form.pax" type="number" min="1" inputmode="numeric" class="form-input" :disabled="locked" />
+              </div>
             </div>
-          </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="lbl">Jumlah Tamu</label>
-              <input v-model.number="form.pax" type="number" min="1" class="form-input" :disabled="locked" />
-            </div>
-            <div>
-              <label class="lbl">Tanggal</label>
-              <input v-model="form.reservation_date" type="date" class="form-input" :disabled="locked" />
-            </div>
-            <div>
-              <label class="lbl">Jam</label>
-              <input v-model="form.reservation_time" type="time" class="form-input" :disabled="locked" />
-            </div>
-          </div>
+          </section>
 
-          <!-- Product picker -->
-          <div>
-            <label class="lbl">Menu Dipesan</label>
+          <!-- 2. Pemesan -->
+          <section class="sec">
+            <header class="sec-hd">
+              <span class="sec-no">2</span>
+              <div class="min-w-0">
+                <h3 class="sec-title">Pemesan</h3>
+                <p class="sec-sub">No. HP dipakai untuk mencocokkan data pelanggan dan menghubungi tamu.</p>
+              </div>
+            </header>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">Nama Pemesan <span class="text-red-500">*</span></label>
+                <input v-model="form.customer_name" class="form-input" required :disabled="locked" placeholder="Nama tamu / penanggung jawab" />
+              </div>
+              <div>
+                <label class="lbl">No. HP</label>
+                <input v-model="form.customer_phone" class="form-input" inputmode="tel" :disabled="locked" placeholder="08xxxxxxxxxx" />
+              </div>
+            </div>
+          </section>
+
+          <!-- 3. Menu -->
+          <section class="sec">
+            <header class="sec-hd">
+              <span class="sec-no">3</span>
+              <div class="min-w-0">
+                <h3 class="sec-title">Menu Dipesan</h3>
+                <p class="sec-sub">Total dan DP dihitung dari menu di sini. Pesanan tambahan saat tamu datang dicatat di POS.</p>
+              </div>
+              <span v-if="form.items?.length" class="sec-badge">{{ form.items.length }} item</span>
+            </header>
             <SearchSelect v-if="form.outlet_id && !locked" v-model="pickProduct" :options="productOptions" placeholder="+ Tambah produk…" searchPlaceholder="Cari produk…" @change="addProduct" />
-            <p v-else-if="!form.outlet_id" class="text-xs text-gray-400">Pilih outlet dulu untuk memuat menu.</p>
-            <ul v-if="form.items.length" class="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg">
-              <li v-for="(it,i) in form.items" :key="i" class="flex items-center gap-2 px-3 py-2">
-                <span class="flex-1 min-w-0 text-sm truncate">{{ it.product_name }}<span class="text-xs text-gray-400 block">{{ formatRupiah(it.price) }}</span></span>
-                <input v-model.number="it.qty" type="number" min="1" class="w-14 form-input !py-1 text-center" :disabled="locked" />
-                <span class="w-24 text-right text-sm font-medium">{{ formatRupiah(it.price * it.qty) }}</span>
-                <button v-if="!locked" type="button" @click="form.items.splice(i,1)" class="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+            <p v-if="!form.outlet_id" class="empty-hint">Pilih outlet dulu untuk memuat menu.</p>
+            <ul v-else-if="form.items.length" class="divide-y divide-gray-100 border border-gray-200 rounded-lg">
+              <li v-for="(it,i) in form.items" :key="i" class="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 px-3 py-2">
+                <span class="w-full sm:w-auto sm:flex-1 min-w-0 text-sm">
+                  <span class="block truncate">{{ it.product_name }}</span>
+                  <span class="text-xs text-gray-400">{{ formatRupiah(it.price) }} / porsi</span>
+                </span>
+                <label class="flex items-center gap-1 text-xs text-gray-500">Qty
+                  <input v-model.number="it.qty" type="number" min="1" inputmode="numeric" class="form-input !w-16 !py-1 text-center" :disabled="locked" />
+                </label>
+                <span class="ml-auto sm:ml-0 sm:w-28 text-right text-sm font-semibold">{{ formatRupiah(it.price * it.qty) }}</span>
+                <button v-if="!locked" type="button" @click="form.items.splice(i,1)" class="px-1 text-lg leading-none text-red-400 hover:text-red-600" aria-label="Hapus item">×</button>
               </li>
             </ul>
-          </div>
+            <p v-else class="empty-hint">Belum ada menu dipilih. Reservasi tanpa menu tetap bisa dibuat; DP diisi manual.</p>
+          </section>
 
-          <!-- Money summary -->
-          <div class="grid grid-cols-2 gap-3 items-end">
-            <div>
-              <label class="lbl">DP yang diminta</label>
-              <input :value="dpDisplay" @input="onDpInput" type="text" inputmode="numeric" class="form-input" placeholder="Rp 0" :disabled="locked" />
-              <p class="mt-1 text-[11px] text-gray-400">Uang yang benar-benar masuk dicatat di bagian Uang Muka di bawah, bukan di sini.</p>
+          <!-- 4. Uang muka & ringkasan -->
+          <section class="sec">
+            <header class="sec-hd">
+              <span class="sec-no">4</span>
+              <div class="min-w-0">
+                <h3 class="sec-title">Uang Muka (DP)</h3>
+                <p class="sec-sub">DP yang diminta hanya angka target. Uang yang benar-benar masuk dicatat di bagian <b>Uang Muka &amp; Pelunasan</b> setelah reservasi dibuat.</p>
+              </div>
+            </header>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="lbl">DP yang diminta</label>
+                <div class="flex gap-2">
+                  <input :value="dpDisplay" @input="onDpInput" type="text" inputmode="numeric" class="form-input" placeholder="Rp 0" :disabled="locked" />
+                  <button v-if="!locked" type="button" class="btn-chip" :disabled="!computedTotal" :title="computedTotal ? `Isi ${settings.dp_percent}% dari total` : 'Pilih menu dulu agar total terhitung'" @click="applyDpPolicy">{{ settings.dp_percent }}%</button>
+                </div>
+                <p class="hint">Kebijakan: {{ settings.dp_percent }}% dari total<template v-if="computedTotal"> = {{ formatRupiah(policyDp) }}</template>. Tekan tombol persen untuk mengisi otomatis.</p>
+              </div>
+              <div v-if="!editing">
+                <label class="lbl">Status awal</label>
+                <select v-model="form.status" class="form-input">
+                  <option value="pending">Menunggu DP</option>
+                  <option value="confirmed" :disabled="(form.down_payment || 0) > 0">Langsung dikonfirmasi (tanpa DP)</option>
+                </select>
+                <p class="hint">{{ form.status === 'confirmed' ? 'Tanpa DP: meja dianggap pasti walau belum ada uang masuk.' : 'Otomatis menjadi Dikonfirmasi begitu DP tervalidasi.' }}</p>
+              </div>
             </div>
-            <div v-if="!editing">
-              <label class="lbl">Status awal</label>
-              <select v-model="form.status" class="form-input">
-                <option value="pending">Menunggu DP</option>
-                <option value="confirmed" :disabled="(form.down_payment || 0) > 0">Langsung dikonfirmasi (tanpa DP)</option>
-              </select>
+            <div class="sum">
+              <div class="sum-row"><span>Total menu</span><b>{{ formatRupiah(computedTotal) }}</b></div>
+              <div class="sum-row"><span>DP diminta</span><span>{{ formatRupiah(form.down_payment || 0) }}</span></div>
+              <template v-if="editing">
+                <div class="sum-row"><span>Tervalidasi</span><span class="text-emerald-700">− {{ formatRupiah(editing.paid_amount) }}</span></div>
+                <div v-if="editing.pending_amount > 0" class="sum-row"><span>Menunggu validasi</span><span class="text-amber-700">{{ formatRupiah(editing.pending_amount) }}</span></div>
+                <div class="sum-row sum-row--total"><span>Sisa tagihan</span><b class="text-amber-600">{{ formatRupiah(editing.remaining) }}</b></div>
+              </template>
+              <div v-else class="sum-row sum-row--total"><span>Sisa setelah DP</span><b class="text-amber-600">{{ formatRupiah(Math.max(0, computedTotal - (form.down_payment||0))) }}</b></div>
+              <p class="hint">Sisa dilunasi saat tamu datang: lewat POS (metode <i>DP Reservasi</i>) atau dicatat manual di bagian Uang Muka &amp; Pelunasan.</p>
             </div>
-          </div>
-          <div class="rounded-lg bg-gray-50 p-3 text-sm space-y-1">
-            <div class="flex justify-between"><span class="text-gray-500">Total</span><span class="font-medium">{{ formatRupiah(computedTotal) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">DP diminta</span><span>{{ formatRupiah(form.down_payment || 0) }}</span></div>
-            <template v-if="editing">
-              <div class="flex justify-between"><span class="text-gray-500">Tervalidasi</span><span class="text-emerald-700">− {{ formatRupiah(editing.paid_amount) }}</span></div>
-              <div v-if="editing.pending_amount > 0" class="flex justify-between"><span class="text-gray-500">Menunggu validasi</span><span class="text-amber-700">{{ formatRupiah(editing.pending_amount) }}</span></div>
-              <div class="flex justify-between border-t border-gray-200 pt-1"><span class="font-semibold">Sisa</span><span class="font-bold text-amber-600">{{ formatRupiah(editing.remaining) }}</span></div>
-            </template>
-            <div v-else class="flex justify-between border-t border-gray-200 pt-1"><span class="font-semibold">Sisa setelah DP</span><span class="font-bold text-amber-600">{{ formatRupiah(Math.max(0, computedTotal - (form.down_payment||0))) }}</span></div>
-          </div>
+          </section>
+
           <div>
             <label class="lbl">Catatan</label>
-            <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Opsional" :disabled="locked"></textarea>
-          </div>
-          <div v-if="!locked" class="flex justify-end">
-            <AppButton type="submit" :loading="saving">{{ editing ? 'Simpan Perubahan' : 'Buat Reservasi' }}</AppButton>
+            <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Permintaan khusus, nomor meja, dll. (opsional)" :disabled="locked"></textarea>
           </div>
         </form>
 
-        <!-- ── Uang muka ── -->
-        <div v-if="editing" class="rounded-xl border border-gray-200">
-          <div class="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-t-xl">
-            <span class="text-xs font-bold uppercase tracking-wide text-gray-600">Uang Muka & Pelunasan</span>
-            <button v-if="canUpdate && canRecordPayment && !showPay" type="button" class="text-xs font-semibold text-emerald-700" @click="openPay">+ Catat Pembayaran</button>
-          </div>
-          <ul v-if="editing.payments?.length" class="divide-y divide-gray-100">
+        <!-- ── Uang muka & pelunasan (mode detail) ── -->
+        <section v-if="editing" class="sec sec--pay">
+          <header class="sec-hd">
+            <span class="sec-no sec-no--pay">Rp</span>
+            <div class="min-w-0">
+              <h3 class="sec-title">Uang Muka &amp; Pelunasan</h3>
+              <p class="sec-sub">Bukti dari pelanggan menunggu validasi admin. Pembayaran yang dicatat admin langsung tervalidasi.</p>
+            </div>
+            <button v-if="canUpdate && canRecordPayment && !showPay" type="button" class="btn-chip shrink-0" @click="openPay">+ Catat</button>
+          </header>
+          <ul v-if="editing.payments?.length" class="divide-y divide-gray-100 border border-gray-200 rounded-lg">
             <li v-for="p in editing.payments" :key="p.id" class="px-3 py-2 text-sm">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="font-medium">{{ PAY_TYPE[p.type] || p.type }}</span>
-                <span class="text-gray-700">{{ formatRupiah(p.amount) }}</span>
-                <span class="text-xs text-gray-400">{{ p.method }}<template v-if="p.bank_label"> · {{ p.bank_label }}</template> · {{ p.paid_at }}</span>
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span class="font-semibold">{{ PAY_TYPE[p.type] || p.type }}</span>
+                <span class="text-gray-800">{{ formatRupiah(p.amount) }}</span>
                 <span class="st-badge" :class="payCls(p.status)">{{ PAY_STATUS[p.status] || p.status }}</span>
                 <a v-if="p.proof_url" :href="p.proof_url" target="_blank" rel="noopener" class="text-xs text-emerald-700 underline">bukti</a>
-                <span class="ml-auto text-[11px] text-gray-400">{{ p.status === 'pending' ? 'dari ' + p.submitted_by : (p.validated_by ? 'oleh ' + p.validated_by : '') }}</span>
               </div>
+              <p class="text-xs text-gray-400 mt-0.5">
+                {{ p.method }}<template v-if="p.bank_label"> · {{ p.bank_label }}</template> · {{ p.paid_at }}
+                <template v-if="p.status === 'pending'"> · dari {{ p.submitted_by }}</template>
+                <template v-else-if="p.validated_by"> · oleh {{ p.validated_by }}</template>
+              </p>
               <p v-if="p.notes" class="text-xs text-gray-500 mt-0.5">{{ p.notes }}</p>
               <p v-if="p.rejected_reason" class="text-xs text-red-600 mt-0.5">Ditolak: {{ p.rejected_reason }}</p>
               <div v-if="p.status === 'pending' && canUpdate" class="mt-1.5 flex gap-2">
-                <button type="button" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="validatePayment(p)">Validasi</button>
-                <button type="button" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="rejectPayment(p)">Tolak</button>
+                <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="validatePayment(p)">Validasi</button>
+                <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="rejectPayment(p)">Tolak</button>
               </div>
             </li>
           </ul>
-          <p v-else class="px-3 py-3 text-xs text-gray-400">Belum ada uang masuk yang tercatat.</p>
+          <p v-else class="empty-hint">Belum ada uang masuk yang tercatat.</p>
 
-          <div v-if="showPay" class="border-t border-gray-100 p-3 space-y-3 bg-emerald-50/40">
+          <div v-if="showPay" class="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 space-y-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-emerald-800">Catat pembayaran</p>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label class="lbl">Jenis</label>
@@ -260,32 +322,33 @@
             </div>
             <PhotoCapture v-model="payForm.proof_url" label="Bukti pembayaran" :required="payForm.method !== 'cash'"
               hint="Wajib untuk transfer/QRIS. Untuk tunai boleh dikosongkan." />
-            <div class="flex justify-end gap-2">
+            <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
               <button type="button" class="btn-ghost" @click="showPay = false">Batal</button>
               <AppButton :loading="acting" @click="addPayment">Simpan sebagai tervalidasi</AppButton>
             </div>
           </div>
-        </div>
+        </section>
 
         <!-- ── Batalkan: nasib uang muka ── -->
         <div v-if="cancelChoice" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm space-y-2">
           <p class="font-semibold text-red-800">Sudah ada uang masuk {{ formatRupiah(editing.paid_amount) }}. Apa nasibnya?</p>
-          <div class="flex flex-wrap gap-2">
-            <button type="button" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700" :disabled="acting" @click="setStatus('cancelled', 'refund')">Dikembalikan (catat refund setelah ini)</button>
-            <button type="button" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white" :disabled="acting" @click="setStatus('cancelled', 'hangus')">Hangus (jadi pendapatan lain)</button>
-            <button type="button" class="text-xs font-semibold px-3 py-1.5 rounded-lg text-gray-600" @click="cancelChoice = false">Batal</button>
+          <div class="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+            <button type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-red-200 text-red-700" :disabled="acting" @click="setStatus('cancelled', 'refund')">Dikembalikan (catat refund setelah ini)</button>
+            <button type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-red-600 text-white" :disabled="acting" @click="setStatus('cancelled', 'hangus')">Hangus (jadi pendapatan lain)</button>
+            <button type="button" class="text-xs font-semibold px-3 py-2 rounded-lg text-gray-600" @click="cancelChoice = false">Batal</button>
           </div>
         </div>
       </div>
 
       <template #footer>
         <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center">
-          <button type="button" class="btn-ghost" @click="modal=false">Tutup</button>
-          <div v-if="editing && canUpdate && !locked" class="flex flex-wrap gap-2 sm:ml-auto">
-            <button type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="askCancel">Batalkan</button>
-            <button v-if="editing.status === 'pending'" type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50" :disabled="acting || !editing.dp_paid" :title="editing.dp_paid ? '' : 'DP belum tervalidasi'" @click="setStatus('confirmed')">Konfirmasi</button>
-            <button type="button" class="text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="setStatus('done')">Selesai (dilayani)</button>
+          <button type="button" class="btn-ghost w-full sm:w-auto sm:mr-auto" @click="modal=false">Tutup</button>
+          <div v-if="editing && canUpdate && !locked" class="flex gap-2">
+            <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="askCancel">Batalkan</button>
+            <button v-if="editing.status === 'pending'" type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50" :disabled="acting || !editing.dp_paid" :title="editing.dp_paid ? '' : 'DP belum tervalidasi'" @click="setStatus('confirmed')">Konfirmasi</button>
+            <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="setStatus('done')">Selesai</button>
           </div>
+          <AppButton v-if="!locked && (editing ? canUpdate : canCreate)" form="resv-form" type="submit" :loading="saving" class="w-full sm:w-auto">{{ editing ? 'Simpan Perubahan' : 'Buat Reservasi' }}</AppButton>
         </div>
       </template>
     </AppModal>
@@ -428,6 +491,23 @@ function onDpInput(e) {
 
 const productOptions = computed(() => products.value.map(p => ({ id: p.id, name: `${p.name} — ${formatRupiah(p.price)}` })))
 const computedTotal = computed(() => form.value.items?.reduce((s, it) => s + it.price * (it.qty || 0), 0) || 0)
+// DP menurut kebijakan (persen dari total menu); tombol "%" mengisinya ke form.
+const policyDp = computed(() => Math.round(computedTotal.value * (Number(settings.value.dp_percent) || 0) / 100))
+function applyDpPolicy() {
+  const num = policyDp.value
+  form.value.down_payment = num
+  dpDisplay.value = num ? fmtRupiahInput(num) : ''
+  if (num > 0 && form.value.status === 'confirmed') form.value.status = 'pending'
+}
+function statusHint(r) {
+  switch (r.status) {
+    case 'pending':   return r.pending_amount > 0 ? 'Ada bukti pembayaran menunggu validasi di bawah.' : 'Menunggu DP. Pelanggan mengunggah bukti lewat link status; admin memvalidasinya di bagian Uang Muka & Pelunasan.'
+    case 'confirmed': return 'DP tervalidasi, meja dipastikan. Sisa dibayar saat tamu datang.'
+    case 'done':      return 'Tamu sudah dilayani; reservasi dikunci.'
+    case 'cancelled': return 'Reservasi dibatalkan dan dikunci.'
+    default:          return ''
+  }
+}
 
 function blank() { return { outlet_id: filterOutlet.value || '', customer_name: '', customer_phone: '', pax: 1, reservation_date: '', reservation_time: '', items: [], down_payment: 0, status: 'pending', notes: '' } }
 
@@ -550,6 +630,27 @@ onMounted(async () => { await loadOutlets(); await Promise.all([load(), loadSett
 .lbl { display: block; font-size: .72rem; font-weight: 700; color: #4b5563; margin-bottom: .25rem; }
 .btn-ghost { padding: .5rem 1rem; border-radius: .6rem; font-size: .85rem; font-weight: 600; color: #374151; background: #f3f4f6; }
 .btn-ghost:hover { background: #e5e7eb; }
+
+/* Bagian bernomor di modal */
+.sec { display: flex; flex-direction: column; gap: .75rem; padding: .75rem; border: 1px solid #e5e7eb; border-radius: .75rem; background: #fff; }
+@media (min-width: 640px) { .sec { padding: 1rem; } }
+.sec--pay { border-color: #a7f3d0; background: #f0fdf4; }
+.sec-hd { display: flex; align-items: flex-start; gap: .6rem; }
+.sec-no { flex-shrink: 0; width: 1.5rem; height: 1.5rem; border-radius: 999px; background: #ecfdf5; color: #047857; font-size: .72rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.sec-no--pay { width: auto; padding: 0 .5rem; background: #d1fae5; }
+.sec-title { margin: 0; font-size: .82rem; font-weight: 700; color: #111827; }
+.sec-sub { margin: .1rem 0 0; font-size: .7rem; line-height: 1.4; color: #6b7280; }
+.sec-badge { margin-left: auto; flex-shrink: 0; padding: .15rem .5rem; border-radius: 999px; background: #f3f4f6; color: #374151; font-size: .66rem; font-weight: 700; white-space: nowrap; }
+.hint { margin-top: .3rem; font-size: .7rem; line-height: 1.4; color: #6b7280; }
+.empty-hint { padding: .6rem .75rem; border: 1px dashed #e5e7eb; border-radius: .5rem; background: #f9fafb; color: #9ca3af; font-size: .75rem; text-align: center; }
+.btn-chip { flex-shrink: 0; padding: .35rem .6rem; border-radius: .6rem; border: 1px solid #a7f3d0; background: #ecfdf5; color: #047857; font-size: .75rem; font-weight: 700; white-space: nowrap; }
+.btn-chip:hover:not(:disabled) { background: #d1fae5; }
+.btn-chip:disabled { opacity: .5; cursor: not-allowed; }
+.sum { display: flex; flex-direction: column; gap: .25rem; padding: .6rem .75rem; border-radius: .6rem; background: #f9fafb; font-size: .85rem; }
+.sum-row { display: flex; justify-content: space-between; gap: .5rem; color: #4b5563; }
+.sum-row--total { margin-top: .15rem; padding-top: .3rem; border-top: 1px solid #e5e7eb; color: #111827; font-weight: 600; }
+.meta-chip { padding: .12rem .5rem; border: 1px solid #e5e7eb; border-radius: 999px; background: #fff; color: #374151; font-size: .68rem; font-weight: 600; }
+.meta-chip--red { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
 .st-badge { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
 .st-pending { background: rgba(245,158,11,.15); color: #b45309; }
 .st-confirmed { background: rgba(59,130,246,.13); color: #1d4ed8; }
