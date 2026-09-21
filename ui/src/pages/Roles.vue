@@ -436,6 +436,11 @@ const REDIRECT_GROUPS = [
     { value: '/stock-ledger',        label: 'Buku Stok',            perm: 'stockledger.view' },
     { value: '/recipes',             label: 'Resep',                perm: 'recipes.view' },
   ]},
+  { category: 'WhatsApp', options: [
+    { value: '/whatsapp',           label: 'Koneksi & Notifikasi', perm: 'whatsapp.view' },
+    { value: '/whatsapp/broadcast', label: 'Broadcast',            perm: 'whatsapp.broadcast' },
+    { value: '/whatsapp/messages',  label: 'Log Pesan',            perm: 'whatsapp.view' },
+  ]},
   { category: 'Pengaturan', options: [
     { value: '/settings/company',  label: 'Identitas Perusahaan', perm: 'settings.company.view' },
     { value: '/settings/timezone', label: 'Zona Waktu',           perm: 'settings.timezone.view' },

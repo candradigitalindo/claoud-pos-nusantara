@@ -37,11 +37,32 @@ services:
       # proxy penarikannya pasti gagal dan angkanya harus diisi tangan lewat
       # halaman Kinerja Medsos. Isi di .env, lalu `docker compose up -d app`.
       SOCIAL_PROXY_URL: ${SOCIAL_PROXY_URL:-}
+      # Gateway WhatsApp (layanan `wa` di bawah). Token sama dengan milik gateway.
+      WA_GATEWAY_URL: http://wa:4100
+      WA_GATEWAY_TOKEN: ${WA_GATEWAY_TOKEN:-wa-gateway-secret}
     volumes:
       - uploads_data:/app/uploads
       # Kredensial Google Drive milik host, read-only. Remote "gdrive:" inilah
       # yang juga dipakai cron backup database harian.
       - ${HOME}/.config/rclone/rclone.conf:/etc/rclone/rclone.conf:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Gateway WhatsApp gratis (whatsmeow, protokol WhatsApp Web). Sesi disimpan
+  # di database yang sama (tabel whatsmeow_*) sehingga ikut backup harian dan
+  # tidak hilang saat container dibuat ulang. Tidak dipublikasikan ke luar:
+  # hanya `app` yang memanggilnya lewat jaringan internal compose.
+  wa:
+    build:
+      context: .
+      target: wa-gateway
+    restart: unless-stopped
+    environment:
+      PORT: 4100
+      TZ: Asia/Jakarta
+      WA_GATEWAY_TOKEN: ${WA_GATEWAY_TOKEN:-wa-gateway-secret}
+      WA_DB_DSN: postgres://postgres:postgres@db:5432/cloud_pos?sslmode=disable
     depends_on:
       db:
         condition: service_healthy

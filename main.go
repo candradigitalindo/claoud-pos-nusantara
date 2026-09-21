@@ -57,6 +57,10 @@ func main() {
 	// Cadangkan bukti foto serah terima ke email (tiap 15 menit).
 	services.StartPhotoBackupScheduler()
 
+	// WhatsApp: antrean pengiriman + penjadwal (rekap harian, pengingat reservasi,
+	// perangkat offline). Tanpa WA_GATEWAY_URL fitur ini diam.
+	services.InitWhatsApp(cfg)
+
 	app := fiber.New(fiber.Config{
 		AppName:        "Nusantara POS Cloud API v1.0.0",
 		BodyLimit:      200 * 1024 * 1024,

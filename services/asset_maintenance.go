@@ -669,6 +669,7 @@ func generateDueMaintenanceWorkOrders() {
 	}
 
 	created := 0
+	dueList := []WAMaintenanceDue{}
 	for _, d := range pending {
 		tx, err := database.DB.Begin()
 		if err != nil {
@@ -691,10 +692,12 @@ func generateDueMaintenanceWorkOrders() {
 		}
 		if err := tx.Commit(); err == nil {
 			created++
+			dueList = append(dueList, WAMaintenanceDue{WONumber: wo, AssetName: d.assetName, Type: d.woType, DueDate: d.dueDate})
 		}
 	}
 	if created > 0 {
 		log.Printf("[Aset] %d work order perawatan diterbitkan dari jadwal jatuh tempo", created)
 		BroadcastSync("asset_maintenance_due", "")
+		go NotifyMaintenanceDue(dueList)
 	}
 }

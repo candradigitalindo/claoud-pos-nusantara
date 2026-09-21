@@ -111,6 +111,10 @@ var AllPermissions = []string{
 
 	// CCTV — lihat live/putar ulang (view) + kelola kamera (create/update/delete)
 	"cameras.view", "cameras.create", "cameras.update", "cameras.delete",
+
+	// WhatsApp — lihat status/log (view), kelola koneksi, penerima & notifikasi (manage),
+	// kirim broadcast ke pelanggan (broadcast).
+	"whatsapp.view", "whatsapp.manage", "whatsapp.broadcast",
 }
 
 func AdminLogin(req models.AdminLoginRequest, jwtSecret string) (*models.AdminLoginResponse, error) {
@@ -246,7 +250,8 @@ func ValidateJWT(tokenString, secret string) (jwt.MapClaims, error) {
 
 func GetAdmins() ([]models.CloudAdmin, error) {
 	rows, err := database.DB.Query(
-		`SELECT id, username, name, role, is_active, last_login_at, created_at, updated_at
+		`SELECT id, username, name, role, is_active, last_login_at, created_at, updated_at,
+			COALESCE(wa_phone, ''), COALESCE(wa_notify, true)
 		FROM cloud_admins ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -259,7 +264,7 @@ func GetAdmins() ([]models.CloudAdmin, error) {
 		var a models.CloudAdmin
 		var lastLogin sql.NullTime
 		if err := rows.Scan(&a.ID, &a.Username, &a.Name, &a.Role,
-			&a.IsActive, &lastLogin, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			&a.IsActive, &lastLogin, &a.CreatedAt, &a.UpdatedAt, &a.WAPhone, &a.WANotify); err != nil {
 			return nil, err
 		}
 		a.ID = strings.TrimSpace(a.ID)
@@ -315,14 +320,19 @@ func CreateAdmin(req models.CreateAdminRequest) (*models.CloudAdmin, error) {
 		return nil, err
 	}
 
+	waPhone, err := normalizeAdminWAPhone(req.WAPhone)
+	if err != nil {
+		return nil, err
+	}
+
 	id := NewULID()
-	admin := &models.CloudAdmin{ID: id, Username: req.Username, Name: req.Name, Role: req.Role, IsActive: true}
+	admin := &models.CloudAdmin{ID: id, Username: req.Username, Name: req.Name, Role: req.Role, IsActive: true, WAPhone: waPhone, WANotify: true}
 
 	err = database.DB.QueryRow(
-		`INSERT INTO cloud_admins (id, username, password_hash, name, role)
-		VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO cloud_admins (id, username, password_hash, name, role, wa_phone, wa_notify)
+		VALUES ($1, $2, $3, $4, $5, $6, true)
 		RETURNING created_at, updated_at`,
-		id, req.Username, string(hash), req.Name, req.Role,
+		id, req.Username, string(hash), req.Name, req.Role, waPhone,
 	).Scan(&admin.CreatedAt, &admin.UpdatedAt)
 
 	if err != nil {
@@ -882,15 +892,29 @@ func UpdateAdmin(adminID string, req models.UpdateAdminRequest) (*models.CloudAd
 		return nil, fmt.Errorf("role '%s' tidak valid", role)
 	}
 
+	// Nomor WA & opt-in: nil = biarkan nilai lama.
+	var waPhone interface{}
+	if req.WAPhone != nil {
+		p, err := normalizeAdminWAPhone(*req.WAPhone)
+		if err != nil {
+			return nil, err
+		}
+		waPhone = p
+	}
+	var waNotify interface{}
+	if req.WANotify != nil {
+		waNotify = *req.WANotify
+	}
+
 	var admin models.CloudAdmin
 	var lastLogin sql.NullTime
 	err := database.DB.QueryRow(
-		`UPDATE cloud_admins SET name = $1, role = $2, updated_at = NOW()
+		`UPDATE cloud_admins SET name = $1, role = $2, wa_phone = COALESCE($4, wa_phone), wa_notify = COALESCE($5, wa_notify), updated_at = NOW()
 		WHERE id = $3
-		RETURNING id, username, name, role, is_active, last_login_at, created_at, updated_at`,
-		name, role, adminID,
+		RETURNING id, username, name, role, is_active, last_login_at, created_at, updated_at, COALESCE(wa_phone,''), COALESCE(wa_notify,true)`,
+		name, role, adminID, waPhone, waNotify,
 	).Scan(&admin.ID, &admin.Username, &admin.Name, &admin.Role,
-		&admin.IsActive, &lastLogin, &admin.CreatedAt, &admin.UpdatedAt)
+		&admin.IsActive, &lastLogin, &admin.CreatedAt, &admin.UpdatedAt, &admin.WAPhone, &admin.WANotify)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("admin tidak ditemukan")
@@ -960,4 +984,21 @@ func DeleteAdmin(adminID string) error {
 		return fmt.Errorf("admin tidak ditemukan")
 	}
 	return nil
+}
+
+// normalizeAdminWAPhone: nomor WhatsApp akun pengguna disimpan dalam format
+// internasional tanpa '+' (628…). Kosong = tidak punya nomor (tidak dikirimi).
+func normalizeAdminWAPhone(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if strings.Contains(raw, "@") {
+		return "", fmt.Errorf("nomor WhatsApp pengguna harus nomor HP, bukan grup")
+	}
+	p := WANormalizeTarget(raw)
+	if p == "" {
+		return "", fmt.Errorf("nomor WhatsApp '%s' tidak valid", raw)
+	}
+	return p, nil
 }

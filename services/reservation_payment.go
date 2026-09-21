@@ -173,7 +173,14 @@ func AddReservationPayment(reservationID string, req models.ReservationPaymentRe
 	if validated {
 		maybeAutoConfirm(r.ID)
 	}
-	return getReservationPayment(r.ID, id)
+	p, err := getReservationPayment(r.ID, id)
+	if err == nil && !validated {
+		// Bukti kiriman pelanggan: beri tahu admin agar segera divalidasi.
+		if r2, e := GetReservation(r.ID, nil); e == nil {
+			go NotifyReservationPaymentSubmitted(r2, p)
+		}
+	}
+	return p, err
 }
 
 // ValidateReservationPayment mengesahkan bukti kiriman pelanggan. Nominal
@@ -220,7 +227,13 @@ func RejectReservationPayment(reservationID, paymentID, reason, actor string, ou
 		validated_by=$2, validated_at=(now() AT TIME ZONE 'UTC') WHERE id=$3`, reason, actor, paymentID); err != nil {
 		return nil, err
 	}
-	return getReservationPayment(reservationID, paymentID)
+	p2, err := getReservationPayment(reservationID, paymentID)
+	if err == nil {
+		if r2, e := GetReservation(reservationID, nil); e == nil {
+			go NotifyReservationPaymentRejected(r2, p2)
+		}
+	}
+	return p2, err
 }
 
 // maybeAutoConfirm: begitu DP yang diminta terpenuhi oleh pembayaran
@@ -231,7 +244,15 @@ func maybeAutoConfirm(reservationID string) {
 	if err != nil || r.Status != "pending" || !r.DpPaid || r.PaidAmount <= 0 {
 		return
 	}
-	database.DB.Exec(`UPDATE reservations SET status='confirmed', confirmed_at=(now() AT TIME ZONE 'UTC'), updated_at=NOW() WHERE id=$1 AND status='pending'`, reservationID)
+	res, err := database.DB.Exec(`UPDATE reservations SET status='confirmed', confirmed_at=(now() AT TIME ZONE 'UTC'), updated_at=NOW() WHERE id=$1 AND status='pending'`, reservationID)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		if r2, e := GetReservation(reservationID, nil); e == nil {
+			go NotifyReservationConfirmed(r2)
+		}
+	}
 }
 
 // ── Kebijakan DP & rekening ─────────────────────────────────────────────────

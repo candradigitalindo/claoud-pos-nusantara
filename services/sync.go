@@ -133,6 +133,9 @@ func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (stri
 
 	go logSync(outletID, "push_cashier_shift", "cashier_shift", 1, "success", "")
 	BroadcastSync("cashier_shift", outletID)
+	if req.Status == "closed" {
+		go NotifyCashierShiftClosed(outletID, cloudID, req)
+	}
 	return cloudID, nil
 }
 

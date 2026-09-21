@@ -48,6 +48,7 @@
                     <div>
                       <p class="user-name">{{ row.name }}</p>
                       <p class="user-username">username : {{ row.username }}</p>
+                      <p v-if="row.wa_phone" class="user-username">WA : +{{ row.wa_phone }}<span v-if="row.wa_notify === false"> (notifikasi mati)</span></p>
                     </div>
                   </div>
                 </td>
@@ -134,6 +135,14 @@
                 </div>
               </div>
 
+              <div class="field field-span2 mt-3">
+                <label class="field-label">Nomor WhatsApp <span style="font-weight:400;color:#9ca3af">(opsional)</span></label>
+                <div class="field-input-wrap">
+                  <svg class="field-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+                  <input v-model="form.wa_phone" class="field-input field-input--mono" placeholder="08xx… — untuk notifikasi WhatsApp sesuai posisi" autocomplete="off" />
+                </div>
+              </div>
+
               <div class="field field-span2 mt-3" :class="{ 'field--error': formErrors.password }">
                 <label class="field-label">Password <span class="req">*</span></label>
                 <div class="field-input-wrap">
@@ -212,6 +221,16 @@
                 <div class="field-input-wrap">
                   <input v-model="editForm.name" class="field-input" placeholder="Nama lengkap" />
                 </div>
+              </div>
+              <div class="field mt-4">
+                <label class="field-label">Nomor WhatsApp</label>
+                <div class="field-input-wrap">
+                  <input v-model="editForm.wa_phone" class="field-input field-input--mono" placeholder="08xx… (kosongkan bila tidak dikirimi notifikasi)" />
+                </div>
+                <label class="role-hint" style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
+                  <input v-model="editForm.wa_notify" type="checkbox" class="accent-emerald-600" />
+                  Terima notifikasi WhatsApp sesuai posisi (role &amp; outlet)
+                </label>
               </div>
               <div class="field mt-4">
                 <label class="field-label">Role</label>
@@ -376,7 +395,7 @@ const showCreate  = ref(false)
 const creating    = ref(false)
 const createError = ref('')
 const showPw      = ref(false)
-const form        = reactive({ username: '', password: '', name: '', role: 'admin' })
+const form        = reactive({ username: '', password: '', name: '', role: 'admin', wa_phone: '' })
 const formErrors  = reactive({ username: '', password: '', name: '', role: '' })
 
 const pwStrength = computed(() => {
@@ -406,7 +425,7 @@ function closeCreate() {
 
 watch(showCreate, v => {
   if (!v) {
-    form.username = ''; form.password = ''; form.name = ''; form.role = 'admin'
+    form.username = ''; form.password = ''; form.name = ''; form.role = 'admin'; form.wa_phone = ''
     formErrors.username = ''; formErrors.password = ''; formErrors.name = ''; formErrors.role = ''
     createError.value = ''; showPw.value = false
   }
@@ -432,12 +451,13 @@ async function createAdmin() {
 // ── Edit ────────────────────────────────────────────────────
 const showEdit    = ref(false)
 const editRow     = ref(null)
-const editForm    = reactive({ name: '', role: '' })
+const editForm    = reactive({ name: '', role: '', wa_phone: '', wa_notify: true })
 const editLoading = ref(false)
 const editError   = ref('')
 
 function openEdit(row) {
   editRow.value = row; editForm.name = row.name; editForm.role = row.role
+  editForm.wa_phone = row.wa_phone || ''; editForm.wa_notify = row.wa_notify !== false
   editError.value = ''; showEdit.value = true
 }
 
@@ -445,7 +465,7 @@ async function saveEdit() {
   if (!editForm.name.trim()) { editError.value = 'Nama wajib diisi'; return }
   editLoading.value = true; editError.value = ''
   try {
-    await adminsApi.updateAdmin(editRow.value.id, { name: editForm.name.trim(), role: editForm.role })
+    await adminsApi.updateAdmin(editRow.value.id, { name: editForm.name.trim(), role: editForm.role, wa_phone: editForm.wa_phone.trim(), wa_notify: editForm.wa_notify })
     toast.success('Pengguna berhasil diperbarui')
     showEdit.value = false; await loadAdmins()
   } catch (err) {

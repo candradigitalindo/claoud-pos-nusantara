@@ -56,5 +56,6 @@ func evaluatePpicAlerts() {
 	log.Printf("[PPIC] Evaluasi alert: %d batch expired, %d batch ≤3 hari, %d item di bawah ROP", expired, expiring, belowRop)
 	if expired > 0 || expiring > 0 || belowRop > 0 {
 		BroadcastSync("ppic_alert", "")
+		go NotifyPpicAlert(expired, expiring, belowRop)
 	}
 }

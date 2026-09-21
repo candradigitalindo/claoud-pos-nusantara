@@ -408,6 +408,25 @@ const routes = [
         component: DeviceMonitor,
         meta: { title: 'Perangkat — Cloud POS', requiresAuth: true, permission: 'devices.view' },
       },
+      // ── WhatsApp ────────────────────────────────────────
+      {
+        path: 'whatsapp',
+        name: 'WhatsApp',
+        component: () => import('@/pages/whatsapp/WhatsAppSettings.vue'),
+        meta: { title: 'WhatsApp — Cloud POS', requiresAuth: true, permission: 'whatsapp.view' },
+      },
+      {
+        path: 'whatsapp/broadcast',
+        name: 'WhatsAppBroadcast',
+        component: () => import('@/pages/whatsapp/WhatsAppBroadcast.vue'),
+        meta: { title: 'Broadcast WhatsApp — Cloud POS', requiresAuth: true, permission: 'whatsapp.broadcast' },
+      },
+      {
+        path: 'whatsapp/messages',
+        name: 'WhatsAppMessages',
+        component: () => import('@/pages/whatsapp/WhatsAppMessages.vue'),
+        meta: { title: 'Log Pesan WhatsApp — Cloud POS', requiresAuth: true, permission: 'whatsapp.view' },
+      },
       // ── PPIC ────────────────────────────────────────────
       {
         path: 'ppic/dashboard',

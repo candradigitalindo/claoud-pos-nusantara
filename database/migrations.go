@@ -2817,5 +2817,79 @@ func RunMigrations() error {
 		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_project_rab_legacy', 'done') ON CONFLICT (key) DO NOTHING`)
 	}
 
+	// ── WhatsApp: penerima notifikasi, antrean/log pesan, broadcast ──
+	// Sesi WhatsApp sendiri (kunci perangkat) disimpan gateway di tabel
+	// whatsmeow_* pada database yang sama; bukan urusan migrasi ini.
+	for _, m := range []string{
+		`CREATE TABLE IF NOT EXISTS wa_recipients (
+			id         CHAR(26) PRIMARY KEY,
+			name       VARCHAR(120) NOT NULL DEFAULT '',
+			target     VARCHAR(80) NOT NULL,
+			kind       VARCHAR(10) NOT NULL DEFAULT 'phone',
+			events     TEXT NOT NULL DEFAULT '*',
+			outlet_ids TEXT NOT NULL DEFAULT '',
+			is_active  BOOLEAN NOT NULL DEFAULT true,
+			notes      TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_recipients_target ON wa_recipients(target)`,
+		`CREATE TABLE IF NOT EXISTS wa_broadcasts (
+			id          CHAR(26) PRIMARY KEY,
+			title       VARCHAR(150) NOT NULL,
+			body        TEXT NOT NULL,
+			image_url   TEXT NOT NULL DEFAULT '',
+			audience    VARCHAR(12) NOT NULL DEFAULT 'customers',
+			filter      JSONB NOT NULL DEFAULT '{}',
+			total       INT NOT NULL DEFAULT 0,
+			status      VARCHAR(12) NOT NULL DEFAULT 'queued',
+			created_by  VARCHAR(100) NOT NULL DEFAULT '',
+			created_at  TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			finished_at TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS wa_messages (
+			id            CHAR(26) PRIMARY KEY,
+			target        VARCHAR(80) NOT NULL,
+			target_name   VARCHAR(150) NOT NULL DEFAULT '',
+			audience      VARCHAR(10) NOT NULL DEFAULT 'internal',
+			kind          VARCHAR(12) NOT NULL DEFAULT 'notify',
+			event         VARCHAR(60) NOT NULL DEFAULT '',
+			ref_id        VARCHAR(120) NOT NULL DEFAULT '',
+			broadcast_id  CHAR(26) REFERENCES wa_broadcasts(id) ON DELETE SET NULL,
+			body          TEXT NOT NULL DEFAULT '',
+			image_url     TEXT NOT NULL DEFAULT '',
+			status        VARCHAR(12) NOT NULL DEFAULT 'pending',
+			attempts      INT NOT NULL DEFAULT 0,
+			last_error    TEXT NOT NULL DEFAULT '',
+			wa_message_id VARCHAR(80) NOT NULL DEFAULT '',
+			scheduled_at  TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
+			sent_at       TIMESTAMP,
+			created_at    TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wa_messages_queue ON wa_messages(status, scheduled_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_wa_messages_created ON wa_messages(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_wa_messages_broadcast ON wa_messages(broadcast_id)`,
+		// Satu notifikasi per (event, dokumen, tujuan): retry sync / cascade tidak menggandakan pesan.
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_messages_event_ref ON wa_messages(event, ref_id, target) WHERE event <> '' AND ref_id <> ''`,
+		// Nomor WA di akun pengguna: notifikasi internal dirutekan per POSISI (role
+		// + batasan outlet), bukan daftar bebas.
+		`ALTER TABLE cloud_admins ADD COLUMN IF NOT EXISTS wa_phone VARCHAR(30) NOT NULL DEFAULT ''`,
+		`ALTER TABLE cloud_admins ADD COLUMN IF NOT EXISTS wa_notify BOOLEAN NOT NULL DEFAULT true`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("WhatsApp migration skipped: %v", err)
+		}
+	}
+	// Izin WhatsApp untuk admin & superadmin (one-shot, marker — di paling akhir).
+	var waPerm int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_whatsapp_perm'").Scan(&waPerm)
+	if waPerm == 0 {
+		for _, p := range []string{"whatsapp.view", "whatsapp.manage", "whatsapp.broadcast"} {
+			DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES ('admin', $1), ('superadmin', $1) ON CONFLICT DO NOTHING`, p)
+		}
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_whatsapp_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("WhatsApp: izin whatsapp.* diberikan ke admin & superadmin")
+	}
+
 	return nil
 }

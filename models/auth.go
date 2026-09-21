@@ -3,12 +3,16 @@ package models
 import "time"
 
 type CloudAdmin struct {
-	ID          string     `json:"id"`
-	Username    string     `json:"username"`
-	Password    string     `json:"-"`
-	Name        string     `json:"name"`
-	Role        string     `json:"role"`
-	IsActive    bool       `json:"is_active"`
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	Password string `json:"-"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	IsActive bool   `json:"is_active"`
+	// WAPhone = nomor WhatsApp pribadi (628…) untuk notifikasi sesuai posisi;
+	// WANotify = boleh dikirimi notifikasi.
+	WAPhone     string     `json:"wa_phone"`
+	WANotify    bool       `json:"wa_notify"`
 	LastLoginAt *time.Time `json:"last_login_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
@@ -33,6 +37,7 @@ type CreateAdminRequest struct {
 	Password string `json:"password"`
 	Name     string `json:"name"`
 	Role     string `json:"role"`
+	WAPhone  string `json:"wa_phone"`
 }
 
 type UpdateAdminRoleRequest struct {
@@ -84,6 +89,9 @@ type UpdateProfileRequest struct {
 type UpdateAdminRequest struct {
 	Name string `json:"name"`
 	Role string `json:"role"`
+	// Pointer: nil = tidak diubah (pemanggil lama tidak mengirim field ini).
+	WAPhone  *string `json:"wa_phone"`
+	WANotify *bool   `json:"wa_notify"`
 }
 
 type ResetAdminPasswordRequest struct {

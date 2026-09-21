@@ -421,7 +421,11 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 		return nil, err
 	}
 
-	return GetPurchaseRequest(id)
+	pr, err := GetPurchaseRequest(id)
+	if err == nil {
+		go NotifyPurchaseEvent(pr, "submitted", input.RequestedBy, "", 0)
+	}
+	return pr, err
 }
 
 func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
@@ -833,6 +837,7 @@ func cascadeStatusToChildren(masterID, masterStatus string, input models.UpdateP
 func applyStatusUpdate(id, newStatus string, input models.UpdatePurchaseStatusInput) (*models.PurchaseRequest, error) {
 	now := time.Now().UTC()
 	var err error
+	var notifyAmount float64
 
 	switch input.Action {
 	case "approve":
@@ -896,6 +901,7 @@ func applyStatusUpdate(id, newStatus string, input models.UpdatePurchaseStatusIn
 
 		// Round to 2 decimals
 		payAmount = math.Round(payAmount*100) / 100
+		notifyAmount = payAmount
 		newPaid := math.Round((currentPaid+payAmount)*100) / 100
 
 		// Insert payment history
@@ -957,7 +963,11 @@ func applyStatusUpdate(id, newStatus string, input models.UpdatePurchaseStatusIn
 	// After updating a child, sync the master's status based on all children
 	syncMasterStatusFromChild(id)
 
-	return GetPurchaseRequest(id)
+	pr, err := GetPurchaseRequest(id)
+	if err == nil {
+		go NotifyPurchaseEvent(pr, input.Action, input.ActorName, input.RejectedReason, notifyAmount)
+	}
+	return pr, err
 }
 
 // syncMasterStatusFromChild checks if a purchase request has a parent (master),

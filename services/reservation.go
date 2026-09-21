@@ -227,7 +227,11 @@ func CreateReservation(req models.ReservationRequest, outletScope []string) (*mo
 			return nil, fmt.Errorf("outlet di luar akses Anda")
 		}
 	}
-	return saveReservation("", req, "admin")
+	r, err := saveReservation("", req, "admin")
+	if err == nil {
+		go NotifyReservationCreated(r)
+	}
+	return r, err
 }
 
 func UpdateReservation(id string, req models.ReservationRequest, outletScope []string) (*models.Reservation, error) {
@@ -286,7 +290,16 @@ func UpdateReservationStatus(id, status, disposition, actor string, outletScope 
 	if err != nil {
 		return nil, err
 	}
-	return GetReservation(id, outletScope)
+	out, err := GetReservation(id, outletScope)
+	if err == nil {
+		switch status {
+		case "confirmed":
+			go NotifyReservationConfirmed(out)
+		case "cancelled":
+			go NotifyReservationCancelled(out)
+		}
+	}
+	return out, err
 }
 
 func DeleteReservation(id string, outletScope []string) error {
@@ -358,5 +371,9 @@ func CreatePublicReservation(slug string, req models.ReservationRequest) (*model
 	}
 	req.OutletID = outletID
 	req.Status = "pending"
-	return saveReservation("", req, "public")
+	r, err := saveReservation("", req, "public")
+	if err == nil {
+		go NotifyReservationCreated(r)
+	}
+	return r, err
 }

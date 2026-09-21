@@ -24,6 +24,9 @@ type Config struct {
 	// CameraEncKey = kunci enkripsi kredensial RTSP (opsional; kosong → turunan JWT_SECRET).
 	Go2rtcURL     string
 	CameraEncKey  string
+	// Gateway WhatsApp (layanan wa-gateway di compose). URL kosong = fitur WA mati.
+	WAGatewayURL   string
+	WAGatewayToken string
 }
 
 func (c *Config) DSN() string {
@@ -64,6 +67,8 @@ func Load() *Config {
 		AdminToken:      getEnv("ADMIN_TOKEN", "admin-secret-token"),
 		Go2rtcURL:       getEnv("GO2RTC_URL", "http://go2rtc:1984"),
 		CameraEncKey:    getEnv("CAMERA_ENC_KEY", ""),
+		WAGatewayURL:    getEnv("WA_GATEWAY_URL", ""),
+		WAGatewayToken:  getEnv("WA_GATEWAY_TOKEN", ""),
 	}
 }
 

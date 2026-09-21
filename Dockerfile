@@ -48,3 +48,27 @@ COPY --from=ui-builder /app/ui/dist /usr/share/nginx/html
 COPY nginx/default.http-only.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
+
+
+# ── Stage 5: WhatsApp gateway (modul Go terpisah, butuh Go ≥ 1.26 untuk whatsmeow) ──
+FROM golang:1.26-alpine AS wa-builder
+
+WORKDIR /src
+
+COPY wa-gateway/go.mod wa-gateway/go.sum ./
+RUN go mod download
+
+COPY wa-gateway/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /wa-gateway .
+
+
+FROM alpine:3.20 AS wa-gateway
+
+RUN apk add --no-cache tzdata ca-certificates
+
+WORKDIR /app
+
+COPY --from=wa-builder /wa-gateway ./wa-gateway
+
+EXPOSE 4100
+CMD ["./wa-gateway"]
