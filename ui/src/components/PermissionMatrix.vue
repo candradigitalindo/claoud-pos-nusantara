@@ -242,6 +242,7 @@ const CATEGORIES = [
           { key: 'reports.titipan.view',       label: 'Titipan' },
           { key: 'reports.discount.view',      label: 'Diskon & Komplimen' },
           { key: 'reports.business_analysis.view', label: 'Analisa Bisnis' },
+          { key: 'reports.business_analysis.manage', label: 'Analisa Bisnis: kelola kalender libur' },
         ],
       },
       {

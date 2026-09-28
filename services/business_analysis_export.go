@@ -56,8 +56,8 @@ func bizWeekRange(weekStart string) string {
 
 // BuildBusinessAnalysisExcel menyusun file .xlsx Analisa Bisnis untuk rentang
 // minggu yang sama dengan tampilan halaman.
-func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
-	rep, err := GetBusinessAnalysis(weeks)
+func BuildBusinessAnalysisExcel(weeks, block int) ([]byte, string, error) {
+	rep, err := GetBusinessAnalysisWith(weeks, block)
 	if err != nil {
 		return nil, "", err
 	}
@@ -101,13 +101,16 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 	f.SetCellStyle(sum, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), st.section)
 	row++
 	facts := [][2]interface{}{
-		{"Gerak pasar (ditimbang omzet)", rep.GroupGrowth4},
+		{"Gerak pasar setara kalender (ditimbang omzet)", rep.GroupGrowth4},
+		{"Gerak pasar mentah", rep.GroupGrowthRaw4},
+		{"Dijelaskan kalender (poin)", rep.CalendarEffect},
 		{"Batas wajar pasar (±)", rep.MarketBand},
-		{"Cara membandingkan", fmt.Sprintf("%d minggu terakhir lawan %d minggu sebelumnya", rep.BlockWeeks, rep.BlockWeeks)},
+		{"Cara membandingkan", fmt.Sprintf("%d minggu terakhir lawan %d minggu sebelumnya (blok tetap)", rep.BlockWeeks, rep.BlockWeeks)},
 		{"Outlet lebih baik", joinOrDash(rep.Leading)},
 		{"Outlet tertinggal", joinOrDash(rep.Lagging)},
+		{"Outlet perlu dipantau", joinOrDash(rep.Watch)},
 		{"Outlet berdata lengkap", fmt.Sprintf("%d outlet", len(rep.PanelCodes))},
-		{"Pembanding tiap outlet", fmt.Sprintf("%d outlet lainnya", max(len(rep.PanelCodes)-1, 0))},
+		{"Patokan tiap outlet", fmt.Sprintf("nilai tengah %d outlet pembanding", len(rep.PanelCodes))},
 		{"Minggu tidak normal", joinOrDash(rep.GroupEvents)},
 	}
 	for _, fx := range facts {
@@ -140,12 +143,14 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 	det := "Per Outlet"
 	f.NewSheet(det)
 	headers := []string{"Outlet", "Kode", "Penjualan", "Transaksi", "Rata-rata/Struk",
-		"Naik/Turun (%)", "Outlet Lain (%)", "Selisih", "Batas Wajar",
+		"Naik/Turun Setara Kalender (%)", "Outlet Lain (%)", "Selisih", "Batas Wajar",
 		"Penjualan Blok Terakhir", "Penjualan Blok Sebelumnya", "Seharusnya", "Selisih (Rp)",
 		"Kesimpulan", "Siapa yang Bertindak", "Penjelasan",
-		"Dari Mana Perubahannya", "Yang Perlu Dilakukan"}
+		"Dari Mana Perubahannya", "Yang Perlu Dilakukan",
+		"Naik/Turun Mentah (%)", "Konsisten (minggu)", "Setara Kalender Blok Terakhir", "Setara Kalender Blok Sebelumnya",
+		"Tren (%/minggu)", "Tren Nyata?", "Perkiraan 4 Minggu (Rp)", "Rentang Perkiraan", "Pengamatan Model"}
 	setHeaderRow(f, det, headers, st.header)
-	widths := []float64{26, 8, 16, 11, 15, 14, 16, 12, 12, 20, 20, 18, 16, 18, 18, 60, 60, 70}
+	widths := []float64{26, 8, 16, 11, 15, 14, 16, 12, 12, 20, 20, 18, 16, 18, 18, 60, 60, 70, 14, 12, 20, 20, 12, 10, 20, 28, 90}
 	for i, w := range widths {
 		col, _ := excelize.ColumnNumberToName(i + 1)
 		f.SetColWidth(det, col, col, w)
@@ -172,6 +177,29 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 		f.SetCellValue(det, fmt.Sprintf("P%d", r), o.Note)
 		f.SetCellValue(det, fmt.Sprintf("Q%d", r), o.Breakdown)
 		f.SetCellValue(det, fmt.Sprintf("R%d", r), o.Advice)
+		bizPtrCell(f, det, fmt.Sprintf("S%d", r), o.GrowthRaw4)
+		if o.ConsistencyNeed > 0 {
+			f.SetCellValue(det, fmt.Sprintf("T%d", r), fmt.Sprintf("%d dari %d", o.Consistency, rep.BlockWeeks))
+		}
+		if o.RecentAdj > 0 {
+			f.SetCellValue(det, fmt.Sprintf("U%d", r), o.RecentAdj)
+			f.SetCellValue(det, fmt.Sprintf("V%d", r), o.PrevAdj)
+		}
+		if o.Trend != nil {
+			f.SetCellValue(det, fmt.Sprintf("W%d", r), o.Trend.SlopePct)
+			nyata := "belum"
+			if o.Trend.Significant {
+				nyata = "ya"
+			}
+			f.SetCellValue(det, fmt.Sprintf("X%d", r), nyata)
+		}
+		if o.Forecast != nil {
+			f.SetCellValue(det, fmt.Sprintf("Y%d", r), o.Forecast.TotalRaw)
+			f.SetCellValue(det, fmt.Sprintf("Z%d", r), fmt.Sprintf("%s – %s", bizRupiah(o.Forecast.TotalLo), bizRupiah(o.Forecast.TotalHi)))
+		}
+		if len(o.ModelNotes) > 0 {
+			f.SetCellValue(det, fmt.Sprintf("AA%d", r), joinOrDash(o.ModelNotes))
+		}
 
 		f.SetCellStyle(det, fmt.Sprintf("A%d", r), fmt.Sprintf("B%d", r), st.text)
 		f.SetCellStyle(det, fmt.Sprintf("C%d", r), fmt.Sprintf("C%d", r), st.money)
@@ -180,12 +208,17 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 		f.SetCellStyle(det, fmt.Sprintf("F%d", r), fmt.Sprintf("I%d", r), stPct)
 		f.SetCellStyle(det, fmt.Sprintf("J%d", r), fmt.Sprintf("M%d", r), st.money)
 		f.SetCellStyle(det, fmt.Sprintf("N%d", r), fmt.Sprintf("R%d", r), st.text)
+		f.SetCellStyle(det, fmt.Sprintf("S%d", r), fmt.Sprintf("S%d", r), stPct)
+		f.SetCellStyle(det, fmt.Sprintf("U%d", r), fmt.Sprintf("V%d", r), st.money)
+		f.SetCellStyle(det, fmt.Sprintf("W%d", r), fmt.Sprintf("W%d", r), stPct)
+		f.SetCellStyle(det, fmt.Sprintf("Y%d", r), fmt.Sprintf("Y%d", r), st.money)
+		f.SetCellStyle(det, fmt.Sprintf("AA%d", r), fmt.Sprintf("AA%d", r), st.text)
 	}
 	lastDet := len(rep.Outlets) + 1
 
 	// Grafik batang: selisih tiap outlet dengan rata-rata.
 	if lastDet >= 2 {
-		f.AddChart(det, "T2", &excelize.Chart{
+		f.AddChart(det, "AC2", &excelize.Chart{
 			Type: excelize.Bar,
 			Series: []excelize.ChartSeries{{
 				Name:       fmt.Sprintf("'%s'!$H$1", det),
@@ -203,14 +236,17 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 	// ══ Sheet 3: Mingguan ═══════════════════════════════════════════════════
 	wk := "Mingguan"
 	f.NewSheet(wk)
-	wkHeaders := []string{"Minggu", "Mulai", "Total Semua Outlet", "Jumlah Outlet", "Naik/Turun Pasar (%)"}
+	wkHeaders := []string{"Minggu", "Mulai", "Total Semua Outlet", "Total Setara Kalender", "Jumlah Outlet",
+		"Naik/Turun Pasar Setara Kalender (%)", "Naik/Turun Pasar Mentah (%)", "Kalender"}
 	for _, o := range rep.Outlets {
 		wkHeaders = append(wkHeaders, o.Code)
 	}
 	setHeaderRow(f, wk, wkHeaders, st.header)
 	f.SetColWidth(wk, "A", "A", 16)
 	f.SetColWidth(wk, "B", "B", 12)
-	f.SetColWidth(wk, "C", "E", 20)
+	f.SetColWidth(wk, "C", "G", 20)
+	f.SetColWidth(wk, "H", "H", 40)
+	const wkOutletCol = 9 // kolom pertama outlet (I)
 
 	netByOutletWeek := map[string]map[string]float64{}
 	for _, o := range rep.Outlets {
@@ -225,12 +261,15 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 		f.SetCellValue(wk, fmt.Sprintf("A%d", r), bizWeekRange(g.WeekStart))
 		f.SetCellValue(wk, fmt.Sprintf("B%d", r), fmtDateID(g.WeekStart))
 		f.SetCellValue(wk, fmt.Sprintf("C%d", r), g.Net)
-		f.SetCellValue(wk, fmt.Sprintf("D%d", r), g.OutletCount)
-		bizPtrCell(f, wk, fmt.Sprintf("E%d", r), g.Growth)
-		f.SetCellStyle(wk, fmt.Sprintf("C%d", r), fmt.Sprintf("C%d", r), st.money)
-		f.SetCellStyle(wk, fmt.Sprintf("E%d", r), fmt.Sprintf("E%d", r), stPct)
+		f.SetCellValue(wk, fmt.Sprintf("D%d", r), g.NetAdj)
+		f.SetCellValue(wk, fmt.Sprintf("E%d", r), g.OutletCount)
+		bizPtrCell(f, wk, fmt.Sprintf("F%d", r), g.Growth)
+		bizPtrCell(f, wk, fmt.Sprintf("G%d", r), g.GrowthRaw)
+		f.SetCellValue(wk, fmt.Sprintf("H%d", r), g.Calendar)
+		f.SetCellStyle(wk, fmt.Sprintf("C%d", r), fmt.Sprintf("D%d", r), st.money)
+		f.SetCellStyle(wk, fmt.Sprintf("F%d", r), fmt.Sprintf("G%d", r), stPct)
 		for j, o := range rep.Outlets {
-			col, _ := excelize.ColumnNumberToName(6 + j)
+			col, _ := excelize.ColumnNumberToName(wkOutletCol + j)
 			if v, ok := netByOutletWeek[o.Code][g.WeekStart]; ok {
 				f.SetCellValue(wk, fmt.Sprintf("%s%d", col, r), v)
 			}
@@ -241,15 +280,15 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 
 	// Grafik kolom: naik-turun seluruh grup per minggu.
 	if lastWk >= 2 {
-		chartCol, _ := excelize.ColumnNumberToName(6 + len(rep.Outlets) + 1)
+		chartCol, _ := excelize.ColumnNumberToName(wkOutletCol + len(rep.Outlets) + 1)
 		f.AddChart(wk, fmt.Sprintf("%s2", chartCol), &excelize.Chart{
 			Type: excelize.Col,
 			Series: []excelize.ChartSeries{{
-				Name:       fmt.Sprintf("'%s'!$E$1", wk),
+				Name:       fmt.Sprintf("'%s'!$F$1", wk),
 				Categories: fmt.Sprintf("'%s'!$A$2:$A$%d", wk, lastWk),
-				Values:     fmt.Sprintf("'%s'!$E$2:$E$%d", wk, lastWk),
+				Values:     fmt.Sprintf("'%s'!$F$2:$F$%d", wk, lastWk),
 			}},
-			Title:     []excelize.RichTextRun{{Text: "Naik-Turun Semua Outlet per Minggu"}},
+			Title:     []excelize.RichTextRun{{Text: "Naik-Turun Pasar per Minggu (setara kalender)"}},
 			Legend:    excelize.ChartLegend{},
 			Dimension: excelize.ChartDimension{Width: 700, Height: 360},
 			YAxis:     excelize.ChartAxis{Title: []excelize.RichTextRun{{Text: "Persen dibanding minggu sebelumnya"}}},
@@ -319,8 +358,8 @@ func BuildBusinessAnalysisExcel(weeks int) ([]byte, string, error) {
 	if err := f.Write(&buf); err != nil {
 		return nil, "", err
 	}
-	name := fmt.Sprintf("analisa-bisnis-%s-sd-%s.xlsx",
-		slugFilename(rep.PeriodFrom), slugFilename(rep.PeriodTo))
+	name := fmt.Sprintf("analisa-bisnis-%s-sd-%s-blok%d.xlsx",
+		slugFilename(rep.PeriodFrom), slugFilename(rep.PeriodTo), rep.BlockWeeks)
 	return buf.Bytes(), name, nil
 }
 

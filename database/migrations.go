@@ -2891,5 +2891,57 @@ func RunMigrations() error {
 		log.Printf("WhatsApp: izin whatsapp.* diberikan ke admin & superadmin")
 	}
 
+	// ── Kalender bisnis untuk Analisa Bisnis ────────────────────────────────
+	// Hari libur, cuti bersama, libur sekolah, dan kejadian lokal. Dipakai
+	// menskalakan minggu berlibur ke "minggu biasa" sebelum outlet dibandingkan.
+	// Satu tanggal boleh punya beberapa tanda, jadi kuncinya (day, kind).
+	for _, m := range []string{
+		`CREATE TABLE IF NOT EXISTS business_calendar (
+			day        DATE NOT NULL,
+			kind       VARCHAR(20) NOT NULL,
+			name       VARCHAR(150) NOT NULL,
+			source     VARCHAR(10) NOT NULL DEFAULT 'manual',
+			updated_by VARCHAR(100) NOT NULL DEFAULT '',
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			PRIMARY KEY (day, kind)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_business_calendar_day ON business_calendar(day)`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Business calendar migration skipped: %v", err)
+		}
+	}
+	// Isi awal disisipkan SEKALI. Tanpa penanda, hari yang sengaja dihapus
+	// pengguna (misal libur sekolah yang ternyata berbeda di provinsinya) akan
+	// hidup lagi tiap kali aplikasi dinyalakan.
+	var calSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_business_calendar_seed_v1'").Scan(&calSeeded)
+	if calSeeded == 0 {
+		for _, e := range businessCalendarSeed() {
+			DB.Exec(`INSERT INTO business_calendar (day, kind, name, source) VALUES ($1, $2, $3, 'seed') ON CONFLICT DO NOTHING`,
+				e.Day, e.Kind, e.Name)
+		}
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_business_calendar_seed_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Kalender bisnis: isi awal libur 2026 disisipkan")
+	}
+	// Cache narasi AI Analisa Bisnis: satu baris per hash data+model.
+	if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS business_narratives (
+		hash       VARCHAR(64) PRIMARY KEY,
+		model      VARCHAR(60) NOT NULL DEFAULT '',
+		payload    JSONB NOT NULL,
+		created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+	)`); err != nil {
+		log.Printf("Business narratives migration skipped: %v", err)
+	}
+	// Izin mengelola kalender: admin & superadmin (one-shot, marker — paling akhir).
+	var bizManage int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_business_analysis_manage_perm'").Scan(&bizManage)
+	if bizManage == 0 {
+		DB.Exec(`INSERT INTO role_permissions (role, permission)
+			VALUES ('admin', 'reports.business_analysis.manage'), ('superadmin', 'reports.business_analysis.manage') ON CONFLICT DO NOTHING`)
+		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_business_analysis_manage_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+		log.Printf("Permission reports.business_analysis.manage di-seed ke admin & superadmin")
+	}
+
 	return nil
 }

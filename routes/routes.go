@@ -203,6 +203,9 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Analisa Bisnis — RGI/anti-alibi lintas outlet (Laporan → Analisa Bisnis)
 	admin.Get("/business-analysis", middleware.RequirePermission("reports.business_analysis.view"), handlers.GetBusinessAnalysis)
 	admin.Get("/business-analysis/export", middleware.RequirePermission("reports.business_analysis.view"), handlers.ExportBusinessAnalysisExcel)
+	admin.Get("/business-calendar", middleware.RequirePermission("reports.business_analysis.view"), handlers.ListBusinessCalendar)
+	admin.Put("/business-calendar", middleware.RequirePermission("reports.business_analysis.manage"), handlers.UpsertBusinessCalendar)
+	admin.Delete("/business-calendar/:day", middleware.RequirePermission("reports.business_analysis.manage"), handlers.DeleteBusinessCalendar)
 
 	// Kinerja Markom — pemasok angka IG/TikTok untuk Analisa Bisnis.
 	// Melihat dipisah dari mengubah: mendaftarkan akun, mengetik tambalan

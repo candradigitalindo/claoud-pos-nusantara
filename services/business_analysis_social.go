@@ -131,9 +131,13 @@ func AttachBusinessSocial(rep *models.BusinessAnalysis, weeks int) {
 
 	// ── Per outlet ──────────────────────────────────────────────────────────
 	salesGrowthByCode := map[string]*float64{}
+	salesRGIByCode := map[string]*float64{}
+	salesThrByCode := map[string]*float64{}
 	diagByCode := map[string]string{}
 	for _, o := range rep.Outlets {
 		salesGrowthByCode[o.Code] = o.Growth4
+		salesRGIByCode[o.Code] = o.RGI4
+		salesThrByCode[o.Code] = o.Threshold
 		diagByCode[o.Code] = o.Diagnosis
 	}
 
@@ -267,13 +271,17 @@ func AttachBusinessSocial(rep *models.BusinessAnalysis, weeks int) {
 			case bo.ViewsPrev > 0:
 				bo.ReachBasis = "tayangan"
 				bo.ReachGrowth = bizPct(float64(bo.ViewsRecent), float64(bo.ViewsPrev))
+				bo.ReachBand = socReachBand(bo.ViewsRecent, bo.ViewsPrev)
 			case bo.EngPrev > 0:
 				bo.ReachBasis = "interaksi"
 				bo.ReachGrowth = bizPct(float64(bo.EngRecent), float64(bo.EngPrev))
+				bo.ReachBand = socReachBand(bo.EngRecent, bo.EngPrev)
 			}
 		}
 
 		bo.SalesGrowth = salesGrowthByCode[bo.Code]
+		bo.SalesRGI = salesRGIByCode[bo.Code]
+		bo.SalesThreshold = salesThrByCode[bo.Code]
 		bo.Coverage = socCoverage(bo)
 		socJudge(&bo, blockLen)
 		soc.Outlets = append(soc.Outlets, bo)
@@ -346,7 +354,7 @@ func AttachBusinessSocial(rep *models.BusinessAnalysis, weeks int) {
 		}
 	}
 
-	soc.Correlation, soc.CorrCount = socCorrelation(soc.Outlets)
+	soc.Correlation, soc.CorrCount, soc.CorrSignificant = socCorrelation(soc.Outlets)
 
 	socBuildSections(rep, soc)
 	socBuildInsights(rep, soc, diagByCode)
@@ -484,11 +492,30 @@ func socPendekkan(s string, n int) string {
 	return s[:n] + "…"
 }
 
+// socReachBand = pita derau gerak jangkauan, persen: dua galat baku selisih
+// relatif dua hitungan Poisson, minimum 10 poin. Hitungan kecil berayun
+// besar — 108 lawan 81 suka terbaca "turun 25%" padahal itu masih derau.
+func socReachBand(recent, prev int64) *float64 {
+	if prev <= 0 {
+		return nil
+	}
+	a := float64(recent)
+	if a < 1 {
+		a = 1
+	}
+	se := math.Sqrt(1/a+1/float64(prev)) * 100
+	v := round1(math.Max(10, 2*se))
+	return &v
+}
+
 // socJudge menetapkan kuadran dan menulis kalimat pembacaannya.
 //
-// Kalimatnya dirakit dari angka outlet itu sendiri, mengikuti aturan halaman:
-// tidak ada kalimat tetap yang ditanam, karena kalimat tetap terus berbunyi
-// sama setelah keadaannya berubah.
+// Sumbu penjualannya SELISIH outlet dengan outlet pembanding (setara kalender),
+// bukan pertumbuhan mentah: pada bulan yang pasarnya turun semua outlet
+// berpertumbuhan negatif, dan kuadran dari tanda mentah hanya mengulang
+// kalender. Kedua sumbu harus melewati deraunya sendiri sebelum tandanya
+// dibaca sebagai arah — kalau tidak, titik yang menempel di garis nol
+// berpindah kuadran tiap minggu, dan kalimat sebab-akibatnya ikut berbalik.
 func socJudge(bo *models.BizSocialOutlet, blockLen int) {
 	dasar := bo.ReachBasis
 	if dasar == "" {
@@ -501,48 +528,75 @@ func socJudge(bo *models.BizSocialOutlet, blockLen int) {
 		bo.Reading = "Angka medsos outlet ini sudah lebih dari sepekan tidak berhasil diambil, jadi ia tidak ikut dibandingkan. Naik-turun yang terlihat di grafiknya berasal dari pengambilan yang gagal, bukan dari medsosnya."
 		return
 	}
-	if bo.ReachGrowth == nil || bo.SalesGrowth == nil {
+	if bo.ReachGrowth == nil || bo.SalesRGI == nil {
 		bo.Quadrant = models.BizSocKurang
 		bo.QuadrantLabel = "Data Kurang"
 		switch {
-		case bo.ReachGrowth == nil && bo.SalesGrowth == nil:
+		case bo.ReachGrowth == nil && bo.SalesRGI == nil:
 			bo.Reading = fmt.Sprintf("Belum ada %d minggu berisi di kedua sisi — baik medsos maupun penjualan — untuk dibandingkan.", blockLen*2)
 		case bo.ReachGrowth == nil:
-			bo.Reading = fmt.Sprintf("Penjualannya %s, tetapi %s medsos pada %d minggu sebelumnya masih kosong sehingga belum ada pembanding.",
+			bo.Reading = fmt.Sprintf("Penjualannya %s (setara kalender), tetapi %s medsos pada %d minggu sebelumnya masih kosong sehingga belum ada pembanding.",
 				bizNaikTurun(deref(bo.SalesGrowth)), dasar, blockLen)
 			if socSemuaManual(bo.Accounts) {
 				bo.Reading += " Seluruh akun outlet ini angkanya diisi tangan — isi minggu-minggunya di Laporan → Kinerja Markom supaya ia ikut masuk perbandingan."
 			}
 		default:
 			bo.Reading = fmt.Sprintf("%s medsos %s, tetapi outlet ini belum punya riwayat penjualan yang cukup untuk disandingkan.",
-				strings.ToUpper(dasar[:1])+dasar[1:], bizNaikTurun(deref(bo.ReachGrowth)))
+				socKapital(dasar), bizNaikTurun(deref(bo.ReachGrowth)))
 		}
 		return
 	}
 
-	r, s := *bo.ReachGrowth, *bo.SalesGrowth
+	r, sRGI := *bo.ReachGrowth, *bo.SalesRGI
+	rBand := deref(bo.ReachBand)
+	if rBand <= 0 {
+		rBand = 10
+	}
+	sBand := deref(bo.SalesThreshold)
+	if sBand <= 0 {
+		sBand = 10
+	}
+	rSig := math.Abs(r) >= rBand
+	sSig := math.Abs(sRGI) >= sBand
+	selisih := fmt.Sprintf("selisih penjualan dengan outlet lain %s poin", bizNum(sRGI))
+
 	switch {
-	case r >= 0 && s >= 0:
+	case !rSig && !sSig:
+		bo.Quadrant = models.BizSocDatar
+		bo.QuadrantLabel = "Belum Berarti"
+		bo.Reading = fmt.Sprintf("%s medsos %s (derau ±%s%%) dan %s (batas wajar ±%s). Keduanya masih di dalam naik-turun biasanya, jadi belum ada yang bisa disimpulkan dari pasangan ini.",
+			socKapital(dasar), bizNaikTurun(r), bizNum(rBand), selisih, bizNum(sBand))
+	case rSig && !sSig:
+		bo.Quadrant = models.BizSocDatar
+		bo.QuadrantLabel = "Belum Berarti"
+		bo.Reading = fmt.Sprintf("%s medsos %s — itu di luar deraunya — tetapi penjualan outlet ini tetap seirama dengan outlet lain (%s, batas wajar ±%s). Gerak medsos belum terbawa ke penjualan; kalau berlanjut beberapa minggu, pantas ditelusuri.",
+			socKapital(dasar), bizNaikTurun(r), selisih, bizNum(sBand))
+	case !rSig && sSig:
+		bo.Quadrant = models.BizSocDatar
+		bo.QuadrantLabel = "Belum Berarti"
+		bo.Reading = fmt.Sprintf("Penjualan outlet ini bergeser dari outlet lain (%s, di luar batas wajar ±%s), tetapi %s medsosnya %s, masih di dalam derau ±%s%%. Medsos tidak menjelaskan pergeseran ini; sebabnya dicari di outlet.",
+			selisih, bizNum(sBand), dasar, bizNaikTurun(r), bizNum(rBand))
+	case r > 0 && sRGI > 0:
 		bo.Quadrant = models.BizSocSejalan
 		bo.QuadrantLabel = "Sejalan"
-		bo.Reading = fmt.Sprintf("%s medsos %s dan penjualan %s. Keduanya bergerak searah — apa yang dikerjakan Markom dan outlet pada %d minggu terakhir layak diteruskan apa adanya.",
-			socKapital(dasar), bizNaikTurun(r), bizNaikTurun(s), blockLen)
-	case r < 0 && s < 0:
+		bo.Reading = fmt.Sprintf("%s medsos %s dan penjualan outlet ini %s poin di atas outlet lain. Keduanya bergerak searah — apa yang dikerjakan Markom dan outlet pada %d minggu terakhir layak diteruskan apa adanya.",
+			socKapital(dasar), bizNaikTurun(r), bizNum(sRGI), blockLen)
+	case r < 0 && sRGI < 0:
 		bo.Quadrant = models.BizSocSepiDua
 		bo.QuadrantLabel = "Sepi Dua-duanya"
-		bo.Reading = fmt.Sprintf("%s medsos %s dan penjualan %s. Penurunan penjualan di sini punya penjelasan yang bisa dilihat: konten yang sampai ke orang ikut berkurang (%s konten pada %d minggu terakhir, sebelumnya %s). Yang perlu digerakkan lebih dulu programnya, bukan manajer outletnya.",
-			socKapital(dasar), bizNaikTurun(r), bizNaikTurun(s),
+		bo.Reading = fmt.Sprintf("%s medsos %s dan penjualan outlet ini %s poin di bawah outlet lain. Ketertinggalan di sini punya penjelasan yang bisa dilihat: konten yang sampai ke orang ikut berkurang (%s konten pada %d minggu terakhir, sebelumnya %s). Yang perlu digerakkan lebih dulu programnya untuk outlet ini, bukan manajernya.",
+			socKapital(dasar), bizNaikTurun(r), bizNum(-sRGI),
 			socRibu(bo.PostsRecent), blockLen, socRibu(bo.PostsPrev))
-	case r >= 0 && s < 0:
+	case r > 0 && sRGI < 0:
 		bo.Quadrant = models.BizSocRamaiSepi
 		bo.QuadrantLabel = "Ramai tapi Sepi"
-		bo.Reading = fmt.Sprintf("%s medsos %s, tetapi penjualan justru %s. Orang tetap melihat — yang tidak terjadi adalah mereka datang atau jadi membeli. Perhentiannya ada di outlet, bukan di promosinya.",
-			socKapital(dasar), bizNaikTurun(r), bizNaikTurun(s))
+		bo.Reading = fmt.Sprintf("%s medsos %s, tetapi penjualan outlet ini %s poin di bawah outlet lain. Orang tetap melihat — yang tidak terjadi adalah mereka datang atau jadi membeli. Perhentiannya ada di outlet, bukan di promosinya.",
+			socKapital(dasar), bizNaikTurun(r), bizNum(-sRGI))
 	default:
 		bo.Quadrant = models.BizSocTanpaMed
 		bo.QuadrantLabel = "Jalan Tanpa Medsos"
-		bo.Reading = fmt.Sprintf("Penjualan %s padahal %s medsos %s. Penjualan outlet ini sedang tidak bergantung pada medsos — pantas ditelusuri apa yang sebenarnya mendatangkan pembeli ke sini.",
-			bizNaikTurun(s), dasar, bizNaikTurun(r))
+		bo.Reading = fmt.Sprintf("Penjualan outlet ini %s poin di atas outlet lain padahal %s medsosnya %s. Penjualan outlet ini sedang tidak bergantung pada medsos — pantas ditelusuri apa yang sebenarnya mendatangkan pembeli ke sini.",
+			bizNum(sRGI), dasar, bizNaikTurun(r))
 	}
 }
 
@@ -568,25 +622,25 @@ func socKapital(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-// socCorrelation menghitung keeratan gerak medsos dengan gerak penjualan
-// antar-outlet (Pearson).
+// socCorrelation menghitung keeratan gerak medsos dengan selisih penjualan
+// antar-outlet (Pearson), beserta apakah ia melewati uji-t 5%.
 //
-// Sengaja menolak menghitung di bawah tiga outlet: korelasi dari dua titik
-// selalu tepat +1 atau −1, apa pun angkanya. Menampilkannya akan memberi kesan
-// hubungan yang sempurna padahal yang terjadi cuma "dua titik selalu bisa
-// dilewati satu garis".
-func socCorrelation(outlets []models.BizSocialOutlet) (*float64, int) {
+// Menolak menghitung di bawah tiga outlet: korelasi dari dua titik selalu
+// tepat ±1. Dan di atas itu pun, dengan delapan outlet korelasi di bawah ±0,7
+// tidak bisa dibedakan dari kebetulan — angkanya tetap ditampilkan, tetapi
+// katanya harus berbunyi "belum berarti".
+func socCorrelation(outlets []models.BizSocialOutlet) (*float64, int, bool) {
 	var xs, ys []float64
 	for _, o := range outlets {
-		if o.Stale || o.ReachGrowth == nil || o.SalesGrowth == nil {
+		if o.Stale || o.ReachGrowth == nil || o.SalesRGI == nil {
 			continue
 		}
 		xs = append(xs, *o.ReachGrowth)
-		ys = append(ys, *o.SalesGrowth)
+		ys = append(ys, *o.SalesRGI)
 	}
 	n := len(xs)
 	if n < 3 {
-		return nil, n
+		return nil, n, false
 	}
 
 	var mx, my float64
@@ -605,10 +659,37 @@ func socCorrelation(outlets []models.BizSocialOutlet) (*float64, int) {
 		dy += b * b
 	}
 	if dx == 0 || dy == 0 {
-		return nil, n
+		return nil, n, false
 	}
-	v := math.Round(num/math.Sqrt(dx*dy)*100) / 100
-	return &v, n
+	r := num / math.Sqrt(dx*dy)
+	v := math.Round(r*100) / 100
+	return &v, n, socCorrSignificant(r, n)
+}
+
+// socCorrSignificant: uji-t dua sisi 5% untuk koefisien korelasi r dari n
+// pasangan. Nilai kritis t untuk derajat bebas n−2 (tabel kecil; di atas 30
+// dipakai 2,04).
+func socCorrSignificant(r float64, n int) bool {
+	if n < 3 || math.Abs(r) >= 1 {
+		return n >= 3 && math.Abs(r) >= 1
+	}
+	df := n - 2
+	crit := map[int]float64{1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36, 8: 2.31,
+		9: 2.26, 10: 2.23, 11: 2.20, 12: 2.18, 13: 2.16, 14: 2.14, 15: 2.13, 16: 2.12, 17: 2.11, 18: 2.10,
+		19: 2.09, 20: 2.09, 25: 2.06, 30: 2.04}
+	tc, ok := crit[df]
+	if !ok {
+		switch {
+		case df > 30:
+			tc = 2.04
+		case df > 20:
+			tc = 2.06
+		default:
+			tc = 2.09
+		}
+	}
+	t := math.Abs(r) * math.Sqrt(float64(df)/(1-r*r))
+	return t >= tc
 }
 
 // ── Narasi bagian medsos ─────────────────────────────────────────────────────
@@ -688,19 +769,25 @@ func socBuildSections(rep *models.BusinessAnalysis, soc *models.BizSocial) {
 	if n := jml[models.BizSocTanpaMed]; n > 0 {
 		bagian = append(bagian, fmt.Sprintf("%d outlet penjualannya naik tanpa dukungan medsos", n))
 	}
+	if n := jml[models.BizSocDatar]; n > 0 {
+		bagian = append(bagian, fmt.Sprintf("%d outlet belum bergerak berarti di salah satu sisinya", n))
+	}
 
 	lead = "Belum ada outlet yang kedua sisinya cukup untuk disandingkan."
 	if len(bagian) > 0 {
 		lead = socKapital(strings.Join(bagian, ", ")) + "."
 	}
-	if soc.Correlation != nil {
-		lead += fmt.Sprintf(" Dari %d outlet yang datanya lengkap, keeratan gerak medsos dengan gerak penjualan %s (%s).",
+	if soc.Correlation != nil && soc.CorrSignificant {
+		lead += fmt.Sprintf(" Dari %d outlet yang datanya lengkap, keeratan gerak medsos dengan selisih penjualan %s (%s) — cukup kuat untuk tidak disebut kebetulan.",
 			soc.CorrCount, bizNum(*soc.Correlation), socKeeratan(*soc.Correlation))
+	} else if soc.Correlation != nil {
+		lead += fmt.Sprintf(" Dari %d outlet yang datanya lengkap, keeratan gerak medsos dengan selisih penjualan %s — dengan outlet sesedikit itu, angka ini belum bisa dibedakan dari kebetulan.",
+			soc.CorrCount, bizNum(*soc.Correlation))
 	} else if soc.CorrCount > 0 {
 		lead += fmt.Sprintf(" Outlet yang kedua sisinya lengkap baru %d — keeratannya belum dihitung karena di bawah tiga outlet angkanya selalu keluar sempurna tanpa berarti apa-apa.", soc.CorrCount)
 	}
 	add("medsos_silang", "Medsos dan Penjualan Disandingkan", lead,
-		"Sumbu mendatar = gerak medsos, sumbu tegak = gerak penjualan, keduanya membandingkan blok yang sama persis. Kanan-bawah: orang melihat tetapi tidak jadi datang — perhentiannya di outlet. Kiri-bawah: dua-duanya sepi — mesin promosinya yang berhenti. Titik yang menempel di garis tengah bisa berpindah kuadran minggu depan; yang layak ditindak titik yang jelas jauh dari garis.")
+		"Sumbu mendatar = gerak jangkauan medsos; sumbu tegak = selisih penjualan outlet ini dengan outlet pembanding (setara kalender, poin) — bukan pertumbuhan mentah, supaya bulan yang pasarnya turun tidak melempar semua titik ke bawah sekaligus. Keduanya membandingkan blok yang sama persis. Kanan-bawah: orang melihat tetapi tidak jadi datang — perhentiannya di outlet. Kiri-bawah: dua-duanya sepi — mesin promosinya yang berhenti. Titik abu-abu \"Belum Berarti\" masih di dalam deraunya di salah satu sisi, jadi belum boleh dibaca sebagai arah.")
 }
 
 // socKeeratan menerjemahkan koefisien korelasi jadi kata. Angka −1..1 tidak
@@ -798,6 +885,10 @@ func socBuildNotes(soc *models.BizSocial) {
 		"Satu konten dihitung pada minggu ia TERBIT, memakai angka tontonnya hari ini. Konten lama yang masih ditonton karena itu terus menambah angka minggu terbitnya — yang diukur di sini kinerja konten minggu tersebut, bukan lalu lintas yang terjadi di minggu itu.",
 		"Minggu medsos memakai batas yang sama persis dengan minggu penjualan di halaman ini (Senin–Minggu, zona waktu aplikasi, minggu berjalan dikecualikan). Tanpa batas yang sama, dua grafik yang ditumpuk tidak benar-benar sejajar.",
 		"Angka yang diketik manual di halaman Kinerja Markom menimpa hasil tarikan pada minggu dan kolom yang diisi saja; sisanya tetap dari tarikan. Minggu yang mengandung angka ketikan diberi tanda di grafik.",
+		"Gerak jangkauan baru dibaca sebagai arah kalau melewati pita deraunya — dua galat baku dari besar hitungannya sendiri, minimum 10 poin. Seratus suka lawan delapan puluh suka berayun 25% hanya karena hitungannya kecil, dan itu belum berarti apa-apa.",
+		"Sumbu penjualan pada penyandingan memakai selisih outlet dengan outlet pembanding (setara kalender), bukan pertumbuhan mentahnya. Kalau tidak, pada bulan tanpa libur semua outlet jatuh ke kuadran bawah bersama-sama, dan kuadrannya hanya mengulang kalender.",
+		"Pembacaan pengikut yang diserahkan platform dalam bentuk bulat (\"1,2M\") dipakai hanya bila tidak ada pembacaan persis pada minggu itu; selisih antar minggu dari angka bulat bisa melahirkan lonjakan puluhan ribu yang tidak pernah terjadi.",
+		"Untuk akun yang punya rincian konten, jumlah tonton dibaca hari ini untuk konten yang terbit minggu itu — konten yang lebih baru punya waktu lebih sedikit mengumpulkan tonton, jadi blok terakhir cenderung terbaca lebih rendah daripada kenyataannya. Bacalah gerak tayangan yang kecil dengan hati-hati.",
 	)
 	if len(soc.StaleAccounts) > 0 {
 		soc.Notes = append(soc.Notes,

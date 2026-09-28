@@ -26,6 +26,11 @@
           <AppSelect v-model="weeks" :options="WEEK_OPTIONS" class="min-w-45" />
         </div>
 
+        <div class="flex flex-col gap-1">
+          <label class="text-sm font-medium text-gray-700">Pembanding</label>
+          <AppSelect v-model="blok" :options="BLOK_OPTIONS" class="min-w-56" />
+        </div>
+
         <button @click="fetchData" :disabled="loading"
           class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-60">
           Tampilkan
@@ -49,10 +54,19 @@
           {{ busy.pdf ? 'Menyusun…' : 'PDF + Grafik' }}
         </button>
 
-        <p v-if="data" class="text-xs text-gray-500 ml-auto text-right leading-relaxed">
-          {{ data.weeks_count }} minggu penuh<br>
-          {{ fmtDate(data.period_from) }} – {{ fmtDate(data.period_to) }}
-        </p>
+        <div v-if="data" class="ml-auto text-right">
+          <p class="text-xs text-gray-500 leading-relaxed">
+            {{ data.weeks_count }} minggu digambar<span v-if="data.window_weeks && data.window_weeks !== data.weeks_count"> · dihitung dari {{ data.window_weeks }} minggu</span><br>
+            {{ fmtDate(data.period_from) }} – {{ fmtDate(data.period_to) }}
+          </p>
+          <!-- Asal teks: pembaca berhak tahu kalimatnya ditulis AI dari angka,
+               sedang disusun, atau masih templat. -->
+          <p v-if="data.narrative" class="mt-1 inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-medium"
+            :class="NARASI[data.narrative.status]?.chip ?? 'bg-gray-100 text-gray-600'" :title="data.narrative.note || ''">
+            <AppSpinner v-if="data.narrative.status === 'generating'" size="sm" />
+            {{ NARASI[data.narrative.status]?.label ?? data.narrative.status }}<span v-if="data.narrative.status === 'ai' && data.narrative.generated_at"> · {{ data.narrative.generated_at }}</span>
+          </p>
+        </div>
       </div>
     </AppCard>
 
@@ -138,13 +152,20 @@
                 <td class="py-2.5 px-3 text-right tabular-nums text-gray-700 whitespace-nowrap">{{ formatRupiah(o.net) }}</td>
                 <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
                   <span class="font-medium" :class="numClass(o.growth4)">{{ pp(o.growth4, '%') }}</span>
+                  <span v-if="o.growth_raw4 != null && o.growth_raw4 !== o.growth4" class="block text-[11px] text-gray-400">
+                    mentah {{ pp(o.growth_raw4, '%') }}
+                  </span>
                   <span v-if="o.peer_growth4 != null" class="block text-[11px] text-gray-400">
-                    lainnya {{ pp(o.peer_growth4, '%') }}
+                    patokan {{ pp(o.peer_growth4, '%') }}
                   </span>
                 </td>
                 <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
                   <span class="font-semibold" :class="rgiClass(o)">{{ pp(o.rgi4, '') }}</span>
                   <span v-if="o.threshold != null" class="block text-[11px] text-gray-400">batas ±{{ n1(o.threshold) }}</span>
+                  <span v-if="o.consistency_need" class="block text-[11px]"
+                    :class="o.consistency >= o.consistency_need ? 'text-gray-500' : 'text-amber-600'">
+                    searah {{ o.consistency }}/{{ data.block_weeks }} mgg
+                  </span>
                 </td>
                 <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap"
                   :class="o.gap_net == null ? 'text-gray-300' : (o.gap_net >= 0 ? 'text-emerald-600' : 'text-red-600')">
@@ -157,6 +178,81 @@
                 </td>
                 <td class="py-2.5 px-3">
                   <span class="text-xs font-medium whitespace-nowrap" :class="o.owner === '—' ? 'text-gray-300' : 'text-red-600'">{{ o.owner }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </AppCard>
+
+      <!-- ── Tren, perkiraan, pola hari (model statistik) ──────── -->
+      <!--
+        Angkanya dari layanan analitik Python, kalimatnya dirakit backend.
+        Kartu ini hilang seluruhnya bila layanannya tidak aktif — tabel kosong
+        akan terbaca seolah tidak ada tren, padahal tidak dihitung.
+      -->
+      <AppCard v-if="model?.enabled" id="model-statistik">
+        <SectionHead :section="bagian('model')" />
+
+        <!-- Di layar kecil: kartu per outlet. Tabel lima kolom dengan kalimat
+             panjang di ponsel berubah jadi baris-baris setinggi layar. -->
+        <div class="sm:hidden mt-3 space-y-2">
+          <div v-for="o in data.outlets" :key="o.outlet_id" class="rounded-lg border border-gray-200 p-3" @click="bukaOutlet(o.code)">
+            <div class="flex items-baseline justify-between gap-2">
+              <p class="font-medium text-gray-900 truncate">{{ o.name }} <span class="text-[11px] text-gray-400">{{ o.code }}</span></p>
+              <p v-if="o.forecast" class="shrink-0 text-sm font-semibold tabular-nums text-gray-900">{{ ringkasRp(o.forecast.total_raw) }}</p>
+            </div>
+            <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500 tabular-nums">
+              <span v-if="o.trend">tren <b :class="o.trend.significant ? numClass(o.trend.slope_pct) : 'text-gray-400'">{{ pp(o.trend.slope_pct, '%') }}</b>/mgg{{ o.trend.significant ? '' : ' (belum nyata)' }}</span>
+              <span v-if="o.trend && o.trend.recent_weeks">8 mgg <b :class="o.trend.recent_significant ? numClass(o.trend.recent_slope_pct) : 'text-gray-400'">{{ pp(o.trend.recent_slope_pct, '%') }}</b></span>
+              <span v-if="o.forecast">perkiraan {{ ringkasRp(o.forecast.total_lo) }} – {{ ringkasRp(o.forecast.total_hi) }}</span>
+            </div>
+            <p v-if="o.model_notes?.length" class="mt-1.5 text-[13px] leading-relaxed text-gray-600">{{ catatanModelRingkas(o) }}</p>
+            <p v-else class="mt-1.5 text-xs text-gray-400">riwayat belum cukup</p>
+          </div>
+        </div>
+
+        <div class="hidden sm:block overflow-x-auto mt-3">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-200">
+                <th v-for="h in KOLOM_MODEL" :key="h.teks"
+                  class="py-3 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
+                  :class="h.kanan ? 'text-right' : 'text-left'">{{ h.teks }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="o in data.outlets" :key="o.outlet_id" class="align-top cursor-pointer hover:bg-gray-50" @click="bukaOutlet(o.code)">
+                <td class="py-2.5 px-3">
+                  <div class="font-medium text-gray-900 truncate max-w-52" :title="o.name">{{ o.name }}</div>
+                  <div class="text-[11px] text-gray-400">{{ o.code }}</div>
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                  <template v-if="o.trend">
+                    <span class="font-medium" :class="o.trend.significant ? numClass(o.trend.slope_pct) : 'text-gray-400'">{{ pp(o.trend.slope_pct, '%') }}</span>
+                    <span class="block text-[11px]" :class="o.trend.significant ? 'text-gray-500' : 'text-gray-400'">{{ o.trend.significant ? 'nyata' : 'belum nyata' }} · {{ o.trend.weeks }} mgg</span>
+                  </template>
+                  <span v-else class="text-gray-300">—</span>
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                  <template v-if="o.trend && o.trend.recent_weeks">
+                    <span class="font-medium" :class="o.trend.recent_significant ? numClass(o.trend.recent_slope_pct) : 'text-gray-400'">{{ pp(o.trend.recent_slope_pct, '%') }}</span>
+                    <span class="block text-[11px] text-gray-400">{{ o.trend.recent_significant ? 'nyata' : 'belum nyata' }} · {{ o.trend.recent_weeks }} mgg</span>
+                  </template>
+                  <span v-else class="text-gray-300">—</span>
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                  <template v-if="o.forecast">
+                    <span class="font-medium text-gray-900">{{ formatRupiah(o.forecast.total_raw) }}</span>
+                    <span class="block text-[11px] text-gray-400">{{ ringkasRp(o.forecast.total_lo) }} – {{ ringkasRp(o.forecast.total_hi) }}</span>
+                  </template>
+                  <span v-else class="text-gray-300">—</span>
+                </td>
+                <td class="py-2.5 px-3 max-w-md">
+                  <p v-if="o.model_notes?.length" class="text-[13px] leading-relaxed text-gray-600" :title="o.model_notes.join('\n\n')">
+                    {{ catatanModelRingkas(o) }}
+                  </p>
+                  <span v-else class="text-xs text-gray-400">riwayat belum cukup</span>
                 </td>
               </tr>
             </tbody>
@@ -239,7 +335,9 @@
                     <span v-if="o.reach_basis" class="block text-[11px] text-gray-400">{{ o.reach_basis }}</span>
                   </td>
                   <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
-                    <span class="font-medium" :class="numClass(o.sales_growth)">{{ pp(o.sales_growth, '%') }}</span>
+                    <span class="font-medium" :class="numClass(o.sales_rgi)">{{ pp(o.sales_rgi, '') }}</span>
+                    <span class="block text-[11px] text-gray-400">sendiri {{ pp(o.sales_growth, '%') }}</span>
+                    <span v-if="o.sales_threshold != null" class="block text-[11px] text-gray-400">batas ±{{ n1(o.sales_threshold) }}</span>
                   </td>
                   <td class="py-2.5 px-3 max-w-96">
                     <span class="text-[11px] font-semibold px-2 py-1 rounded whitespace-nowrap"
@@ -313,6 +411,15 @@
             </div>
           </div>
 
+          <div v-if="detail.model_notes?.length" class="rounded-lg border border-sky-100 bg-sky-50/70 p-4">
+            <p class="text-[11px] font-semibold uppercase tracking-wider mb-1.5 text-sky-800">Pengamatan model: tren, perkiraan, pola hari</p>
+            <ul class="space-y-1.5">
+              <li v-for="(n, i) in detail.model_notes" :key="i" class="flex gap-2 text-sm leading-relaxed text-sky-900">
+                <span class="shrink-0 text-sky-300">•</span><span>{{ n }}</span>
+              </li>
+            </ul>
+          </div>
+
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
@@ -330,6 +437,11 @@
                       class="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">!</span>
                   </td>
                   <td class="py-2.5 px-3 text-right tabular-nums text-gray-900">{{ formatRupiah(w.net) }}</td>
+                  <td class="py-2.5 px-3 text-right tabular-nums"
+                    :class="w.cal_factor && Math.abs(w.cal_factor - 1) >= 0.02 ? 'text-sky-700' : 'text-gray-400'">
+                    {{ formatRupiah(w.net_adj) }}
+                    <span v-if="w.calendar" class="block text-[10px] leading-snug text-sky-600 max-w-56 truncate" :title="w.calendar">{{ w.calendar }}</span>
+                  </td>
                   <td class="py-2.5 px-3 text-right tabular-nums text-gray-500">{{ w.trx.toLocaleString('id-ID') }}</td>
                   <td class="py-2.5 px-3 text-right tabular-nums text-gray-500">{{ w.trx ? formatRupiah(w.net / w.trx) : '—' }}</td>
                   <td class="py-2.5 px-3 text-right tabular-nums" :class="numClass(w.growth)">{{ pp(w.growth, '%') }}</td>
@@ -337,6 +449,67 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      </AppCard>
+
+      <!-- ── Kalender libur & hari khusus ──────────────────────── -->
+      <!--
+        Kalender ikut menentukan vonis (minggu berlibur diskalakan ke minggu
+        biasa), jadi pembaca harus bisa melihat dan memperbaikinya di halaman
+        yang sama. Isinya dari backend; yang ada di sini hanya formulirnya.
+      -->
+      <AppCard id="kalender-bisnis">
+        <SectionHead :section="bagian('kalender')" />
+
+        <div v-if="modelKalender" class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div v-for="k in kartuKalender" :key="k.label" class="rounded-lg bg-sky-50/70 p-2.5">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-sky-700">{{ k.label }}</p>
+            <p class="mt-0.5 text-base font-bold tabular-nums text-sky-900">{{ k.nilai }}</p>
+            <p class="text-[10px] leading-snug text-sky-700/80">{{ k.kaki }}</p>
+          </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 lg:grid-cols-5">
+          <div class="min-w-0 lg:col-span-3">
+            <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Hari bertanda</p>
+              <label class="flex items-center gap-1.5 text-xs leading-snug text-gray-500 select-none">
+                <input v-model="kalenderSemua" type="checkbox" class="shrink-0 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+                <span>libur sekolah per hari</span>
+              </label>
+            </div>
+            <p v-if="!kalenderTampil.length" class="mt-2 text-sm text-gray-500">Belum ada hari bertanda pada rentang ini.</p>
+            <ul v-else class="mt-2 max-h-72 overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-200">
+              <li v-for="k in kalenderTampil" :key="k.day + k.kind" class="px-3 py-2 text-sm">
+                <div class="flex items-center gap-2">
+                  <span class="shrink-0 whitespace-nowrap tabular-nums text-gray-700">{{ fmtHari(k.day) }}</span>
+                  <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="WARNA_KAL[k.kind] ?? 'bg-gray-100 text-gray-600'">{{ k.kind_label }}</span>
+                  <span v-if="k.jumlah > 1" class="text-xs text-gray-400">{{ k.jumlah }} hari</span>
+                  <span v-if="k.source === 'seed'" class="text-[10px] text-gray-400">bawaan</span>
+                  <button v-if="bolehKelolaKalender && k.jumlah === 1" @click="hapusHari(k)" :disabled="busy.kalender"
+                    class="ml-auto shrink-0 rounded px-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50" title="Hapus tanda ini">hapus</button>
+                </div>
+                <p class="mt-0.5 break-words leading-snug text-gray-800">{{ k.name }}</p>
+              </li>
+            </ul>
+          </div>
+
+          <div v-if="bolehKelolaKalender" class="min-w-0 lg:col-span-2">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Tambah / ubah tanda</p>
+            <div class="mt-2 space-y-2 rounded-lg border border-gray-200 bg-gray-50/60 p-3">
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <AppInput v-model="formKal.day" type="date" label="Tanggal" />
+                <AppInput v-model="formKal.to" type="date" label="Sampai (opsional)" />
+              </div>
+              <AppSelect v-model="formKal.kind" :options="OPSI_KIND" label="Jenis" />
+              <AppInput v-model="formKal.name" label="Nama" placeholder="mis. Libur sekolah Sumut, Jalan ditutup" />
+              <div class="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-[11px] leading-snug text-gray-500">Rentang tanggal menandai tiap harinya. Kejadian lokal hanya jadi catatan, tidak mengubah bobot.</p>
+                <AppButton size="sm" class="shrink-0 self-end sm:self-auto" :loading="busy.kalender" :disabled="!formKal.day" @click="simpanHari">Simpan</AppButton>
+              </div>
+              <p v-if="kalenderMsg" class="text-xs" :class="kalenderMsg.startsWith('Gagal') ? 'text-red-600' : 'text-emerald-700'">{{ kalenderMsg }}</p>
+            </div>
           </div>
         </div>
       </AppCard>
@@ -380,14 +553,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, h } from 'vue'
+import { ref, reactive, computed, onMounted, h } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { apiClient } from '@/api/client.js'
+import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah, formatDateStr } from '@/utils/format.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppSpinner from '@/components/ui/AppSpinner.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import AppInput from '@/components/ui/AppInput.vue'
+import AppButton from '@/components/ui/AppButton.vue'
 
 // Tiap grafik diberi id supaya gambarnya bisa diambil untuk PDF
 // (ApexCharts.exec(id, 'dataURI')).
@@ -407,25 +583,58 @@ const WEEK_OPTIONS = [
   { value: 52, label: '52 minggu terakhir' },
 ]
 
+// Panjang blok pembanding. 4 minggu = satu bulan bisnis, penilaian yang
+// tenang. 2 minggu = lebih cepat menangkap perubahan, tetapi batas wajarnya
+// sekitar 1,4 kali lebih lebar dan vonis butuh kedua minggu searah.
+const BLOK_OPTIONS = [
+  { value: 4, label: '4 minggu vs 4 minggu sebelumnya' },
+  { value: 2, label: '2 minggu vs 2 minggu (lebih cepat, lebih goyah)' },
+]
+
 const data     = ref(null)
 const loading  = ref(false)
 const errorMsg = ref('')
 const weeks    = ref(12)
-const busy     = ref({ excel: false, pdf: false })
+const blok     = ref(4)
+const busy     = ref({ excel: false, pdf: false, kalender: false })
 
-onMounted(fetchData)
+const auth = useAuthStore()
+const bolehKelolaKalender = computed(() => auth.hasPermission('reports.business_analysis.manage'))
 
-async function fetchData() {
-  loading.value = true
+onMounted(() => { fetchData(); muatKalender() })
+
+// Narasi AI dibuat di latar saat data hari ini belum punya narasi. Selama
+// statusnya "generating", halaman memuat ulang sendiri tiap 30 detik (paling
+// banyak 30 kali, 15 menit) sampai narasinya jadi — pembaca tidak perlu
+// menekan apa pun. Penyedia gratis dibatasi per menit, jadi butuh beberapa menit.
+const NARASI = {
+  ai:         { label: 'Narasi ditulis AI dari angka periode ini', chip: 'bg-violet-100 text-violet-800' },
+  generating: { label: 'Narasi AI sedang disusun…',                chip: 'bg-amber-100 text-amber-800' },
+  partial:    { label: 'Sebagian narasi AI, sisanya menyusul',       chip: 'bg-sky-100 text-sky-800' },
+  template:   { label: 'Narasi templat',                            chip: 'bg-gray-100 text-gray-600' },
+  error:      { label: 'Narasi AI gagal, memakai templat',          chip: 'bg-red-100 text-red-700' },
+}
+let narasiPolls = 0
+let narasiTimer = null
+function jadwalkanMuatUlangNarasi() {
+  if (narasiTimer) { clearTimeout(narasiTimer); narasiTimer = null }
+  if (data.value?.narrative?.status !== 'generating' || narasiPolls >= 30) return
+  narasiPolls += 1
+  narasiTimer = setTimeout(() => fetchData(true), 30000)
+}
+
+async function fetchData(diam = false) {
+  if (!diam) { loading.value = true; narasiPolls = 0 }
   errorMsg.value = ''
   try {
     // apiClient sudah membuka envelope { success, data } → ini langsung payload.
-    data.value = await apiClient.get('/admin/business-analysis', { params: { weeks: weeks.value } })
+    data.value = await apiClient.get('/admin/business-analysis', { params: { weeks: weeks.value, block: blok.value }, timeout: 60000 })
     pilihOutletAwal()
+    jadwalkanMuatUlangNarasi()
   } catch (err) {
-    errorMsg.value = err?.message ?? 'Gagal memuat analisa bisnis.'
+    if (!diam) errorMsg.value = err?.message ?? 'Gagal memuat analisa bisnis.'
   } finally {
-    loading.value = false
+    if (!diam) loading.value = false
   }
 }
 
@@ -469,6 +678,7 @@ function rgiClass(o) {
 const DIAG = {
   UNGGUL:       { chip: 'bg-emerald-100 text-emerald-700', color: '#059669' },
   TERTINGGAL:   { chip: 'bg-red-100 text-red-700',         color: '#dc2626' },
+  PANTAU:       { chip: 'bg-amber-100 text-amber-800',     color: '#f59e0b' },
   SEIRAMA:      { chip: 'bg-gray-100 text-gray-600',       color: '#9ca3af' },
   SINYAL_LEMAH: { chip: 'bg-amber-100 text-amber-700',     color: '#d97706' },
   DATA_KURANG:  { chip: 'bg-gray-100 text-gray-500',       color: '#d1d5db' },
@@ -583,7 +793,9 @@ const groupOpts = computed(() => {
         formatter: (v, { dataPointIndex }) => {
           const g = pts[dataPointIndex]
           const tag = g?.is_group_event ? ' · minggu tidak normal' : ''
-          return `${v > 0 ? '+' : ''}${n1(v)}%${tag}`
+          const raw = g?.growth_raw != null && g.growth_raw !== g.growth ? ` · mentah ${pp(g.growth_raw, '%')}` : ''
+          const kal = g?.calendar ? ` · ${g.calendar}` : ''
+          return `${v > 0 ? '+' : ''}${n1(v)}%${raw}${kal}${tag}`
         },
       },
     },
@@ -891,15 +1103,16 @@ const KUADRAN = {
   SEPI_DUANYA:  { color: '#7c3aed', chip: 'bg-violet-100 text-violet-700' },
   RAMAI_SEPI:   { color: '#e11d48', chip: 'bg-rose-100 text-rose-700' },
   TANPA_MEDSOS: { color: '#0891b2', chip: 'bg-cyan-100 text-cyan-700' },
+  DATAR:        { color: '#9ca3af', chip: 'bg-gray-100 text-gray-600' },
   DATA_KURANG:  { color: '#cbd5e1', chip: 'bg-gray-100 text-gray-500' },
 }
-const KUADRAN_URUT = ['SEJALAN', 'SEPI_DUANYA', 'RAMAI_SEPI', 'TANPA_MEDSOS']
+const KUADRAN_URUT = ['SEJALAN', 'SEPI_DUANYA', 'RAMAI_SEPI', 'TANPA_MEDSOS', 'DATAR']
 
 const medSilangKelompok = computed(() => {
   const byQ = {}
   for (const o of medsos.value?.outlets ?? []) {
-    if (o.reach_growth == null || o.sales_growth == null || o.quadrant === 'DATA_KURANG') continue
-    ;(byQ[o.quadrant] ??= []).push({ x: o.reach_growth, y: o.sales_growth, code: o.code, label: o.quadrant_label })
+    if (o.reach_growth == null || o.sales_rgi == null || o.quadrant === 'DATA_KURANG') continue
+    ;(byQ[o.quadrant] ??= []).push({ x: o.reach_growth, y: o.sales_rgi, code: o.code, label: o.quadrant_label })
   }
   return KUADRAN_URUT.filter(k => byQ[k]).map(k => ({ kunci: k, titik: byQ[k] }))
 })
@@ -946,8 +1159,8 @@ const medSilangOpts = computed(() => ({
   yaxis: {
     tickAmount: 5,
     min: medSilangY.value.min, max: medSilangY.value.max,
-    title: { text: '← penjualan turun     ·     naik →', style: { fontSize: '11px', fontWeight: 500, color: '#6b7280' } },
-    labels: { formatter: v => `${Number(v).toFixed(0)}%`, style: { fontSize: '11px' } },
+    title: { text: '← penjualan di bawah outlet lain     ·     di atas →', style: { fontSize: '11px', fontWeight: 500, color: '#6b7280' } },
+    labels: { formatter: v => `${Number(v).toFixed(0)}`, style: { fontSize: '11px' } },
   },
   annotations: {
     xaxis: [{
@@ -956,14 +1169,14 @@ const medSilangOpts = computed(() => ({
     }],
     yaxis: [{
       y: 0, borderColor: '#94a3b8', strokeDashArray: 4,
-      label: { text: 'penjualan tidak berubah', style: { fontSize: '10px', color: '#64748b', background: 'transparent' } },
+      label: { text: 'sama dengan outlet lain', style: { fontSize: '10px', color: '#64748b', background: 'transparent' } },
     }],
   },
   tooltip: {
     custom: ({ seriesIndex, dataPointIndex, w }) => {
       const p = w.config.series[seriesIndex].data[dataPointIndex]
       return `<div class="px-2 py-1 text-xs">
-        <b>${p.code}</b><br>Medsos: ${p.x > 0 ? '+' : ''}${n1(p.x)}%<br>Penjualan: ${p.y > 0 ? '+' : ''}${n1(p.y)}%<br>${p.label}
+        <b>${p.code}</b><br>Medsos: ${p.x > 0 ? '+' : ''}${n1(p.x)}%<br>Selisih penjualan: ${p.y > 0 ? '+' : ''}${n1(p.y)} poin<br>${p.label}
       </div>`
     },
   },
@@ -984,7 +1197,7 @@ const KOLOM_MEDSOS = [
   { teks: 'Pengikut', kanan: true },
   { teks: 'Konten', kanan: true },
   { teks: 'Jangkauan', kanan: true },
-  { teks: 'Penjualan', kanan: true },
+  { teks: 'Selisih Penjualan', kanan: true },
   { teks: 'Pembacaan' },
 ]
 
@@ -1007,16 +1220,19 @@ const kartu = computed(() => {
   if (!d) return []
   const n = d.panel_codes?.length ?? 0
   return [
-    { label: 'Gerak Pasar', nilai: pp(d.group_growth4, '%'),
+    { label: 'Gerak Pasar (setara kalender)', nilai: pp(d.group_growth4, '%'),
       warnaLabel: 'text-gray-500', warnaNilai: numClass(d.group_growth4),
-      kaki: `${d.block_weeks} minggu terakhir vs ${d.block_weeks} sebelumnya`
+      kaki: `${d.block_weeks} mgg vs ${d.block_weeks} mgg sebelumnya`
+            + (d.group_growth_raw4 != null && d.group_growth_raw4 !== d.group_growth4 ? ` · mentah ${pp(d.group_growth_raw4, '%')}` : '')
+            + (d.calendar_effect != null && Math.abs(d.calendar_effect) >= 0.5 ? ` · kalender ${n1(Math.abs(d.calendar_effect))} poin` : '')
             + (d.market_band != null ? ` · batas ±${n1(d.market_band)}` : '') },
     { label: 'Lebih Baik', nilai: d.leading.length,
       warnaLabel: 'text-emerald-600', warnaNilai: 'text-emerald-600',
       kaki: d.leading.join(', ') || 'tidak ada' },
     { label: 'Tertinggal', nilai: d.lagging.length,
       warnaLabel: 'text-red-600', warnaNilai: 'text-red-600',
-      kaki: d.lagging.join(', ') || 'tidak ada' },
+      kaki: (d.lagging.join(', ') || 'tidak ada')
+            + (d.watch?.length ? ` · dipantau: ${d.watch.join(', ')}` : '') },
     { label: 'Outlet Pembanding', nilai: n,
       warnaLabel: 'text-gray-500', warnaNilai: 'text-gray-900',
       kaki: n ? `tiap outlet dinilai lawan ${n - 1} lainnya` : 'belum ada' },
@@ -1036,9 +1252,32 @@ const KOLOM = [
   { teks: 'Kesimpulan' },
   { teks: 'Yang Bertindak' },
 ]
+const KOLOM_MODEL = [
+  { teks: 'Outlet' },
+  { teks: 'Tren per minggu', kanan: true },
+  { teks: '8 minggu terakhir', kanan: true },
+  { teks: 'Perkiraan 4 minggu', kanan: true },
+  { teks: 'Pengamatan' },
+]
+const model = computed(() => data.value?.model ?? null)
+function ringkasRp(v) {
+  const n = Number(v) || 0
+  if (Math.abs(n) >= 1e9) return `Rp ${n1(n / 1e9)} M`
+  if (Math.abs(n) >= 1e6) return `Rp ${n1(n / 1e6)} jt`
+  return formatRupiah(n)
+}
+// Satu kalimat pengamatan yang paling menentukan untuk tabel: pergeseran level
+// atau minggu aneh lebih dulu, lalu tren; sisanya di laporan detail.
+function catatanModelRingkas(o) {
+  const notes = o.model_notes ?? []
+  const utama = notes.find(n => n.startsWith('Level ')) ?? notes.find(n => n.startsWith('Minggu ')) ?? notes[0] ?? ''
+  return utama.length > 220 ? utama.slice(0, 217) + '…' : utama
+}
+
 const KOLOM_MINGGU = [
   { teks: 'Minggu' },
   { teks: 'Penjualan', kanan: true },
+  { teks: 'Setara Kalender', kanan: true },
   { teks: 'Struk', kanan: true },
   { teks: 'Rata-rata/Struk', kanan: true },
   { teks: 'Dibanding Minggu Lalu', kanan: true },
@@ -1072,9 +1311,20 @@ const barisBanding = computed(() => {
       kanan: `${o.prev_trx.toLocaleString('id-ID')} struk` },
     { label: `${d.block_weeks} minggu terakhir`, nilai: formatRupiah(o.recent_net),
       kanan: `${o.recent_trx.toLocaleString('id-ID')} struk` },
-    { label: 'Jadi outlet ini', nilai: naikTurun(o.growth4), warna: numClass(o.growth4) },
-    { label: `Sementara ${o.peer_count} outlet lain`, nilai: naikTurun(o.peer_growth4), warna: numClass(o.peer_growth4) },
   ]
+  if (o.recent_adj > 0 && (o.recent_adj !== o.recent_net || o.prev_adj !== o.prev_net)) {
+    r.push({ label: 'Setara kalender (libur dikoreksi)',
+      nilai: `${formatRupiah(o.prev_adj)} lalu ${formatRupiah(o.recent_adj)}`,
+      kanan: o.growth_raw4 != null ? `mentah ${naikTurun(o.growth_raw4)}` : '' })
+  }
+  r.push(
+    { label: 'Jadi outlet ini (setara kalender)', nilai: naikTurun(o.growth4), warna: numClass(o.growth4) },
+    { label: `Patokan: nilai tengah ${o.peer_count} outlet`, nilai: naikTurun(o.peer_growth4), warna: numClass(o.peer_growth4) },
+  )
+  if (o.consistency_need) {
+    r.push({ label: 'Searah pada', nilai: `${o.consistency} dari ${d.block_weeks} minggu`,
+      kanan: `syarat ${o.consistency_need}`, warna: o.consistency >= o.consistency_need ? 'text-gray-900' : 'text-amber-700' })
+  }
   if (o.expected_net != null) {
     r.push({ label: 'Kalau ikut bergerak seperti mereka', nilai: formatRupiah(o.expected_net), sorot: true })
   }
@@ -1108,6 +1358,123 @@ const GRAFIK = [
   { key: 'peta',       type: 'scatter', height: 340, opts: matrixOpts, series: matrixSeries },
 ]
 
+// ── Kalender libur & hari khusus ─────────────────────────────
+// Kalender ikut menentukan vonis, jadi ia dibaca dan diubah dari halaman ini.
+// Daftar yang tampil: dari awal periode sampai empat bulan ke depan, supaya
+// libur yang akan datang bisa diisi sebelum minggunya tiba.
+const kalender = ref([])
+const kalenderSemua = ref(false)
+const kalenderMsg = ref('')
+const formKal = reactive({ day: '', to: '', kind: 'libur_nasional', name: '' })
+const OPSI_KIND = [
+  { value: 'libur_nasional', label: 'Libur nasional' },
+  { value: 'cuti_bersama',   label: 'Cuti bersama' },
+  { value: 'libur_sekolah',  label: 'Libur sekolah' },
+  { value: 'kejadian',       label: 'Kejadian lokal (catatan saja)' },
+]
+const WARNA_KAL = {
+  libur_nasional: 'bg-rose-100 text-rose-700',
+  cuti_bersama:   'bg-orange-100 text-orange-700',
+  libur_sekolah:  'bg-sky-100 text-sky-700',
+  kejadian:       'bg-violet-100 text-violet-700',
+}
+const modelKalender = computed(() => data.value?.calendar_model ?? null)
+const kartuKalender = computed(() => {
+  const m = modelKalender.value
+  if (!m) return []
+  const kali = v => `${Number(v).toFixed(2).replace('.', ',')}×`
+  return [
+    { label: 'Akhir pekan', nilai: `${n1((m.dow_share?.[5] ?? 0) + (m.dow_share?.[6] ?? 0))}%`, kaki: 'pangsa omzet minggu biasa' },
+    { label: 'Hari libur', nilai: m.holiday_estimated ? kali(m.holiday_mult) : '= Minggu',
+      kaki: m.holiday_estimated ? `dari ${m.holiday_obs} hari libur teramati` : 'patokan awal, belum dipelajari' },
+    { label: 'Libur sekolah', nilai: m.school_estimated ? `${kali(m.school_weekday_mult)} / ${kali(m.school_weekend_mult)}` : 'belum dikoreksi',
+      kaki: m.school_estimated ? 'hari kerja / akhir pekan' : 'pengamatan belum cukup' },
+    { label: 'Kalender terisi', nilai: m.coverage_until ? fmtHari(m.coverage_until) : '—', kaki: 'sampai tanggal' },
+  ]
+})
+
+function fmtHari(s) {
+  if (!s) return ''
+  const t = new Date(`${s}T00:00:00`)
+  const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
+  return `${HARI[t.getDay()]} ${t.getDate()} ${BULAN[t.getMonth()]} ${String(t.getFullYear()).slice(2)}`
+}
+
+function rentangKalender() {
+  const today = new Date()
+  const to = new Date(today.getTime() + 120 * 86400000)
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const from = data.value?.period_from ?? iso(new Date(today.getTime() - 120 * 86400000))
+  return { from, to: iso(to) }
+}
+
+async function muatKalender() {
+  try {
+    kalender.value = await apiClient.get('/admin/business-calendar', { params: rentangKalender() })
+  } catch (err) {
+    kalenderMsg.value = `Gagal memuat kalender: ${err?.message ?? ''}`
+  }
+}
+
+// Libur sekolah berderet puluhan hari; dilipat jadi satu baris per rentang
+// supaya daftarnya tetap terbaca. Centang "tampilkan per hari" membukanya.
+const kalenderTampil = computed(() => {
+  const list = [...(kalender.value ?? [])].sort((a, b) => a.day.localeCompare(b.day) || a.kind.localeCompare(b.kind))
+  if (kalenderSemua.value) return list.map(k => ({ ...k, jumlah: 1 }))
+  const out = []
+  for (const k of list) {
+    const last = out[out.length - 1]
+    if (last && last.kind === 'libur_sekolah' && k.kind === 'libur_sekolah' && last.name === k.name
+        && (new Date(`${k.day}T00:00:00`) - new Date(`${last.akhir}T00:00:00`)) === 86400000) {
+      last.akhir = k.day
+      last.jumlah += 1
+      continue
+    }
+    out.push({ ...k, akhir: k.day, jumlah: 1 })
+  }
+  return out
+})
+
+async function simpanHari() {
+  if (!formKal.day || busy.value.kalender) return
+  busy.value.kalender = true
+  kalenderMsg.value = ''
+  try {
+    const hari = []
+    const a = new Date(`${formKal.day}T00:00:00`)
+    const b = formKal.to ? new Date(`${formKal.to}T00:00:00`) : a
+    for (let d = new Date(a); d <= b && hari.length < 120; d.setDate(d.getDate() + 1)) {
+      hari.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+    }
+    for (const day of hari) {
+      await apiClient.put('/admin/business-calendar', { day, kind: formKal.kind, name: formKal.name })
+    }
+    kalenderMsg.value = `${hari.length} hari disimpan. Analisa dihitung ulang.`
+    formKal.day = ''; formKal.to = ''; formKal.name = ''
+    await Promise.all([muatKalender(), fetchData()])
+  } catch (err) {
+    kalenderMsg.value = `Gagal menyimpan: ${err?.message ?? ''}`
+  } finally {
+    busy.value.kalender = false
+  }
+}
+
+async function hapusHari(k) {
+  if (busy.value.kalender) return
+  if (!window.confirm(`Hapus tanda "${k.name}" pada ${fmtHari(k.day)}?`)) return
+  busy.value.kalender = true
+  kalenderMsg.value = ''
+  try {
+    await apiClient.delete(`/admin/business-calendar/${k.day}`, { params: { kind: k.kind } })
+    kalenderMsg.value = 'Tanda dihapus. Analisa dihitung ulang.'
+    await Promise.all([muatKalender(), fetchData()])
+  } catch (err) {
+    kalenderMsg.value = `Gagal menghapus: ${err?.message ?? ''}`
+  } finally {
+    busy.value.kalender = false
+  }
+}
+
 // ── Unduh Excel ──────────────────────────────────────────────
 // File dibuat di server (excelize) supaya grafiknya grafik Excel asli —
 // bisa diklik, diubah rentangnya, dan ditelusuri sampai ke sel.
@@ -1117,7 +1484,7 @@ async function downloadExcel() {
   errorMsg.value = ''
   try {
     const blob = await apiClient.get('/admin/business-analysis/export', {
-      params: { weeks: weeks.value },
+      params: { weeks: weeks.value, block: blok.value },
       responseType: 'blob',
       timeout: 120000,
     })
@@ -1231,14 +1598,15 @@ async function downloadPDF() {
       theme: 'grid',
       styles: { fontSize: 9, cellPadding: 2 },
       headStyles: { fillColor: [5, 150, 105], textColor: 255 },
-      head: [['Gerak Pasar', 'Batas Wajar Pasar', 'Lebih Baik', 'Tertinggal', 'Outlet Pembanding', 'Cara Membandingkan']],
+      head: [['Gerak Pasar (setara kalender)', 'Mentah / Kalender', 'Batas Wajar Pasar', 'Lebih Baik', 'Tertinggal', 'Dipantau', 'Outlet Pembanding']],
       body: [[
         pp(d.group_growth4, '%'),
+        `${pp(d.group_growth_raw4, '%')} / ${d.calendar_effect == null ? '-' : n1(d.calendar_effect) + ' poin'}`,
         d.market_band == null ? '-' : `+/-${n1(d.market_band)}`,
         d.leading.join(', ') || '-',
         d.lagging.join(', ') || '-',
-        `${d.panel_codes.length} lengkap, tiap outlet vs ${Math.max(d.panel_codes.length - 1, 0)} lainnya`,
-        `${d.block_weeks} minggu vs ${d.block_weeks} minggu`,
+        (d.watch ?? []).join(', ') || '-',
+        `${d.panel_codes.length} lengkap; nilai tengah semua; ${d.block_weeks} mgg vs ${d.block_weeks} mgg`,
       ]],
     })
     y = doc.lastAutoTable.finalY + 8
@@ -1302,19 +1670,44 @@ async function downloadPDF() {
       styles: { fontSize: 7.5, cellPadding: 1.8, valign: 'top', overflow: 'linebreak' },
       headStyles: { fillColor: [5, 150, 105], textColor: 255, fontSize: 7.5 },
       columnStyles: { 0: { cellWidth: 28 }, 7: { cellWidth: 46 } },
-      head: [['Outlet', 'Penjualan', 'Naik/Turun', 'Outlet Lain', 'Selisih', 'Batas Wajar', 'Kesimpulan', 'Penjelasan']],
+      head: [['Outlet', 'Penjualan', 'Naik/Turun (setara kal.)', 'Patokan', 'Selisih', 'Batas Wajar', 'Kesimpulan', 'Penjelasan']],
       body: d.outlets.map(o => [
         `${o.name}\n(${o.code})`,
         formatRupiah(o.net),
-        pp(o.growth4, '%'),
+        `${pp(o.growth4, '%')}${o.growth_raw4 != null && o.growth_raw4 !== o.growth4 ? `\nmentah ${pp(o.growth_raw4, '%')}` : ''}`,
         pp(o.peer_growth4, '%'),
-        pp(o.rgi4, ''),
+        `${pp(o.rgi4, '')}${o.consistency_need ? `\n${o.consistency}/${d.block_weeks} mgg searah` : ''}`,
         o.threshold == null ? '-' : `+/-${n1(o.threshold)}`,
         `${o.diagnosis_label}${o.owner !== '—' ? `\n${o.owner}` : ''}`,
         pdfText(o.note),
       ]),
     })
     y = doc.lastAutoTable.finalY + 8
+
+    // Tren & perkiraan — hanya bila layanan analitik aktif.
+    if (d.model?.enabled) {
+      if (y > doc.internal.pageSize.getHeight() - 70) { doc.addPage(); y = M }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(30)
+      doc.text(pdfText(bagian('model').title ?? 'Tren, Perkiraan, dan Pola Hari'), M, y); y += 5
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(120)
+      const ketM = doc.splitTextToSize(pdfText(bagian('model').lead ?? ''), W - 2 * M)
+      doc.text(ketM, M, y); y += ketM.length * 3.6 + 2
+      autoTable(doc, {
+        startY: y, theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 1.8, valign: 'top', overflow: 'linebreak' },
+        headStyles: { fillColor: [5, 150, 105], textColor: 255, fontSize: 7.5 },
+        columnStyles: { 0: { cellWidth: 26 }, 4: { cellWidth: 80 } },
+        head: [['Outlet', 'Tren/mgg', '8 mgg terakhir', 'Perkiraan 4 mgg', 'Pengamatan']],
+        body: d.outlets.map(o => [
+          `${o.name}\n(${o.code})`,
+          o.trend ? `${pp(o.trend.slope_pct, '%')}\n${o.trend.significant ? 'nyata' : 'belum nyata'}` : '-',
+          o.trend?.recent_weeks ? `${pp(o.trend.recent_slope_pct, '%')}\n${o.trend.recent_significant ? 'nyata' : 'belum nyata'}` : '-',
+          o.forecast ? `${formatRupiah(o.forecast.total_raw)}\n${ringkasRp(o.forecast.total_lo)} - ${ringkasRp(o.forecast.total_hi)}` : '-',
+          pdfText(catatanModelRingkas(o)),
+        ]),
+      })
+      y = doc.lastAutoTable.finalY + 8
+    }
 
     // Kinerja medsos per outlet — hanya ada bila akunnya sudah didaftarkan.
     if (d.social?.enabled && d.social.outlets?.length) {
@@ -1327,14 +1720,14 @@ async function downloadPDF() {
         styles: { fontSize: 7.5, cellPadding: 1.8, valign: 'top', overflow: 'linebreak' },
         headStyles: { fillColor: [5, 150, 105], textColor: 255, fontSize: 7.5 },
         columnStyles: { 0: { cellWidth: 26 }, 6: { cellWidth: 56 } },
-        head: [['Outlet', 'Akun', 'Pengikut', 'Konten', 'Jangkauan', 'Penjualan', 'Pembacaan']],
+        head: [['Outlet', 'Akun', 'Pengikut', 'Konten', 'Jangkauan', 'Selisih Penjualan', 'Pembacaan']],
         body: d.social.outlets.map(o => [
           `${o.name}\n(${o.code})`,
           o.accounts.map(a => `${a.platform === 'instagram' ? 'IG' : 'TT'} @${a.username}`).join('\n'),
           o.followers_now == null ? '-' : angkaID(o.followers_now),
           `${o.posts_recent} / ${o.posts_prev}`,
           pp(o.reach_growth, '%'),
-          pp(o.sales_growth, '%'),
+          `${pp(o.sales_rgi, '')}\nsendiri ${pp(o.sales_growth, '%')}`,
           `${o.quadrant_label}\n${pdfText(o.reading)}`,
         ]),
       })
@@ -1368,9 +1761,13 @@ async function downloadPDF() {
         baris.push(
           [`${d.block_weeks} minggu sebelumnya`, `${formatRupiah(o.prev_net)}  (${o.prev_trx.toLocaleString('id-ID')} struk)`],
           [`${d.block_weeks} minggu terakhir`, `${formatRupiah(o.recent_net)}  (${o.recent_trx.toLocaleString('id-ID')} struk)`],
-          ['Jadi outlet ini', naikTurun(o.growth4)],
-          [`Sementara ${o.peer_count} outlet lain`, naikTurun(o.peer_growth4)],
+          ['Jadi outlet ini (setara kalender)', naikTurun(o.growth4)],
+          [`Patokan: nilai tengah ${o.peer_count} outlet`, naikTurun(o.peer_growth4)],
         )
+        if (o.recent_adj > 0 && (o.recent_adj !== o.recent_net || o.prev_adj !== o.prev_net)) {
+          baris.push(['Setara kalender (libur dikoreksi)', `${formatRupiah(o.prev_adj)} lalu ${formatRupiah(o.recent_adj)}`])
+        }
+        if (o.consistency_need) baris.push(['Searah pada', `${o.consistency} dari ${d.block_weeks} minggu (syarat ${o.consistency_need})`])
       }
       if (o.expected_net != null) baris.push(['Kalau ikut bergerak seperti mereka', formatRupiah(o.expected_net)])
       if (o.gap_net != null) {
@@ -1389,6 +1786,7 @@ async function downloadPDF() {
         ['Kesimpulannya', o.note],
         ['Dari mana perubahannya', o.breakdown],
         ['Yang perlu dilakukan', o.advice],
+        ['Pengamatan model (tren, perkiraan, pola hari)', (o.model_notes ?? []).join(' ')],
       ]) {
         if (!isi) continue
         if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = M }
@@ -1404,10 +1802,11 @@ async function downloadPDF() {
         startY: y, theme: 'grid',
         styles: { fontSize: 7.5, cellPadding: 1.6 },
         headStyles: { fillColor: [5, 150, 105], textColor: 255, fontSize: 7.5 },
-        head: [['Minggu', 'Penjualan', 'Struk', 'Rata-rata/Struk', 'Dibanding Minggu Lalu', 'Dibanding Outlet Lain']],
+        head: [['Minggu', 'Penjualan', 'Setara Kalender', 'Struk', 'Rata-rata/Struk', 'Dibanding Minggu Lalu', 'Dibanding Outlet Lain']],
         body: o.weeks.map(w => [
-          weekRange(w.week_start),
+          `${weekRange(w.week_start)}${w.calendar ? `\n${pdfText(w.calendar)}` : ''}`,
           formatRupiah(w.net),
+          formatRupiah(w.net_adj),
           w.trx.toLocaleString('id-ID'),
           w.trx ? formatRupiah(w.net / w.trx) : '-',
           pp(w.growth, '%'),

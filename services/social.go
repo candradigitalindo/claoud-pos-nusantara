@@ -615,7 +615,10 @@ func socialWeeklyRows(weeks int) ([]socialWeekRow, error) {
 				FROM social_snapshots s
 				WHERE s.account_id = g.account_id AND s.followers IS NOT NULL
 				  AND s.captured_date BETWEEN g.week_start AND g.week_start + 6
-				ORDER BY s.captured_date DESC LIMIT 1
+				-- Pembacaan yang tidak dibulatkan platform ("1,2M") menang atas yang
+				-- lebih baru tetapi bulat: selisih antar minggu dari angka bulat bisa
+				-- melahirkan lonjakan puluhan ribu suka yang tidak pernah terjadi.
+				ORDER BY s.approx ASC, s.captured_date DESC LIMIT 1
 			) s ON true
 			LEFT JOIN LATERAL (
 				SELECT bool_or(s2.approx) AS approx

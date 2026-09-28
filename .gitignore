@@ -26,3 +26,7 @@ laporan/
 # ── OS / editor ────────────────────────────────
 .DS_Store
 *.swp
+
+# ── Python (layanan analitik) ──────────────────
+__pycache__/
+.pytest_cache/

@@ -39,6 +39,14 @@ services:
       SOCIAL_PROXY_URL: ${SOCIAL_PROXY_URL:-}
       # Gateway WhatsApp (layanan `wa` di bawah). Token sama dengan milik gateway.
       WA_GATEWAY_URL: http://wa:4100
+      ANALYTICS_URL: http://analytics:4200
+      # Narasi AI Analisa Bisnis, diisi dari .env. Kosong = kalimat templat.
+      # Dipakai: Groq tingkat gratis (kompatibel OpenAI). JANGAN model lokal
+      # (Ollama) di server ini: 8 GB tanpa swap, server membeku 28 Sep 2026.
+      NARRATIVE_PROVIDER: ${NARRATIVE_PROVIDER:-}
+      NARRATIVE_BASE_URL: ${NARRATIVE_BASE_URL:-}
+      NARRATIVE_MODEL: ${NARRATIVE_MODEL:-}
+      NARRATIVE_API_KEY: ${NARRATIVE_API_KEY:-}
       WA_GATEWAY_TOKEN: ${WA_GATEWAY_TOKEN:-wa-gateway-secret}
     volumes:
       - uploads_data:/app/uploads
@@ -66,6 +74,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # Layanan analitik Python untuk Analisa Bisnis: tren robust, perkiraan,
+  # minggu aneh, pergeseran level, pola hari. Tanpa akses basis data; Go yang
+  # mengirim deretnya. Kalau mati, halaman tetap tampil tanpa bagian model.
+  analytics:
+    build:
+      context: ./analytics
+    restart: unless-stopped
+    expose:
+      - "4200"
 
   nginx:
     build:

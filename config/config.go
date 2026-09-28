@@ -26,6 +26,13 @@ type Config struct {
 	CameraEncKey  string
 	// Gateway WhatsApp (layanan wa-gateway di compose). URL kosong = fitur WA mati.
 	WAGatewayURL   string
+	// AnalyticsURL = layanan Python (tren, perkiraan, pola hari) untuk Analisa Bisnis; kosong = nonaktif.
+	AnalyticsURL   string
+	// Narasi AI Analisa Bisnis: penyedia (ollama | openai | anthropic), alamat, model, kunci.
+	NarrativeProvider string
+	NarrativeBaseURL  string
+	NarrativeModel    string
+	NarrativeAPIKey   string
 	WAGatewayToken string
 }
 
@@ -68,6 +75,11 @@ func Load() *Config {
 		Go2rtcURL:       getEnv("GO2RTC_URL", "http://go2rtc:1984"),
 		CameraEncKey:    getEnv("CAMERA_ENC_KEY", ""),
 		WAGatewayURL:    getEnv("WA_GATEWAY_URL", ""),
+		AnalyticsURL:    getEnv("ANALYTICS_URL", ""),
+		NarrativeProvider: getEnv("NARRATIVE_PROVIDER", ""),
+		NarrativeBaseURL:  getEnv("NARRATIVE_BASE_URL", ""),
+		NarrativeModel:    getEnv("NARRATIVE_MODEL", ""),
+		NarrativeAPIKey:   getEnv("NARRATIVE_API_KEY", getEnv("ANTHROPIC_API_KEY", "")),
 		WAGatewayToken:  getEnv("WA_GATEWAY_TOKEN", ""),
 	}
 }

@@ -60,6 +60,9 @@ func main() {
 	// WhatsApp: antrean pengiriman + penjadwal (rekap harian, pengingat reservasi,
 	// perangkat offline). Tanpa WA_GATEWAY_URL fitur ini diam.
 	services.InitWhatsApp(cfg)
+	services.InitAnalytics(cfg)
+	services.InitNarrativeAI(cfg)
+	services.StartNarrativeScheduler()
 
 	app := fiber.New(fiber.Config{
 		AppName:        "Nusantara POS Cloud API v1.0.0",

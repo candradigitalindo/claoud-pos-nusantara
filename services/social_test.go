@@ -221,31 +221,67 @@ func TestSocFollowersAtTidakMelompatKeluarBlok(t *testing.T) {
 func TestSocCorrelation(t *testing.T) {
 	f := func(v float64) *float64 { return &v }
 	mk := func(code string, reach, sales float64, stale bool) models.BizSocialOutlet {
-		return models.BizSocialOutlet{Code: code, ReachGrowth: f(reach), SalesGrowth: f(sales), Stale: stale}
+		return models.BizSocialOutlet{Code: code, ReachGrowth: f(reach), SalesRGI: f(sales), Stale: stale}
 	}
 
 	// Dua outlet: selalu bisa dilewati satu garis, jadi korelasinya tidak boleh
 	// dilaporkan sama sekali.
-	if r, n := socCorrelation([]models.BizSocialOutlet{
+	if r, n, _ := socCorrelation([]models.BizSocialOutlet{
 		mk("A", 10, 5, false), mk("B", -10, -5, false),
 	}); r != nil || n != 2 {
 		t.Errorf("dua outlet: r=%v n=%d, mau nil/2", r, n)
 	}
 
 	// Tiga outlet searah sempurna.
-	r, n := socCorrelation([]models.BizSocialOutlet{
+	r, n, sig := socCorrelation([]models.BizSocialOutlet{
 		mk("A", 10, 5, false), mk("B", 0, 0, false), mk("C", -10, -5, false),
 	})
-	if r == nil || n != 3 || math.Abs(*r-1) > 0.001 {
-		t.Errorf("tiga outlet searah: r=%v n=%d, mau 1/3", r, n)
+	if r == nil || n != 3 || math.Abs(*r-1) > 0.001 || !sig {
+		t.Errorf("tiga outlet searah: r=%v n=%d sig=%v, mau 1/3/true", r, n, sig)
 	}
 
 	// Outlet yang datanya mandek harus dikeluarkan, bukan ikut menyeret angka.
-	_, n = socCorrelation([]models.BizSocialOutlet{
+	_, n, _ = socCorrelation([]models.BizSocialOutlet{
 		mk("A", 10, 5, false), mk("B", 0, 0, false), mk("C", -10, -5, true),
 	})
 	if n != 2 {
 		t.Errorf("outlet mandek ikut terhitung: n=%d, mau 2", n)
+	}
+
+	// Delapan outlet dengan korelasi lemah: angkanya ada, tetapi belum berarti.
+	_, n, sig = socCorrelation([]models.BizSocialOutlet{
+		mk("A", 10, 2, false), mk("B", -5, 3, false), mk("C", 7, -4, false), mk("D", -2, 1, false),
+		mk("E", 4, 6, false), mk("F", -8, -1, false), mk("G", 1, -6, false), mk("H", 3, 2, false),
+	})
+	if n != 8 || sig {
+		t.Errorf("korelasi lemah dari 8 outlet harus 'belum berarti': n=%d sig=%v", n, sig)
+	}
+}
+
+func TestSocCorrSignificant(t *testing.T) {
+	// n=8 → df=6 → t kritis 2,45 → |r| harus ≥ ~0,71.
+	if socCorrSignificant(0.6, 8) {
+		t.Error("r=0,6 dari 8 outlet tidak boleh dianggap bermakna")
+	}
+	if !socCorrSignificant(0.75, 8) {
+		t.Error("r=0,75 dari 8 outlet seharusnya bermakna")
+	}
+	if socCorrSignificant(0.9, 2) {
+		t.Error("dua titik tidak pernah bermakna")
+	}
+}
+
+func TestSocReachBand(t *testing.T) {
+	// 108 lawan 81 suka: derau Poisson-nya ±29%, jadi turun 25% masih di dalam.
+	if b := socReachBand(81, 108); b == nil || *b < 25 {
+		t.Errorf("pita 81 vs 108 mau ≥ 25, dapat %v", b)
+	}
+	// Hitungan besar: pita menyempit ke lantai 10.
+	if b := socReachBand(50000, 48000); b == nil || *b != 10 {
+		t.Errorf("hitungan besar mau lantai 10, dapat %v", b)
+	}
+	if b := socReachBand(10, 0); b != nil {
+		t.Error("tanpa blok pembanding tidak ada pita")
 	}
 }
 
@@ -259,11 +295,18 @@ func TestSocJudgeKuadran(t *testing.T) {
 		{-20, -15, models.BizSocSepiDua},
 		{30, -12, models.BizSocRamaiSepi},
 		{-25, 9, models.BizSocTanpaMed},
+		// Di dalam pita derau (reach ±10, penjualan ±5): belum berarti, apa pun tandanya.
+		{3, -2, models.BizSocDatar},
+		{-9, 4, models.BizSocDatar},
+		// Hanya satu sisi yang bergerak: juga belum berarti.
+		{40, 1, models.BizSocDatar},
+		{2, -30, models.BizSocDatar},
 	}
 	for _, c := range cases {
 		o := models.BizSocialOutlet{
 			Code: "X", ReachBasis: "tayangan",
-			ReachGrowth: f(c.reach), SalesGrowth: f(c.sales),
+			ReachGrowth: f(c.reach), ReachBand: f(10),
+			SalesGrowth: f(c.sales - 20), SalesRGI: f(c.sales), SalesThreshold: f(5),
 		}
 		socJudge(&o, 4)
 		if o.Quadrant != c.want {
@@ -276,7 +319,7 @@ func TestSocJudgeKuadran(t *testing.T) {
 
 	// Outlet yang angkanya mandek tidak boleh diberi kuadran apa pun: jangkauan
 	// yang jatuh karena scraper diblokir bukan medsos yang sepi.
-	o := models.BizSocialOutlet{Code: "X", Stale: true, ReachGrowth: f(-90), SalesGrowth: f(-5)}
+	o := models.BizSocialOutlet{Code: "X", Stale: true, ReachGrowth: f(-90), SalesRGI: f(-5)}
 	socJudge(&o, 4)
 	if o.Quadrant != models.BizSocKurang {
 		t.Errorf("outlet mandek -> %s, mau DATA_KURANG", o.Quadrant)

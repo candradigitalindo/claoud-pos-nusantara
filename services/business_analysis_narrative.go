@@ -11,14 +11,13 @@ import (
 // ── Perakit narasi Analisa Bisnis ────────────────────────────────────────────
 //
 // Seluruh kalimat penjelas halaman dirakit di sini dari angka yang sudah
-// dihitung, bukan ditulis tetap di UI. Alasannya bukan kerapian: kalimat tetap
-// akan terus berbunyi sama ketika keadaannya sudah berubah, sehingga halaman
-// menjadi salah tanpa ada yang menyadarinya. Kalimat yang dirakit dari angka
-// selalu ikut berubah bersama angkanya, atau tidak muncul sama sekali.
+// dihitung, bukan ditulis tetap di UI. Kalimat tetap akan terus berbunyi sama
+// ketika keadaannya sudah berubah, sehingga halaman menjadi salah tanpa ada
+// yang menyadarinya. Kalimat yang dirakit dari angka selalu ikut berubah
+// bersama angkanya, atau tidak muncul sama sekali.
 //
 // Fungsi di berkas ini hanya membaca *models.BusinessAnalysis yang sudah jadi —
-// tidak menyentuh basis data dan tidak menghitung ulang apa pun. Dengan begitu
-// angka di kalimat dijamin sama dengan angka di tabel dan grafik.
+// tidak menyentuh basis data dan tidak menghitung ulang apa pun.
 
 // bizPlural menyusun frasa berjumlah tanpa kalimat bercabang di pemanggil.
 func bizPlural(n int, satuan string) string {
@@ -40,6 +39,11 @@ func bizDaftar(xs []string) string {
 	}
 }
 
+// bizMult menulis pengali dengan dua desimal berkoma: "5,20×".
+func bizMult(v float64) string {
+	return strings.Replace(fmt.Sprintf("%.2f", v), ".", ",", 1) + "×"
+}
+
 // bizFindOutlet mencari outlet berdasarkan kode.
 func bizFindOutlet(rep *models.BusinessAnalysis, code string) *models.BizOutlet {
 	for i := range rep.Outlets {
@@ -50,14 +54,8 @@ func bizFindOutlet(rep *models.BusinessAnalysis, code string) *models.BizOutlet 
 	return nil
 }
 
-// bizMarketDown menurunkan ulang kesimpulan "pasar sedang turun" dari angka
-// yang sudah ada di laporan, supaya narasi tidak pernah berbeda dengan vonis.
-func bizMarketDown(rep *models.BusinessAnalysis) bool {
-	return rep.GroupGrowth4 != nil && *rep.GroupGrowth4 < -deref(rep.MarketBand)
-}
-
-// BuildBusinessNarrative mengisi Headline, Subhead, Insights, Sections, dan
-// Glossary pada laporan yang sudah dihitung.
+// BuildBusinessNarrative mengisi Headline, Insights, Sections, dan Glossary
+// pada laporan yang sudah dihitung.
 func BuildBusinessNarrative(rep *models.BusinessAnalysis) {
 	rep.Insights = []models.BizInsight{}
 	rep.Sections = []models.BizSection{}
@@ -79,16 +77,20 @@ func bizBuildHeadline(rep *models.BusinessAnalysis) {
 		rep.Headline = "Belum bisa disimpulkan"
 
 	case models.BizVerdictBoth:
-		rep.Headline = fmt.Sprintf("Pasar %s, dan %s tertinggal", gerak, bizDaftar(rep.Lagging))
+		rep.Headline = fmt.Sprintf("Pasar %s setelah libur dikoreksi, dan %s tertinggal", gerak, bizDaftar(rep.Lagging))
 
 	case models.BizVerdictMarket:
-		rep.Headline = fmt.Sprintf("Semua outlet %s bersama-sama", gerak)
+		rep.Headline = fmt.Sprintf("Pasar %s setelah libur dikoreksi; %s", gerak, bizArahOutlet(rep.Outlets))
 
 	case models.BizVerdictOutlet:
 		rep.Headline = fmt.Sprintf("%s tertinggal, pasarnya sendiri baik-baik saja", bizDaftar(rep.Lagging))
 
 	default:
-		rep.Headline = fmt.Sprintf("Keadaan normal, pasar %s", gerak)
+		if rep.CalendarEffect != nil && math.Abs(*rep.CalendarEffect) >= 3 && deref(rep.GroupGrowthRaw4) < 0 {
+			rep.Headline = fmt.Sprintf("Keadaan normal: penurunan mentah %s sebagian besar kalender", bizNum(-deref(rep.GroupGrowthRaw4))+"%")
+		} else {
+			rep.Headline = fmt.Sprintf("Keadaan normal, pasar %s setelah libur dikoreksi", gerak)
+		}
 	}
 }
 
@@ -115,12 +117,29 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 		amt := hilang
 		add(models.BizInsightProblem,
 			fmt.Sprintf("Selisih %s dalam %s terakhir", bizRupiah(hilang), bizPlural(rep.BlockWeeks, "minggu")),
-			fmt.Sprintf("Kalau %s bergerak seperti outlet lain, penjualan grup %s lebih tinggi. Angka ini yang paling pantas dikejar lebih dulu.",
+			fmt.Sprintf("Kalau %s bergerak seperti outlet pembanding (dengan kalender yang sama), penjualan grup %s lebih tinggi. Angka ini yang paling pantas dikejar lebih dulu.",
 				bizDaftar(kodeHilang), bizRupiah(hilang)),
 			kodeHilang, &amt)
 	}
 
-	// 2. Outlet unggul — dijadikan bahan tiru, bukan sekadar pujian.
+	// 2. Kalender: berapa poin gerak pasar mentah yang hanyalah libur.
+	if rep.CalendarEffect != nil && rep.GroupGrowthRaw4 != nil && rep.GroupGrowth4 != nil && math.Abs(*rep.CalendarEffect) >= 3 {
+		sebab := ""
+		if rep.CalendarReason != "" {
+			sebab = " Rinciannya: " + rep.CalendarReason + "."
+		}
+		kind := models.BizInsightNeutral
+		if rep.Verdict == models.BizVerdictNormal && deref(rep.GroupGrowthRaw4) < 0 {
+			kind = models.BizInsightWarning
+		}
+		add(kind,
+			fmt.Sprintf("Kalender menjelaskan %s poin gerak pasar", bizNum(math.Abs(*rep.CalendarEffect))),
+			fmt.Sprintf("Angka mentah pasar %s; setara kalender %s. Selisihnya lahir dari libur dan pola hari, bukan dari pasar.%s Membaca angka mentah saja akan menagih Markom atas kalender.",
+				bizNaikTurun(*rep.GroupGrowthRaw4), bizNaikTurun(*rep.GroupGrowth4), sebab),
+			nil, nil)
+	}
+
+	// 3. Outlet unggul — dijadikan bahan tiru, bukan sekadar pujian.
 	var kodeUnggul []string
 	var lebih float64
 	for _, o := range rep.Outlets {
@@ -133,20 +152,44 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 	}
 	if len(kodeUnggul) > 0 {
 		var amt *float64
-		body := fmt.Sprintf("%s tumbuh jauh di atas outlet lain pada pasar yang sama.", bizDaftar(kodeUnggul))
+		body := fmt.Sprintf("%s tumbuh jauh di atas outlet lain pada pasar dan kalender yang sama.", bizDaftar(kodeUnggul))
 		if lebih > 0 {
 			v := lebih
 			amt = &v
-			body = fmt.Sprintf("%s menghasilkan %s lebih banyak daripada seandainya ia bergerak seperti outlet lain.",
+			body = fmt.Sprintf("%s menghasilkan %s lebih banyak daripada seandainya ia bergerak seperti outlet pembanding.",
 				bizDaftar(kodeUnggul), bizRupiah(lebih))
 		}
 		add(models.BizInsightChance, "Ada cara kerja yang layak ditiru",
 			body+" Gali apa yang mereka ubah belakangan, lalu terapkan di outlet lain.", kodeUnggul, amt)
 	}
 
-	// 3. Penggerak yang sama di banyak outlet. Kalau sebagian besar outlet
-	//    kehilangan pengunjung, itu pertanda program penarik kunjungan yang
-	//    kurang — bukan pekerjaan satu manajer.
+	// 4. Outlet yang perlu dipantau — selisih mulai terlihat, belum meyakinkan.
+	if len(rep.Watch) > 0 {
+		var bawah, atas []string
+		for _, o := range rep.Outlets {
+			if o.Diagnosis != models.BizDiagWatch {
+				continue
+			}
+			if deref(o.RGI4) < 0 {
+				bawah = append(bawah, o.Code)
+			} else {
+				atas = append(atas, o.Code)
+			}
+		}
+		var bagian []string
+		if len(bawah) > 0 {
+			bagian = append(bagian, fmt.Sprintf("%s mulai tertinggal", bizDaftar(bawah)))
+		}
+		if len(atas) > 0 {
+			bagian = append(bagian, fmt.Sprintf("%s mulai unggul", bizDaftar(atas)))
+		}
+		add(models.BizInsightWarning, "Perlu dipantau, belum divonis",
+			fmt.Sprintf("%s. Selisihnya belum melewati batas wajar, atau baru terjadi satu-dua minggu. Cek cepat di outletnya, dan lihat lagi dua minggu ke depan sebelum menyimpulkan.",
+				bizKapital(strings.Join(bagian, "; "))),
+			rep.Watch, nil)
+	}
+
+	// 5. Penggerak yang sama di banyak outlet.
 	var kurangTamu, kecilBelanja []string
 	for _, o := range rep.Outlets {
 		if o.PrevTrx <= 0 || o.RecentTrx <= 0 {
@@ -164,10 +207,14 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 		}
 	}
 	if n := len(kurangTamu); n >= 2 {
+		kal := ""
+		if rep.CalendarEffect != nil && *rep.CalendarEffect <= -3 {
+			kal = " Sebagian dari berkurangnya pengunjung ini adalah kalender — blok pembanding punya libur yang blok terakhir tidak punya — jadi bandingkan dengan kolom setara kalender sebelum menyimpulkan."
+		}
 		add(models.BizInsightWarning,
 			fmt.Sprintf("%s kehilangan pengunjung, bukan nilai belanja", bizPlural(n, "outlet")),
-			fmt.Sprintf("Di %s jumlah struknya yang turun, sementara rata-rata belanja tiap struk relatif bertahan. Kalau polanya sama di banyak outlet, yang kurang biasanya program penarik kunjungan — bukan cara melayani di kasir.",
-				bizDaftar(kurangTamu)), kurangTamu, nil)
+			fmt.Sprintf("Di %s jumlah struknya yang turun, sementara rata-rata belanja tiap struk relatif bertahan.%s Kalau polanya sama di banyak outlet setelah kalender dikoreksi, yang kurang biasanya program penarik kunjungan — bukan cara melayani di kasir.",
+				bizDaftar(kurangTamu), kal), kurangTamu, nil)
 	}
 	if n := len(kecilBelanja); n >= 2 {
 		add(models.BizInsightWarning,
@@ -176,7 +223,7 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 				bizDaftar(kecilBelanja)), kecilBelanja, nil)
 	}
 
-	// 4. Outlet yang belum bisa dinilai — supaya tidak terbaca sebagai "aman".
+	// 6. Outlet yang belum bisa dinilai — supaya tidak terbaca sebagai "aman".
 	var lemah []string
 	for _, o := range rep.Outlets {
 		if o.Diagnosis == models.BizDiagWeak {
@@ -189,7 +236,7 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 				bizDaftar(lemah)), lemah, nil)
 	}
 
-	// 5. Outlet yang belum ikut jadi pembanding.
+	// 7. Outlet yang belum ikut jadi pembanding.
 	var luar []string
 	for _, o := range rep.Outlets {
 		if !o.InPanel {
@@ -202,7 +249,7 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 				bizDaftar(luar)), luar, nil)
 	}
 
-	// 6. Ketergantungan pada satu outlet.
+	// 8. Ketergantungan pada satu outlet.
 	var total float64
 	for _, o := range rep.Outlets {
 		total += o.Net
@@ -221,22 +268,35 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 		}
 	}
 
-	// 7. Minggu tidak biasa.
+	// 9. Minggu tidak biasa.
 	if n := len(rep.GroupEvents); n > 0 {
 		add(models.BizInsightNeutral, fmt.Sprintf("%s bergerak di luar kebiasaan", bizPlural(n, "minggu")),
-			fmt.Sprintf("Pada %s semua outlet bergerak bersamaan jauh dari kebiasaan — biasanya libur panjang, cuaca, atau acara besar. Angka minggu itu jangan dipakai menilai kerja manajer.",
+			fmt.Sprintf("Pada %s semua outlet bergerak bersamaan jauh dari kebiasaan meski libur sudah dikoreksi — biasanya cuaca, acara besar, atau gangguan. Angka minggu itu jangan dipakai menilai kerja manajer.",
 				bizDaftar(rep.GroupEvents)), nil, nil)
 	}
 
-	// 8. Riwayat masih pendek.
-	if rep.WeeksCount < rep.WeeksRequested {
-		add(models.BizInsightNeutral, "Riwayat masih lebih pendek daripada yang diminta",
-			fmt.Sprintf("Anda meminta %s, data yang ada baru %s penuh, dan yang dibandingkan %s terakhir lawan %s sebelumnya. Makin panjang riwayatnya, makin sempit batas wajarnya dan makin tajam kesimpulannya.",
-				bizPlural(rep.WeeksRequested, "minggu"), bizPlural(rep.WeeksCount, "minggu"),
-				bizPlural(rep.BlockWeeks, "minggu"), bizPlural(rep.BlockWeeks, "minggu")), nil, nil)
+	// 10. Kalender yang belum menjangkau periode.
+	if rep.CalendarModel != nil && rep.CalendarModel.CoverageUntil != "" && rep.CalendarModel.CoverageUntil < rep.PeriodTo {
+		add(models.BizInsightWarning, "Kalender libur belum menjangkau seluruh periode",
+			fmt.Sprintf("Kalender terisi sampai %s, sementara periode ini berakhir %s. Minggu sesudah tanggal itu dibandingkan tanpa koreksi libur. Lengkapi kalender di bagian bawah halaman.",
+				rep.CalendarModel.CoverageUntil, rep.PeriodTo), nil, nil)
 	}
 
-	// Urutan tayang: yang bisa ditindak lebih dulu, lalu nilai rupiahnya.
+	// 11. Riwayat masih pendek.
+	if rep.WeeksCount < rep.WeeksRequested {
+		add(models.BizInsightNeutral, "Riwayat masih lebih pendek daripada yang diminta",
+			fmt.Sprintf("Anda meminta %s, data yang ada baru %s penuh. Yang dibandingkan tetap %s terakhir lawan %s sebelumnya, dan batas wajarnya dihitung dari seluruh %s yang tersedia — rentang hanya mengubah panjang gambar.",
+				bizPlural(rep.WeeksRequested, "minggu"), bizPlural(rep.WeeksCount, "minggu"),
+				bizPlural(rep.BlockWeeks, "minggu"), bizPlural(rep.BlockWeeks, "minggu"), bizPlural(rep.WindowWeeks, "minggu")), nil, nil)
+	}
+
+	bizSortInsights(rep)
+}
+
+// bizSortInsights mengurutkan temuan: yang bisa ditindak lebih dulu, lalu
+// nilai rupiahnya. Dipanggil lagi setelah blok medsos dan model menambah
+// temuannya, supaya urutan akhirnya satu untuk semua sumber.
+func bizSortInsights(rep *models.BusinessAnalysis) {
 	prioritas := map[string]int{
 		models.BizInsightProblem: 0,
 		models.BizInsightChance:  1,
@@ -250,6 +310,13 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 		}
 		return deref(a.Amount) > deref(b.Amount)
 	})
+}
+
+func bizKapital(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // ── Judul & penjelasan tiap bagian ──────────────────────────────────────────
@@ -278,12 +345,12 @@ func bizBuildSections(rep *models.BusinessAnalysis) {
 			max = &v
 		}
 	}
-	leadPasar := "Gabungan penjualan seluruh outlet, minggu demi minggu."
+	leadPasar := "Gabungan penjualan seluruh outlet pembanding, minggu demi minggu, setelah libur dikoreksi."
 	if min != nil && max != nil {
-		leadPasar = fmt.Sprintf("Sepanjang %s ini gerak pasar berayun antara %s sampai %s per minggu. Ayunan selebar itu memang biasa, karena itu pasar baru disebut benar-benar turun kalau lebih dari %s%%.",
-			bizPlural(rep.WeeksCount, "minggu"), bizNaikTurun(*min), bizNaikTurun(*max), band)
+		leadPasar = fmt.Sprintf("Sepanjang %s ini gerak pasar setara kalender berayun antara %s sampai %s dari satu minggu ke minggu berikutnya. Karena ayunan mingguan sebesar itu biasa, gerak %d minggu lawan %d minggu sebelumnya baru disebut turun kalau lebih dalam dari %s%%.",
+			bizPlural(rep.WeeksCount, "minggu"), bizNaikTurun(*min), bizNaikTurun(*max), rep.BlockWeeks, rep.BlockWeeks, band)
 	}
-	hintPasar := "Kalau semua outlet turun bersamaan, penyebabnya dari luar — bukan salah satu manajer."
+	hintPasar := "Batang = gerak pasar setara kalender: minggu berlibur sudah diskalakan ke minggu biasa, jadi lonjakan libur dan kejatuhan sesudahnya tidak muncul di sini. Kalau semua outlet tetap turun bersamaan, penyebabnya dari luar — bukan salah satu manajer. Angka mentahnya ada di tooltip."
 	if len(rep.GroupEvents) > 0 {
 		hintPasar += fmt.Sprintf(" Batang oranye menandai %s yang bergerak jauh dari kebiasaan.",
 			bizPlural(len(rep.GroupEvents), "minggu"))
@@ -304,14 +371,17 @@ func bizBuildSections(rep *models.BusinessAnalysis) {
 	if nKiri > 0 {
 		bagian = append(bagian, fmt.Sprintf("%s keluar ke kiri (%s)", bizPlural(nKiri, "outlet"), bizDaftar(rep.Lagging)))
 	}
+	if len(rep.Watch) > 0 {
+		bagian = append(bagian, fmt.Sprintf("%s perlu dipantau (%s)", bizPlural(len(rep.Watch), "outlet"), bizDaftar(rep.Watch)))
+	}
 	leadSelisih := fmt.Sprintf("Dari %s yang bisa dinilai, %s. Sisanya masih di dalam batas wajarnya masing-masing.",
-		bizPlural(nDinilai, "outlet"), strings.Join(bagian, " dan "))
-	if nKanan == 0 && nKiri == 0 {
-		leadSelisih = fmt.Sprintf("Dari %s yang bisa dinilai, tidak ada satu pun yang keluar dari batas wajarnya sendiri.",
+		bizPlural(nDinilai, "outlet"), strings.Join(bagian, "; "))
+	if len(bagian) == 0 {
+		leadSelisih = fmt.Sprintf("Dari %s yang bisa dinilai, tidak ada satu pun yang keluar dari batas wajarnya sendiri secara konsisten.",
 			bizPlural(nDinilai, "outlet"))
 	}
 	add("selisih", "Selisih Tiap Outlet dengan Outlet Lain", leadSelisih,
-		"Batang ke kanan berarti tumbuh lebih cepat daripada outlet lain, ke kiri lebih lambat. Patokannya nilai tengah outlet lain — outlet yang dinilai tidak ikut dihitung di dalamnya. Dua garis abu-abu adalah batas wajar outlet tersebut; yang masih di dalam garis belum berarti apa-apa.")
+		"Batang ke kanan berarti tumbuh lebih cepat daripada outlet pembanding, ke kiri lebih lambat — keduanya pada angka setara kalender. Patokannya nilai tengah seluruh outlet pembanding, satu untuk semua. Dua garis abu-abu adalah batas wajar outlet tersebut; yang masih di dalam garis belum berarti apa-apa, dan yang melewati garis pun baru divonis kalau searah hampir tiap minggu.")
 
 	// Perjalanan indeks.
 	var awal string
@@ -338,9 +408,9 @@ func bizBuildSections(rep *models.BusinessAnalysis) {
 			hi = o
 		}
 	}
-	leadTren := "Semua outlet disandingkan pada satu titik awal supaya besar-kecilnya tidak mengaburkan arah geraknya."
+	leadTren := "Semua outlet disandingkan pada satu titik awal, pada angka setara kalender, supaya besar-kecilnya dan libur tidak mengaburkan arah geraknya."
 	if awal != "" && pasarAkhir != nil && lo != nil && hi != nil {
-		leadTren = fmt.Sprintf("Titik awalnya minggu %s = 100. Sampai minggu terakhir pasar berada di %s, sementara outlet terentang dari %s (%s) sampai %s (%s).",
+		leadTren = fmt.Sprintf("Titik awalnya minggu %s = 100. Sampai minggu terakhir pasar berada di %s, sementara outlet terentang dari %s (%s) sampai %s (%s) — semuanya setara kalender.",
 			awal, bizNum(*pasarAkhir),
 			bizNum(*lo.Weeks[len(lo.Weeks)-1].Index), lo.Code,
 			bizNum(*hi.Weeks[len(hi.Weeks)-1].Index), hi.Code)
@@ -350,20 +420,42 @@ func bizBuildSections(rep *models.BusinessAnalysis) {
 
 	// Peta posisi.
 	add("peta", "Peta Posisi Outlet",
-		fmt.Sprintf("Tiap titik satu outlet. Sumbu mendatar selisih dengan outlet lain, sumbu tegak naik-turun penjualannya sendiri selama %s terakhir.",
+		fmt.Sprintf("Tiap titik satu outlet. Sumbu mendatar selisih dengan outlet pembanding, sumbu tegak naik-turun penjualan setara kalendernya sendiri selama %s terakhir.",
 			bizPlural(rep.BlockWeeks, "minggu")),
-		"Yang perlu diperhatikan pojok kiri bawah: turun, dan turunnya sendirian. Kalau semua titik berkumpul di dekat garis tegak, artinya semua outlet senasib — itu urusan pasar dan promosi.")
+		"Yang perlu diperhatikan pojok kiri bawah: turun, dan turunnya sendirian. Kalau semua titik berkumpul di dekat garis tegak, artinya semua outlet senasib — itu urusan pasar, bukan manajer.")
 
 	// Tabel rincian.
 	add("rincian", "Rincian per Outlet",
 		fmt.Sprintf("Seluruh %s berjajar untuk dibandingkan sekaligus, diurutkan dari yang paling unggul.",
 			bizPlural(len(rep.Outlets), "outlet")),
-		"Kolom \"Outlet Lain\" adalah patokan yang dipakai untuk baris tersebut. Angkanya berbeda sedikit tiap baris karena outlet yang sedang dinilai selalu dikeluarkan dari patokannya sendiri.")
+		"Kolom \"Naik / Turun\" adalah angka setara kalender, dengan angka mentahnya di bawahnya. Kolom \"Outlet Lain\" adalah nilai tengah seluruh outlet pembanding — satu patokan untuk semua baris.")
 
 	// Laporan detail.
 	add("detail", "Laporan Detail per Outlet",
 		"Angka satu outlet dibuka satu per satu, lengkap dengan penjelasan dan langkah yang disarankan.",
-		"Bagian ini dibuat untuk dibaca manajer outlet yang bersangkutan — semua selisih diterjemahkan ke rupiah dan jumlah struk.")
+		"Bagian ini dibuat untuk dibaca manajer outlet yang bersangkutan — semua selisih diterjemahkan ke rupiah dan jumlah struk. Kolom \"Setara Kalender\" menunjukkan berapa penjualan minggu itu kalau tidak ada libur.")
+
+	// Kalender.
+	leadKal := "Hari libur, cuti bersama, libur sekolah, dan kejadian lokal yang dipakai menyetarakan minggu."
+	if m := rep.CalendarModel; m != nil {
+		var bagianKal []string
+		if m.HolidayEstimated {
+			bagianKal = append(bagianKal, fmt.Sprintf("hari libur di hari kerja dihitung %s hari kerja biasa (dipelajari dari %d hari libur yang teramati)", bizMult(m.HolidayMult), m.HolidayObs))
+		} else {
+			bagianKal = append(bagianKal, "hari libur di hari kerja dianggap seperti hari Minggu (belum cukup hari libur yang teramati)")
+		}
+		if m.SchoolEstimated {
+			bagianKal = append(bagianKal, fmt.Sprintf("libur sekolah dihitung %s di hari kerja dan %s di akhir pekan", bizMult(m.SchoolWeekdayMult), bizMult(m.SchoolWeekendMult)))
+		} else {
+			bagianKal = append(bagianKal, "libur sekolah belum dikoreksi karena pengamatannya belum cukup")
+		}
+		leadKal = fmt.Sprintf("Dalam periode ini ada %s bertanda. Pengali yang dipakai: %s.", bizPlural(len(rep.Calendar), "hari"), strings.Join(bagianKal, "; "))
+		if m.CoverageUntil != "" {
+			leadKal += fmt.Sprintf(" Kalender terisi sampai %s.", m.CoverageUntil)
+		}
+	}
+	add("kalender", "Kalender Libur & Hari Khusus", leadKal,
+		"Kalender ini ikut menentukan vonis: minggu yang memuat libur diskalakan ke minggu biasa sebelum dibandingkan. Tambahkan libur daerah, libur sekolah setempat, atau kejadian lokal (jalan ditutup, festival, cuaca ekstrem) yang belum ada — dan hapus yang ternyata tidak terjadi. Isi bawaan bersumber SKB 3 Menteri dan perkiraan libur sekolah, jadi perlu diperiksa.")
 
 	add("istilah", "Arti Istilah di Halaman Ini",
 		"Dibaca sekali saja sudah cukup. Contoh pada tiap istilah diambil dari angka periode ini.", "")
@@ -381,8 +473,31 @@ func bizBuildGlossary(rep *models.BusinessAnalysis) {
 		})
 	}
 
-	// Contoh "selisih" diambil dari outlet dengan selisih terbesar mutlak,
-	// supaya pembaca bisa mencocokkannya dengan baris yang ada di tabel.
+	// Contoh "setara kalender": minggu dengan faktor paling jauh dari 1.
+	cKal := ""
+	var contohW *models.BizWeek
+	var contohO *models.BizOutlet
+	for i := range rep.Outlets {
+		o := &rep.Outlets[i]
+		for j := range o.Weeks {
+			w := &o.Weeks[j]
+			if w.CalFactor <= 0 || w.Net <= 0 {
+				continue
+			}
+			if contohW == nil || math.Abs(w.CalFactor-1) > math.Abs(contohW.CalFactor-1) {
+				contohW, contohO = w, o
+			}
+		}
+	}
+	if contohW != nil && math.Abs(contohW.CalFactor-1) >= 0.02 {
+		cKal = fmt.Sprintf("Minggu %s di %s (%s) menjual %s; sebagai minggu biasa nilainya setara %s.",
+			contohW.Label, contohO.Code, contohW.Calendar, bizRupiah(contohW.Net), bizRupiah(contohW.NetAdj))
+	}
+	add("Setara kalender",
+		"Penjualan satu minggu setelah libur dan pola hari dikoreksi: minggu yang memuat hari libur atau libur sekolah diskalakan ke minggu biasa memakai bobot hari outlet itu sendiri. Semua perbandingan di halaman ini memakai angka ini; angka sebenarnya tetap ditampilkan di sampingnya.",
+		cKal)
+
+	// Contoh "selisih" diambil dari outlet dengan selisih terbesar mutlak.
 	var contoh *models.BizOutlet
 	for i := range rep.Outlets {
 		o := &rep.Outlets[i]
@@ -393,43 +508,52 @@ func bizBuildGlossary(rep *models.BusinessAnalysis) {
 			contoh = o
 		}
 	}
-	cSelisih, cBatas := "", ""
+	cSelisih, cBatas, cKonsisten := "", "", ""
 	if contoh != nil {
-		cSelisih = fmt.Sprintf("Di periode ini %s %s sementara %s %s, jadi selisihnya %s.",
-			bizPlural(contoh.PeerCount, "outlet lain"), bizNaikTurun(deref(contoh.PeerGrowth4)),
+		cSelisih = fmt.Sprintf("Di periode ini nilai tengah %s %s sementara %s %s, jadi selisihnya %s poin.",
+			bizPlural(contoh.PeerCount, "outlet pembanding"), bizNaikTurun(deref(contoh.PeerGrowth4)),
 			contoh.Code, bizNaikTurun(deref(contoh.Growth4)), bizNum(math.Abs(*contoh.RGI4)))
 		if contoh.Threshold != nil {
-			cBatas = fmt.Sprintf("Batas wajar %s adalah %s. Selisih %s melewati batas itu, jadi bukan kebetulan.",
-				contoh.Code, bizNum(*contoh.Threshold), bizNum(math.Abs(*contoh.RGI4)))
+			lewat := "melewati"
+			if math.Abs(*contoh.RGI4) < *contoh.Threshold {
+				lewat = "masih di dalam"
+			}
+			cBatas = fmt.Sprintf("Batas wajar %s adalah %s poin. Selisih %s %s batas itu.",
+				contoh.Code, bizNum(*contoh.Threshold), bizNum(math.Abs(*contoh.RGI4)), lewat)
+		}
+		if contoh.ConsistencyNeed > 0 {
+			cKonsisten = fmt.Sprintf("%s searah pada %d dari %d minggu terakhir; syaratnya %d.",
+				contoh.Code, contoh.Consistency, rep.BlockWeeks, contoh.ConsistencyNeed)
 		}
 	}
 	add("Selisih",
-		"Jarak antara gerak outlet ini dengan gerak outlet lain. Angka 0 berarti geraknya sama persis. Ini bukan rupiah dan bukan persen penjualan, melainkan jarak antara dua angka persen.",
+		"Jarak antara gerak outlet ini dengan nilai tengah gerak seluruh outlet pembanding, pada angka setara kalender. Angka 0 berarti geraknya sama persis. Ini bukan rupiah dan bukan persen penjualan, melainkan jarak antara dua angka persen.",
 		cSelisih)
 	add("Batas wajar",
-		"Penjualan tiap outlet memang naik-turun sendiri setiap minggu tanpa sebab khusus. Batas wajar adalah seberapa besar naik-turun itu biasanya terjadi di outlet tersebut. Selisih yang masih di dalam batas ini belum bisa disebut bagus atau jelek.",
+		"Penjualan tiap outlet memang naik-turun sendiri setiap minggu tanpa sebab khusus. Batas wajar adalah dua kali galat baku selisih outlet itu — ditaksir dari naik-turun mingguannya sendiri sebelum blok terakhir, digabung model derau grup yang mengecil seiring banyaknya struk. Selisih di dalam batas ini belum bisa disebut bagus atau jelek.",
 		cBatas)
+	add("Konsisten",
+		"Selisih baru divonis kalau arahnya sama pada hampir semua minggu di blok terakhir. Satu minggu buruk yang menyeret satu blok bukan kemerosotan; empat minggu yang sama-sama di bawah barulah pola.",
+		cKonsisten)
 
 	cPasar := ""
 	if rep.GroupGrowth4 != nil {
-		cPasar = fmt.Sprintf("Periode ini pasar %s, dengan batas wajar %s%%.",
-			bizNaikTurun(*rep.GroupGrowth4), bizNum(deref(rep.MarketBand)))
+		cPasar = fmt.Sprintf("Periode ini pasar %s setara kalender (mentah %s), dengan batas wajar %s%%.",
+			bizNaikTurun(*rep.GroupGrowth4), bizNaikTurun(deref(rep.GroupGrowthRaw4)), bizNum(deref(rep.MarketBand)))
 	}
 	add("Pasar",
-		"Penjualan semua outlet digabung menjadi satu angka. Dipakai untuk melihat apakah yang turun cuma satu outlet, atau semuanya sekaligus.",
+		"Penjualan seluruh outlet pembanding digabung menjadi satu angka, setara kalender. Dipakai untuk melihat apakah yang turun cuma satu outlet, atau semuanya sekaligus — dan apakah turunnya nyata atau hanya karena bulan lalu ada libur.",
 		cPasar)
 
 	cPembanding := ""
 	if n := len(rep.PanelCodes); n > 0 {
-		cPembanding = fmt.Sprintf("Periode ini %s berdata lengkap (%s), jadi tiap outlet dinilai melawan %s sisanya.",
-			bizPlural(n, "outlet"), strings.Join(rep.PanelCodes, ", "), bizPlural(n-1, "outlet"))
+		cPembanding = fmt.Sprintf("Periode ini %s berdata lengkap (%s); nilai tengah pertumbuhan mereka menjadi satu patokan untuk semua.",
+			bizPlural(n, "outlet"), strings.Join(rep.PanelCodes, ", "))
 	}
 	add("Outlet pembanding",
-		"Outlet yang penjualannya lengkap di seluruh minggu yang dibandingkan, sehingga layak dijadikan patokan. Outlet yang baru buka atau sempat tutup tetap ditampilkan, tetapi tidak ikut menentukan patokan.",
+		"Outlet yang penjualannya lengkap di seluruh minggu yang dibandingkan, sehingga layak dijadikan patokan. Patokannya nilai tengah pertumbuhan mereka semua — tiap outlet satu suara, termasuk outlet yang sedang dinilai. Outlet yang baru buka atau sempat tutup tetap ditampilkan, tetapi tidak ikut menentukan patokan.",
 		cPembanding)
 
-	// Contoh struk diambil dari outlet yang perubahannya paling jelas
-	// digerakkan jumlah pengunjung — istilah ini paling sering disalahpahami.
 	cStruk := ""
 	for i := range rep.Outlets {
 		o := &rep.Outlets[i]
@@ -446,12 +570,12 @@ func bizBuildGlossary(rep *models.BusinessAnalysis) {
 
 	if len(rep.GroupEvents) > 0 {
 		add("Minggu tidak biasa",
-			"Minggu ketika semua outlet bergerak jauh dari kebiasaan — biasanya libur panjang, cuaca buruk, atau ada acara besar. Angka pada minggu itu jangan dipakai menilai kerja manajer.",
+			"Minggu ketika semua outlet bergerak jauh dari kebiasaan meski libur sudah dikoreksi — biasanya cuaca buruk, acara besar, atau gangguan. Angka pada minggu itu jangan dipakai menilai kerja manajer.",
 			fmt.Sprintf("Periode ini ada %s: %s.", bizPlural(len(rep.GroupEvents), "minggu"), bizDaftar(rep.GroupEvents)))
 	}
 
 	cKesimpulan := ""
-	if len(rep.Leading) > 0 || len(rep.Lagging) > 0 {
+	{
 		bagian := []string{}
 		if len(rep.Leading) > 0 {
 			bagian = append(bagian, fmt.Sprintf("%s Lebih Baik", bizDaftar(rep.Leading)))
@@ -459,17 +583,22 @@ func bizBuildGlossary(rep *models.BusinessAnalysis) {
 		if len(rep.Lagging) > 0 {
 			bagian = append(bagian, fmt.Sprintf("%s Tertinggal", bizDaftar(rep.Lagging)))
 		}
-		cKesimpulan = "Periode ini: " + strings.Join(bagian, ", ") + ", sisanya Sama Saja."
+		if len(rep.Watch) > 0 {
+			bagian = append(bagian, fmt.Sprintf("%s Perlu Dipantau", bizDaftar(rep.Watch)))
+		}
+		if len(bagian) > 0 {
+			cKesimpulan = "Periode ini: " + strings.Join(bagian, ", ") + ", sisanya Sama Saja."
+		}
 	}
-	add("Lebih Baik / Tertinggal / Sama Saja",
-		"Kesimpulan setelah selisih dibandingkan dengan batas wajar outlet tersebut. \"Sama Saja\" berarti bedanya masih di dalam batas wajar, jadi tidak ada yang perlu dipermasalahkan.",
+	add("Lebih Baik / Tertinggal / Perlu Dipantau / Sama Saja",
+		"Kesimpulan setelah selisih dibandingkan dengan batas wajar dan konsistensinya. \"Lebih Baik\" dan \"Tertinggal\" berarti melewati batas wajar dan searah hampir tiap minggu. \"Perlu Dipantau\" berarti selisihnya mulai terlihat tetapi belum memenuhi salah satu syarat itu. \"Sama Saja\" berarti bedanya masih di dalam batas wajar.",
 		cKesimpulan)
 
 	for _, o := range rep.Outlets {
 		if o.Diagnosis == models.BizDiagWeak {
 			add("Belum Bisa Dinilai",
 				"Penjualan outlet itu terlalu naik-turun dari minggu ke minggu untuk dinilai secara mingguan, biasanya karena jumlah struknya sedikit. Nilai outlet seperti ini per bulan saja.",
-				fmt.Sprintf("Periode ini %s masuk kelompok ini, dengan batas wajar %s.", o.Code, bizNum(deref(o.Threshold))))
+				fmt.Sprintf("Periode ini %s masuk kelompok ini, dengan batas wajar %s poin.", o.Code, bizNum(deref(o.Threshold))))
 			break
 		}
 	}

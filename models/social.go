@@ -185,7 +185,11 @@ const (
 	BizSocSepiDua   = "SEPI_DUANYA"  // medsos turun, penjualan turun → mesin promosi berhenti
 	BizSocRamaiSepi = "RAMAI_SEPI"   // medsos naik, penjualan turun → berhenti di outlet
 	BizSocTanpaMed  = "TANPA_MEDSOS" // medsos turun, penjualan naik → penjualan tidak bergantung medsos
-	BizSocKurang    = "DATA_KURANG"
+	// BizSocDatar: salah satu atau kedua sisi masih di dalam deraunya sendiri.
+	// Tanda plus/minus dari angka yang belum melewati derau bukan arah, dan
+	// kuadran yang ditetapkan dari tanda semata berpindah tiap minggu.
+	BizSocDatar  = "DATAR"
+	BizSocKurang = "DATA_KURANG"
 )
 
 type BizSocialOutlet struct {
@@ -242,9 +246,22 @@ type BizSocialOutlet struct {
 	// yang sepi.
 	Stale bool `json:"stale"`
 
-	// SalesGrowth disalin dari BizOutlet.Growth4 supaya grafik sebar tidak perlu
-	// menggabungkan dua sumber angka di sisi UI.
-	SalesGrowth *float64 `json:"sales_growth"`
+	// SalesGrowth disalin dari BizOutlet.Growth4 (setara kalender) untuk
+	// ditampilkan. Sumbu penjualan pada penyandingan memakai SalesRGI — selisih
+	// outlet ini dengan outlet pembanding — bukan pertumbuhan mentahnya: pada
+	// bulan yang pasarnya turun, SEMUA outlet berpertumbuhan negatif, dan
+	// kuadran dari angka itu hanya akan mengulang kalender. SalesThreshold =
+	// batas wajar selisihnya; selisih di dalamnya dianggap tidak bergerak.
+	SalesGrowth    *float64 `json:"sales_growth"`
+	SalesRGI       *float64 `json:"sales_rgi"`
+	SalesThreshold *float64 `json:"sales_threshold"`
+
+	// ReachBand = pita derau gerak jangkauan, persen. Jumlah tonton/interaksi
+	// adalah hitungan, dan hitungan kecil berayun besar: 108 lawan 81 suka
+	// terbaca "turun 25%" padahal masih di dalam derau hitungannya sendiri.
+	// Pitanya diturunkan dari besar hitungannya (dua galat baku Poisson,
+	// minimum 10 poin).
+	ReachBand *float64 `json:"reach_band"`
 
 	Quadrant      string `json:"quadrant"`
 	QuadrantLabel string `json:"quadrant_label"`
@@ -272,6 +289,10 @@ type BizSocial struct {
 	// korelasi dari dua titik selalu ±1 dan tidak berarti apa-apa.
 	Correlation *float64 `json:"correlation"`
 	CorrCount   int      `json:"corr_count"`
+	// CorrSignificant = korelasinya melewati uji-t 5%. Dengan delapan outlet,
+	// korelasi di bawah ±0,7 tidak bisa dibedakan dari kebetulan — angkanya
+	// tetap ditampilkan, tetapi katanya berbunyi "belum berarti".
+	CorrSignificant bool `json:"corr_significant"`
 
 	// OutletsNoAccount = outlet yang ikut dinilai penjualannya tetapi belum
 	// punya akun terdaftar. Disebut terang-terangan supaya kolom medsos yang
