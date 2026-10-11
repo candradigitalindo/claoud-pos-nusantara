@@ -225,7 +225,7 @@ func bizAttachModel(rep *models.BusinessAnalysis, in bizModelInput) {
 	bizModelInsights(rep, m)
 	rep.Notes = append(rep.Notes,
 		fmt.Sprintf("Tren, perkiraan, minggu aneh, pergeseran level, dan pola hari dihitung layanan analitik pada angka setara kalender: garis tren robust (Theil–Sen) dengan selang 95%%, rentang perkiraan 80%% dari derau robust (MAD) yang melebar seiring jarak minggu, minggu aneh = keluar %s simpangan robust dari garis, pergeseran level = skor beda dua segmen ≥ 3, pola hari = %d minggu terakhir lawan %d minggu sebelumnya pada hari biasa saja. Perkiraan bukan target: ia hanya berkata \"kalau polanya bertahan\".",
-			strings.Replace(fmt.Sprintf("%.1f", 2.5), ".", ",", 1), rep.BlockWeeks, rep.BlockWeeks))
+			strings.Replace(fmt.Sprintf("%.1f", 2.5), ".", ",", 1), bizDowWeeks(rep.BlockWeeks), bizDowWeeks(rep.BlockWeeks)))
 	rep.Glossary = append(rep.Glossary,
 		models.BizTerm{Term: "Tren (per minggu)",
 			Meaning: "Kemiringan garis yang paling pas melewati penjualan mingguan setara kalender, dalam persen per minggu. Garisnya dipilih dengan cara yang tahan terhadap satu-dua minggu ekstrem. \"Nyata\" berarti selang keyakinannya tidak memuat nol.",
@@ -356,6 +356,11 @@ func bizDowDays(blockLen int) int {
 	return blockLen * 7
 }
 
+// bizDowWeeks = jendela pola hari dalam minggu — angka yang DISEBUT kalimat.
+// Sebelum blok terbentuk (blockLen 0) Python tetap memakai 28 hari, jadi
+// kalimatnya harus berbunyi "4 minggu", bukan "0 minggu".
+func bizDowWeeks(blockLen int) int { return bizDowDays(blockLen) / 7 }
+
 func bizConvertModel(r *anaResult, labelOf func(string) string, cal *bizCalendar) *models.BizModelResult {
 	res := &models.BizModelResult{Anomalies: []models.BizAnomaly{}, Notes: []string{}}
 	if t := r.Trend; t != nil {
@@ -452,6 +457,7 @@ func bizModelStatements(subjek string, r *models.BizModelResult, isGroup bool, b
 	if isGroup {
 		subj = "pasar"
 	}
+	dowW := bizDowWeeks(blockLen)
 
 	// 1. Tren.
 	if t := r.Trend; t != nil {
@@ -500,11 +506,11 @@ func bizModelStatements(subjek string, r *models.BizModelResult, isGroup bool, b
 		var s string
 		switch {
 		case math.Abs(we-wd) >= 10 && we < wd:
-			s = fmt.Sprintf("Dibanding %d minggu sebelumnya (hari biasa saja), akhir pekan %s sedangkan hari kerja %s: yang berkurang terutama pengunjung akhir pekan.", blockLen, bizNaikTurun(we), bizNaikTurun(wd))
+			s = fmt.Sprintf("Dibanding %d minggu sebelumnya (hari biasa saja), akhir pekan %s sedangkan hari kerja %s: yang berkurang terutama pengunjung akhir pekan.", dowW, bizNaikTurun(we), bizNaikTurun(wd))
 		case math.Abs(we-wd) >= 10 && we > wd:
-			s = fmt.Sprintf("Dibanding %d minggu sebelumnya (hari biasa saja), hari kerja %s sedangkan akhir pekan %s: yang berubah terutama hari kerja.", blockLen, bizNaikTurun(wd), bizNaikTurun(we))
+			s = fmt.Sprintf("Dibanding %d minggu sebelumnya (hari biasa saja), hari kerja %s sedangkan akhir pekan %s: yang berubah terutama hari kerja.", dowW, bizNaikTurun(wd), bizNaikTurun(we))
 		default:
-			s = fmt.Sprintf("Dibanding %d minggu sebelumnya (hari biasa saja), akhir pekan %s dan hari kerja %s — bergerak serupa.", blockLen, bizNaikTurun(we), bizNaikTurun(wd))
+			s = fmt.Sprintf("Dibanding %d minggu sebelumnya (hari biasa saja), akhir pekan %s dan hari kerja %s — bergerak serupa.", dowW, bizNaikTurun(we), bizNaikTurun(wd))
 		}
 		if math.Abs(d.WorstPct) >= 20 || math.Abs(d.BestPct) >= 20 {
 			s += " " + bizHariEkstrem(d.WorstDow, d.WorstPct, d.BestDow, d.BestPct)
@@ -555,15 +561,21 @@ func bizEnrichAdvice(o *models.BizOutlet, r *models.BizModelResult, blockLen int
 		}
 		if d.WorstPct <= -30 {
 			tambah = append(tambah, fmt.Sprintf("Hari %s adalah yang paling turun (%s dibanding %d minggu sebelumnya); cek apa yang berbeda pada hari itu — jadwal orang, jam buka, atau acara rutin yang berhenti.",
-				bizDowName[d.WorstDow%7], bizNaikTurun(d.WorstPct), blockLen))
+				bizDowName[d.WorstDow%7], bizNaikTurun(d.WorstPct), bizDowWeeks(blockLen)))
 		}
 	}
 	if c := r.Changepoint; c != nil && c.Significant && c.AfterWeeks <= bizModelRecent {
 		tambah = append(tambah, fmt.Sprintf("Mulai penelusuran dari minggu %s, saat level penjualan bergeser %s: apa yang berubah tepat di sekitar tanggal itu di outlet ini.",
 			bizRentangTgl(c.WeekStart, bizWeekEnd(c.WeekStart)), bizNaikTurun(c.ShiftPct)))
 	}
-	if t := r.Trend; t != nil && t.RecentSignificant && t.RecentSlopePct <= -1.5 && o.Diagnosis != models.BizDiagLagging {
-		tambah = append(tambah, fmt.Sprintf("Angka bloknya masih wajar, tetapi %d minggu terakhir trennya %s — kalau dibiarkan, dalam sebulan selisihnya akan melewati batas wajar.",
+	// Hanya untuk outlet yang bloknya memang masih wajar (Sama Saja / Belum
+	// Bisa Dinilai). Untuk Tertinggal atau Perlu Dipantau kalimat "angka
+	// bloknya masih wajar" bertentangan dengan vonisnya sendiri; untuk Lebih
+	// Baik tren turun bukan urusan blok. Tidak ada janji "dalam sebulan
+	// melewati batas" — itu hitungan yang tidak dilakukan.
+	if t := r.Trend; t != nil && t.RecentSignificant && t.RecentSlopePct <= -1.5 &&
+		(o.Diagnosis == models.BizDiagOnPace || o.Diagnosis == models.BizDiagWeak) {
+		tambah = append(tambah, fmt.Sprintf("Angka bloknya masih di dalam batas wajar, tetapi %d minggu terakhir trennya %s — kalau berlanjut, selisihnya bisa melewati batas wajar; cari sebabnya sekarang selagi kecil.",
 			t.RecentWeeks, bizPerMinggu(t.RecentSlopePct)))
 	}
 	if len(tambah) == 0 {
@@ -603,7 +615,7 @@ func bizModelSections(rep *models.BusinessAnalysis, m *models.BizModel) {
 		Key:   "model",
 		Title: "Tren, Perkiraan, dan Pola Hari",
 		Lead:  lead,
-		Hint: fmt.Sprintf("Tren = kemiringan garis robust pada penjualan setara kalender; \"nyata\" kalau selang keyakinannya tidak memuat nol. Perkiraan berkata \"kalau polanya bertahan\", bukan target, dan rentangnya 80%%. Pola hari membandingkan %d minggu terakhir dengan %d minggu sebelumnya pada hari biasa saja — akhir pekan yang melemah dan hari kerja yang melemah adalah dua masalah dengan obat yang berbeda.", rep.BlockWeeks, rep.BlockWeeks),
+		Hint: fmt.Sprintf("Tren = kemiringan garis robust pada penjualan setara kalender; \"nyata\" kalau selang keyakinannya tidak memuat nol. Perkiraan berkata \"kalau polanya bertahan\", bukan target, dan rentangnya 80%%. Pola hari membandingkan %d minggu terakhir dengan %d minggu sebelumnya pada hari biasa saja — akhir pekan yang melemah dan hari kerja yang melemah adalah dua masalah dengan obat yang berbeda.", bizDowWeeks(rep.BlockWeeks), bizDowWeeks(rep.BlockWeeks)),
 	})
 }
 
@@ -642,11 +654,11 @@ func bizModelInsights(rep *models.BusinessAnalysis, m *models.BizModel) {
 			case we-wd <= -10 && we < 0:
 				add(models.BizInsightWarning, "Akhir pekan yang melemah, bukan hari kerja",
 					fmt.Sprintf("Pada hari biasa, akhir pekan %s dibanding %d minggu sebelumnya, sementara hari kerja %s. Yang berkurang adalah kunjungan akhir pekan — sasaran program Markom yang paling jelas: acara, promo, dan konten yang mengajak datang Sabtu–Minggu.",
-						bizNaikTurun(we), rep.BlockWeeks, bizNaikTurun(wd)), nil)
+						bizNaikTurun(we), bizDowWeeks(rep.BlockWeeks), bizNaikTurun(wd)), nil)
 			case wd-we <= -10 && wd < 0:
 				add(models.BizInsightWarning, "Hari kerja yang melemah, akhir pekan bertahan",
 					fmt.Sprintf("Pada hari biasa, hari kerja %s dibanding %d minggu sebelumnya, sementara akhir pekan %s. Pengunjung hari kerja biasanya orang sekitar dan rombongan kecil — periksa jam buka, menu makan siang, dan paket untuk kantor atau sekolah.",
-						bizNaikTurun(wd), rep.BlockWeeks, bizNaikTurun(we)), nil)
+						bizNaikTurun(wd), bizDowWeeks(rep.BlockWeeks), bizNaikTurun(we)), nil)
 			}
 		}
 	}
@@ -697,8 +709,11 @@ func bizModelInsights(rep *models.BusinessAnalysis, m *models.BizModel) {
 			continue
 		}
 		t := r.Trend
+		// Hanya outlet Sama Saja: "belum terlihat di angka blok" tidak benar
+		// untuk Perlu Dipantau/Tertinggal, dan tidak berarti untuk Lebih Baik,
+		// Belum Bisa Dinilai, atau Belum Cukup Data.
 		if (t.Significant && t.SlopePct <= -1.5 || t.RecentSignificant && t.RecentSlopePct <= -1.5) &&
-			o.Diagnosis != models.BizDiagLagging && o.Diagnosis != models.BizDiagWatch {
+			o.Diagnosis == models.BizDiagOnPace {
 			turun = append(turun, o.Code)
 		}
 	}

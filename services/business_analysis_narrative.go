@@ -44,16 +44,6 @@ func bizMult(v float64) string {
 	return strings.Replace(fmt.Sprintf("%.2f", v), ".", ",", 1) + "×"
 }
 
-// bizFindOutlet mencari outlet berdasarkan kode.
-func bizFindOutlet(rep *models.BusinessAnalysis, code string) *models.BizOutlet {
-	for i := range rep.Outlets {
-		if rep.Outlets[i].Code == code {
-			return &rep.Outlets[i]
-		}
-	}
-	return nil
-}
-
 // BuildBusinessNarrative mengisi Headline, Insights, Sections, dan Glossary
 // pada laporan yang sudah dihitung.
 func BuildBusinessNarrative(rep *models.BusinessAnalysis) {
@@ -86,8 +76,17 @@ func bizBuildHeadline(rep *models.BusinessAnalysis) {
 		rep.Headline = fmt.Sprintf("%s tertinggal, pasarnya sendiri baik-baik saja", bizDaftar(rep.Lagging))
 
 	default:
-		if rep.CalendarEffect != nil && math.Abs(*rep.CalendarEffect) >= 3 && deref(rep.GroupGrowthRaw4) < 0 {
-			rep.Headline = fmt.Sprintf("Keadaan normal: penurunan mentah %s sebagian besar kalender", bizNum(-deref(rep.GroupGrowthRaw4))+"%")
+		// "Kalender" hanya bila kalender memang menjelaskan PENURUNAN mentah:
+		// CalendarEffect = mentah − setara kalender < 0 berarti angka mentah
+		// lebih buruk daripada kenyataannya. Bila positif, kalender justru
+		// menutupi penurunan — jangan disebut sebagai sebabnya.
+		raw := deref(rep.GroupGrowthRaw4)
+		if rep.CalendarEffect != nil && *rep.CalendarEffect <= -3 && raw < 0 {
+			porsi := "sebagian"
+			if math.Abs(*rep.CalendarEffect) >= 0.5*math.Abs(raw) {
+				porsi = "sebagian besar"
+			}
+			rep.Headline = fmt.Sprintf("Keadaan normal: penurunan mentah %s %s kalender", bizNum(-raw)+"%", porsi)
 		} else {
 			rep.Headline = fmt.Sprintf("Keadaan normal, pasar %s setelah libur dikoreksi", gerak)
 		}
@@ -132,10 +131,14 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 		if rep.Verdict == models.BizVerdictNormal && deref(rep.GroupGrowthRaw4) < 0 {
 			kind = models.BizInsightWarning
 		}
+		penutup := " Membaca angka mentah saja akan menagih Markom atas kalender."
+		if *rep.CalendarEffect > 0 {
+			penutup = " Membaca angka mentah saja akan memuji kalender, bukan kerja outlet — keadaan sebenarnya lebih lemah daripada angka mentahnya."
+		}
 		add(kind,
 			fmt.Sprintf("Kalender menjelaskan %s poin gerak pasar", bizNum(math.Abs(*rep.CalendarEffect))),
-			fmt.Sprintf("Angka mentah pasar %s; setara kalender %s. Selisihnya lahir dari libur dan pola hari, bukan dari pasar.%s Membaca angka mentah saja akan menagih Markom atas kalender.",
-				bizNaikTurun(*rep.GroupGrowthRaw4), bizNaikTurun(*rep.GroupGrowth4), sebab),
+			fmt.Sprintf("Angka mentah pasar %s; setara kalender %s. Selisihnya lahir dari libur dan pola hari, bukan dari pasar.%s%s",
+				bizNaikTurun(*rep.GroupGrowthRaw4), bizNaikTurun(*rep.GroupGrowth4), sebab, penutup),
 			nil, nil)
 	}
 
@@ -275,11 +278,17 @@ func bizBuildInsights(rep *models.BusinessAnalysis) {
 				bizDaftar(rep.GroupEvents)), nil, nil)
 	}
 
-	// 10. Kalender yang belum menjangkau periode.
-	if rep.CalendarModel != nil && rep.CalendarModel.CoverageUntil != "" && rep.CalendarModel.CoverageUntil < rep.PeriodTo {
-		add(models.BizInsightWarning, "Kalender libur belum menjangkau seluruh periode",
-			fmt.Sprintf("Kalender terisi sampai %s, sementara periode ini berakhir %s. Minggu sesudah tanggal itu dibandingkan tanpa koreksi libur. Lengkapi kalender di bagian bawah halaman.",
-				rep.CalendarModel.CoverageUntil, rep.PeriodTo), nil, nil)
+	// 10. Kalender yang belum menjangkau periode — atau kosong sama sekali.
+	if rep.CalendarModel != nil {
+		switch {
+		case rep.CalendarModel.CoverageUntil == "":
+			add(models.BizInsightWarning, "Kalender libur kosong",
+				"Belum ada libur nasional dan cuti bersama yang terisi lengkap untuk satu tahun pun, jadi semua minggu dibandingkan tanpa koreksi libur. Isi kalender di bagian bawah halaman sebelum membaca vonisnya sebagai kesimpulan.", nil, nil)
+		case rep.CalendarModel.CoverageUntil < rep.PeriodTo:
+			add(models.BizInsightWarning, "Kalender libur belum menjangkau seluruh periode",
+				fmt.Sprintf("Kalender terisi sampai %s, sementara periode ini berakhir %s. Minggu sesudah tanggal itu dibandingkan tanpa koreksi libur. Lengkapi kalender di bagian bawah halaman.",
+					rep.CalendarModel.CoverageUntil, rep.PeriodTo), nil, nil)
+		}
 	}
 
 	// 11. Riwayat masih pendek.
@@ -360,7 +369,7 @@ func bizBuildSections(rep *models.BusinessAnalysis) {
 	// Selisih tiap outlet.
 	nDinilai, nKanan, nKiri := 0, len(rep.Leading), len(rep.Lagging)
 	for _, o := range rep.Outlets {
-		if o.RGI4 != nil {
+		if o.RGI4 != nil && o.Diagnosis != models.BizDiagWeak && o.Diagnosis != models.BizDiagNoData {
 			nDinilai++
 		}
 	}
@@ -501,7 +510,7 @@ func bizBuildGlossary(rep *models.BusinessAnalysis) {
 	var contoh *models.BizOutlet
 	for i := range rep.Outlets {
 		o := &rep.Outlets[i]
-		if o.RGI4 == nil {
+		if o.RGI4 == nil || o.Diagnosis == models.BizDiagWeak || o.Diagnosis == models.BizDiagNoData {
 			continue
 		}
 		if contoh == nil || math.Abs(*o.RGI4) > math.Abs(*contoh.RGI4) {

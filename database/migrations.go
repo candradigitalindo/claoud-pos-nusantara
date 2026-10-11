@@ -2905,7 +2905,9 @@ func RunMigrations() error {
 			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
 			PRIMARY KEY (day, kind)
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_business_calendar_day ON business_calendar(day)`,
+		// Indeks (day) terpisah berlebihan: kunci utama (day, kind) sudah
+		// melayani pencarian berawalan day.
+		`DROP INDEX IF EXISTS idx_business_calendar_day`,
 	} {
 		if _, err := DB.Exec(m); err != nil {
 			log.Printf("Business calendar migration skipped: %v", err)
@@ -2917,12 +2919,21 @@ func RunMigrations() error {
 	var calSeeded int
 	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_business_calendar_seed_v1'").Scan(&calSeeded)
 	if calSeeded == 0 {
+		gagal := 0
 		for _, e := range businessCalendarSeed() {
-			DB.Exec(`INSERT INTO business_calendar (day, kind, name, source) VALUES ($1, $2, $3, 'seed') ON CONFLICT DO NOTHING`,
-				e.Day, e.Kind, e.Name)
+			if _, err := DB.Exec(`INSERT INTO business_calendar (day, kind, name, source) VALUES ($1, $2, $3, 'seed') ON CONFLICT DO NOTHING`,
+				e.Day, e.Kind, e.Name); err != nil {
+				gagal++
+			}
 		}
-		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_business_calendar_seed_v1', 'done') ON CONFLICT (key) DO NOTHING`)
-		log.Printf("Kalender bisnis: isi awal libur 2026 disisipkan")
+		// Penanda hanya dipasang bila seluruh isi awal masuk; kalau sebagian
+		// gagal (DB sempat putus), penyisipan diulang pada start berikutnya.
+		if gagal == 0 {
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_business_calendar_seed_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Kalender bisnis: isi awal libur 2026 disisipkan")
+		} else {
+			log.Printf("Kalender bisnis: %d baris isi awal gagal disisipkan, diulang pada start berikutnya", gagal)
+		}
 	}
 	// Cache narasi AI Analisa Bisnis: satu baris per hash data+model.
 	if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS business_narratives (
@@ -2933,6 +2944,10 @@ func RunMigrations() error {
 	)`); err != nil {
 		log.Printf("Business narratives migration skipped: %v", err)
 	}
+	// Nama model bisa panjang ("openai-compatible/openai/gpt-oss-120b" sudah
+	// 37; penyedia lain memakai jalur lebih panjang) — jangan sampai INSERT
+	// narasi gagal karena kolom label.
+	DB.Exec(`ALTER TABLE business_narratives ALTER COLUMN model TYPE TEXT`)
 	// Izin mengelola kalender: admin & superadmin (one-shot, marker — paling akhir).
 	var bizManage int
 	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_business_analysis_manage_perm'").Scan(&bizManage)

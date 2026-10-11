@@ -524,9 +524,22 @@ func TestNarasiAIHanyaMenggantiTeks(t *testing.T) {
 	if !bizAIApply(rep, &aiNarrative{VerdictText: "vonis AI"}) || rep.Headline != "templat" || rep.VerdictText != "vonis AI" {
 		t.Errorf("headline kosong harus mempertahankan templat: %q / %q", rep.Headline, rep.VerdictText)
 	}
-	// Skema keluaran harus bisa diserialkan (dikirim ke API sebagai JSON).
-	if b, err := json.Marshal(aiNarrativeSchema()); err != nil || !strings.Contains(string(b), "additionalProperties") {
-		t.Errorf("skema tidak sah: %v", err)
+	// Skema keluaran TIAP bagian yang dikirim ke penyedia harus bisa
+	// diserialkan (dikirim ke API sebagai JSON) dan menolak properti tambahan.
+	parts := bizAIParts(&models.BusinessAnalysis{
+		WeeksCount: 8, PeriodFrom: "2026-08-03", PeriodTo: "2026-09-27", BlockWeeks: 4, Verdict: "NORMAL",
+		Headline: "h", VerdictText: "v", GroupGrowth4: pf(-3),
+		Sections: []models.BizSection{{Key: "pasar", Lead: "l"}},
+		Outlets: []models.BizOutlet{{Code: "KL", Name: "Kala", DiagnosisLabel: "Sama Saja", Diagnosis: models.BizDiagOnPace,
+			Growth4: pf(-5), RGI4: pf(-2), Threshold: pf(10), Note: "n", Advice: "a"}},
+	})
+	if len(parts) == 0 {
+		t.Fatal("bagian narasi tidak boleh kosong")
+	}
+	for _, p := range parts {
+		if b, err := json.Marshal(p.schema); err != nil || !strings.Contains(string(b), "additionalProperties") {
+			t.Errorf("skema bagian %q tidak sah: %v", p.name, err)
+		}
 	}
 }
 

@@ -102,8 +102,11 @@ func UpsertBusinessCalendar(in models.BizCalendarDay, actor string) (*models.Biz
 	if name == "" {
 		name = BizCalendarKindLabel(kind)
 	}
-	if len(name) > 150 {
-		name = name[:150]
+	// Satu baris, spasi dirapikan, paling panjang 80 huruf: nama tanda tampil
+	// di daftar kalender, di catatan minggu, dan masuk ke bahan narasi AI.
+	name = strings.Join(strings.Fields(name), " ")
+	if r := []rune(name); len(r) > 80 {
+		name = string(r[:80])
 	}
 	_, err := database.DB.Exec(`
 		INSERT INTO business_calendar (day, kind, name, source, updated_by, updated_at)
@@ -114,6 +117,7 @@ func UpsertBusinessCalendar(in models.BizCalendarDay, actor string) (*models.Biz
 	if err != nil {
 		return nil, err
 	}
+	bizReportCacheClear()
 	return &models.BizCalendarDay{Day: day, Kind: kind, KindLabel: BizCalendarKindLabel(kind),
 		Name: name, Source: "manual", UpdatedBy: actor}, nil
 }
@@ -130,6 +134,7 @@ func DeleteBusinessCalendar(day, kind string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("tanda tidak ditemukan")
 	}
+	bizReportCacheClear()
 	return nil
 }
 
@@ -149,8 +154,46 @@ func bizLoadCalendar(from, to string) (*bizCalendar, error) {
 	for _, d := range list {
 		c.days[d.Day] = append(c.days[d.Day], d)
 	}
-	database.DB.QueryRow(`SELECT COALESCE(to_char(MAX(day), 'YYYY-MM-DD'), '') FROM business_calendar`).Scan(&c.coverageUntil)
+	c.coverageUntil = bizCalendarCoverage()
 	return c, nil
+}
+
+// bizCalMinPerYear = jumlah libur nasional + cuti bersama minimum agar satu
+// tahun dianggap "sudah diisi". SKB tahunan memuat ±16 libur nasional dan
+// beberapa cuti bersama; lima tanggal tetap (1 Jan, 1 Mei, 1 Jun, 17 Agu,
+// 25 Des) saja belum berarti kalender tahun itu dirawat.
+const bizCalMinPerYear = 12
+
+// bizCalendarCoverage = 31 Desember tahun terakhir yang libur nasional dan
+// cuti bersamanya sudah terisi lengkap, berurutan dari tahun pertama. Libur
+// sekolah dan kejadian lokal tidak dihitung: mereka bukan tanda kalender
+// sudah dirawat. Tanpa ini, lima tanggal tetap 2027 dari seed membuat halaman
+// menulis "kalender terisi sampai 25 Des 2027" padahal Lebaran 2027 belum ada.
+func bizCalendarCoverage() string {
+	rows, err := database.DB.Query(`
+		SELECT EXTRACT(YEAR FROM day)::int AS thn, COUNT(*)
+		FROM business_calendar
+		WHERE kind IN ($1, $2)
+		GROUP BY 1 ORDER BY 1`, BizCalNational, BizCalJoint)
+	if err != nil {
+		return ""
+	}
+	defer rows.Close()
+	last, prev := 0, 0
+	for rows.Next() {
+		var thn, n int
+		if rows.Scan(&thn, &n) != nil {
+			continue
+		}
+		if n < bizCalMinPerYear || (prev != 0 && thn != prev+1) {
+			break
+		}
+		last, prev = thn, thn
+	}
+	if last == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d-12-31", last)
 }
 
 // bizDow: 0 = Senin … 6 = Minggu.
@@ -377,7 +420,12 @@ func bizBuildCalendarModel(daily map[string]map[string]bizDaily, cal *bizCalenda
 	}
 	m.holidayObs = len(holRatio)
 	if m.holidayObs >= bizCalMinHolidayObs {
-		m.holidayMult = math.Round(math.Min(12, math.Max(1, bizMedian(holRatio)))*100) / 100
+		// Lantai 0,25, bukan 1: ada libur yang justru mematikan penjualan
+		// (hari pertama Lebaran, Natal bagi sebagian outlet). Kalau dipaksa
+		// ≥ 1, minggu itu terbaca sebagai pasar yang jatuh dan minggu
+		// berikutnya sebagai pulih — persis kesalahan yang koreksi ini
+		// ingin hilangkan.
+		m.holidayMult = math.Round(math.Min(12, math.Max(0.25, bizMedian(holRatio)))*100) / 100
 		m.holidayEst = true
 	}
 	for wk := 0; wk < 2; wk++ {
@@ -438,6 +486,12 @@ func (m *bizCalModel) dayWeight(code, day string) float64 {
 	kind, _, _ := m.cal.classify(day)
 	switch kind {
 	case bizDayHoliday:
+		if base[d] <= 0 {
+			// Outlet yang biasanya tutup pada nama hari ini tetapi buka karena
+			// libur: bobotnya seperti hari Minggu outlet itu, bukan nol — nol
+			// membuat penjualan liburnya dihitung sebagai minggu biasa.
+			return base[6]
+		}
 		if m.holidayEst {
 			return base[d] * m.holidayMultFor(code)
 		}
@@ -460,8 +514,11 @@ func (m *bizCalModel) weekFactor(code, weekStart string) (float64, string) {
 		normal += base[d]
 	}
 	t, err := time.Parse("2006-01-02", weekStart)
-	if err != nil || normal <= 0 {
+	if err != nil {
 		return 1, ""
+	}
+	if normal <= 0 {
+		return 1, m.weekNote(weekStart)
 	}
 	for i := 0; i < 7; i++ {
 		actual += m.dayWeight(code, t.AddDate(0, 0, i).Format("2006-01-02"))

@@ -67,10 +67,24 @@ func ExportBusinessAnalysisExcel(c *fiber.Ctx) error {
 func ListBusinessCalendar(c *fiber.Ctx) error {
 	from := c.Query("from")
 	to := c.Query("to")
-	if from == "" || to == "" {
-		today := time.Now().In(services.GetTimezoneLocation())
+	today := time.Now().In(services.GetTimezoneLocation())
+	// Hanya yang kosong yang diisi bawaan; yang terisi harus tanggal sah.
+	if from == "" {
 		from = today.AddDate(0, 0, -180).Format("2006-01-02")
+	}
+	if to == "" {
 		to = today.AddDate(0, 0, 180).Format("2006-01-02")
+	}
+	tf, errF := time.Parse("2006-01-02", from)
+	tt, errT := time.Parse("2006-01-02", to)
+	if errF != nil || errT != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format tanggal harus YYYY-MM-DD."})
+	}
+	if tt.Before(tf) {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Tanggal akhir mendahului tanggal awal."})
+	}
+	if tt.Sub(tf) > 3*366*24*time.Hour {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Rentang paling panjang tiga tahun."})
 	}
 	list, err := services.ListBusinessCalendar(from, to)
 	if err != nil {

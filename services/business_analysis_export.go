@@ -57,7 +57,8 @@ func bizWeekRange(weekStart string) string {
 // BuildBusinessAnalysisExcel menyusun file .xlsx Analisa Bisnis untuk rentang
 // minggu yang sama dengan tampilan halaman.
 func BuildBusinessAnalysisExcel(weeks, block int) ([]byte, string, error) {
-	rep, err := GetBusinessAnalysisWith(weeks, block)
+	// Tanpa memulai pembuatan narasi AI: berkas ini tidak menunggunya.
+	rep, err := bizGetBusinessAnalysis(weeks, block, false)
 	if err != nil {
 		return nil, "", err
 	}
@@ -92,6 +93,9 @@ func BuildBusinessAnalysisExcel(weeks, block int) ([]byte, string, error) {
 	f.SetCellStyle(sum, "A5", "A5", st.section)
 	f.SetCellValue(sum, "A6", bizVerdictLabel(rep.Verdict))
 	f.SetCellStyle(sum, "A6", "A6", st.title)
+	f.MergeCell(sum, "B6", "F6")
+	f.SetCellValue(sum, "B6", rep.Headline)
+	f.SetCellStyle(sum, "B6", "F6", stWrap)
 	f.MergeCell(sum, "A7", "F10")
 	f.SetCellValue(sum, "A7", rep.VerdictText)
 	f.SetCellStyle(sum, "A7", "F10", stWrap)
@@ -125,6 +129,26 @@ func BuildBusinessAnalysisExcel(weeks, block int) ([]byte, string, error) {
 			f.SetCellValue(sum, fmt.Sprintf("B%d", row), v)
 		}
 		row++
+	}
+
+	// Temuan — kartu yang tampil di puncak halaman, dengan outlet terkait.
+	if len(rep.Insights) > 0 {
+		row += 2
+		f.SetCellValue(sum, fmt.Sprintf("A%d", row), "TEMUAN")
+		f.SetCellStyle(sum, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), st.section)
+		row++
+		for _, in := range rep.Insights {
+			f.SetCellValue(sum, fmt.Sprintf("A%d", row), in.Title)
+			f.MergeCell(sum, fmt.Sprintf("B%d", row), fmt.Sprintf("F%d", row+1))
+			teks := in.Body
+			if len(in.Outlets) > 0 {
+				teks += " [" + joinOrDash(in.Outlets) + "]"
+			}
+			f.SetCellValue(sum, fmt.Sprintf("B%d", row), teks)
+			f.SetCellStyle(sum, fmt.Sprintf("A%d", row), fmt.Sprintf("F%d", row+1), stWrap)
+			f.SetRowHeight(sum, row, 15)
+			row += 2
+		}
 	}
 
 	row += 2
@@ -349,6 +373,97 @@ func BuildBusinessAnalysisExcel(weeks, block int) ([]byte, string, error) {
 			Dimension: excelize.ChartDimension{Width: 760, Height: 400},
 			YAxis:     excelize.ChartAxis{Title: []excelize.RichTextRun{{Text: "Indeks"}}},
 		})
+	}
+
+	// ══ Sheet 5: Medsos (bila ada akun terdaftar) ═══════════════════════════
+	if soc := rep.Social; soc != nil && soc.Enabled && len(soc.Outlets) > 0 {
+		med := "Medsos"
+		f.NewSheet(med)
+		medHeaders := []string{"Outlet", "Kode", "Kuadran", "Pembacaan", "Dasar Jangkauan",
+			"Jangkauan Blok Terakhir", "Jangkauan Blok Sebelumnya", "Naik/Turun Jangkauan (%)", "Pita Derau (±%)",
+			"Pengikut Sekarang", "Tambah Pengikut Blok Terakhir", "Konten Blok Terakhir", "Konten Blok Sebelumnya",
+			"Selisih Penjualan (poin)", "Batas Wajar Penjualan", "Cakupan Data", "Akun"}
+		setHeaderRow(f, med, medHeaders, st.header)
+		medW := []float64{26, 8, 18, 80, 14, 18, 18, 16, 12, 16, 18, 14, 14, 16, 14, 40, 40}
+		for i, w := range medW {
+			col, _ := excelize.ColumnNumberToName(i + 1)
+			f.SetColWidth(med, col, col, w)
+		}
+		for i, o := range soc.Outlets {
+			r := i + 2
+			f.SetCellValue(med, fmt.Sprintf("A%d", r), o.Name)
+			f.SetCellValue(med, fmt.Sprintf("B%d", r), o.Code)
+			f.SetCellValue(med, fmt.Sprintf("C%d", r), o.QuadrantLabel)
+			f.SetCellValue(med, fmt.Sprintf("D%d", r), o.Reading)
+			f.SetCellValue(med, fmt.Sprintf("E%d", r), o.ReachBasis)
+			switch o.ReachBasis {
+			case "tayangan":
+				f.SetCellValue(med, fmt.Sprintf("F%d", r), o.ViewsRecent)
+				f.SetCellValue(med, fmt.Sprintf("G%d", r), o.ViewsPrev)
+			case "interaksi":
+				f.SetCellValue(med, fmt.Sprintf("F%d", r), o.EngRecent)
+				f.SetCellValue(med, fmt.Sprintf("G%d", r), o.EngPrev)
+			}
+			bizPtrCell(f, med, fmt.Sprintf("H%d", r), o.ReachGrowth)
+			bizPtrCell(f, med, fmt.Sprintf("I%d", r), o.ReachBand)
+			if o.FollowersNow != nil {
+				f.SetCellValue(med, fmt.Sprintf("J%d", r), *o.FollowersNow)
+			}
+			f.SetCellValue(med, fmt.Sprintf("K%d", r), o.GainRecent)
+			f.SetCellValue(med, fmt.Sprintf("L%d", r), o.PostsRecent)
+			f.SetCellValue(med, fmt.Sprintf("M%d", r), o.PostsPrev)
+			bizPtrCell(f, med, fmt.Sprintf("N%d", r), o.SalesRGI)
+			bizPtrCell(f, med, fmt.Sprintf("O%d", r), o.SalesThreshold)
+			f.SetCellValue(med, fmt.Sprintf("P%d", r), o.Coverage)
+			var akun []string
+			for _, a := range o.Accounts {
+				akun = append(akun, socPlatformName(a.Platform)+" @"+a.Username)
+			}
+			f.SetCellValue(med, fmt.Sprintf("Q%d", r), joinOrDash(akun))
+			f.SetCellStyle(med, fmt.Sprintf("A%d", r), fmt.Sprintf("E%d", r), st.text)
+			f.SetCellStyle(med, fmt.Sprintf("F%d", r), fmt.Sprintf("G%d", r), st.num)
+			f.SetCellStyle(med, fmt.Sprintf("H%d", r), fmt.Sprintf("I%d", r), stPct)
+			f.SetCellStyle(med, fmt.Sprintf("J%d", r), fmt.Sprintf("M%d", r), st.num)
+			f.SetCellStyle(med, fmt.Sprintf("N%d", r), fmt.Sprintf("O%d", r), stPct)
+			f.SetCellStyle(med, fmt.Sprintf("P%d", r), fmt.Sprintf("Q%d", r), st.text)
+		}
+		r := len(soc.Outlets) + 3
+		f.SetCellValue(med, fmt.Sprintf("A%d", r), "GRUP")
+		f.SetCellStyle(med, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.section)
+		r++
+		grup := [][2]interface{}{
+			{"Naik/turun jangkauan grup (%)", soc.GroupReachGrowth},
+			{"Naik/turun pengikut grup (%)", soc.GroupFollowerGrowth},
+			{"Konten blok terakhir", soc.GroupPostsRecent},
+			{"Konten blok sebelumnya", soc.GroupPostsPrev},
+			{"Keeratan medsos–penjualan antar outlet (r)", soc.Correlation},
+			{"Outlet dalam keeratan", soc.CorrCount},
+			{"Keeratan berarti?", map[bool]string{true: "ya", false: "belum"}[soc.CorrSignificant]},
+			{"Outlet tanpa akun", joinOrDash(soc.OutletsNoAccount)},
+			{"Akun mandek", joinOrDash(soc.StaleAccounts)},
+		}
+		for _, g := range grup {
+			f.SetCellValue(med, fmt.Sprintf("A%d", r), g[0])
+			switch v := g[1].(type) {
+			case *float64:
+				if v != nil {
+					f.SetCellValue(med, fmt.Sprintf("B%d", r), *v)
+				}
+			default:
+				f.SetCellValue(med, fmt.Sprintf("B%d", r), v)
+			}
+			r++
+		}
+		r++
+		f.SetCellValue(med, fmt.Sprintf("A%d", r), "CATATAN MEDSOS")
+		f.SetCellStyle(med, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.section)
+		r++
+		for _, n := range soc.Notes {
+			f.MergeCell(med, fmt.Sprintf("A%d", r), fmt.Sprintf("H%d", r+1))
+			f.SetCellValue(med, fmt.Sprintf("A%d", r), "• "+n)
+			f.SetCellStyle(med, fmt.Sprintf("A%d", r), fmt.Sprintf("H%d", r+1), stWrap)
+			r += 2
+		}
 	}
 
 	sheetIdx, _ := f.GetSheetIndex(sum)

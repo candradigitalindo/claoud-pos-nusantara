@@ -205,7 +205,6 @@ type BizSocialOutlet struct {
 	// dipakai penjualan (BusinessAnalysis.BlockWeeks), supaya dua angka yang
 	// disandingkan benar-benar menjelaskan rentang waktu yang sama.
 	GainRecent  int64 `json:"gain_recent"`
-	GainPrev    int64 `json:"gain_prev"`
 	PostsRecent int64 `json:"posts_recent"`
 	PostsPrev   int64 `json:"posts_prev"`
 	ViewsRecent int64 `json:"views_recent"`

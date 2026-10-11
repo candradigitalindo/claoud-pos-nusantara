@@ -40,6 +40,30 @@ def test_changepoint_level_shift():
     y = [v * (1 + 0.01 * ((i % 3) - 1)) for i, v in enumerate(y)]
     cp = changepoint(y)
     assert cp is not None and cp["significant"] and cp["index"] == 7 and cp["shift_pct"] < -35
+    # rata-rata yang ditampilkan = rata-rata aritmetik deret, bukan geometrik
+    assert abs(cp["before_mean"] - sum(y[:7]) / 7) < 1 and abs(cp["after_mean"] - sum(y[7:]) / 6) < 1
+
+
+def test_dow_shift_symmetric_days():
+    # Satu hari libur (kind=1) di jendela terakhir tidak boleh mengarang
+    # penurunan: himpunan nama hari pembilang dan penyebut harus sama.
+    from datetime import date, timedelta
+    daily = []
+    start = date(2026, 8, 3)  # Senin
+    for i in range(28):
+        d = start + timedelta(days=i)
+        kind = 1 if d == date(2026, 8, 17) else 0
+        daily.append({"d": d.isoformat(), "net": 100, "kind": kind})
+    s = dow_shift(daily, recent_days=14)
+    assert s is not None
+    assert s["weekday_pct"] == 0.0 and s["weekend_pct"] == 0.0
+    assert 0 not in s["per_dow"]  # Senin gugur di kedua sisi, bukan hanya di satu
+
+
+def test_endpoint_survives_bad_series():
+    from app import _safe
+    r = _safe("X", {"weeks": [{"week_start": "x", "adj": "bukan-angka"}], "daily": [], "future": []})
+    assert r["trend"] is None and r.get("error") == "gagal"
 
 
 def test_dow_shift_weekend_drop():

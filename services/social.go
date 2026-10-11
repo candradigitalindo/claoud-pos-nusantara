@@ -591,11 +591,15 @@ type socialWeekRow struct {
 // Selisih negatif dijadikan nol: konten yang dihapus membuat penghitungnya
 // mundur, dan "minggu ini menerbitkan −2 konten" bukan kalimat yang berarti.
 func socialWeeklyRows(weeks int) ([]socialWeekRow, error) {
+	// Satu minggu PEMANASAN diambil sebelum minggu pertama yang diminta, supaya
+	// akun jalur-kumulatif punya minggu sebelumnya untuk diselisihkan; tanpa
+	// itu minggu pertama tiap grafik selalu nol untuk akun TikTok. Baris
+	// pemanasan dibuang lagi sebelum dikembalikan.
 	rows, err := database.DB.Query(`
 		WITH b AS (SELECT date_trunc('week', tz_today()::timestamp)::date AS cur),
 		wk AS (
 			SELECT gs::date AS week_start
-			FROM b, generate_series(b.cur - ($1::int * 7), b.cur - 7, interval '7 days') gs
+			FROM b, generate_series(b.cur - (($1::int + 1) * 7), b.cur - 7, interval '7 days') gs
 		),
 		acc AS (
 			SELECT a.id, a.outlet_id, TRIM(o.code) AS code, o.name, a.platform, a.username,
@@ -608,24 +612,20 @@ func socialWeeklyRows(weeks int) ([]socialWeekRow, error) {
 		grid AS (SELECT acc.id AS account_id, wk.week_start FROM acc CROSS JOIN wk),
 		snap AS (
 			SELECT g.account_id, g.week_start, s.followers, s.posts_count, s.likes_total,
-			       COALESCE(ap.approx, false) AS approx
+			       COALESCE(s.approx, false) AS approx
 			FROM grid g
 			LEFT JOIN LATERAL (
-				SELECT followers, posts_count, likes_total
+				SELECT followers, posts_count, likes_total, approx
 				FROM social_snapshots s
 				WHERE s.account_id = g.account_id AND s.followers IS NOT NULL
 				  AND s.captured_date BETWEEN g.week_start AND g.week_start + 6
 				-- Pembacaan yang tidak dibulatkan platform ("1,2M") menang atas yang
 				-- lebih baru tetapi bulat: selisih antar minggu dari angka bulat bisa
 				-- melahirkan lonjakan puluhan ribu suka yang tidak pernah terjadi.
+				-- Tanda "bulat" ikut dari pembacaan yang DIPILIH itu, bukan dari
+				-- pembacaan lain di minggu yang sama yang tidak dipakai.
 				ORDER BY s.approx ASC, s.captured_date DESC LIMIT 1
 			) s ON true
-			LEFT JOIN LATERAL (
-				SELECT bool_or(s2.approx) AS approx
-				FROM social_snapshots s2
-				WHERE s2.account_id = g.account_id
-				  AND s2.captured_date BETWEEN g.week_start AND g.week_start + 6
-			) ap ON true
 		),
 		pst AS (
 			SELECT g.account_id, g.week_start,
@@ -701,6 +701,12 @@ func socialWeeklyRows(weeks int) ([]socialWeekRow, error) {
 		return nil, err
 	}
 
+	warm := ""
+	for _, x := range all {
+		if warm == "" || x.row.WeekStart < warm {
+			warm = x.row.WeekStart
+		}
+	}
 	out := make([]socialWeekRow, 0, len(all))
 	for i, x := range all {
 		r := x.row
@@ -731,6 +737,9 @@ func socialWeeklyRows(weeks int) ([]socialWeekRow, error) {
 		if x.mEngage != nil {
 			r.Engage = *x.mEngage
 			r.Manual = true
+		}
+		if r.WeekStart == warm {
+			continue // minggu pemanasan: hanya untuk selisih kumulatif
 		}
 		out = append(out, r)
 	}

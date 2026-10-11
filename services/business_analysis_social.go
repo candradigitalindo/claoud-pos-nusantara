@@ -290,8 +290,23 @@ func AttachBusinessSocial(rep *models.BusinessAnalysis, weeks int) {
 	sort.Slice(soc.Outlets, func(i, j int) bool { return soc.Outlets[i].Code < soc.Outlets[j].Code })
 
 	// ── Grup ────────────────────────────────────────────────────────────────
+	// Pengikut grup = jumlah pengikut outlet, sah hanya bila SEMUA outlet yang
+	// pernah punya angka pengikut punya angkanya minggu itu (aturan yang sama
+	// dengan per akun); selisihnya hanya antar dua minggu berangka.
+	pernah := map[string]bool{}
+	for _, o := range soc.Outlets {
+		for _, w := range o.Weeks {
+			if w.Followers != nil {
+				pernah[o.Code] = true
+				break
+			}
+		}
+	}
+	var prevGroupFol *int64
 	for i, wk := range weekList {
 		gw := models.BizSocialWeek{WeekStart: wk, Label: labelOf[wk]}
+		lengkap, adaPemasok := true, false
+		var totalFol int64
 		for _, o := range soc.Outlets {
 			gw.Posts += o.Weeks[i].Posts
 			gw.Views += o.Weeks[i].Views
@@ -299,6 +314,28 @@ func AttachBusinessSocial(rep *models.BusinessAnalysis, weeks int) {
 			if o.Weeks[i].HasManual {
 				gw.HasManual = true
 			}
+			if pernah[o.Code] {
+				adaPemasok = true
+				if o.Weeks[i].Followers == nil {
+					lengkap = false
+				} else {
+					totalFol += *o.Weeks[i].Followers
+					if o.Weeks[i].FollowersApprox {
+						gw.FollowersApprox = true
+					}
+				}
+			}
+		}
+		if lengkap && adaPemasok {
+			v := totalFol
+			gw.Followers = &v
+			if prevGroupFol != nil {
+				d := v - *prevGroupFol
+				gw.Gain = &d
+			}
+			prevGroupFol = &v
+		} else {
+			prevGroupFol = nil
 		}
 		soc.Group = append(soc.Group, gw)
 	}
@@ -345,7 +382,14 @@ func AttachBusinessSocial(rep *models.BusinessAnalysis, weeks int) {
 			soc.OutletsNoAccount = append(soc.OutletsNoAccount, o.Code)
 		}
 	}
+	// Hanya akun dari outlet yang memang DIKELUARKAN (bo.Stale). Akun yang
+	// gagal ditarik tetapi angkanya ditambal manual tidak mengeluarkan
+	// outletnya, jadi menyebutnya "mandek" di temuan akan bertentangan dengan
+	// kuadrannya yang tetap dinilai.
 	for _, o := range soc.Outlets {
+		if !o.Stale {
+			continue
+		}
 		for _, a := range o.Accounts {
 			if a.Stale {
 				soc.StaleAccounts = append(soc.StaleAccounts,
@@ -499,11 +543,14 @@ func socReachBand(recent, prev int64) *float64 {
 	if prev <= 0 {
 		return nil
 	}
-	a := float64(recent)
-	if a < 1 {
-		a = 1
+	// Galat baku pertumbuhan a/b − 1 untuk dua hitungan Poisson ≈ √(a+b)/b.
+	// Rumus lama √(1/a+1/b) meledak ketika a = 0 (pita ±200%), sehingga
+	// jangkauan yang jatuh ke NOL justru tidak pernah dianggap berarti.
+	a, b := float64(recent), float64(prev)
+	if a < 0 {
+		a = 0
 	}
-	se := math.Sqrt(1/a+1/float64(prev)) * 100
+	se := math.Sqrt(a+b) / b * 100
 	v := round1(math.Max(10, 2*se))
 	return &v
 }
@@ -528,10 +575,16 @@ func socJudge(bo *models.BizSocialOutlet, blockLen int) {
 		bo.Reading = "Angka medsos outlet ini sudah lebih dari sepekan tidak berhasil diambil, jadi ia tidak ikut dibandingkan. Naik-turun yang terlihat di grafiknya berasal dari pengambilan yang gagal, bukan dari medsosnya."
 		return
 	}
-	if bo.ReachGrowth == nil || bo.SalesRGI == nil {
+	// Tanpa batas wajar penjualan (derau outlet belum bisa ditaksir) sumbu
+	// penjualannya tidak bisa dibaca — jangan mengarang batas ±10 yang tidak
+	// ada di laporan penjualan.
+	if bo.ReachGrowth == nil || bo.SalesRGI == nil || bo.SalesThreshold == nil {
 		bo.Quadrant = models.BizSocKurang
 		bo.QuadrantLabel = "Data Kurang"
 		switch {
+		case bo.ReachGrowth != nil && bo.SalesRGI != nil:
+			bo.Reading = fmt.Sprintf("%s medsos %s, tetapi batas wajar penjualan outlet ini belum bisa ditaksir (riwayat derau belum cukup), jadi pasangannya belum bisa dibaca.",
+				socKapital(dasar), bizNaikTurun(deref(bo.ReachGrowth)))
 		case bo.ReachGrowth == nil && bo.SalesRGI == nil:
 			bo.Reading = fmt.Sprintf("Belum ada %d minggu berisi di kedua sisi — baik medsos maupun penjualan — untuk dibandingkan.", blockLen*2)
 		case bo.ReachGrowth == nil:
@@ -552,10 +605,7 @@ func socJudge(bo *models.BizSocialOutlet, blockLen int) {
 	if rBand <= 0 {
 		rBand = 10
 	}
-	sBand := deref(bo.SalesThreshold)
-	if sBand <= 0 {
-		sBand = 10
-	}
+	sBand := *bo.SalesThreshold
 	rSig := math.Abs(r) >= rBand
 	sSig := math.Abs(sRGI) >= sBand
 	selisih := fmt.Sprintf("selisih penjualan dengan outlet lain %s poin", bizNum(sRGI))

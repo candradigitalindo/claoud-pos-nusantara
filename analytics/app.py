@@ -7,6 +7,8 @@ layanan ini mengembalikan angka — tren, perkiraan, minggu aneh, pergeseran
 level, pola hari — dan Go yang merakit kalimatnya. Kalau layanan ini mati,
 halaman tetap tampil tanpa bagian model.
 """
+import logging
+
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from typing import Any
@@ -35,11 +37,21 @@ def health():
     return {"ok": True, "engine": "theil-sen/mad"}
 
 
+def _safe(label: str, series: dict):
+    """Satu deret yang patologis tidak boleh menggagalkan semua outlet: yang
+    gagal dikembalikan kosong (Go menerima null per bidang) dan dicatat."""
+    try:
+        return analyze(series)
+    except Exception:  # noqa: BLE001 — sengaja menangkap semua
+        logging.exception("analyze gagal untuk %s", label)
+        return {"trend": None, "forecast": None, "anomalies": [], "changepoint": None, "dow": None, "error": "gagal"}
+
+
 @app.post("/analyze")
 def analyze_endpoint(req: AnalyzeRequest):
     out = {"engine": "theil-sen/mad", "group": None, "outlets": {}}
     if req.group is not None:
-        out["group"] = analyze(req.group.model_dump())
+        out["group"] = _safe("pasar", req.group.model_dump())
     for code, s in req.outlets.items():
-        out["outlets"][code] = analyze(s.model_dump())
+        out["outlets"][code] = _safe(code, s.model_dump())
     return out

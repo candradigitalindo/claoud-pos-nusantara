@@ -172,8 +172,11 @@ def changepoint(values, min_seg: int = 3) -> Optional[dict]:
             best = {
                 "index": int(t[k]),
                 "shift_pct": round((math.exp(diff) - 1) * 100, 1),
-                "before_mean": round(math.exp(a.mean())),
-                "after_mean": round(math.exp(b.mean())),
+                # Rata-rata ARITMETIK penjualan sesungguhnya, supaya cocok dengan
+                # yang didapat pembaca kalau menjumlah kolom tabel dan membaginya;
+                # pergeseran (shift_pct) tetap dari skala log.
+                "before_mean": round(float(np.mean(np.exp(a)))),
+                "after_mean": round(float(np.mean(np.exp(b)))),
                 "score": round(score, 2),
                 "significant": bool(score >= CHANGE_SCORE),
                 "after_weeks": int(b.size),
@@ -212,9 +215,15 @@ def dow_shift(daily, recent_days: int = 28) -> Optional[dict]:
         return None
 
     def grp(days):
-        a = [np.mean(rec[d]) for d in days if len(rec[d]) >= 2]
-        b = [np.mean(pri[d]) for d in days if len(pri[d]) >= 2]
-        if not a or not b or sum(b) <= 0:
+        # Pembilang dan penyebut HARUS memuat nama hari yang sama. Kalau satu
+        # nama hari gugur hanya di salah satu jendela (libur, tutup), rasionya
+        # membandingkan Sel–Jum lawan Sen–Jum dan mengarang penurunan.
+        days = [d for d in days if d in per]
+        if not days:
+            return None
+        a = [np.mean(rec[d]) for d in days]
+        b = [np.mean(pri[d]) for d in days]
+        if sum(b) <= 0:
             return None
         return round((sum(a) / sum(b) - 1) * 100, 1)
 

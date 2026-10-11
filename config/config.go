@@ -28,7 +28,7 @@ type Config struct {
 	WAGatewayURL   string
 	// AnalyticsURL = layanan Python (tren, perkiraan, pola hari) untuk Analisa Bisnis; kosong = nonaktif.
 	AnalyticsURL   string
-	// Narasi AI Analisa Bisnis: penyedia (ollama | openai | anthropic), alamat, model, kunci.
+	// Narasi AI Analisa Bisnis: penyedia (openai | anthropic), alamat, model, kunci.
 	NarrativeProvider string
 	NarrativeBaseURL  string
 	NarrativeModel    string
@@ -79,7 +79,10 @@ func Load() *Config {
 		NarrativeProvider: getEnv("NARRATIVE_PROVIDER", ""),
 		NarrativeBaseURL:  getEnv("NARRATIVE_BASE_URL", ""),
 		NarrativeModel:    getEnv("NARRATIVE_MODEL", ""),
-		NarrativeAPIKey:   getEnv("NARRATIVE_API_KEY", getEnv("ANTHROPIC_API_KEY", "")),
+		// ANTHROPIC_API_KEY sengaja TIDAK dijadikan cadangan di sini: kunci itu
+		// hanya boleh dipakai bila penyedianya Anthropic (lihat InitNarrativeAI),
+		// bukan dikirim sebagai Bearer ke titik akhir kompatibel OpenAI.
+		NarrativeAPIKey:   getEnv("NARRATIVE_API_KEY", ""),
 		WAGatewayToken:  getEnv("WA_GATEWAY_TOKEN", ""),
 	}
 }
