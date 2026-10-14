@@ -342,7 +342,11 @@ func UpdateWASettings(in models.WASettings) error {
 			templates[spec.Key] = t
 		}
 	}
-	// Penimpa posisi: hanya simpan event yang daftarnya terisi.
+	// Penimpa posisi: hanya simpan event yang daftarnya terisi. Event
+	// pengadaan tidak boleh diarahkan ke role pengaju-saja.
+	if err := ValidateWAEventRoles(in.EventRoles); err != nil {
+		return err
+	}
 	roleSet := map[string][]string{}
 	for _, spec := range waEventSpecs {
 		list := []string{}

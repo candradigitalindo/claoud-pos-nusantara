@@ -340,14 +340,63 @@ func WARoleOptions() []models.WARoleOption {
 		return out
 	}
 	defer rows.Close()
+	infos := waLoadRoles()
 	for rows.Next() {
 		var r models.WARoleOption
 		if rows.Scan(&r.Name, &r.Description, &r.ScopeType) == nil {
 			r.Users = counts[r.Name]
+			r.RequesterOnly = WARequesterOnlyRole(r.Name, infos[r.Name])
 			out = append(out, r)
 		}
 	}
 	return out
+}
+
+// waStageProcurementPerms: izin tahap pengadaan. Role yang memegang salah
+// satunya boleh menjadi penimpa penerima event pengadaan; role yang hanya
+// memegang Lihat/Buat (pengaju) tidak — setiap pengaju hanya dikabari tentang
+// pengajuannya sendiri lewat jalur "pengaju", bukan semua pengajuan.
+var waStageProcurementPerms = []string{
+	"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing", "procurement.requests.pickup",
+	"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing", "procurement.rawmaterials.pickup",
+	"finance.payments.pay", "stockledger.adjust", "assets.create",
+}
+
+// WARequesterOnlyRole: role yang untuk pengadaan hanya pengaju (tidak
+// memegang izin tahap mana pun). superadmin bukan pengaju-saja.
+func WARequesterOnlyRole(role string, info waRoleInfo) bool {
+	if role == "superadmin" {
+		return false
+	}
+	for _, p := range waStageProcurementPerms {
+		if waRoleHasPermission(info.perms, p) {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateWAEventRoles menolak penimpa penerima yang membuat event pengadaan
+// dikirim ke role pengaju-saja: semua pengaju di role itu akan menerima
+// pengajuan satu sama lain.
+func ValidateWAEventRoles(eventRoles map[string][]string) error {
+	roles := waLoadRoles()
+	for key, list := range eventRoles {
+		if !strings.HasPrefix(key, "purchase.") {
+			continue
+		}
+		for _, r := range list {
+			r = strings.TrimSpace(r)
+			info, ok := roles[r]
+			if r == "" || (!ok && r != "superadmin") {
+				continue
+			}
+			if WARequesterOnlyRole(r, info) {
+				return Invalid("role %q hanya pengaju (tanpa izin verifikasi/approval/pembelian/pengambilan/bayar/gudang) — tidak bisa jadi penerima event %s: setiap pengaju otomatis dikabari tentang pengajuannya sendiri", r, key)
+			}
+		}
+	}
+	return nil
 }
 
 // waRouteDesc menjelaskan aturan otomatis sebuah event untuk layar pengaturan.

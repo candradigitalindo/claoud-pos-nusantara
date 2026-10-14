@@ -20,7 +20,7 @@ import (
 // outlet — pengaju (tanpa izin apa pun), verifikator, keuangan.
 type waRoutingFixture struct {
 	requester, verifier, finance string // id akun
-	cleanup                       func()
+	cleanup                      func()
 }
 
 func newWARoutingFixture(t *testing.T) waRoutingFixture {
@@ -69,7 +69,7 @@ func TestWAPurchaseRoutingConcept(t *testing.T) {
 	requester := waExtraIDPrefix + f.requester
 
 	cases := []struct {
-		event                    string
+		event                     string
 		wantReq, wantVer, wantKeu bool
 	}{
 		{"purchase.submitted", true, true, false},         // tanda terima + verifikator
@@ -135,5 +135,82 @@ func TestWAPurchaseEventsCatalog(t *testing.T) {
 		if !waEventEnabled(models.WASettings{Events: map[string]bool{}}, key) {
 			t.Errorf("event %s tidak aktif secara bawaan", key)
 		}
+	}
+}
+
+// Pengaju hanya menerima notifikasi pengajuannya sendiri: tidak ada event
+// pengadaan yang dialamatkan ke izin Lihat/Buat (izin yang dipegang pengaju),
+// dan role pengaju-saja ditolak sebagai penimpa penerima event pengadaan.
+func TestWARequestersOnlyGetTheirOwnRequests(t *testing.T) {
+	requesterPerms := []string{
+		"procurement.requests.view", "procurement.requests.submit",
+		"procurement.rawmaterials.view", "procurement.rawmaterials.submit",
+		"procurement.dashboard.view", "procurement.projects.view", "procurement.projects.manage",
+	}
+	for _, spec := range waEventSpecs {
+		if !strings.HasPrefix(spec.Key, "purchase.") {
+			continue
+		}
+		for _, p := range spec.Permissions {
+			for _, rp := range requesterPerms {
+				if p == rp || waRoleHasPermission([]string{rp}, p) {
+					t.Errorf("event %s dialamatkan ke izin pengaju %q — semua pengaju akan menerima pengajuan orang lain", spec.Key, p)
+				}
+			}
+		}
+	}
+	// Role manajer outlet (Lihat + Buat) = pengaju-saja; verifikator bukan.
+	mgr := waRoleInfo{perms: requesterPerms, scopeType: "specific"}
+	if !WARequesterOnlyRole("manager uji", mgr) {
+		t.Error("role Lihat/Buat harus dianggap pengaju-saja")
+	}
+	if WARequesterOnlyRole("verif uji", waRoleInfo{perms: []string{"procurement.requests.verify"}}) {
+		t.Error("verifikator bukan pengaju-saja")
+	}
+	if WARequesterOnlyRole("superadmin", waRoleInfo{}) {
+		t.Error("superadmin bukan pengaju-saja")
+	}
+}
+
+// Dua pengaju di role yang sama: masing-masing hanya menerima pengajuannya.
+func TestWARequesterDoesNotGetOtherRequesterEvents(t *testing.T) {
+	requireDB(t)
+	sfx := strings.ToLower(NewULID()[20:])
+	role := "ujm" + sfx
+	if _, err := database.DB.Exec(`INSERT INTO roles (name, description, scope_type) VALUES ($1, 'uji', 'all')`, role); err != nil {
+		t.Fatalf("role: %v", err)
+	}
+	for _, p := range []string{"procurement.requests.view", "procurement.requests.submit"} {
+		database.DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES ($1, $2)`, role, p)
+	}
+	ids := []string{NewULID(), NewULID()}
+	for i, id := range ids {
+		phone := fmt.Sprintf("0814%08d", (time.Now().UnixNano()+int64(i))%100000000)
+		if _, err := database.DB.Exec(`INSERT INTO cloud_admins (id, username, password_hash, name, role, wa_phone, wa_notify, is_active)
+			VALUES ($1, $2, 'x', $3, $4, $5, true, true)`, id, fmt.Sprintf("uji_m%d_%s", i, sfx), fmt.Sprintf("Manajer %d %s", i, sfx), role, phone); err != nil {
+			t.Fatalf("akun: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		execScratch(`DELETE FROM cloud_admins WHERE role = $1`, role)
+		execScratch(`DELETE FROM role_permissions WHERE role = $1`, role)
+		execScratch(`DELETE FROM roles WHERE name = $1`, role)
+	})
+	for _, ev := range []string{"purchase.submitted", "purchase.verified", "purchase.approved", "purchase.rejected",
+		"purchase.priced", "purchase.payment_requested", "purchase.paid", "purchase.picked_up", "purchase.received"} {
+		got := waRecipientIDs(ev, "", waExtraIDPrefix+ids[0])
+		if !got[ids[0]] {
+			t.Errorf("%s: pengaju sendiri tidak menerima", ev)
+		}
+		if got[ids[1]] {
+			t.Errorf("%s: pengaju lain di role yang sama ikut menerima", ev)
+		}
+	}
+	// Penimpa penerima ke role pengaju-saja ditolak.
+	if err := ValidateWAEventRoles(map[string][]string{"purchase.approved": {role}}); err == nil {
+		t.Error("penimpa penerima ke role pengaju-saja diterima — semua manajer akan menerima pengajuan satu sama lain")
+	}
+	if err := ValidateWAEventRoles(map[string][]string{"ppic.alert": {role}}); err != nil {
+		t.Errorf("penimpa event non-pengadaan ke role pengaju ditolak: %v", err)
 	}
 }

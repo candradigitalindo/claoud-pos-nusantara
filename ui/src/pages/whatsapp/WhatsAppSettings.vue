@@ -229,8 +229,11 @@
                 <div v-if="ev.audience === 'internal'" class="mt-3 rounded-lg bg-gray-50 p-3">
                   <p class="lbl">Posisi penerima</p>
                   <p class="hint mb-2">Kosong = otomatis: {{ ev.route_desc }}. Centang role untuk menimpa aturan itu (batasan outlet role tetap berlaku).</p>
+                  <p v-if="ev.key.startsWith('purchase.')" class="hint mb-2 text-amber-700">
+                    Role pengaju (hanya Lihat/Buat pengadaan) tidak ditawarkan: setiap pengaju otomatis dikabari tentang pengajuannya sendiri saja, bukan pengajuan orang lain.
+                  </p>
                   <div class="flex flex-wrap gap-1.5">
-                    <label v-for="r in roleOptions" :key="r.name" class="rolechip" :class="{ 'rolechip--on': (settings.event_roles[ev.key] || []).includes(r.name) }">
+                    <label v-for="r in roleOptionsFor(ev)" :key="r.name" class="rolechip" :class="{ 'rolechip--on': (settings.event_roles[ev.key] || []).includes(r.name) }">
                       <input type="checkbox" class="sr-only" :checked="(settings.event_roles[ev.key] || []).includes(r.name)" :disabled="!canManage" @change="toggleRole(ev.key, r.name)" />
                       {{ r.name }}<span class="opacity-60"> · {{ r.users }} org</span>
                     </label>
@@ -461,6 +464,10 @@ const events = ref([])
 const recipients = ref([])
 const recipientUsers = ref([])
 const roleOptions = ref([])
+// Event pengadaan: role pengaju-saja disembunyikan (server juga menolaknya).
+function roleOptionsFor(ev) {
+  return ev.key.startsWith('purchase.') ? roleOptions.value.filter(r => !r.requester_only) : roleOptions.value
+}
 const expandedUser = ref({})
 const groups = ref([])
 const outlets = ref([])

@@ -192,4 +192,7 @@ type WARoleOption struct {
 	Description string `json:"description"`
 	ScopeType   string `json:"scope_type"`
 	Users       int    `json:"users"` // pengguna aktif ber-nomor WA pada role ini
+	// RequesterOnly: untuk pengadaan role ini hanya pengaju — tidak boleh
+	// menjadi penimpa penerima event pengadaan (pengaju saling menerima).
+	RequesterOnly bool `json:"requester_only"`
 }
