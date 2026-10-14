@@ -5,6 +5,7 @@ import (
 	"cloud-pos/database"
 	"cloud-pos/models"
 	"cloud-pos/services"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -84,8 +85,9 @@ func AdminAuth(cfg *config.Config) fiber.Handler {
 			})
 		}
 
-		// 1) Cek static admin token (backward compatibility)
-		if token == cfg.AdminToken {
+		// 1) Token admin statis (kompatibilitas lama) — hanya bila ADMIN_TOKEN
+		//    diisi nilai kuat; kosong/lemah = jalur ini mati (T-1).
+		if cfg.StaticAdminTokenMatches(token) {
 			c.Locals("admin_id", "static")
 			c.Locals("admin_username", "admin")
 			c.Locals("admin_role", "superadmin")
@@ -93,49 +95,43 @@ func AdminAuth(cfg *config.Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// 2) Cek JWT token
-		claims, err := services.ValidateJWT(token, cfg.JWTSecret)
+		// 2) JWT: tanda tangan & kedaluwarsa, lalu dicocokkan dengan keadaan
+		//    akun di DB — masih ada, aktif, versi token & role sama — dan scope
+		//    dibaca dari role di DB, bukan dari token (T-55, T-56). Cache 30 dtk.
+		sess, err := services.AuthenticateAdminJWT(token, cfg.JWTSecret)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(models.APIResponse{
-				Success: false,
-				Error:   "Unauthorized: token tidak valid atau sudah expired",
-			})
+			return RejectAdminSession(c, err)
 		}
 
-		c.Locals("admin_id", claims["sub"])
-		c.Locals("admin_username", claims["username"])
-		c.Locals("admin_role", claims["role"])
-
-		// Extract scope from JWT
-		scope, _ := claims["scope"].(string)
-		if scope == "" {
-			scope = "all"
-		}
-		c.Locals("admin_scope", scope)
-
-		if scope == "specific" {
-			if raw, ok := claims["outlet_ids"].([]interface{}); ok {
-				ids := make([]string, 0, len(raw))
-				for _, v := range raw {
-					if s, ok := v.(string); ok {
-						ids = append(ids, s)
-					}
-				}
-				c.Locals("admin_outlet_ids", ids)
-			}
-			if raw, ok := claims["work_unit_ids"].([]interface{}); ok {
-				ids := make([]string, 0, len(raw))
-				for _, v := range raw {
-					if s, ok := v.(string); ok {
-						ids = append(ids, s)
-					}
-				}
-				c.Locals("admin_work_unit_ids", ids)
-			}
+		c.Locals("admin_id", sess.ID)
+		c.Locals("admin_username", sess.Username)
+		c.Locals("admin_role", sess.Role)
+		c.Locals("admin_scope", sess.ScopeType)
+		if sess.ScopeType == "specific" {
+			c.Locals("admin_outlet_ids", sess.OutletIDs)
+			c.Locals("admin_work_unit_ids", sess.WorkUnitIDs)
 		}
 
 		return c.Next()
 	}
+}
+
+// RejectAdminSession menulis respons penolakan sesi admin; dipakai AdminAuth
+// dan stream SSE agar aturannya sama. Sesi yang tidak bisa diperiksa (galat
+// DB) = 503: tetap ditolak, tetapi UI tidak membuang sesi karena galat
+// sementara. Token tidak sah, dicabut, atau akun nonaktif = 401 — UI
+// membersihkan sesi dan kembali ke halaman login.
+func RejectAdminSession(c *fiber.Ctx, err error) error {
+	status, msg := fiber.StatusUnauthorized, "Unauthorized: token tidak valid atau sudah expired"
+	switch {
+	case errors.Is(err, services.ErrAuthUnavailable):
+		status, msg = fiber.StatusServiceUnavailable, "Sesi tidak dapat diperiksa saat ini, coba lagi sebentar lagi"
+	case errors.Is(err, services.ErrAuthSessionRevoked):
+		msg = "Unauthorized: sesi sudah tidak berlaku, silakan login ulang"
+	case errors.Is(err, services.ErrAuthAccountInactive):
+		msg = "Unauthorized: akun tidak aktif"
+	}
+	return c.Status(status).JSON(models.APIResponse{Success: false, Error: msg})
 }
 
 // rateBucket menghitung request per klien dalam satu jendela waktu (fixed window).

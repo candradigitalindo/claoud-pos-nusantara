@@ -19,6 +19,16 @@ export const purchaseApi = {
   splitVendor: (id, data) =>
     apiClient.post(`/admin/purchase-requests/${id}/split`, data),
 
+  // Struk pembelian (dibayar per struk) & pengambilan barang oleh logistik.
+  addStruk: (id, data) =>
+    apiClient.post(`/admin/purchase-requests/${id}/struks`, data),
+
+  deleteStruk: (id, strukId) =>
+    apiClient.delete(`/admin/purchase-requests/${id}/struks/${strukId}`),
+
+  addPickup: (id, data) =>
+    apiClient.post(`/admin/purchase-requests/${id}/pickups`, data),
+
   delete: (id) =>
     apiClient.delete(`/admin/purchase-requests/${id}`),
 

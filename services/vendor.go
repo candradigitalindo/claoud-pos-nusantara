@@ -3,7 +3,7 @@ package services
 import (
 	"cloud-pos/database"
 	"cloud-pos/models"
-	"encoding/json"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -91,7 +91,39 @@ func GetVendor(id string) (*models.Vendor, error) {
 	if err != nil {
 		return nil, err
 	}
+	changes, err := vendorBankChanges(v.ID, vendorBankChangesShown)
+	if err != nil {
+		return nil, err
+	}
+	v.BankChanges = changes
 	return &v, nil
+}
+
+// vendorBankChangesShown: jumlah perubahan rekening terakhir yang ikut GetVendor.
+const vendorBankChangesShown = 10
+
+// vendorBankChanges: perubahan rekening vendor terbaru dulu.
+func vendorBankChanges(vendorID string, limit int) ([]models.VendorBankChange, error) {
+	rows, err := database.DB.Query(`
+		SELECT id, old_bank_name, old_account_number, old_account_holder,
+		       new_bank_name, new_account_number, new_account_holder, changed_by, changed_at
+		FROM vendor_bank_changes WHERE vendor_id = $1
+		ORDER BY changed_at DESC, id DESC LIMIT $2`, vendorID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.VendorBankChange, 0)
+	for rows.Next() {
+		var c models.VendorBankChange
+		if err := rows.Scan(&c.ID, &c.OldBankName, &c.OldAccountNumber, &c.OldAccountHolder,
+			&c.NewBankName, &c.NewAccountNumber, &c.NewAccountHolder, &c.ChangedBy, &c.ChangedAt); err != nil {
+			return nil, err
+		}
+		c.ID = strings.TrimSpace(c.ID)
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func CreateVendor(req models.CreateVendorRequest) (*models.Vendor, error) {
@@ -109,20 +141,55 @@ func CreateVendor(req models.CreateVendorRequest) (*models.Vendor, error) {
 	return GetVendor(id)
 }
 
-func UpdateVendor(id string, req models.UpdateVendorRequest) (*models.Vendor, error) {
-	if req.Name == "" {
+// UpdateVendor menyimpan data vendor. Bila rekeningnya (bank, nomor, atas
+// nama) berubah, perubahan itu dicatat di vendor_bank_changes beserta
+// pelakunya. Pembayaran lama tidak ikut berubah — rekeningnya dipotret per
+// pembayaran — dan form bayar memperingatkan perubahan rekening yang baru.
+func UpdateVendor(id string, req models.UpdateVendorRequest, actor Actor) (*models.Vendor, error) {
+	if strings.TrimSpace(req.Name) == "" {
 		return nil, fmt.Errorf("nama vendor wajib diisi")
 	}
-	result, err := database.DB.Exec(`
-		UPDATE vendors SET name=$1, phone=$2, email=$3, address=$4, notes=$5, bank_name=$6, account_number=$7, account_holder=$8, updated_at=NOW()
-		WHERE id=$9
-	`, req.Name, req.Phone, req.Email, req.Address, req.Notes, req.BankName, req.AccountNumber, req.AccountHolder, id)
+	req.BankName = strings.TrimSpace(req.BankName)
+	req.AccountNumber = strings.TrimSpace(req.AccountNumber)
+	req.AccountHolder = strings.TrimSpace(req.AccountHolder)
+
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, err
 	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	defer tx.Rollback()
+
+	// FOR UPDATE: pembayaran yang sedang memotret rekening vendor ini
+	// (FOR SHARE) selesai lebih dulu, atau menunggu perubahan ini selesai.
+	var oldBank, oldNumber, oldHolder string
+	err = tx.QueryRow(`
+		SELECT COALESCE(bank_name, ''), COALESCE(account_number, ''), COALESCE(account_holder, '')
+		FROM vendors WHERE id = $1 FOR UPDATE`, id).Scan(&oldBank, &oldNumber, &oldHolder)
+	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("vendor tidak ditemukan")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`
+		UPDATE vendors SET name=$1, phone=$2, email=$3, address=$4, notes=$5, bank_name=$6, account_number=$7, account_holder=$8, updated_at=NOW()
+		WHERE id=$9
+	`, req.Name, req.Phone, req.Email, req.Address, req.Notes, req.BankName, req.AccountNumber, req.AccountHolder, id); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(oldBank) != req.BankName || strings.TrimSpace(oldNumber) != req.AccountNumber ||
+		strings.TrimSpace(oldHolder) != req.AccountHolder {
+		if _, err := tx.Exec(`
+			INSERT INTO vendor_bank_changes (id, vendor_id, old_bank_name, old_account_number, old_account_holder,
+				new_bank_name, new_account_number, new_account_holder, changed_by, changed_by_id, changed_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+			NewULID(), id, strings.TrimSpace(oldBank), strings.TrimSpace(oldNumber), strings.TrimSpace(oldHolder),
+			req.BankName, req.AccountNumber, req.AccountHolder, actor.Name, nilIfEmpty(validActorID(actor.ID)), time.Now().UTC()); err != nil {
+			return nil, fmt.Errorf("gagal mencatat perubahan rekening vendor: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return GetVendor(id)
 }
@@ -185,13 +252,17 @@ func GetVendorDetail(id string, outletIDs, wuIDs []string) (*models.VendorDetail
 			-- Dulu memakai total_final: pengajuan yang belum diberi harga oleh
 			-- purchasing bernilai 0, sehingga "Total Belanja" dan terutama
 			-- "Pending" hampir selalu menampilkan Rp 0.
-			COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN total_amount ELSE 0 END), 0),
+			--
+			-- Total Belanja hanya dari pengajuan yang SUDAH DISETUJUI (daftar
+			-- putih status berkomitmen); yang masih menunggu verifikasi atau
+			-- persetujuan masuk kartu "Menunggu", bukan belanja (T-42).
+			COALESCE(SUM(CASE WHEN `+prCommittedCond("")+` THEN total_amount ELSE 0 END), 0),
 			-- Dibayar & hutang dihitung dari nominal, bukan nama status.
 			-- Sebelumnya 'partial' tidak masuk keduanya, sehingga pengajuan yang
 			-- baru dilunasi sebagian lenyap dari kedua angka sekaligus.
-			COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN paid_amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN `+prCommittedCond("")+` THEN paid_amount ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN `+outstandingCond+` THEN `+payableExpr("")+` ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status = 'pending' THEN total_amount ELSE 0 END), 0)
+			COALESCE(SUM(CASE WHEN `+prPreApprovalCond("")+` THEN total_amount ELSE 0 END), 0)
 		FROM purchase_requests WHERE vendor_id = $1 AND `+countableCond("")+aggCond,
 		append([]interface{}{id}, aggArgs...)...).
 		Scan(&resp.PurchaseCount, &resp.TotalSpent, &resp.TotalPaid, &resp.TotalDebt, &resp.TotalPending)
@@ -206,7 +277,7 @@ func GetVendorDetail(id string, outletIDs, wuIDs []string) (*models.VendorDetail
 		       COUNT(*),
 		       COALESCE(SUM(total_amount), 0)
 		FROM purchase_requests
-		WHERE vendor_id = $1 AND status NOT IN ('cancelled','rejected')
+		WHERE vendor_id = $1 AND `+prCommittedCond("")+`
 		  AND `+countableCond("")+`
 		  AND created_at >= NOW() - INTERVAL '12 months'`+monCond+`
 		GROUP BY month ORDER BY month ASC
@@ -258,24 +329,16 @@ func ListVendorPurchases(vendorID string, outletIDs, wuIDs []string, page, limit
 	limIdx := len(args) + 1
 	offIdx := len(args) + 2
 	args = append(args, limit, offset)
+	// Kolom & pembacaan sama dengan daftar pengajuan (purchaseSelectCols):
+	// jejak verifikasi, rejected_items, dan version ikut terisi.
 	rows, err := database.DB.Query(fmt.Sprintf(`
-		SELECT pr.id, pr.request_number, pr.outlet_id, COALESCE(o.name,''), pr.work_unit_id, COALESCE(wu.name,''),
-		       pr.request_type, pr.requested_by, pr.vendor_id, pr.vendor_name, pr.status,
-		       pr.items, pr.total_amount, pr.total_hps, pr.total_final, pr.notes, pr.invoice_number, pr.paid_amount,
-		       pr.approved_by, pr.approved_at,
-		       pr.rejected_reason,
-		       pr.paid_by, pr.paid_at, pr.payment_proof,
-		       pr.payment_account_dest, pr.payment_account_source, pr.payment_notes,
-		       pr.received_by, pr.received_at,
-		       pr.parent_id, pr.split_status,
-		       pr.created_at, pr.updated_at
-		FROM purchase_requests pr
-		LEFT JOIN outlets o ON o.id = pr.outlet_id
-		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
+		SELECT %s
+		%s
 		WHERE pr.vendor_id = $1%s
 		ORDER BY pr.created_at DESC
 		LIMIT $%d OFFSET $%d
-	`, scopeCond, limIdx, offIdx), args...)
+	`, purchaseSelectCols("pr.total_amount", "pr.total_hps", "pr.total_final"), purchaseSelectJoins,
+		scopeCond, limIdx, offIdx), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -283,47 +346,14 @@ func ListVendorPurchases(vendorID string, outletIDs, wuIDs []string, page, limit
 
 	requests := make([]models.PurchaseRequest, 0)
 	for rows.Next() {
-		var r models.PurchaseRequest
-		var itemsJSON []byte
-		var approvedAt, paidAt, receivedAt *time.Time
-		var createdAt, updatedAt time.Time
-
-		if err := rows.Scan(
-			&r.ID, &r.RequestNumber, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
-			&r.RequestType, &r.RequestedBy, &r.VendorID, &r.VendorName, &r.Status,
-			&itemsJSON, &r.TotalAmount, &r.TotalHps, &r.TotalFinal, &r.Notes, &r.InvoiceNumber, &r.PaidAmount,
-			&r.ApprovedBy, &approvedAt,
-			&r.RejectedReason,
-			&r.PaidBy, &paidAt, &r.PaymentProof,
-			&r.PaymentAccountDest, &r.PaymentAccountSource, &r.PaymentNotes,
-			&r.ReceivedBy, &receivedAt,
-			&r.ParentID, &r.SplitStatus,
-			&createdAt, &updatedAt,
-		); err != nil {
+		r, err := scanPurchaseRequest(rows)
+		if err != nil {
 			return nil, err
 		}
-
-		json.Unmarshal(itemsJSON, &r.Items)
-		if r.Items == nil {
-			r.Items = []models.PurchaseRequestItem{}
-		}
-
-		r.CreatedAt = createdAt.Format(time.RFC3339)
-		r.UpdatedAt = updatedAt.Format(time.RFC3339)
-		if approvedAt != nil {
-			s := approvedAt.Format(time.RFC3339)
-			r.ApprovedAt = &s
-		}
-		if paidAt != nil {
-			s := paidAt.Format(time.RFC3339)
-			r.PaidAt = &s
-		}
-		if receivedAt != nil {
-			s := receivedAt.Format(time.RFC3339)
-			r.ReceivedAt = &s
-		}
-
 		requests = append(requests, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return &models.PurchaseRequestListResponse{

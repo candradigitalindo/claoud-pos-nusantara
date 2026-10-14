@@ -228,6 +228,11 @@ func ExportGeneralLedger(c *fiber.Ctx) error {
 // sama dengan yang dilihat pengguna di layar. Scope outlet/unit kerja per role
 // dipaksakan di service.
 func ExportProcurementPayments(c *fiber.Ctx) error {
+	if st := c.Query("status"); st != "" && !services.IsCommittedPurchaseStatus(st) {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false, Error: "Ekspor Pembayaran hanya memuat pengajuan yang sudah disetujui.",
+		})
+	}
 	data, filename, err := services.BuildProcurementPaymentsExcel(
 		c.Query("status"), c.Query("type"), c.Query("project_id"), strings.TrimSpace(c.Query("search")),
 		getOutletScope(c), getWorkUnitScope(c))

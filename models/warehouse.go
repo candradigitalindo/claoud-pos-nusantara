@@ -23,6 +23,8 @@ type StockItem struct {
 	IsActive      bool    `json:"is_active" db:"is_active"`
 	Notes         string  `json:"notes" db:"notes"`
 	CreatedBy     string  `json:"created_by" db:"created_by"`
+	// UpdatedBy: pengubah terakhir definisi katalog (termasuk aktif/nonaktif).
+	UpdatedBy     string  `json:"updated_by" db:"updated_by"`
 	CreatedAt     string  `json:"created_at" db:"created_at"`
 	UpdatedAt     string  `json:"updated_at" db:"updated_at"`
 }
@@ -45,6 +47,11 @@ type StockItemRequest struct {
 	OpeningStock      float64  `json:"opening_stock"`
 	OpeningCost       float64  `json:"opening_cost"`
 	SetStock          *float64 `json:"set_stock"`
+	// Present: kunci JSON yang benar-benar dikirim (diisi handler). Pada PUT,
+	// kolom katalog yang tidak dikirim TIDAK diubah — dulu PUT parsial
+	// mengosongkan satuan, kategori, dan stok minimum (T-20). nil = semua
+	// dianggap dikirim (pemanggil internal).
+	Present map[string]bool `json:"-"`
 }
 
 type StockItemCategory struct {
@@ -167,6 +174,10 @@ type StockTransfer struct {
 	FromWarehouse   string              `json:"from_warehouse_name"`
 	ToWarehouseID   string              `json:"to_warehouse_id"`
 	ToWarehouse     string              `json:"to_warehouse_name"`
+	// FromWarehouseType/ToWarehouseType: 'central' | 'outlet'. Asal 'central' =
+	// permintaan ke Gudang Induk — disetujui & dikirim role semua outlet.
+	FromWarehouseType string `json:"from_warehouse_type"`
+	ToWarehouseType   string `json:"to_warehouse_type"`
 	Status          string              `json:"status"` // draft | pending | sent | received | cancelled
 	Notes           string              `json:"notes"`
 	// PhotoURL: bukti barang saat dikirim dari gudang asal (wajib saat 'sent').

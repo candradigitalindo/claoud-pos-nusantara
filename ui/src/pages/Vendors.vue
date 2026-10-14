@@ -220,7 +220,8 @@
               <AppInput v-model="form.account_number" label="Nomor Rekening" placeholder="1234567890" />
               <AppInput v-model="form.account_holder" label="Atas Nama Rekening" placeholder="PT. Sumber Jaya" />
             </div>
-            <p class="text-xs text-blue-500 mt-3">Informasi rekening digunakan untuk proses pembayaran pengadaan.</p>
+            <p class="text-xs text-blue-500 mt-3">Informasi rekening digunakan untuk proses pembayaran pengadaan. Kosongkan bila vendor dibayar tunai.</p>
+            <p v-if="editTarget" class="text-xs text-blue-500 mt-1">Perubahan rekening dicatat (siapa dan kapan) dan diperingatkan di form bayar. Pembayaran lama tetap tercatat dengan rekening lama.</p>
           </div>
         </div>
 

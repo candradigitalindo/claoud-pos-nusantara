@@ -974,7 +974,7 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 				FROM purchase_requests pr
 				JOIN projects pj ON pj.id = pr.project_id
 				WHERE pj.status NOT IN ('selesai','batal')
-				  AND pr.status NOT IN ('pending','rejected','cancelled')
+				  AND `+prCommittedCond("pr")+`
 				  AND `+countableCond("pr")+`
 			) p
 			LEFT JOIN (
@@ -1088,7 +1088,7 @@ func GetBalanceReport(dateFrom, dateTo, outletID string, scopeIDs []string) (*mo
 				SELECT pr.id, COALESCE(pr.paid_amount, 0) AS paid_amount
 				FROM purchase_requests pr JOIN projects pj ON pj.id = pr.project_id
 				WHERE pj.status NOT IN ('selesai','batal') AND pr.outlet_id IS NULL
-				  AND pr.status NOT IN ('pending','rejected','cancelled') AND `+countableCond("pr")+`
+				  AND `+prCommittedCond("pr")+` AND `+countableCond("pr")+`
 			) p
 			LEFT JOIN (
 				SELECT purchase_request_id, SUM(purchase_price * quantity) AS value
@@ -1608,7 +1608,7 @@ func GetGeneralLedger(dateFrom, dateTo, outletID, accountFilter string, scopeIDs
 			pr.total_final
 		FROM purchase_requests pr
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
-		WHERE pr.status NOT IN ('pending','rejected','cancelled') AND pr.total_final > 0
+		WHERE ` + prCommittedCond("pr") + ` AND pr.total_final > 0
 		  AND ` + countableCond("pr") + `
 		  AND COALESCE(pr.approved_at, pr.created_at) >= tz_day_start($1::date)
 		  AND COALESCE(pr.approved_at, pr.created_at) < tz_day_start($2::date + 1)` +

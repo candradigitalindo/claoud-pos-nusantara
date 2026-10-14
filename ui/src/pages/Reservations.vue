@@ -266,7 +266,9 @@
                 <span class="font-semibold">{{ PAY_TYPE[p.type] || p.type }}</span>
                 <span class="text-gray-800">{{ formatRupiah(p.amount) }}</span>
                 <span class="st-badge" :class="payCls(p.status)">{{ PAY_STATUS[p.status] || p.status }}</span>
-                <a v-if="p.proof_url" :href="p.proof_url" target="_blank" rel="noopener" class="text-xs text-emerald-700 underline">bukti</a>
+                <!-- Bukti dari server disaring (T-75): hanya berkas unggahan /uploads/… yang jadi tautan. -->
+                <a v-if="safeUrl(p.proof_url)" :href="safeUrl(p.proof_url)" target="_blank" rel="noopener noreferrer" class="text-xs text-emerald-700 underline">bukti</a>
+                <span v-else-if="p.proof_url" class="text-xs text-gray-400" title="Alamat bukti tidak sah — tidak ditampilkan sebagai tautan">bukti (alamat tidak sah)</span>
               </div>
               <p class="text-xs text-gray-400 mt-0.5">
                 {{ p.method }}<template v-if="p.bank_label"> · {{ p.bank_label }}</template> · {{ p.paid_at }}
@@ -371,6 +373,7 @@ import AppModal from '@/components/ui/AppModal.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
 import DateRangePicker from '@/components/ui/DateRangePicker.vue'
 import PhotoCapture from '@/components/PhotoCapture.vue'
+import { safeUrl } from '@/utils/safeUrl.js'
 
 const toast = useToastStore()
 const auth = useAuthStore()

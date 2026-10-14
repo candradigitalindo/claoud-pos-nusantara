@@ -59,7 +59,7 @@ func sumEntries(acc *models.GeneralLedgerAccount, marker string) (debit, credit 
 func TestGeneralLedgerAccrualNoDoubleCount(t *testing.T) {
 	requireDB(t)
 	marker := "gl-uji-" + NewULID()[20:]
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "jasa", RequestedBy: marker, VendorName: "CV Uji GL",
 		Items: []models.PurchaseRequestItem{{
 			Name:  "Servis",
@@ -77,7 +77,7 @@ func TestGeneralLedgerAccrualNoDoubleCount(t *testing.T) {
 			t.Fatalf("%s: %v", action, err)
 		}
 	}
-	must("approve", 0)
+	verifyAndApprove(t, pr.ID)
 	must("request_payment", 0)
 	must("pay", 40000)
 	must("pay", 60000)

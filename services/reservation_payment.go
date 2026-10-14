@@ -127,6 +127,13 @@ func AddReservationPayment(reservationID string, req models.ReservationPaymentRe
 	if strings.TrimSpace(req.ProofURL) == "" && (!validated || req.Method == "transfer" || req.Method == "qris") {
 		return nil, Invalid("bukti pembayaran wajib diunggah")
 	}
+	// URL bukti dipasang sebagai tautan di halaman Reservasi: hanya berkas
+	// hasil unggahan aplikasi yang diterima (T-2, T-75).
+	if strings.TrimSpace(req.ProofURL) != "" {
+		if err := validateUploadField("bukti pembayaran", req.ProofURL); err != nil {
+			return nil, err
+		}
+	}
 	switch req.Type {
 	case "refund":
 		if r.Status != "cancelled" || r.CancelDisposition != "refund" {

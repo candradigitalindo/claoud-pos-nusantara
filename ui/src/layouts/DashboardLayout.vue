@@ -212,6 +212,7 @@ import { ref, reactive, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.js'
 import { authApi } from '@/api/auth.js'
+import { setLoginNotice } from '@/utils/session.js'
 import ToastContainer from '@/components/ToastContainer.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import AppInput from '@/components/ui/AppInput.vue'
@@ -276,11 +277,18 @@ async function changePassword() {
   pwLoading.value = true
   try {
     await authApi.changePassword(pwForm.currentPassword, pwForm.newPassword)
-    pwMsg.value = 'Password berhasil diubah'
+    // Server mencabut SEMUA sesi akun ini setelah password diganti (T-55),
+    // termasuk sesi yang sedang dipakai — permintaan berikutnya pasti 401.
+    // Keluar sekarang dengan pesan yang jelas, bukan menunggu dilempar 401.
+    pwMsg.value = 'Password diganti, silakan login ulang'
     pwSuccess.value = true
     pwForm.currentPassword = ''
     pwForm.newPassword = ''
     pwForm.confirmPassword = ''
+    setLoginNotice('Password diganti, silakan login ulang.', 'success')
+    showProfileModal.value = false
+    authStore.logout()
+    router.replace('/login')
   } catch (e) {
     pwMsg.value = e?.message || 'Gagal mengubah password'
     pwSuccess.value = false
@@ -419,6 +427,7 @@ const NAV_ITEMS_DATA = [
     children: [
       { to: '/procurement-dashboard', label: 'Dashboard', permission: 'procurement.dashboard.view' },
       { to: '/purchase-goods', label: 'Barang', permission: 'procurement.requests.view' },
+      { to: '/purchase-materials', label: 'Bahan Baku', permission: 'procurement.rawmaterials.view' },
       { to: '/purchase-services', label: 'Jasa', permission: 'procurement.requests.view' },
       { to: '/projects', label: 'Projek', permission: 'procurement.projects.view' },
       { to: '/vendors', label: 'Vendor', permission: 'vendors.view' },

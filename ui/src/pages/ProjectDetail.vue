@@ -37,7 +37,7 @@
             <p v-if="t.hint" class="text-[10px] text-gray-400">{{ t.hint }}</p>
           </div>
         </div>
-        <BudgetBar class="mt-4" :budget="project.budget" :committed="project.committed" :paid="project.paid" :estimated="project.estimated" />
+        <BudgetBar class="mt-4" :budget="project.budget" :committed="project.committed" :paid="project.paid" :estimated="project.estimated" :pending="project.pending_amount" />
         <p v-if="project.notes" class="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600">
           <span class="text-gray-400">Catatan:</span> {{ project.notes }}
         </p>
@@ -84,8 +84,8 @@
                     <p class="shrink-0 text-sm font-semibold text-gray-900">{{ formatRupiah(r.subtotal) }}</p>
                   </div>
                   <p class="text-[11px] text-gray-500">{{ r.qty }} {{ r.unit }} × {{ formatRupiah(r.unit_price) }}<span v-if="r.notes"> · {{ r.notes }}</span></p>
-                  <BudgetBar class="mt-1.5" :budget="r.subtotal" :committed="r.committed" :paid="r.paid" :estimated="r.estimated" />
-                  <p class="mt-1 text-[11px]" :class="r.remaining < 0 ? 'font-semibold text-red-600' : 'text-gray-500'">Sisa {{ formatRupiah(r.remaining) }}<span v-if="r.request_count"> · {{ r.request_count }} pengajuan</span></p>
+                  <BudgetBar class="mt-1.5" :budget="r.subtotal" :committed="r.committed" :paid="r.paid" :estimated="r.estimated" :pending="r.pending" />
+                  <p class="mt-1 text-[11px]" :class="r.remaining < 0 ? 'font-semibold text-red-600' : 'text-gray-500'">Sisa {{ formatRupiah(r.remaining) }}<span v-if="r.request_count"> · {{ r.request_count }} pengajuan disetujui</span><span v-if="r.pending_count"> · {{ r.pending_count }} menunggu persetujuan</span></p>
                 </li>
               </ul>
             </div>
@@ -102,7 +102,7 @@
                   <th class="px-2 py-2">Sat</th>
                   <th class="px-2 py-2 text-right">Harga Sat.</th>
                   <th class="px-2 py-2 text-right">RAB</th>
-                  <th class="px-2 py-2 text-right">Komitmen</th>
+                  <th class="px-2 py-2 text-right">Terpakai</th>
                   <th class="px-2 py-2 text-right">Terbayar</th>
                   <th class="px-4 py-2 text-right">Sisa</th>
                 </tr>
@@ -132,6 +132,7 @@
                     <td class="px-2 py-2 text-right" :class="r.over_budget ? 'font-semibold text-red-600' : 'text-blue-700'">
                       {{ formatRupiah(r.committed) }}
                       <span v-if="r.estimated > 0" class="block text-[10px] text-amber-600">{{ formatRupiah(r.estimated) }} HPS</span>
+                      <span v-if="r.pending > 0" class="block text-[10px] font-normal text-gray-400" :title="`${r.pending_count} pengajuan menunggu persetujuan — belum dihitung terpakai`">+{{ formatRupiah(r.pending) }} menunggu</span>
                     </td>
                     <td class="px-2 py-2 text-right text-emerald-700">{{ formatRupiah(r.paid) }}</td>
                     <td class="px-4 py-2 text-right font-semibold" :class="r.remaining < 0 ? 'text-red-600' : 'text-gray-800'">{{ formatRupiah(r.remaining) }}</td>
@@ -151,7 +152,7 @@
           </div>
           <p v-if="project.off_rab_committed > 0" class="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
             Belanja di luar RAB: <b>{{ formatRupiah(project.off_rab_committed) }}</b> (terbayar {{ formatRupiah(project.off_rab_paid) }}) —
-            item pengajuan yang tidak menunjuk baris RAB mana pun. Tetap terhitung dalam komitmen projek.
+            item pengajuan yang tidak menunjuk baris RAB mana pun. Tetap terhitung dalam anggaran terpakai projek (setelah disetujui).
           </p>
         </template>
       </AppCard>
@@ -177,7 +178,7 @@
               </div>
               <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Jenis</dt>
-                <dd class="text-gray-700">{{ r.request_type === 'jasa' ? 'Jasa' : 'Barang' }}</dd>
+                <dd class="text-gray-700">{{ purchaseTypeLabel(r.request_type || 'barang') }}</dd>
                 <dt class="text-gray-400">Vendor</dt>
                 <dd class="text-gray-700">{{ r.vendor_name || '-' }}</dd>
                 <dt class="text-gray-400">Tanggal</dt>
@@ -205,7 +206,7 @@
             <span class="text-gray-800">{{ itemNames(row) }}</span>
           </template>
           <template #cell-request_type="{ row }">
-            <span class="text-gray-600">{{ row.request_type === 'jasa' ? 'Jasa' : 'Barang' }}</span>
+            <span class="text-gray-600">{{ purchaseTypeLabel(row.request_type || 'barang') }}</span>
           </template>
           <template #cell-vendor_name="{ row }">
             <span class="text-gray-700">{{ row.vendor_name || '-' }}</span>
@@ -311,6 +312,7 @@ import AppTable  from '@/components/ui/AppTable.vue'
 import AppModal  from '@/components/ui/AppModal.vue'
 import AppAlert  from '@/components/ui/AppAlert.vue'
 import BudgetBar from '@/components/BudgetBar.vue'
+import { purchaseTypeLabel, purchaseTypePath, purchaseStatusLabel, purchaseStatusBadge } from '@/utils/procurement.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -427,24 +429,15 @@ const projectStatusMap = {
   selesai:  { label: 'Selesai',  cls: 'bg-emerald-100 text-emerald-700' },
   batal:    { label: 'Batal',    cls: 'bg-red-100 text-red-700' },
 }
-const prStatusMap = {
-  pending:           { label: 'Menunggu',            cls: 'bg-amber-100 text-amber-700' },
-  approved:          { label: 'Disetujui',           cls: 'bg-blue-100 text-blue-700' },
-  payment_requested: { label: 'Menunggu Pembayaran', cls: 'bg-orange-100 text-orange-700' },
-  rejected:          { label: 'Ditolak',             cls: 'bg-red-100 text-red-700' },
-  partial:           { label: 'Dibayar Sebagian',    cls: 'bg-amber-100 text-amber-700' },
-  paid:              { label: 'Dibayar',             cls: 'bg-emerald-100 text-emerald-700' },
-  received:          { label: 'Diterima',            cls: 'bg-purple-100 text-purple-700' },
-  cancelled:         { label: 'Dibatalkan',          cls: 'bg-gray-100 text-gray-600' },
-}
 const badge = (map, s, fallback) => {
   const m = map[s] || map[fallback]
   return `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${m.cls}`
 }
 const statusBadge   = (s) => badge(projectStatusMap, s, 'berjalan')
 const statusLabel   = (s) => (projectStatusMap[s] || projectStatusMap.berjalan).label
-const prStatusBadge = (s) => badge(prStatusMap, s, 'pending')
-const prStatusLabel = (s) => (prStatusMap[s] || prStatusMap.pending).label
+// Status pengajuan: satu sumber label (utils/procurement.js), status tak dikenal netral.
+const prStatusBadge = (s) => purchaseStatusBadge(s)
+const prStatusLabel = (s) => purchaseStatusLabel(s)
 
 function itemNames(r) {
   return (r.items || []).map(i => i.name).join(', ') || '-'
@@ -456,10 +449,19 @@ function isEstimate(r) {
   return !r.total_final && r.total_amount > 0
 }
 
+// Terpakai = pengajuan yang sudah disetujui owner. Yang masih menunggu
+// verifikasi/persetujuan tidak dihitung (keputusan owner 14 Okt 2026).
 function komitmenHint(p) {
-  const parts = []
+  const parts = ['pengajuan disetujui']
   if (p.budget > 0) parts.push(`${Math.round(p.absorbed_pct)}% dari RAB`)
   if (p.estimated > 0) parts.push(`${formatRupiah(p.estimated)} masih HPS`)
+  return parts.join(' · ')
+}
+
+function sisaHint(p) {
+  const parts = []
+  if (p.pending_amount > 0) parts.push(`${formatRupiah(p.pending_amount)} menunggu persetujuan (${p.pending_count} pengajuan)`)
+  if (p.outstanding > 0) parts.push(`sisa hutang ${formatRupiah(p.outstanding)}`)
   return parts.join(' · ')
 }
 
@@ -478,16 +480,16 @@ const tiles = computed(() => {
   return [
     { label: 'RAB',         value: p.budget,      cls: 'text-gray-900',
       hint: rabSet.value ? `v${p.rab_version} · ${p.rab_item_count} baris` : (p.rab_item_count ? `${p.rab_item_count} baris, belum ditetapkan` : 'belum disusun') },
-    { label: 'Komitmen',    value: p.committed,   cls: p.over_budget ? 'text-red-600' : 'text-blue-700',
+    { label: 'Terpakai',    value: p.committed,   cls: p.over_budget ? 'text-red-600' : 'text-blue-700',
       hint: komitmenHint(p) },
     { label: 'Terbayar',    value: p.paid,        cls: 'text-emerald-700' },
     { label: 'Sisa RAB',    value: p.remaining_budget, cls: p.remaining_budget < 0 ? 'text-red-600' : 'text-gray-900',
-      hint: p.outstanding > 0 ? `sisa hutang ${formatRupiah(p.outstanding)}` : '' },
+      hint: sisaHint(p) },
   ]
 })
 
 function goRequest(r) {
-  router.push(r.request_type === 'jasa' ? '/purchase-services' : '/purchase-goods')
+  router.push(purchaseTypePath(r.request_type))
 }
 
 function goNewPurchase(type) {

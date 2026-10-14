@@ -347,7 +347,11 @@ type UnsettledProjectRow struct {
 // Penutupan projek sengaja TIDAK diblokir saat masih ada sisa: blokir keras
 // hanya membuat orang berhenti mencatat material sama sekali. Laporan inilah
 // yang menagih.
-func ListUnsettledProjectMaterials() ([]UnsettledProjectRow, error) {
+//
+// outletIDs/wuIDs = scope role (nil = semua): projek di luar cakupan tidak
+// ikut tampil, sama dengan daftar projek (T-49).
+func ListUnsettledProjectMaterials(outletIDs, wuIDs []string) ([]UnsettledProjectRow, error) {
+	scopeCond, scopeArgs := prScopeCond("p", outletIDs, wuIDs, 1)
 	rows, err := database.DB.Query(`
 		SELECT p.id, COALESCE(p.project_number, ''), p.name, p.status, COALESCE(o.name, ''),
 		       COUNT(*), COALESCE(SUM((m.qty_received - m.qty_used - m.qty_returned - m.qty_wasted) * m.unit_cost), 0)
@@ -355,9 +359,9 @@ func ListUnsettledProjectMaterials() ([]UnsettledProjectRow, error) {
 		JOIN projects p ON p.id = m.project_id
 		LEFT JOIN outlets o ON o.id = p.outlet_id
 		WHERE (m.qty_received - m.qty_used - m.qty_returned - m.qty_wasted) > 0
-		  AND p.status = 'selesai'
+		  AND p.status = 'selesai'`+scopeCond+`
 		GROUP BY p.id, p.project_number, p.name, p.status, o.name
-		ORDER BY 7 DESC`)
+		ORDER BY 7 DESC`, scopeArgs...)
 	if err != nil {
 		return nil, err
 	}

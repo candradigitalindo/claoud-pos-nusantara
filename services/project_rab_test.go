@@ -29,8 +29,11 @@ func TestProjectRabFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	defer database.DB.Exec("DELETE FROM purchase_requests WHERE project_id = $1", proj.ID)
+	// defer berjalan LIFO: pengajuan dihapus dulu, baru projeknya. Urutan
+	// terbalik membuat project_id pengajuan menjadi NULL (FK SET NULL) dan
+	// pengajuannya tertinggal di database uji.
 	defer database.DB.Exec("DELETE FROM projects WHERE id = $1", proj.ID)
+	defer database.DB.Exec("DELETE FROM purchase_requests WHERE project_id = $1", proj.ID)
 
 	if proj.RabStatus != RabDraft || proj.RabItemCount != 0 || proj.Budget != 0 {
 		t.Fatalf("projek baru: rab_status=%s items=%d budget=%v, mau draft/0/0", proj.RabStatus, proj.RabItemCount, proj.Budget)
@@ -105,7 +108,7 @@ func TestProjectRabFlow(t *testing.T) {
 	}
 
 	// Baris 'umum' boleh diserap siapa saja; item tanpa rujukan = di luar RAB.
-	_, err = CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	prJasa, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
 		RequestType: "jasa", RequestedBy: "tester", ProjectID: proj.ID,
 		Items: []models.PurchaseRequestItem{{Name: "Jasa tahap 1", Items: []models.PurchaseSubItem{
 			{Name: "Sewa scaffolding", Qty: 1, HpsPrice: 200000, RabItemID: umum.ID},
@@ -116,12 +119,32 @@ func TestProjectRabFlow(t *testing.T) {
 		t.Fatalf("PR jasa (umum + di luar RAB): %v", err)
 	}
 
+	// Belum disetujui: anggaran belum terpakai, nilainya hanya tercatat
+	// menunggu persetujuan (keputusan owner 14 Okt 2026).
 	detail, err := GetProjectDetail(proj.ID, nil, nil)
 	if err != nil {
 		t.Fatalf("detail: %v", err)
 	}
+	if ls := rabLine(detail.RabItems, "Semen"); ls.Committed != 0 || ls.Pending != 1200000 || ls.PendingCount != 1 || ls.Remaining != 6000000 {
+		t.Errorf("Semen belum disetujui: committed=%v pending=%v (%d) sisa=%v, mau 0/1200000/1/6000000", ls.Committed, ls.Pending, ls.PendingCount, ls.Remaining)
+	}
+	if lu := rabLine(detail.RabItems, "Tak terduga"); lu.Committed != 0 || lu.Pending != 200000 || lu.Remaining != 500000 {
+		t.Errorf("Tak terduga belum disetujui: committed=%v pending=%v sisa=%v, mau 0/200000/500000", lu.Committed, lu.Pending, lu.Remaining)
+	}
+	if detail.Project.Committed != 0 || detail.Project.PendingAmount != 1475000 || detail.Project.OffRabCommitted != 0 {
+		t.Errorf("projek belum disetujui: komitmen=%v menunggu=%v di luar RAB=%v, mau 0/1475000/0",
+			detail.Project.Committed, detail.Project.PendingAmount, detail.Project.OffRabCommitted)
+	}
+
+	// Disetujui → anggaran terpakai.
+	verifyAndApprove(t, pr1.ID)
+	verifyAndApprove(t, prJasa.ID)
+	detail, err = GetProjectDetail(proj.ID, nil, nil)
+	if err != nil {
+		t.Fatalf("detail: %v", err)
+	}
 	ls := rabLine(detail.RabItems, "Semen")
-	if ls.Committed != 1200000 || ls.Estimated != 1200000 || ls.Remaining != 4800000 || ls.RequestCount != 1 {
+	if ls.Committed != 1200000 || ls.Estimated != 1200000 || ls.Remaining != 4800000 || ls.RequestCount != 1 || ls.Pending != 0 {
 		t.Errorf("serapan Semen: committed=%v est=%v sisa=%v n=%d, mau 1200000/1200000/4800000/1", ls.Committed, ls.Estimated, ls.Remaining, ls.RequestCount)
 	}
 	if lu := rabLine(detail.RabItems, "Tak terduga"); lu.Committed != 200000 || lu.Remaining != 300000 {
@@ -134,12 +157,13 @@ func TestProjectRabFlow(t *testing.T) {
 		t.Errorf("belanja di luar RAB = %v, mau 75000", detail.Project.OffRabCommitted)
 	}
 	// Rekap projek tetap menjumlahkan semuanya (1.200.000 + 200.000 + 75.000).
-	if detail.Project.Committed != 1475000 {
-		t.Errorf("komitmen projek = %v, mau 1475000", detail.Project.Committed)
+	if detail.Project.Committed != 1475000 || detail.Project.PendingAmount != 0 {
+		t.Errorf("komitmen projek = %v (menunggu %v), mau 1475000 (menunggu 0)", detail.Project.Committed, detail.Project.PendingAmount)
 	}
 	_ = upah
 
-	// Harga final masuk → serapan baris ikut memakai harga final.
+	// Harga final masuk (diisi pembelian setelah disetujui — T-39) → serapan
+	// baris ikut memakai harga final.
 	if _, err := UpdatePurchaseItems(pr1.ID, models.UpdatePurchaseItemsInput{Items: []models.PurchaseRequestItem{{
 		Name: "Material tahap 1", Items: []models.PurchaseSubItem{
 			{Name: "Semen", Qty: 20, Unit: "sak", HpsPrice: 60000, FinalPrice: 55000, RabItemID: semen.ID},

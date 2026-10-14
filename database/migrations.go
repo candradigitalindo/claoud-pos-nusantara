@@ -460,16 +460,11 @@ func RunMigrations() error {
 		// Request number for sequential numbering (ddmmYYnnn)
 		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS request_number VARCHAR(20) NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_purchase_requests_number ON purchase_requests(request_number)`,
-		// Cascade: sync children status to match their master's status (for existing data)
-		// Only cascade to children that are still in an earlier/equal stage — never downgrade paid/partial/received
-		`UPDATE purchase_requests c
-		 SET status = p.status, updated_at = NOW()
-		 FROM purchase_requests p
-		 WHERE c.parent_id = p.id
-		   AND p.split_status = 'master'
-		   AND c.status != p.status
-		   AND p.status IN ('approved', 'payment_requested', 'cancelled')
-		   AND c.status NOT IN ('partial', 'paid', 'received')`,
+		// Dulu di sini ada UPDATE "samakan status pecahan dengan induknya" tanpa
+		// marker, yang berjalan TIAP BOOT: pecahan yang ditolak/dibatalkan hidup
+		// lagi dan pecahan tanpa harga dipaksa payment_requested setiap deploy
+		// (T-4, 14 Okt 2026). Dihapus — status pecahan hanya diubah alur aplikasi
+		// (cascadeStatusToChildrenTx); purchase_requests produksi masih 0 baris.
 	}
 
 	for _, m := range purchaseMigrations {
@@ -1291,7 +1286,10 @@ func RunMigrations() error {
 		"cashier_shifts.view", "shift_reconciliation.view",
 		"finance.payments.view", "finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete",
 		"procurement.dashboard.view", "procurement.requests.view", "procurement.requests.submit",
-		"procurement.requests.approve", "procurement.requests.purchasing",
+		"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing",
+		"procurement.requests.pickup",
+		"procurement.rawmaterials.view", "procurement.rawmaterials.submit",
+		"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing", "procurement.rawmaterials.pickup",
 		"vendors.view", "vendors.create", "vendors.update", "vendors.delete",
 		"users.view", "users.create", "users.update", "users.delete",
 		"roles.view", "roles.create", "roles.update", "roles.delete",
@@ -1310,6 +1308,14 @@ func RunMigrations() error {
 	}
 	for _, p := range adminAll {
 		DB.Exec("INSERT INTO role_permissions (role, permission) VALUES ('admin', $1) ON CONFLICT DO NOTHING", p)
+	}
+	// Kunci verifikasi & pengambilan pengadaan (14 Okt 2026): admin (lewat
+	// adminAll di atas) dan superadmin saja, tiap boot seperti kunci pengadaan
+	// lain. Role lain (mis. perlengkapan, logistik) diberi owner sendiri lewat
+	// halaman Role — sengaja TIDAK dicerminkan dari pemegang kunci lain.
+	// Bahan baku tidak punya kunci verifikasi (tanpa tahap verifikasi).
+	for _, p := range []string{"procurement.requests.verify", "procurement.requests.pickup", "procurement.rawmaterials.pickup"} {
+		DB.Exec("INSERT INTO role_permissions (role, permission) VALUES ('superadmin', $1) ON CONFLICT DO NOTHING", p)
 	}
 
 	// ── Heartbeat perangkat (App POS → Cloud) ───────────────────────────────
@@ -2956,6 +2962,220 @@ func RunMigrations() error {
 			VALUES ('admin', 'reports.business_analysis.manage'), ('superadmin', 'reports.business_analysis.manage') ON CONFLICT DO NOTHING`)
 		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_business_analysis_manage_perm', 'done') ON CONFLICT (key) DO NOTHING`)
 		log.Printf("Permission reports.business_analysis.manage di-seed ke admin & superadmin")
+	}
+
+	// ── Langkah verifikasi pengadaan (14 Okt 2026) ──────────────────────────
+	// pending (Menunggu Verifikasi) → verified (Menunggu Persetujuan) →
+	// approved. Pelaku tiap tahap disimpan sebagai akun (*_by_id) di samping
+	// nama tampilannya. Kolom *_by_id sengaja TANPA FK ke cloud_admins supaya
+	// token statis ("static", bukan ULID) tetap bisa dipakai — tersimpan NULL.
+	verificationMigrations := []string{
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS requested_by_id CHAR(26)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS verified_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS verified_by_id CHAR(26)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS verification_notes TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS approved_by_id CHAR(26)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS rejected_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS rejected_by_id CHAR(26)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP`,
+		// Sub-item yang ditolak verifikator dipindah ke sini (lihat
+		// models.RejectedPurchaseItem) — tidak ikut total maupun pembelian.
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS rejected_items JSONB NOT NULL DEFAULT '[]'`,
+	}
+	for _, m := range verificationMigrations {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Purchase verification migration skipped: %v", err)
+		}
+	}
+	// Urutan nomor pengajuan per hari (prefix ddmmYY) — lihat
+	// services.generateRequestNumber: nomor tidak pernah dipakai ulang walau
+	// dokumen terakhir hari itu dihapus.
+	if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS purchase_request_counters (
+		prefix   VARCHAR(6) PRIMARY KEY,
+		last_seq INTEGER NOT NULL
+	)`); err != nil {
+		log.Printf("Purchase request counter migration skipped: %v", err)
+	}
+	// Rekening tujuan dipotret per pembayaran (keputusan owner 14 Okt 2026):
+	// server mengambilnya dari data vendor saat bayar, sehingga transaksi lama
+	// tetap menunjuk rekening yang dipakai saat itu walau vendor kemudian
+	// mengganti nomor rekeningnya. dest_manual = rekening/cara bayar diketik
+	// pembayar karena vendornya tidak punya rekening (mis. Tunai). Setiap
+	// perubahan rekening vendor dicatat di vendor_bank_changes.
+	vendorSnapshotMigrations := []string{
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS vendor_id CHAR(26)`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS vendor_name VARCHAR(200) NOT NULL DEFAULT ''`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS dest_bank_name VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS dest_account_number VARCHAR(50) NOT NULL DEFAULT ''`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS dest_account_holder VARCHAR(200) NOT NULL DEFAULT ''`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS dest_manual BOOLEAN NOT NULL DEFAULT false`,
+		`CREATE TABLE IF NOT EXISTS vendor_bank_changes (
+			id                 CHAR(26) PRIMARY KEY,
+			vendor_id          CHAR(26) NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+			old_bank_name      VARCHAR(100) NOT NULL DEFAULT '',
+			old_account_number VARCHAR(50) NOT NULL DEFAULT '',
+			old_account_holder VARCHAR(200) NOT NULL DEFAULT '',
+			new_bank_name      VARCHAR(100) NOT NULL DEFAULT '',
+			new_account_number VARCHAR(50) NOT NULL DEFAULT '',
+			new_account_holder VARCHAR(200) NOT NULL DEFAULT '',
+			changed_by         VARCHAR(100) NOT NULL DEFAULT '',
+			changed_by_id      CHAR(26),
+			changed_at         TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_vendor_bank_changes_vendor ON vendor_bank_changes(vendor_id, changed_at DESC)`,
+	}
+	for _, m := range vendorSnapshotMigrations {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Vendor account snapshot migration skipped: %v", err)
+		}
+	}
+	// Struk pembelian & pengambilan barang (keputusan owner 14 Okt 2026).
+	// Satu pengajuan bisa dibeli dalam beberapa transaksi di vendornya, tiap
+	// transaksi berstruk sendiri (nomor, tanggal, total, foto) dan dibayar per
+	// struk — payment_histories.struk_id menunjuk struk yang dilunasi. Barang
+	// bisa diantar vendor atau diambil petugas logistik; pengambilan dicatat
+	// (foto + waktu) dan ditutup saat tempat penerimaan menerimanya.
+	strukPickupMigrations := []string{
+		`CREATE TABLE IF NOT EXISTS purchase_struks (
+			id                  CHAR(26) PRIMARY KEY,
+			purchase_request_id CHAR(26) NOT NULL REFERENCES purchase_requests(id) ON DELETE CASCADE,
+			struk_number        VARCHAR(100) NOT NULL,
+			struk_date          DATE NOT NULL,
+			total               DECIMAL(15,2) NOT NULL CHECK (total > 0),
+			photo_url           TEXT NOT NULL DEFAULT '',
+			notes               TEXT NOT NULL DEFAULT '',
+			created_by          VARCHAR(100) NOT NULL DEFAULT '',
+			created_by_id       CHAR(26),
+			created_at          TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_struks_number ON purchase_struks(purchase_request_id, lower(struk_number))`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS struk_id CHAR(26) REFERENCES purchase_struks(id)`,
+		`CREATE INDEX IF NOT EXISTS idx_payment_histories_struk ON payment_histories(struk_id) WHERE struk_id IS NOT NULL`,
+		`CREATE TABLE IF NOT EXISTS purchase_pickups (
+			id                  CHAR(26) PRIMARY KEY,
+			purchase_request_id CHAR(26) NOT NULL REFERENCES purchase_requests(id) ON DELETE CASCADE,
+			picked_by           VARCHAR(100) NOT NULL DEFAULT '',
+			picked_by_id        CHAR(26),
+			picked_at           TIMESTAMP NOT NULL,
+			photo_url           TEXT NOT NULL,
+			notes               TEXT NOT NULL DEFAULT '',
+			received_by         VARCHAR(100) NOT NULL DEFAULT '',
+			received_at         TIMESTAMP,
+			created_at          TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_purchase_pickups_pr ON purchase_pickups(purchase_request_id)`,
+	}
+	for _, m := range strukPickupMigrations {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Purchase struk/pickup migration skipped: %v", err)
+		}
+	}
+	// CHECK daftar status yang sah — status baru tidak bisa lagi masuk diam-
+	// diam dan lolos daftar hitam di laporan (T-42). Hanya dipasang bila semua
+	// baris sudah sah (tabel produksi masih kosong); bila ada status asing,
+	// dicatat di log dan tidak dipasang supaya boot tidak gagal. Daftarnya =
+	// services.PurchaseStatuses — ubah keduanya bersamaan dan naikkan versi
+	// nama constraint.
+	{
+		const statusList = `'pending','verified','approved','payment_requested','partial','paid','received','rejected','cancelled'`
+		var exists bool
+		DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname = 'chk_purchase_requests_status_v1')`).Scan(&exists)
+		if !exists {
+			var bad int
+			if err := DB.QueryRow(`SELECT COUNT(*) FROM purchase_requests WHERE status NOT IN (` + statusList + `)`).Scan(&bad); err != nil {
+				log.Printf("CHECK status pengadaan dilewati: %v", err)
+			} else if bad > 0 {
+				log.Printf("CHECK status pengadaan TIDAK dipasang: %d baris berstatus di luar daftar sah", bad)
+			} else if _, err := DB.Exec(`ALTER TABLE purchase_requests ADD CONSTRAINT chk_purchase_requests_status_v1 CHECK (status IN (` + statusList + `))`); err != nil {
+				log.Printf("CHECK status pengadaan gagal dipasang: %v", err)
+			} else {
+				log.Printf("CHECK status pengadaan dipasang (chk_purchase_requests_status_v1)")
+			}
+		}
+	}
+
+	// ── Seed izin Pengadaan Bahan Baku (one-shot, marker — PALING AKHIR) ─────
+	// Pengajuan berjenis 'bahan' diatur procurement.rawmaterials.*, sedangkan
+	// procurement.requests.* kini hanya untuk barang & jasa. Orang yang
+	// mengurus bahan baku BERBEDA dengan pengurus pengadaan barang (Kepala
+	// Gudang Induk mengajukan, Manager Logistik menyetujui, Pembelian Bahan
+	// Baku membeli — keputusan owner 14 Okt 2026), jadi izinnya TIDAK disalin
+	// dari pemegang procurement.requests.*: admin & superadmin menerimanya
+	// lewat seed tiap boot di atas, role lain diberi owner lewat halaman Role.
+	// Satu-satunya pengecualian: role PPIC (perencana kebutuhan bahan, sumber
+	// draft MRP) diberi lihat & ajukan. Diletakkan di akhir karena blok
+	// penyemaian di atas berjalan tiap boot dan bisa menimpa blok di tengah.
+	var rawSeeded int
+	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_procurement_rawmaterials_perm'").Scan(&rawSeeded)
+	if rawSeeded == 0 {
+		gagal := 0
+		if _, err := DB.Exec(`INSERT INTO role_permissions (role, permission)
+			SELECT r.name, p.perm FROM roles r
+			CROSS JOIN (VALUES ('procurement.rawmaterials.view'), ('procurement.rawmaterials.submit')) AS p(perm)
+			WHERE lower(r.name) = 'ppic'
+			ON CONFLICT DO NOTHING`); err != nil {
+			gagal++
+		}
+		if gagal == 0 {
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_procurement_rawmaterials_perm', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Permission procurement.rawmaterials.view & submit di-seed ke role PPIC")
+		} else {
+			log.Printf("Seed izin Pengadaan Bahan Baku: %d langkah gagal, diulang pada start berikutnya", gagal)
+		}
+	}
+
+	// ── Penerimaan, pecah vendor, pembayaran & katalog stok (14 Okt 2026) ──
+	// Semua langkah idempoten dan aman dijalankan tiap boot.
+	//
+	// Kunci baris penerimaan (pr_item_key) menjadi TEXT: dulu VARCHAR(120),
+	// sehingga nama grup/item panjang membuat serah terima gagal dengan galat
+	// database SETELAH dokumen dibayar dan tidak bisa diperbaiki (T-80). Hanya
+	// diubah bila kolomnya masih VARCHAR.
+	for _, tbl := range []string{"assets", "goods_receipt_items", "pr_receiving_decisions", "project_materials"} {
+		var dataType string
+		if err := DB.QueryRow(`SELECT data_type FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = $1 AND column_name = 'pr_item_key'`, tbl).Scan(&dataType); err != nil {
+			continue
+		}
+		if dataType == "character varying" {
+			if _, err := DB.Exec(`ALTER TABLE ` + tbl + ` ALTER COLUMN pr_item_key TYPE TEXT`); err != nil {
+				log.Printf("Receiving key migration (%s) skipped: %v", tbl, err)
+			}
+		}
+	}
+	for _, m := range []string{
+		// Jejak pengubah katalog stok global — katalog menentukan jenis belanja
+		// dan meja penerimaan pengadaan (T-20).
+		`ALTER TABLE stock_items ADD COLUMN IF NOT EXISTS created_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE stock_items ADD COLUMN IF NOT EXISTS updated_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		// Indeks rujukan pengadaan yang belum ada (T-86).
+		`CREATE INDEX IF NOT EXISTS idx_goods_receipts_pr ON goods_receipts(purchase_request_id) WHERE purchase_request_id IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_mtc_pr ON asset_maintenances(purchase_request_id) WHERE purchase_request_id IS NOT NULL`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Receiving/catalog migration skipped: %v", err)
+		}
+	}
+	// CHECK paid_amount ≤ total_final (T-87): pembayaran tidak pernah melebihi
+	// tagihan. Aman sejak pelunasan dibandingkan dalam sen dan item hanya bisa
+	// kembali ke induk yang belum dibayar (T-12, T-34). Hanya dipasang bila
+	// semua baris sudah sah; bila tidak, dicatat di log supaya boot tidak gagal.
+	{
+		var exists bool
+		DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname = 'chk_purchase_requests_paid_v1')`).Scan(&exists)
+		if !exists {
+			var bad int
+			if err := DB.QueryRow(`SELECT COUNT(*) FROM purchase_requests WHERE paid_amount > total_final`).Scan(&bad); err != nil {
+				log.Printf("CHECK pembayaran pengadaan dilewati: %v", err)
+			} else if bad > 0 {
+				log.Printf("CHECK pembayaran pengadaan TIDAK dipasang: %d baris terbayar melebihi total_final", bad)
+			} else if _, err := DB.Exec(`ALTER TABLE purchase_requests ADD CONSTRAINT chk_purchase_requests_paid_v1 CHECK (paid_amount <= total_final)`); err != nil {
+				log.Printf("CHECK pembayaran pengadaan gagal dipasang: %v", err)
+			} else {
+				log.Printf("CHECK pembayaran pengadaan dipasang (chk_purchase_requests_paid_v1)")
+			}
+		}
 	}
 
 	return nil

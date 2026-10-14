@@ -23,7 +23,8 @@ import (
 // Superadmin menerima semua event internal (kecuali daftar role penimpa
 // diisi dan tidak menyebut superadmin). Orang tertentu bisa ditambahkan di
 // luar aturan (mis. pengaju pengadaan dinotifikasi hasil pengajuannya sendiri)
-// lewat extraNames — dicocokkan dengan nama akun.
+// lewat extraNames — dicocokkan dengan nama akun, atau dengan id akun bila
+// entrinya berbentuk "id:<ULID>" (lihat waExtraMatches).
 //
 // Daftar penerima tambahan (wa_recipients: grup WA, nomor di luar akun) tetap
 // berlaku dan digabung di waRecipientsFor.
@@ -102,7 +103,11 @@ func waLoadAdmins() []waAdminRow {
 
 // waUserMatchesEvent: apakah role ini (tanpa memandang outlet) menjadi
 // penerima event, mengikuti daftar penimpa bila ada.
-func waUserMatchesEvent(spec *waEventSpec, role string, info waRoleInfo, s models.WASettings) bool {
+//
+// mapPerm (boleh nil) menerjemahkan izin pada spec sebelum dicocokkan —
+// mis. event pengadaan untuk pengajuan bahan baku memetakan
+// procurement.requests.approve ke procurement.rawmaterials.approve.
+func waUserMatchesEvent(spec *waEventSpec, role string, info waRoleInfo, s models.WASettings, mapPerm waPermMapper) bool {
 	if override := s.EventRoles[spec.Key]; len(override) > 0 {
 		for _, r := range override {
 			if strings.EqualFold(strings.TrimSpace(r), role) {
@@ -115,12 +120,20 @@ func waUserMatchesEvent(spec *waEventSpec, role string, info waRoleInfo, s model
 		return true
 	}
 	for _, req := range spec.Permissions {
+		if mapPerm != nil {
+			req = mapPerm(req)
+		}
 		if waRoleHasPermission(info.perms, req) {
 			return true
 		}
 	}
 	return false
 }
+
+// waCentralOutlet: penanda perutean dokumen pusat (tanpa outlet & unit kerja)
+// — hanya role bercakupan semua outlet yang tercakup (lihat waPurchaseOutlet).
+// Bukan ULID, jadi tidak pernah cocok dengan outlet mana pun.
+const waCentralOutlet = "__pusat__"
 
 func waRoleCoversOutlet(info waRoleInfo, outletID string) bool {
 	if outletID == "" || info.scopeType != "specific" {
@@ -134,10 +147,28 @@ func waRoleCoversOutlet(info waRoleInfo, outletID string) bool {
 	return false
 }
 
+// waExtraIDPrefix: penanda entri extraNames berupa id akun ("id:<ULID>"),
+// bukan nama tampilan. Pengaju pengadaan dicocokkan lewat id-nya (T-7):
+// nama bisa kembar atau berubah, dan dulu bisa diisi bebas dari body.
+const waExtraIDPrefix = "id:"
+
+// waExtraMatches: entri extraNames (nama akun, atau "id:<ULID>") menunjuk akun a.
+func waExtraMatches(extra string, a waAdminRow) bool {
+	extra = strings.TrimSpace(extra)
+	if extra == "" {
+		return false
+	}
+	if strings.HasPrefix(extra, waExtraIDPrefix) {
+		id := strings.TrimSpace(strings.TrimPrefix(extra, waExtraIDPrefix))
+		return id != "" && strings.EqualFold(id, strings.TrimSpace(a.ID))
+	}
+	return strings.EqualFold(extra, strings.TrimSpace(a.Name))
+}
+
 // waUserRecipients: pengguna ber-nomor yang berhak atas event ini + nama-nama
 // tambahan (pengaju, dsb.). Dikembalikan sebagai WARecipient agar seragam
 // dengan daftar tambahan; OutletIDs diisi dari batasan role (nil = semua).
-func waUserRecipients(event, outletID string, s models.WASettings, extraNames []string) []models.WARecipient {
+func waUserRecipients(event, outletID string, s models.WASettings, mapPerm waPermMapper, extraNames []string) []models.WARecipient {
 	spec := waSpec(event)
 	if spec == nil || spec.Audience != "internal" {
 		return nil
@@ -151,13 +182,13 @@ func waUserRecipients(event, outletID string, s models.WASettings, extraNames []
 		info := roles[a.Role]
 		named := false
 		for _, n := range extraNames {
-			if n != "" && strings.EqualFold(strings.TrimSpace(n), strings.TrimSpace(a.Name)) {
+			if waExtraMatches(n, a) {
 				named = true
 				break
 			}
 		}
 		if !named {
-			if !waUserMatchesEvent(spec, a.Role, info, s) || !waRoleCoversOutlet(info, outletID) {
+			if !waUserMatchesEvent(spec, a.Role, info, s, mapPerm) || !waRoleCoversOutlet(info, outletID) {
 				continue
 			}
 		}
@@ -219,10 +250,23 @@ func waManualRecipients(event, outletID string) []models.WARecipient {
 // waRecipientsFor menggabungkan penerima berbasis posisi (akun pengguna) dan
 // penerima tambahan, tanpa nomor ganda.
 func waRecipientsFor(event, outletID string, extraNames ...string) []models.WARecipient {
+	return waRecipientsForMapped(event, outletID, nil, extraNames...)
+}
+
+// waPermMapper menerjemahkan kunci izin pada spec event sebelum dicocokkan
+// dengan izin role. nil = apa adanya.
+type waPermMapper func(perm string) string
+
+// waBahanPermMapper: padanan izin untuk event pengajuan bahan baku.
+func waBahanPermMapper(perm string) string {
+	return MapProcurementPermission(perm, RequestTypeBahan)
+}
+
+func waRecipientsForMapped(event, outletID string, mapPerm waPermMapper, extraNames ...string) []models.WARecipient {
 	s := GetWASettings()
 	seen := map[string]bool{}
 	out := []models.WARecipient{}
-	for _, r := range append(waUserRecipients(event, outletID, s, extraNames), waManualRecipients(event, outletID)...) {
+	for _, r := range append(waUserRecipients(event, outletID, s, mapPerm, extraNames), waManualRecipients(event, outletID)...) {
 		t := WANormalizeTarget(r.Target)
 		if t == "" || seen[t] {
 			continue
@@ -269,7 +313,10 @@ func WARecipientUsers() []models.WARecipientUser {
 		if a.Active && a.Notify && a.Phone != "" {
 			for i := range waEventSpecs {
 				spec := &waEventSpecs[i]
-				if spec.Audience == "internal" && waUserMatchesEvent(spec, a.Role, info, s) {
+				// Event pengadaan juga sampai ke pemegang izin bahan baku
+				// (untuk pengajuan berjenis bahan), jadi keduanya dihitung.
+				if spec.Audience == "internal" && (waUserMatchesEvent(spec, a.Role, info, s, nil) ||
+					waUserMatchesEvent(spec, a.Role, info, s, waBahanPermMapper)) {
 					u.Events = append(u.Events, spec.Key)
 				}
 			}
@@ -315,6 +362,12 @@ func waRouteDesc(spec *waEventSpec) string {
 		} else {
 			labels = append(labels, p)
 		}
+		// Padanan bahan baku (pengajuan berjenis 'bahan').
+		if m := waBahanPermMapper(p); m != p {
+			if l, ok := waPermissionLabels[m]; ok {
+				labels = append(labels, l)
+			}
+		}
 	}
 	desc := "Superadmin"
 	if len(labels) > 0 {
@@ -330,6 +383,7 @@ var waPermissionLabels = map[string]string{
 	"reservations.view":               "Reservasi",
 	"cashier_shifts.view":             "Laporan Shift Kasir",
 	"reports.sales.view":              "Laporan Penjualan",
+	"procurement.requests.verify":     "Verifikasi Pengadaan",
 	"procurement.requests.approve":    "Persetujuan Pengadaan",
 	"procurement.requests.purchasing": "Purchasing (isi harga/beli)",
 	"finance.payments.pay":            "Pencairan Pembayaran",
@@ -338,4 +392,8 @@ var waPermissionLabels = map[string]string{
 	"warehouse_dashboard.view":        "Dashboard Gudang",
 	"assets.maintenance.view":         "Perawatan Aset",
 	"devices.view":                    "Monitoring Perangkat",
+
+	// Padanan untuk pengajuan bahan baku (lihat MapProcurementPermission).
+	"procurement.rawmaterials.approve":    "Persetujuan Pengadaan Bahan Baku",
+	"procurement.rawmaterials.purchasing": "Purchasing Bahan Baku",
 }

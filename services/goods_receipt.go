@@ -50,16 +50,22 @@ func CreateGoodsReceipt(req models.GoodsReceiptRequest, actor string) (*models.G
 }
 
 // rejectManualReceiptForPurchase menolak GRN manual yang sebenarnya milik
-// sebuah pengajuan pengadaan yang masih hidup — dikenali dari nomor pengajuan
-// yang diketik di kolom PO, atau dari purchase_request_id tanpa pr_item_key.
+// sebuah pengajuan pengadaan — dikenali dari tautan pengajuan yang dibawanya,
+// atau dari nomor pengajuan hidup yang diketik di kolom PO.
+//
+// Tautan ke pengajuan (purchase_request_id, pr_item_key) HANYA boleh ditulis
+// Serah Terima pengadaan (ReceiveGoods): jalur itu yang memeriksa status,
+// sisa, wewenang per baris, dan menutup pengajuannya. Dulu GRN manual yang
+// membawa keduanya diterima begitu saja — baris pengajuan pending atau milik
+// outlet lain "dianggap diterima" tanpa receipt_status pernah berubah (T-44).
 func rejectManualReceiptForPurchase(req models.GoodsReceiptRequest) error {
 	if strings.TrimSpace(req.PurchaseRequestID) != "" {
-		for _, it := range req.Items {
-			if strings.TrimSpace(it.PRItemKey) == "" {
-				return Invalid("penerimaan yang ditautkan ke pengajuan pengadaan harus dicatat lewat menu Penerimaan dari Pengadaan, supaya pengajuannya ikut tertutup")
-			}
+		return Invalid("penerimaan yang ditautkan ke pengajuan pengadaan harus dicatat lewat menu Penerimaan dari Pengadaan, supaya pengajuannya ikut tertutup")
+	}
+	for _, it := range req.Items {
+		if strings.TrimSpace(it.PRItemKey) != "" {
+			return Invalid("baris GRN manual tidak boleh membawa kunci baris pengajuan — catat lewat menu Penerimaan dari Pengadaan")
 		}
-		return nil
 	}
 	ref := strings.TrimSpace(req.PORef)
 	if ref == "" {
@@ -69,8 +75,8 @@ func rejectManualReceiptForPurchase(req models.GoodsReceiptRequest) error {
 	err := database.DB.QueryRow(`
 		SELECT request_number, status, COALESCE(receipt_status, '')
 		FROM purchase_requests
-		WHERE request_type = 'barang' AND request_number = $1
-		  AND status NOT IN ('pending','rejected','cancelled')
+		WHERE request_type IN ('barang','bahan') AND request_number = $1
+		  AND `+prCommittedCond("")+`
 		LIMIT 1`, ref).Scan(&number, &status, &receipt)
 	if err != nil {
 		return nil // bukan nomor pengajuan, atau pengajuannya belum/tidak hidup

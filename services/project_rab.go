@@ -4,6 +4,7 @@ import (
 	"cloud-pos/database"
 	"cloud-pos/models"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -64,9 +65,14 @@ func listRabItems(q dbExecer, projectID string) ([]models.ProjectRabItem, error)
 }
 
 // rabAbsorption adalah serapan satu baris RAB (atau "di luar RAB").
+// committed/estimated/paid/requests hanya dari pengajuan yang sudah disetujui;
+// pending/pendingRequests = pengajuan yang masih menunggu verifikasi atau
+// persetujuan (di luar anggaran terpakai, hanya informasi).
 type rabAbsorption struct {
 	committed, estimated, paid float64
 	requests                   map[string]bool
+	pending                    float64
+	pendingRequests            map[string]bool
 }
 
 // subItemAmount = nilai item yang membebani RAB: harga final bila sudah
@@ -79,9 +85,10 @@ func subItemAmount(s models.PurchaseSubItem) (amount float64, isEstimate bool) {
 }
 
 // absorbByRabItem mengelompokkan serapan per rab_item_id dari daftar belanja
-// projek. Dokumen yang ditolak/dibatalkan tidak membebani RAB. Pembayaran
-// dicatat per dokumen, jadi dialokasikan ke item secara proporsional terhadap
-// nilai item di dokumen itu.
+// projek. Hanya dokumen yang sudah disetujui yang memakai anggaran; dokumen
+// yang masih menunggu verifikasi/persetujuan dicatat terpisah sebagai pending,
+// dan yang ditolak/dibatalkan diabaikan. Pembayaran dicatat per dokumen, jadi
+// dialokasikan ke item secara proporsional terhadap nilai item di dokumen itu.
 //
 // Kunci "" menampung item tanpa rujukan baris RAB; pemanggil memetakan rujukan
 // ke baris yang sudah tidak ada ke kunci yang sama.
@@ -89,12 +96,15 @@ func absorbByRabItem(requests []models.PurchaseRequest, known map[string]bool) m
 	out := map[string]*rabAbsorption{}
 	get := func(k string) *rabAbsorption {
 		if out[k] == nil {
-			out[k] = &rabAbsorption{requests: map[string]bool{}}
+			out[k] = &rabAbsorption{requests: map[string]bool{}, pendingRequests: map[string]bool{}}
 		}
 		return out[k]
 	}
 	for _, pr := range requests {
-		if pr.Status == "rejected" || pr.Status == "cancelled" {
+		// Keputusan owner 14 Okt 2026: anggaran baru terpakai saat pengajuan
+		// disetujui. Pengajuan yang masih antre hanya ditampilkan terpisah.
+		committed := IsCommittedPurchaseStatus(pr.Status)
+		if !committed && !isLivePurchaseStatus(pr.Status) {
 			continue
 		}
 		var docTotal float64
@@ -112,6 +122,11 @@ func absorbByRabItem(requests []models.PurchaseRequest, known map[string]bool) m
 				}
 				a, est := subItemAmount(s)
 				ab := get(key)
+				if !committed {
+					ab.pending += a
+					ab.pendingRequests[pr.ID] = true
+					continue
+				}
 				ab.committed += a
 				if est {
 					ab.estimated += a
@@ -141,6 +156,8 @@ func fillRabAbsorption(items []models.ProjectRabItem, requests []models.Purchase
 			it.Estimated = round2(ab.estimated)
 			it.Paid = round2(ab.paid)
 			it.RequestCount = len(ab.requests)
+			it.Pending = round2(ab.pending)
+			it.PendingCount = len(ab.pendingRequests)
 		}
 		it.Remaining = round2(it.Subtotal - it.Committed)
 		if it.Subtotal > 0 {
@@ -167,13 +184,44 @@ func GetProjectRab(projectID string, outletIDs, wuIDs []string) (*models.Project
 	if err != nil {
 		return nil, err
 	}
-	list, err := ListPurchaseRequests("", "", "", "", projectID, "all", true, "", outletIDs, wuIDs, 1, 500)
+	// Serapan dari SEMUA pengajuan projek, tanpa scope penonton (T-25): form
+	// pengajuan memakai sisa baris ini untuk memperingatkan pengaju, jadi
+	// angkanya tidak boleh bergantung pada siapa yang membukanya. Akses ke
+	// projeknya sendiri dijaga handler (validateProjectScope); outletIDs/wuIDs
+	// tidak lagi menyaring serapan.
+	all, err := projectAbsorptionRequests(projectID)
 	if err != nil {
 		return nil, err
 	}
-	fillRabAbsorption(items, list.Requests)
+	fillRabAbsorption(items, all)
 	res.Items = items
 	return &res, nil
+}
+
+// projectAbsorptionRequests: seluruh pengajuan hidup sebuah projek (tanpa
+// scope penonton, tanpa batas jumlah), cukup kolom yang dipakai
+// absorbByRabItem. Master yang habis dipecah dilewati — nilainya sudah ada di
+// pecahannya (sama dengan projectPRFilter).
+func projectAbsorptionRequests(projectID string) ([]models.PurchaseRequest, error) {
+	rows, err := database.DB.Query(`
+		SELECT id, status, items, COALESCE(paid_amount, 0)
+		FROM purchase_requests
+		WHERE project_id = $1 AND NOT `+fullySplitMasterCond("")+` AND `+prLiveCond(""), projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.PurchaseRequest, 0)
+	for rows.Next() {
+		var r models.PurchaseRequest
+		var itemsJSON []byte
+		if err := rows.Scan(&r.ID, &r.Status, &itemsJSON, &r.PaidAmount); err != nil {
+			return nil, err
+		}
+		json.Unmarshal(itemsJSON, &r.Items)
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func validateRabInput(items []models.ProjectRabItemInput) error {
@@ -209,7 +257,7 @@ func rabItemInUse(q dbExecer, projectID, itemID string) bool {
 			SELECT 1 FROM purchase_requests pr,
 			     jsonb_array_elements(pr.items) g,
 			     jsonb_array_elements(g->'items') s
-			WHERE pr.project_id = $1 AND pr.status NOT IN ('rejected','cancelled')
+			WHERE pr.project_id = $1 AND `+prLiveCond("pr")+`
 			  AND s->>'rab_item_id' = $2)`, projectID, itemID).Scan(&used)
 	return err == nil && used
 }

@@ -1,13 +1,22 @@
 <template>
   <div class="space-y-5">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
       <h1 class="text-xl font-bold text-gray-900">Kartu Stok</h1>
-      <AppButton @click="openProduceModal" variant="primary">
-        <svg class="h-4 w-4 mr-1.5 -ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-        Produksi (Masak)
-      </AppButton>
+      <div class="flex flex-wrap items-center gap-2">
+        <AppButton @click="openBreakdownHistory" variant="secondary">Riwayat Pemotongan</AppButton>
+        <AppButton v-if="canBreakdown" @click="openBreakdownModal" variant="secondary">
+          <svg class="h-4 w-4 mr-1.5 -ml-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>
+          </svg>
+          Pemotongan
+        </AppButton>
+        <AppButton @click="openProduceModal" variant="primary">
+          <svg class="h-4 w-4 mr-1.5 -ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          Produksi (Masak)
+        </AppButton>
+      </div>
     </div>
 
     <!-- Summary Stats -->
@@ -223,13 +232,178 @@
         <AppButton variant="primary" :loading="saving" @click="submitProduce">Proses Produksi</AppButton>
       </template>
     </AppModal>
+
+    <!-- Pemotongan: satu bahan → beberapa hasil menurut pola yang dipilih -->
+    <AppModal v-model="showBreakdown" title="Pemotongan Bahan" size="lg">
+      <div class="space-y-4">
+        <p class="text-xs text-gray-500">
+          Satu bahan dipotong atau diolah menjadi beberapa hasil — mis. ayam utuh → paha, dada, sayap; daging sapi → has dalam,
+          has luar, tetelan; ikan utuh → fillet, kepala; beras → nasi. Isi jumlah hasil yang benar-benar didapat: stok dan HPP
+          mengikuti hasil aktual, dan susutnya terlihat dari hasil yang di bawah standar pola.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="min-w-0">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Gudang</label>
+            <SearchSelect
+              v-model="bdForm.warehouse_id"
+              :options="bdWarehouseOptions"
+              placeholder="Pilih gudang..."
+              searchPlaceholder="Cari gudang..."
+              valueKey="value"
+              labelKey="label"
+            />
+          </div>
+          <div class="min-w-0">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Bahan yang Dipotong / Diolah</label>
+            <SearchSelect
+              v-model="bdForm.input_item_id"
+              :options="bdInputOptions"
+              :placeholder="bdTemplatesLoading ? 'Memuat…' : 'Pilih bahan...'"
+              searchPlaceholder="Cari bahan..."
+              valueKey="value"
+              labelKey="label"
+            />
+          </div>
+        </div>
+        <div v-if="!bdTemplatesLoading && bdInputOptions.length === 0"
+          class="flex items-start gap-2 rounded-lg bg-amber-50 ring-1 ring-amber-100 px-3 py-2 text-xs text-amber-800">
+          <svg class="h-4 w-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>Belum ada bahan dengan pola pemotongan aktif. Pola diatur Gudang Induk di <b>Item Stok › Atur Pemotongan</b>.</span>
+        </div>
+
+        <!-- Pola: tampil hanya bila bahan punya lebih dari satu pola aktif. -->
+        <div v-if="bdTemplate && bdPatterns.length > 1">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Pola Pemotongan</label>
+          <div class="flex flex-wrap gap-2">
+            <button v-for="p in bdPatterns" :key="p.id" type="button" @click="bdForm.pattern_id = p.id"
+              :class="['px-3 py-1.5 rounded-lg border text-sm transition-colors',
+                bdForm.pattern_id === p.id ? 'border-pink-400 bg-pink-50 text-pink-800 font-semibold' : 'border-gray-200 text-gray-700 hover:border-gray-300']">
+              {{ p.name }}
+            </button>
+          </div>
+          <p v-if="!bdPattern" class="mt-1 text-xs text-gray-400">Pilih pola untuk menampilkan hasilnya.</p>
+        </div>
+        <p v-if="bdPattern?.notes" class="-mt-2 text-xs text-gray-500">{{ bdPattern.notes }}</p>
+
+        <template v-if="bdPattern">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:items-end">
+            <AppInput v-model.number="bdForm.input_qty_dist" :label="`Jumlah dipakai (${bdDistLabel})`" type="number" step="any" min="0" placeholder="0" />
+            <div class="text-xs text-gray-500 space-y-0.5 sm:pb-2">
+              <div v-if="bdTemplate.input_dist_ratio !== 1 && bdQty > 0">= {{ fmtNum(bdInputBase) }} {{ bdTemplate.input_base_unit }}</div>
+              <div>Stok di gudang: <b :class="bdStockShort ? 'text-red-600' : 'text-gray-800'">{{ bdStockText }}</b></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-2 mb-2">
+              <span class="text-sm font-medium text-gray-700">Hasil Aktual<span v-if="bdPatterns.length > 1" class="font-normal text-gray-500"> · {{ bdPattern.name }}</span></span>
+              <span class="text-[11px] text-gray-400">terisi hasil standar — ubah sesuai hasil nyata</span>
+            </div>
+            <div class="space-y-2">
+              <div v-for="r in bdRows" :key="r.item_id" class="rounded-lg border border-gray-200 p-3">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <div class="font-medium text-gray-900 break-words">{{ r.name }}</div>
+                    <div class="text-xs text-gray-500">Standar {{ fmtNum(bdStd(r)) }} {{ r.unit }}</div>
+                  </div>
+                  <span :class="yieldBadgeCls(bdYield(r))" class="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full">{{ fmtPct(bdYield(r)) }}</span>
+                </div>
+                <div class="mt-2 grid grid-cols-2 gap-2 items-end">
+                  <div class="min-w-0">
+                    <label class="block text-xs text-gray-500 mb-1">Hasil aktual ({{ r.unit }})</label>
+                    <input v-model.number="r.qty" @input="r.touched = true" type="number" step="any" min="0"
+                      class="w-full min-w-0 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                  <div class="text-right text-xs text-gray-500 pb-1">
+                    Perkiraan HPP
+                    <div class="font-semibold text-gray-800">{{ bdEstUnitCostText(r) }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-0.5">
+            <div>
+              Perkiraan biaya bahan: <b>{{ formatRupiah(bdEstCost) }}</b>
+              <span class="text-gray-400">— dari HPP rata-rata gudang; biaya pasti dihitung FIFO saat disimpan.</span>
+            </div>
+            <div v-if="bdValueYield !== null">
+              Hasil dibanding standar (ditimbang bobot biaya): <b :class="yieldTextCls(bdValueYield)">{{ fmtPct(bdValueYield) }}</b>
+              <span v-if="bdValueYield < 100"> · susut ≈ {{ formatRupiah(bdEstCost * (1 - bdValueYield / 100)) }}</span>
+            </div>
+            <div class="text-gray-400">Hasil mewarisi tanggal kedaluwarsa terdekat dari bahan yang terpotong.</div>
+          </div>
+          <AppInput v-model="bdForm.notes" label="Catatan" placeholder="Opsional" />
+        </template>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showBreakdown = false">Batal</AppButton>
+        <AppButton variant="primary" :loading="saving" :disabled="!bdPattern" @click="submitBreakdown">Simpan Pemotongan</AppButton>
+      </template>
+    </AppModal>
+
+    <!-- Riwayat Pemotongan -->
+    <AppModal v-model="showBdHistory" title="Riwayat Pemotongan" size="xl">
+      <div class="mb-3 max-w-md">
+        <SearchSelect
+          v-model="bdHistWarehouse"
+          :options="warehouseOptions"
+          placeholder="Semua Gudang"
+          searchPlaceholder="Cari gudang..."
+          valueKey="value"
+          labelKey="label"
+          @change="reloadBdHistory"
+        />
+      </div>
+      <div v-if="bdHistLoading" class="py-6 text-center text-sm text-gray-400">Memuat…</div>
+      <div v-else-if="bdHistory.length === 0" class="py-6 text-center text-sm text-gray-400">Belum ada pemotongan.</div>
+      <ul v-else class="space-y-3">
+        <li v-for="d in bdHistory" :key="d.id" class="rounded-lg border border-gray-200 p-3">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <span class="font-mono text-sm font-semibold text-gray-900">{{ d.breakdown_number }}</span>
+            <span class="text-xs text-gray-500">{{ formatDateTime(d.created_at) }} · {{ d.created_by || '—' }}</span>
+          </div>
+          <div class="mt-1 text-sm text-gray-700 break-words">
+            <b>{{ d.input_item_name }}</b>
+            <span v-if="d.pattern_name" class="mx-0.5 inline-block rounded bg-pink-50 px-1.5 py-0.5 align-middle text-[11px] font-medium text-pink-700">{{ d.pattern_name }}</span>
+            {{ fmtNum(d.input_qty_dist) }} {{ d.input_unit }}
+            <span class="text-gray-400">({{ fmtNum(d.input_qty_base) }} {{ d.input_base_unit }})</span>
+            · {{ formatRupiah(d.input_cost_total) }}
+          </div>
+          <div class="text-xs text-gray-500 break-words">
+            {{ d.warehouse_name }}<span v-if="d.expiry_date"> · kedaluwarsa hasil {{ formatDateStr(d.expiry_date) }}</span>
+          </div>
+          <div class="mt-2 divide-y divide-gray-100 rounded-md bg-gray-50 px-2">
+            <div v-for="o in d.outputs" :key="o.id" class="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-1.5 text-xs">
+              <span class="font-medium text-gray-800 break-words">{{ o.item_name }}</span>
+              <span class="text-gray-600">
+                {{ fmtNum(o.qty_base) }}/{{ fmtNum(o.std_qty_base) }} {{ o.base_unit }}
+                <b :class="yieldTextCls(o.yield_pct)">({{ fmtPct(o.yield_pct) }})</b>
+                · {{ formatRupiah(o.cost_per_base) }}/{{ o.base_unit }}
+              </span>
+            </div>
+          </div>
+          <div class="mt-1.5 text-xs text-gray-500">
+            Hasil dibanding standar <b :class="yieldTextCls(d.yield_pct)">{{ fmtPct(d.yield_pct) }}</b>
+            <span v-if="d.shrink_cost > 0"> · susut {{ formatRupiah(d.shrink_cost) }}</span>
+            <span v-else-if="d.shrink_cost < 0"> · hasil melebihi standar</span>
+          </div>
+          <p v-if="d.notes" class="mt-1 text-xs italic text-gray-500 break-words">{{ d.notes }}</p>
+        </li>
+      </ul>
+      <AppPagination v-model:page="bdHistPage" :total-pages="bdHistTotalPages" />
+      <template #footer>
+        <AppButton variant="secondary" @click="showBdHistory = false">Tutup</AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue'
-import { warehousesApi, stockLedgerApi, stockItemsApi } from '@/api/warehouse.js'
+import { warehousesApi, stockLedgerApi, stockItemsApi, stockBreakdownsApi } from '@/api/warehouse.js'
 import { useToastStore } from '@/stores/toast.js'
+import { useAuthStore } from '@/stores/auth.js'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
 import AppTable      from '@/components/ui/AppTable.vue'
@@ -240,10 +414,13 @@ import AppPagination from '@/components/ui/AppPagination.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import DateRangePicker from '@/components/ui/DateRangePicker.vue'
 import { formatWarehouseOptionLabel, MOVEMENT_LABELS as MOV_LABELS, movementClass as movTypeCls } from '@/utils/warehouse.js'
-import { formatRupiah } from '@/utils/format.js'
+import { formatRupiah, formatDateTime, formatDateStr } from '@/utils/format.js'
 import debounce from 'lodash/debounce'
 
 const toast = useToastStore()
+const auth = useAuthStore()
+// Pemotongan dicatat pemegang stockledger.adjust (sama dengan penyesuaian stok).
+const canBreakdown = auth.hasPermission('stockledger.adjust')
 const loading = ref(false)
 const saving = ref(false)
 const rows = ref([])
@@ -312,6 +489,227 @@ async function submitProduce() {
     saving.value = false
   }
 }
+
+// ── Pemotongan (satu bahan → beberapa hasil) ──────────────────
+// Pola pemotongan (hasil standar + bobot biaya; satu bahan bisa beberapa
+// pola) diatur Gudang Induk di Item Stok. Form ini mengisi hasil standar pola
+// terpilih × qty sebagai awal; petugas mengubahnya ke hasil nyata. Server
+// menghitung biaya pasti dari FIFO; angka di sini perkiraan dari HPP
+// rata-rata gudang dengan rumus pembagian yang sama.
+const showBreakdown = ref(false)
+const bdTemplates = ref([])
+const bdTemplatesLoading = ref(false)
+const bdForm = ref({ warehouse_id: '', input_item_id: '', pattern_id: '', input_qty_dist: 1, notes: '' })
+const bdRows = ref([])
+const bdStock = ref(null) // { qty_base, avg_cost } bahan di gudang terpilih; null = belum dimuat
+
+const bdTemplate = computed(() => bdTemplates.value.find(t => t.input_item_id === bdForm.value.input_item_id) || null)
+// Pola aktif bahan terpilih; server hanya mengirim pola aktif yang berisi hasil.
+const bdPatterns = computed(() => bdTemplate.value?.patterns || [])
+const bdPattern = computed(() => bdPatterns.value.find(p => p.id === bdForm.value.pattern_id) || null)
+const bdInputOptions = computed(() => bdTemplates.value
+  .filter(t => t.input_is_active)
+  .map(t => ({
+    value: t.input_item_id,
+    label: `${t.input_item_name} (${t.input_item_code})${t.patterns.length > 1 ? ` · ${t.patterns.length} pola` : ''}`,
+  })))
+// Role per outlet hanya di gudang outletnya (server menolak Gudang Induk dan
+// outlet lain); daftar gudang dari server sudah terbatas cakupannya.
+const bdWarehouseOptions = computed(() => warehouseList.value
+  .filter(w => w.is_active && (auth.scopeType !== 'specific' || w.type === 'outlet'))
+  .map(w => ({ value: w.id, label: formatWarehouseOptionLabel(w) })))
+const bdDistLabel = computed(() => {
+  const t = bdTemplate.value
+  return t ? (t.input_dist_unit_label || t.input_dist_unit || t.input_base_unit) : ''
+})
+const bdQty = computed(() => Number(bdForm.value.input_qty_dist) || 0)
+const bdInputBase = computed(() => bdQty.value * (bdTemplate.value?.input_dist_ratio || 1))
+const bdEstCost = computed(() => bdInputBase.value * (bdStock.value?.avg_cost || 0))
+const bdStockShort = computed(() => !!bdStock.value && bdInputBase.value > bdStock.value.qty_base + 1e-9)
+const bdStockText = computed(() => {
+  const t = bdTemplate.value
+  if (!t || !bdForm.value.warehouse_id) return '—'
+  if (!bdStock.value) return 'memuat…'
+  const base = `${fmtNum(bdStock.value.qty_base)} ${t.input_base_unit}`
+  const ratio = t.input_dist_ratio || 1
+  return ratio !== 1 ? `${fmtNum(bdStock.value.qty_base / ratio)} ${bdDistLabel.value} (${base})` : base
+})
+
+function bdStd(r) { return bdQty.value * r.qty_per_input }
+function bdYield(r) {
+  const std = bdStd(r)
+  return std > 0 ? (Number(r.qty) || 0) / std * 100 : null
+}
+// Rumus server (allocateBreakdownCost): porsi = qty × bobot ÷ hasil standar.
+const bdShareSum = computed(() => bdRows.value.reduce((s, r) =>
+  s + (Number(r.qty) > 0 ? Number(r.qty) * r.cost_weight / r.qty_per_input : 0), 0))
+function bdEstUnitCost(r) {
+  if (!(Number(r.qty) > 0) || bdShareSum.value <= 0) return 0
+  return bdEstCost.value * (r.cost_weight / r.qty_per_input) / bdShareSum.value
+}
+function bdEstUnitCostText(r) {
+  const c = bdEstUnitCost(r)
+  return c > 0 ? `${formatRupiah(c)}/${r.unit}` : '—'
+}
+// Yield ditimbang bobot biaya (sama dengan yield dokumen di server).
+const bdValueYield = computed(() => {
+  const std = bdRows.value.reduce((s, r) => s + bdStd(r) * r.cost_weight / r.qty_per_input, 0)
+  return std > 0 ? bdShareSum.value / std * 100 : null
+})
+
+function round3(v) { return Math.round(v * 1000) / 1000 }
+function fmtNum(v) { return Number(v ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 3 }) }
+function fmtPct(v) {
+  return v === null || v === undefined ? '—' : `${Number(v).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`
+}
+// Hasil ≥ standar hijau, ≥ 90% kuning, di bawahnya merah.
+function yieldTextCls(p) {
+  if (p === null || p === undefined) return 'text-gray-500'
+  return p >= 99.95 ? 'text-emerald-700' : p >= 90 ? 'text-amber-600' : 'text-red-600'
+}
+function yieldBadgeCls(p) {
+  if (p === null || p === undefined) return 'bg-gray-100 text-gray-500'
+  return p >= 99.95 ? 'bg-emerald-100 text-emerald-700' : p >= 90 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'
+}
+
+function buildBdRows() {
+  const p = bdPattern.value
+  bdRows.value = p ? p.outputs.map(o => ({
+    item_id: o.output_item_id, name: o.output_item_name, unit: o.output_base_unit,
+    qty_per_input: o.qty_per_input, cost_weight: o.cost_weight,
+    qty: round3(bdQty.value * o.qty_per_input), touched: false,
+  })) : []
+}
+
+let bdStockSeq = 0
+async function loadBdStock() {
+  const seq = ++bdStockSeq
+  bdStock.value = null
+  const { warehouse_id, input_item_id } = bdForm.value
+  if (!warehouse_id || !input_item_id) return
+  try {
+    const data = await stockLedgerApi.list({ warehouse_id, item_id: input_item_id, limit: 1 })
+    if (seq !== bdStockSeq) return
+    const row = (data.data || [])[0]
+    bdStock.value = { qty_base: row?.qty_base || 0, avg_cost: row?.avg_cost || 0 }
+  } catch (e) {
+    if (seq === bdStockSeq) bdStock.value = { qty_base: 0, avg_cost: 0 }
+  }
+}
+
+// Bahan berganti → pola terpilih otomatis bila hanya ada satu; selain itu
+// petugas memilih sendiri (server menolak tanpa pola bila lebih dari satu).
+watch(() => bdForm.value.input_item_id, () => {
+  const pats = bdPatterns.value
+  bdForm.value.pattern_id = pats.length === 1 ? pats[0].id : ''
+  buildBdRows()
+  loadBdStock()
+})
+watch(() => bdForm.value.pattern_id, buildBdRows)
+watch(() => bdForm.value.warehouse_id, loadBdStock)
+// Qty bahan berubah → hasil yang belum diubah petugas ikut standar baru.
+watch(bdQty, () => { bdRows.value.forEach(r => { if (!r.touched) r.qty = round3(bdStd(r)) }) })
+
+async function openBreakdownModal() {
+  const opts = bdWarehouseOptions.value
+  const wh = opts.some(o => o.value === filterWarehouse.value) ? filterWarehouse.value
+    : (opts.length === 1 ? opts[0].value : '')
+  bdForm.value = { warehouse_id: wh, input_item_id: '', pattern_id: '', input_qty_dist: 1, notes: '' }
+  bdRows.value = []
+  bdStock.value = null
+  showBreakdown.value = true
+  bdTemplatesLoading.value = true
+  try {
+    // Non-paginated: apiClient mengembalikan array langsung.
+    const data = await stockBreakdownsApi.templates()
+    bdTemplates.value = Array.isArray(data) ? data : (data?.data || [])
+  } catch (e) {
+    bdTemplates.value = []
+    toast.error(e?.message || 'Gagal memuat pola pemotongan')
+  } finally {
+    bdTemplatesLoading.value = false
+  }
+}
+
+async function submitBreakdown() {
+  const t = bdTemplate.value
+  if (!bdForm.value.warehouse_id || !t) {
+    toast.error('Pilih gudang dan bahan yang dipotong')
+    return
+  }
+  if (!bdPattern.value) {
+    toast.error('Pilih pola pemotongan')
+    return
+  }
+  if (!(bdQty.value > 0)) {
+    toast.error('Jumlah bahan yang dipakai harus lebih dari 0')
+    return
+  }
+  if (bdRows.value.some(r => Number(r.qty) < 0)) {
+    toast.error('Hasil aktual tidak boleh negatif')
+    return
+  }
+  if (!bdRows.value.some(r => Number(r.qty) > 0)) {
+    toast.error('Isi minimal satu hasil potongan')
+    return
+  }
+  saving.value = true
+  try {
+    const doc = await stockBreakdownsApi.create({
+      warehouse_id: bdForm.value.warehouse_id,
+      input_item_id: t.input_item_id,
+      pattern_id: bdPattern.value.id,
+      input_qty_dist: bdQty.value,
+      outputs: bdRows.value.map(r => ({ item_id: r.item_id, qty_base: Number(r.qty) || 0 })),
+      notes: bdForm.value.notes,
+    })
+    toast.success(`Pemotongan ${doc?.breakdown_number || ''} dicatat`)
+    showBreakdown.value = false
+    load()
+  } catch (e) {
+    toast.error(e?.message || 'Gagal mencatat pemotongan')
+  } finally {
+    saving.value = false
+  }
+}
+
+// Riwayat dokumen pemotongan (ikut cakupan outlet di server).
+const showBdHistory = ref(false)
+const bdHistory = ref([])
+const bdHistLoading = ref(false)
+const bdHistPage = ref(1)
+const bdHistTotalPages = ref(1)
+const bdHistWarehouse = ref('')
+
+function openBreakdownHistory() {
+  bdHistWarehouse.value = filterWarehouse.value
+  bdHistory.value = []
+  showBdHistory.value = true
+  reloadBdHistory()
+}
+
+function reloadBdHistory() {
+  // watch(bdHistPage) yang memuat ulang saat pindah ke hal. 1
+  if (bdHistPage.value === 1) loadBdHistory()
+  else bdHistPage.value = 1
+}
+
+let bdHistSeq = 0
+async function loadBdHistory() {
+  const seq = ++bdHistSeq
+  bdHistLoading.value = true
+  try {
+    const data = await stockBreakdownsApi.list({ warehouse_id: bdHistWarehouse.value, page: bdHistPage.value, limit: 10 })
+    if (seq !== bdHistSeq) return
+    bdHistory.value = data.data || []
+    bdHistTotalPages.value = data.total_pages || 1
+  } catch (e) {
+    if (seq === bdHistSeq) toast.error(e?.message || 'Gagal memuat riwayat pemotongan')
+  } finally {
+    if (seq === bdHistSeq) bdHistLoading.value = false
+  }
+}
+watch(bdHistPage, loadBdHistory)
 
 const COLUMNS = [
   { key: 'item_name',      label: 'Bahan Baku', sortable: false },

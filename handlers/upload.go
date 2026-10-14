@@ -9,20 +9,24 @@ import (
 	"time"
 
 	"cloud-pos/models"
+	"cloud-pos/services"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/oklog/ulid/v2"
 )
 
 // storeUpload menyimpan berkas ke uploads/YYYY-MM/<ulid><ext> dan
 // mengembalikan URL publiknya. Pemeriksaan ukuran/jenis dilakukan pemanggil.
+//
+// Nama berkas memakai services.NewULID (crypto/rand), bukan ulid.Make()
+// (math/rand berbenih waktu): /uploads disajikan tanpa login, jadi nama yang
+// tidak bisa ditebak adalah satu-satunya pelindung bukti (T-69, T-70).
 func storeUpload(c *fiber.Ctx, file *multipart.FileHeader, ext string) (string, error) {
 	datePath := time.Now().Format("2006-01")
-	dir := filepath.Join("uploads", datePath)
+	dir := filepath.Join(services.UploadsDir, datePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("gagal menyiapkan folder upload")
 	}
-	filename := fmt.Sprintf("%s%s", ulid.Make().String(), ext)
+	filename := fmt.Sprintf("%s%s", services.NewULID(), ext)
 	if err := c.SaveFile(file, filepath.Join(dir, filename)); err != nil {
 		return "", fmt.Errorf("gagal menyimpan file")
 	}
@@ -40,10 +44,11 @@ func UploadFile(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Ukuran file maksimal 5MB."})
 	}
 
-	// Allowed extensions
+	// Ekstensi yang diizinkan — daftar yang sama dengan validator URL bukti
+	// (services.ValidateUploadURL), supaya berkas yang lolos unggah tidak
+	// ditolak saat URL-nya dikirim sebagai bukti.
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".pdf": true, ".webp": true}
-	if !allowed[ext] {
+	if !services.UploadExtAllowed(ext) {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Format file tidak didukung. Gunakan JPG, PNG, PDF, atau WebP."})
 	}
 	if !sniffContentAllowed(file, "image/", "application/pdf") {

@@ -5,7 +5,7 @@
   permission keys the backend enforces (services.AllPermissions):
     • CRUD submenu  → Lihat·Tambah·Ubah·Hapus table (ops can be partial, e.g.
                       Transfer Stok has no Hapus → shown as "–").
-    • Workflow/single → toggle chips (e.g. Pengadaan: Lihat/Buat/Approval/Isi Harga,
+    • Workflow/single → toggle chips (e.g. Pengadaan: Lihat/Buat/Verifikasi/Approval/Pembelian,
                       Laporan: satu chip per jenis laporan).
 
   Parent owns the active list + view-dependency cascade; this only emits toggle(key).
@@ -93,6 +93,7 @@
                 <button
                   v-for="t in it.toggles" :key="t.key"
                   type="button" class="opt-pill" :class="{ 'opt-pill--on': has(t.key) }" :aria-pressed="has(t.key)"
+                  :title="t.hint || null"
                   @click="emitToggle(t.key)"
                 >
                   <span class="op-svg" v-if="has(t.key)" v-html="CHECK" />{{ t.label }}
@@ -269,12 +270,28 @@ const CATEGORIES = [
     items: [
       { type: 'single', key: 'procurement.dashboard.view', label: 'Dashboard Pengadaan', icon: IC.gauge },
       {
-        type: 'toggles', label: 'Permintaan Pembelian (Barang & Jasa)', icon: IC.cart,
+        // Alur: Buat → Verifikasi (cek ketersediaan di outlet lain) → Approval → Pembelian.
+        type: 'toggles', label: 'Pengadaan Barang, Perlengkapan & Jasa', icon: IC.cart,
         toggles: [
-          { key: 'procurement.requests.view',       label: 'Lihat' },
-          { key: 'procurement.requests.submit',     label: 'Buat/Hapus' },
-          { key: 'procurement.requests.approve',    label: 'Approval' },
-          { key: 'procurement.requests.purchasing', label: 'Isi Harga' },
+          { key: 'procurement.requests.view',       label: 'Lihat', hint: 'Melihat daftar & detail pengajuan barang, perlengkapan, dan jasa' },
+          { key: 'procurement.requests.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan, mengubah isinya selama menunggu verifikasi, membatalkan sebelum diajukan bayar, menghapus, dan serah terima barang' },
+          { key: 'procurement.requests.verify',     label: 'Verifikasi', hint: 'Memeriksa ketersediaan di outlet lain: menolak per item atau meneruskan pengajuan ke persetujuan' },
+          { key: 'procurement.requests.approve',    label: 'Approval', hint: 'Menyetujui atau menolak pengajuan yang sudah diverifikasi' },
+          { key: 'procurement.requests.purchasing', label: 'Pembelian Barang & Perlengkapan', hint: 'Mengisi harga final, vendor, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran (termasuk jasa)' },
+          { key: 'procurement.requests.pickup',     label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan barang dari vendor (foto & waktu) sebelum diantar ke tempat penerimaan, termasuk struk yang dibawa' },
+        ],
+      },
+      {
+        // Pengajuan jenis 'bahan' diatur izin terpisah dari Barang & Jasa.
+        // Alur: Buat (Kepala Gudang Induk) → Approval (Manager Logistik) →
+        // Pembelian → Pengambilan oleh logistik (opsional) — tanpa verifikasi.
+        type: 'toggles', label: 'Pengadaan Bahan Baku', icon: IC.stockitem,
+        toggles: [
+          { key: 'procurement.rawmaterials.view',       label: 'Lihat', hint: 'Melihat daftar & detail pengajuan bahan baku' },
+          { key: 'procurement.rawmaterials.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan bahan baku, mengubah isinya selama menunggu persetujuan, membatalkan, menghapus, dan serah terima' },
+          { key: 'procurement.rawmaterials.approve',    label: 'Approval', hint: 'Menyetujui atau menolak pengajuan bahan baku (tanpa tahap verifikasi)' },
+          { key: 'procurement.rawmaterials.purchasing', label: 'Pembelian Bahan Baku', hint: 'Mengisi harga final, vendor, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran bahan baku' },
+          { key: 'procurement.rawmaterials.pickup',     label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan bahan dari vendor (foto & waktu) sebelum diantar ke Gudang Induk, termasuk struk yang dibawa' },
         ],
       },
       {

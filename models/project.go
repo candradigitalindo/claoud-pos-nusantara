@@ -46,21 +46,26 @@ type Project struct {
 
 // ProjectSummary adalah angka serapan anggaran sebuah projek.
 //
-// Committed = nilai yang sudah "dikunci" lewat pengajuan yang masih hidup
-// (bukan ditolak/dibatalkan), memakai harga final bila purchasing sudah
-// mengisinya dan HPS bila belum — gunanya RAB adalah mencegah over-komit, jadi
-// pengajuan yang masih menunggu harga tetap harus membebani anggaran.
+// Committed = anggaran terpakai: nilai pengajuan yang SUDAH DISETUJUI owner
+// (status berkomitmen), memakai harga final bila purchasing sudah mengisinya
+// dan HPS bila belum — pengajuan disetujui yang masih menunggu harga tetap
+// membebani anggaran. Pengajuan yang belum disetujui TIDAK termasuk
+// (keputusan owner 14 Okt 2026); nilainya ada di PendingAmount.
 // Estimated = bagian dari Committed yang masih berupa HPS, supaya terlihat
 // seberapa besar angka itu masih tebakan.
 // Paid = yang benar-benar sudah keluar uangnya.
 // Outstanding = sisa yang masih harus dibayar ke vendor; ini TETAP berbasis
 // harga final — tidak ada hutang atas harga yang belum disepakati.
+// PendingCount/PendingAmount = pengajuan yang masih menunggu verifikasi atau
+// persetujuan — hanya informasi, tidak mengurangi Sisa RAB.
 type ProjectSummary struct {
 	RequestCount    int     `json:"request_count"`
 	Committed       float64 `json:"committed"`
 	Estimated       float64 `json:"estimated"`
 	Paid            float64 `json:"paid"`
 	Outstanding     float64 `json:"outstanding"`
+	PendingCount    int     `json:"pending_count"`
+	PendingAmount   float64 `json:"pending_amount"`
 	RemainingBudget float64 `json:"remaining_budget"`
 	// AbsorbedPct = Committed / Budget × 100. 0 bila RAB belum diisi.
 	AbsorbedPct float64 `json:"absorbed_pct"`
@@ -92,11 +97,15 @@ type ProjectRabItem struct {
 
 	// Serapan — dihitung dari item purchase_requests yang menunjuk baris ini.
 	// Paid dialokasikan proporsional dari pembayaran dokumen (pembayaran
-	// dicatat per dokumen, bukan per item).
+	// dicatat per dokumen, bukan per item). Committed/RequestCount hanya dari
+	// pengajuan yang sudah disetujui; Pending/PendingCount = pengajuan yang
+	// masih menunggu verifikasi/persetujuan (tidak mengurangi Remaining).
 	RequestCount int     `json:"request_count"`
 	Committed    float64 `json:"committed"`
 	Estimated    float64 `json:"estimated"`
 	Paid         float64 `json:"paid"`
+	PendingCount int     `json:"pending_count"`
+	Pending      float64 `json:"pending"`
 	Remaining    float64 `json:"remaining"`
 	AbsorbedPct  float64 `json:"absorbed_pct"`
 	OverBudget   bool    `json:"over_budget"`

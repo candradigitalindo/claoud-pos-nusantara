@@ -83,26 +83,36 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 		return clause + " AND " + extra
 	}
 
+	// Nominal hanya dari dokumen yang masih hidup (daftar putih: pra-
+	// persetujuan + berkomitmen), dan SAMA di ringkasan, split tipe, per unit
+	// kerja, dan tren — dulu tabel unit & tren ikut menjumlah dokumen yang
+	// ditolak/dibatalkan sehingga angkanya bertentangan dengan kartu Nominal
+	// Total (T-63).
+	live := prLiveCond("")
+	liveJoin := prLiveCond("pr")
+
 	// ── 1) Summary counts & amounts by status ──
+	// pending = Menunggu Verifikasi, verified = Menunggu Persetujuan.
 	summaryQ := fmt.Sprintf(`
 		SELECT
 			COUNT(*) AS total,
-			-- Nilai total hanya dari dokumen yang tidak ditolak/dibatalkan.
-			COALESCE(SUM(total_final) FILTER (WHERE status NOT IN ('rejected','cancelled')), 0) AS total_amount,
+			COALESCE(SUM(total_final) FILTER (WHERE %[2]s), 0) AS total_amount,
 			COUNT(*) FILTER (WHERE status = 'pending')           AS pending,
+			COUNT(*) FILTER (WHERE status = 'verified')          AS verified,
 			COUNT(*) FILTER (WHERE status = 'approved')          AS approved,
 			COUNT(*) FILTER (WHERE status = 'payment_requested') AS payment_requested,
+			COUNT(*) FILTER (WHERE status = 'partial')           AS partial,
 			COUNT(*) FILTER (WHERE status = 'paid')              AS paid,
 			COUNT(*) FILTER (WHERE status = 'received')          AS received,
 			COUNT(*) FILTER (WHERE status = 'rejected')          AS rejected,
 			COUNT(*) FILTER (WHERE status = 'cancelled')         AS cancelled
 		FROM purchase_requests
-		%s`, andWhere(scopeClause, excludeShell))
+		%[1]s`, andWhere(scopeClause, excludeShell), live)
 
 	err := database.DB.QueryRow(summaryQ, args...).Scan(
 		&resp.TotalRequests, &resp.TotalAmount,
-		&resp.StatusBreakdown.Pending, &resp.StatusBreakdown.Approved,
-		&resp.StatusBreakdown.PaymentRequested,
+		&resp.StatusBreakdown.Pending, &resp.StatusBreakdown.Verified, &resp.StatusBreakdown.Approved,
+		&resp.StatusBreakdown.PaymentRequested, &resp.StatusBreakdown.Partial,
 		&resp.StatusBreakdown.Paid, &resp.StatusBreakdown.Received,
 		&resp.StatusBreakdown.Rejected, &resp.StatusBreakdown.Cancelled,
 	)
@@ -110,19 +120,22 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 		return nil, fmt.Errorf("procurement dashboard summary: %w", err)
 	}
 
-	// ── 2) Type split (barang vs jasa) ──
+	// ── 2) Type split (barang vs jasa vs bahan baku) ──
 	typeQ := fmt.Sprintf(`
 		SELECT
 			COUNT(*) FILTER (WHERE request_type = 'barang') AS barang,
-			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'barang' AND status NOT IN ('rejected','cancelled')), 0) AS barang_total,
+			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'barang' AND %[2]s), 0) AS barang_total,
 			COUNT(*) FILTER (WHERE request_type = 'jasa') AS jasa,
-			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'jasa' AND status NOT IN ('rejected','cancelled')), 0) AS jasa_total
+			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'jasa' AND %[2]s), 0) AS jasa_total,
+			COUNT(*) FILTER (WHERE request_type = 'bahan') AS bahan,
+			COALESCE(SUM(total_final) FILTER (WHERE request_type = 'bahan' AND %[2]s), 0) AS bahan_total
 		FROM purchase_requests
-		%s`, andWhere(scopeClause, excludeShell))
+		%[1]s`, andWhere(scopeClause, excludeShell), live)
 
 	err = database.DB.QueryRow(typeQ, args...).Scan(
 		&resp.TypeSplit.Barang, &resp.TypeSplit.BarangTotal,
 		&resp.TypeSplit.Jasa, &resp.TypeSplit.JasaTotal,
+		&resp.TypeSplit.Bahan, &resp.TypeSplit.BahanTotal,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("procurement dashboard type split: %w", err)
@@ -134,19 +147,21 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 			COALESCE(pr.work_unit_id, ''),
 			COALESCE(wu.name, 'Tanpa Unit Kerja'),
 			COUNT(*) AS total,
-			COALESCE(SUM(pr.total_final), 0) AS total_amount,
+			COALESCE(SUM(pr.total_final) FILTER (WHERE %[2]s), 0) AS total_amount,
 			COUNT(*) FILTER (WHERE pr.status = 'pending')           AS pending,
+			COUNT(*) FILTER (WHERE pr.status = 'verified')          AS verified,
 			COUNT(*) FILTER (WHERE pr.status = 'approved')          AS approved,
 			COUNT(*) FILTER (WHERE pr.status = 'payment_requested') AS payment_requested,
+			COUNT(*) FILTER (WHERE pr.status = 'partial')           AS partial,
 			COUNT(*) FILTER (WHERE pr.status = 'paid')              AS paid,
 			COUNT(*) FILTER (WHERE pr.status = 'received')          AS received,
 			COUNT(*) FILTER (WHERE pr.status = 'rejected')          AS rejected,
 			COUNT(*) FILTER (WHERE pr.status = 'cancelled')         AS cancelled
 		FROM purchase_requests pr
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
-		%s
+		%[1]s
 		GROUP BY pr.work_unit_id, wu.name
-		ORDER BY total_amount DESC`, andWhere(scopeClauseJoin, excludeShellJoin))
+		ORDER BY total_amount DESC`, andWhere(scopeClauseJoin, excludeShellJoin), liveJoin)
 
 	rows, err := database.DB.Query(wuQ, args...)
 	if err != nil {
@@ -159,7 +174,7 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 		if err := rows.Scan(
 			&s.WorkUnitID, &s.WorkUnitName,
 			&s.Total, &s.TotalAmount,
-			&s.Pending, &s.Approved, &s.PaymentRequested, &s.Paid, &s.Received,
+			&s.Pending, &s.Verified, &s.Approved, &s.PaymentRequested, &s.Partial, &s.Paid, &s.Received,
 			&s.Rejected, &s.Cancelled,
 		); err != nil {
 			log.Printf("procurement dashboard scan work unit: %v", err)
@@ -189,11 +204,11 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 		SELECT
 			TO_CHAR(tz_date(created_at), 'YYYY-MM') AS month,
 			COUNT(*) AS count,
-			COALESCE(SUM(total_final), 0) AS total_amount
+			COALESCE(SUM(total_final) FILTER (WHERE %[2]s), 0) AS total_amount
 		FROM purchase_requests
-		%s
+		%[1]s
 		GROUP BY TO_CHAR(tz_date(created_at), 'YYYY-MM')
-		ORDER BY month`, trendWhere)
+		ORDER BY month`, trendWhere, live)
 
 	trendRows, err := database.DB.Query(trendQ, args...)
 	if err != nil {

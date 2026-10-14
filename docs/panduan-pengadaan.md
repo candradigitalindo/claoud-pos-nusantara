@@ -12,17 +12,22 @@
 ## 1. Alur Resmi Pengadaan
 
 ```
-  ┌────────────┐   ┌──────────┐   ┌────────────┐   ┌─────────────┐   ┌──────────────┐
-  │ PENGAJUAN  │──▶│ APPROVE  │──▶│ PEMBELIAN  │──▶│ PENERIMAAN  │──▶│  DISTRIBUSI  │
-  └────────────┘   └──────────┘   └────────────┘   └─────────────┘   └──────────────┘
-   Manager Outlet   Admin / GM /    Tim              Logistik /        ke Outlet /
-   / Head Store     Direktur        Purchasing       Asset Officer     PIC (serah terima)
-
-   HPS + sumber     Pending          Isi harga        Barang dapur →    Gudang → gudang
-   HPS wajib        Setujui          final & vendor,  Gudang Induk      outlet
-   terisi           Tolak + alasan   ajukan bayar     Peralatan →       Aset → PIC
-                                                      Bagian Aset       pengaju
+  ┌───────────┐  ┌────────────┐  ┌──────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐
+  │ PENGAJUAN │─▶│ VERIFIKASI │─▶│ APPROVE  │─▶│ PEMBELIAN  │─▶│ PENERIMAAN │─▶│ DISTRIBUSI │
+  └───────────┘  └────────────┘  └──────────┘  └────────────┘  └────────────┘  └────────────┘
+   Manager        Bagian          Penyetuju     Pembelian      Gudang Induk /  ke Outlet /
+   Outlet /       Perlengkapan    (owner)       Barang &       Bagian Aset     PIC (serah
+   Head Store                                   Perlengkapan /                 terima)
+                                                Bahan Baku
+   HPS + sumber   Cek barang di   Setujui /     Isi harga,     Barang dapur →  Gudang → gudang
+   HPS wajib      outlet lain;    Tolak +       vendor dari    Gudang Induk    outlet
+   terisi         tolak per item  alasan        daftar, ajukan Peralatan →     Aset → PIC
+                  bila masih ada                bayar          Bagian Aset     pengaju
 ```
+
+Siapa yang memverifikasi, menyetujui, dan membeli **diatur lewat menu Role** — tidak ada akun
+yang ditetapkan di sistem (lihat §9). **Pengadaan Bahan Baku tidak melewati Verifikasi**:
+pengajuan Kepala Gudang Induk langsung menunggu persetujuan Manager Logistik (lihat §12).
 
 **Satu pengajuan tidak boleh mencampur barang dapur dan peralatan.** Serah terimanya berada di
 dua tempat berbeda, dan sistem menolak pengajuan campuran sejak dibuat.
@@ -67,30 +72,58 @@ Tautan cukup ditempel apa adanya — di layar akan tampil sebagai nama situsnya 
 4. Tambah item atau tambah Nama Pengadaan lain bila perlu.
 5. Periksa total HPS di bagian bawah, lalu **Simpan**.
 
-Status pengajuan menjadi **Pending**.
+Status pengajuan menjadi **Menunggu Verifikasi** (bahan baku: langsung **Menunggu Persetujuan**,
+§12). Selama status itu, pengaju masih bisa mengubah isinya; sejak diverifikasi, isi pengajuan
+terkunci.
 
 ---
 
-## 3. Tahap 2 — Approve
+## 3. Tahap 2 — Verifikasi & Approve
 
-**Siapa:** Admin / GM / Direktur (izin `procurement.requests.approve`)
-**Menu:** Pengadaan → Pengadaan Barang/Jasa → buka pengajuan berstatus Pending
+Setiap pengajuan melewati dua pemeriksaan berurutan: **verifikasi** oleh bagian perlengkapan,
+lalu **persetujuan** oleh penyetuju. Siapa yang boleh melakukan masing-masing diatur di menu
+**Role** — klik **Verifikasi** atau **Approval** pada role yang dimaksud (§9).
 
-### Tiga keputusan
+### 3.1 Verifikasi — mencegah pengadaan ganda (barang & jasa)
+
+**Siapa:** role berizin Verifikasi (`procurement.requests.verify`), umumnya Bagian Perlengkapan.
+Bahan baku tidak melalui tahap ini.
+**Menu:** Pengadaan → buka pengajuan berstatus **Menunggu Verifikasi**
+
+1. Periksa setiap item: apakah barangnya **masih ada atau menganggur di outlet lain**.
+2. Bila masih ada, **tolak item itu** dengan alasan, misalnya "Blender menganggur di outlet
+   Semesta — dimutasi". Pemindahannya dikonfirmasi ke bagian perlengkapan lewat Mutasi Aset
+   atau Transfer Stok, bukan dibeli baru.
+3. Item yang lolos diteruskan dengan menekan **Verifikasi**. Status menjadi **Menunggu
+   Persetujuan**.
+4. Bila **semua** item ditolak, pengajuan otomatis berstatus **Ditolak**.
+
+Item yang ditolak tidak ikut dihitung dan tidak bisa dibeli. Daftar beserta alasannya tetap
+terlihat pada pengajuan ("Item ditolak saat verifikasi").
+
+Bila dua orang membuka pengajuan yang sama dan salah satunya sudah mengubahnya, yang lain
+mendapat pesan **"Pengajuan berubah, muat ulang"** — keputusan selalu diambil atas isi terbaru.
+
+### 3.2 Approve
+
+**Siapa:** role berizin Approval (`procurement.requests.approve`; bahan baku:
+`procurement.rawmaterials.approve`, mis. Manager Logistik) — penyetuju
+**Menu:** Pengadaan → buka pengajuan berstatus **Menunggu Persetujuan**
 
 | Keputusan | Akibatnya | Ketentuan |
 |---|---|---|
-| **Pending** | Dibiarkan; pengajuan tetap menunggu | Dipakai bila masih perlu keterangan dari pengaju |
-| **Setujui** | Status menjadi Disetujui, lanjut ke Purchasing | Pastikan HPS wajar dan sumbernya bisa diperiksa |
+| **Biarkan** | Pengajuan tetap Menunggu Persetujuan | Dipakai bila masih perlu keterangan dari pengaju |
+| **Setujui** | Status menjadi Disetujui, lanjut ke Pembelian | Pastikan HPS wajar dan sumbernya bisa diperiksa |
 | **Tolak** | Status menjadi Ditolak, alur berhenti | **Alasan wajib diisi** — ditolak sistem bila kosong |
 
 ### Yang diperiksa sebelum menyetujui
 
-1. **Kebutuhannya nyata** — bukan barang yang sudah ada di outlet lain dan bisa dimutasi.
+1. **Hasil verifikasi** — item mana yang ditolak dan alasannya.
 2. **HPS masuk akal** dan **sumbernya bisa dibuka/dihubungi**.
 3. **Jumlahnya wajar** terhadap kebutuhan operasional.
-4. Untuk belanja projek: **sisa baris RAB yang diserap masih cukup** (terlihat di halaman Projek,
-   tabel RAB per baris; item yang melebihi sisa barisnya ditandai merah di form).
+4. Untuk belanja projek: **anggaran baris RAB baru terpakai saat pengajuan disetujui** (§11).
+   Bila persetujuan ini melampaui sisa baris RAB, panel persetujuan menampilkan peringatan
+   beserta sisanya. Persetujuan tetap bisa dilakukan; bila perlu, revisi RAB dulu.
 
 ### Ketentuan penolakan
 
@@ -110,28 +143,63 @@ memperbaiki.
 
 ## 4. Tahap 3 — Pembelian
 
-**Siapa:** Tim Purchasing (izin `procurement.requests.purchasing`), pembayaran oleh Keuangan
-(izin `finance.payments.view`)
+**Siapa:** Pembelian Barang & Perlengkapan (izin `procurement.requests.purchasing`, untuk barang
+dan jasa) atau Pembelian Bahan Baku (izin `procurement.rawmaterials.purchasing`); pembayaran oleh
+Keuangan (izin `finance.payments.pay`)
 
 ### 4.1 Mengisi harga final & vendor
 
 1. Buka pengajuan berstatus **Disetujui** → **Isi Harga (Purchasing)**.
 2. Isi **harga final** tiap item — harga yang benar-benar disepakati vendor.
-3. Isi **vendor** dan **nomor invoice**.
+3. **Pilih vendor dari daftar vendor** (wajib) dan isi **nomor invoice**.
 4. Simpan. Selisih HPS dan harga final terlihat langsung di layar.
+
+Vendor yang belum terdaftar didaftarkan dulu di menu **Vendor** beserta rekeningnya. Vendor yang
+dibayar tunai (mis. belanja di pasar) cukup didaftarkan tanpa rekening.
+
+**Struk pembelian.** Satu pengajuan bisa dibeli dalam beberapa transaksi di vendornya, masing-
+masing dengan struknya — mis. struk A tanggal 1 senilai Rp 19 jt dan struk B senilai Rp 20 jt.
+Catat setiap struk di detail pengajuan (bagian **Struk Pembelian**): nomor, tanggal, total, dan
+**foto struk (wajib)**. Bagian pembelian maupun petugas logistik yang membawa struknya boleh
+mencatat. Layar membandingkan total struk dengan total harga final; struk yang belum dibayar boleh
+dihapus.
+
+Harga final dan nomor invoice **hanya** diisi di tahap ini, pada pengajuan yang sudah disetujui.
+Harga final atau invoice yang dikirim pengaju saat membuat atau mengubah pengajuan (pending)
+diabaikan sistem — nilai pengajuan sampai tahap persetujuan selalu HPS.
 
 **Bila satu pengajuan dibeli dari beberapa vendor**, pakai **Pecah per Vendor**: item dipindahkan
 ke dokumen anak dengan vendornya masing-masing. Pembayaran lalu dilakukan per vendor.
 
 ### 4.2 Mengajukan pembayaran
 
-Setelah harga final terisi, tekan **Ajukan Pembayaran**. Status menjadi **Menunggu Pembayaran**
-dan muncul di menu **Pembayaran**.
+Setelah harga final semua item terisi dan vendor dipilih dari daftar, tekan **Ajukan
+Pembayaran**. Status menjadi **Menunggu Pembayaran** dan muncul di menu **Pembayaran**.
+Pengajuan tanpa vendor terdaftar tidak bisa diajukan pembayarannya.
 
 ### 4.3 Pembayaran
 
-Bagian Keuangan membuka **Pembayaran**, memilih rekening sumber & tujuan, mengunggah bukti
-transfer, lalu menyimpan. Pembayaran boleh **sebagian** — sisa tagihannya tetap tercatat.
+Bagian Keuangan membuka **Pembayaran**, memilih rekening sumber (rekening perusahaan),
+mengunggah bukti transfer, lalu menyimpan. Pembayaran boleh **sebagian** (cicil) dan boleh
+**mundur** — barang boleh diterima lebih dulu, tagihannya tetap tercatat sampai lunas. Halaman
+Pembayaran hanya memuat pengajuan yang sudah disetujui.
+
+**Bayar per struk.** Bila pengajuan punya struk, form bayar menampilkan pilihan **Struk yang
+Dibayar** beserta sisanya; jumlah yang dikosongkan berarti melunasi sisa struk itu. Tanpa memilih
+struk (mis. bayar sekaligus beberapa pengajuan), pembayaran dibagi ke struk yang belum lunas,
+terlama dulu. Riwayat pembayaran mencatat struk mana yang dibayar.
+
+**Rekening tujuan diambil otomatis dari data vendor** dan tidak bisa diketik ulang di form bayar.
+Rekening itu **disimpan permanen pada setiap pembayaran**:
+
+- Bila vendor kemudian mengganti nomor rekeningnya, **pembayaran lama tetap tercatat dengan
+  rekening lama**; pembayaran berikutnya memakai rekening baru.
+- Setiap perubahan rekening vendor dicatat — siapa, kapan, rekening lama → baru — dan terlihat
+  di halaman detail vendor. Selama 30 hari setelah perubahan, form bayar menampilkan peringatan
+  beserta rekening sebelumnya. **Konfirmasi ke vendor bahwa perubahan itu sah sebelum
+  mentransfer.**
+- Vendor tanpa rekening terdaftar: tulis cara bayarnya (mis. "Tunai"). Pembayaran itu tercatat
+  dengan tanda **manual**.
 
 Di layar Pembayaran, tiap baris menampilkan **dua keadaan sekaligus**: status pembayaran dan
 penanda *Barang sudah/belum diterima*. Membayar barang yang belum datang adalah keputusan yang
@@ -157,6 +225,18 @@ berbeda dengan melunasi barang yang sudah ada di outlet — keduanya sah, tapi h
 5. Barang dapur diterima di **Gudang Induk** dulu, lalu diteruskan ke outlet lewat Transfer
    Stok. Dialog penerimaan menampilkan gudang mana yang membutuhkannya (dari MRP atau dari outlet
    pengaju), tetapi tujuan penerimaannya tetap Gudang Induk.
+
+### Pengambilan oleh petugas logistik
+
+Barang bisa **diantar vendor** langsung atau **diambil petugas logistik** — dipilih sesuai
+keadaan, tidak perlu ditetapkan di awal.
+
+1. Petugas logistik (izin **Pengambilan Barang**) membuka pengajuan yang sudah disetujui →
+   **Catat Pengambilan**: **foto barang saat diambil (wajib)** dan catatan (berat/jumlah koli,
+   struk yang dibawa). Status pengambilan menjadi **Dalam pengantaran**.
+2. Saat barang tiba, petugas penerimaan memilih **Diantar oleh** di dialog Serah Terima: vendor
+   langsung, atau pengambilan petugas logistik yang sedang dalam pengantaran. Pengambilan itu
+   tercatat **sudah diterima** beserta penerima dan waktunya.
 
 ### Langkah singkat
 
@@ -189,7 +269,8 @@ tersebut yang bertanggung jawab atas fisiknya.
 
 1. **Setiap perpindahan barang berfoto.** Dua momen wajib: saat diterima dari purchasing, dan
    saat diserahkan ke tujuan akhirnya. Foto otomatis dicadangkan ke Google Drive perusahaan.
-2. **Yang mengajukan bukan yang menyetujui.** Pemisahan ini ditegakkan hak akses.
+2. **Yang mengajukan bukan yang memverifikasi atau menyetujui.** Pemisahan ini diatur lewat hak
+   akses: jangan berikan izin Verifikasi atau Approval kepada role pengaju.
 3. **Angka tidak diketik dua kali.** Perbaikan aset yang memerlukan vendor diajukan langsung dari
    work order perawatan, sehingga biayanya cukup diisi sekali.
 4. **Dokumen tidak dihapus untuk menutupi kesalahan.** Pengajuan yang keliru dibatalkan
@@ -210,13 +291,14 @@ tersebut yang bertanggung jawab atas fisiknya.
 
 | Status | Artinya | Siapa yang bergerak berikutnya |
 |---|---|---|
-| **Pending** | Menunggu keputusan | Admin / GM / Direktur |
-| **Disetujui** | Boleh dibelanjakan | Tim Purchasing |
+| **Menunggu Verifikasi** | Barang/jasa baru diajukan; menunggu pemeriksaan ketersediaan di outlet lain | Pemegang izin Verifikasi |
+| **Menunggu Persetujuan** | Sudah diverifikasi (bahan baku: baru diajukan, tanpa verifikasi) | Pemegang izin Approval |
+| **Disetujui** | Boleh dibelanjakan | Pembelian |
 | **Menunggu Pembayaran** | Harga final terisi, menunggu dibayar | Keuangan |
 | **Dibayar Sebagian** | Sebagian tagihan lunas | Keuangan (sisa) |
 | **Dibayar** | Tagihan lunas | Penerimaan |
 | **Diterima** | Seluruh barang diterima **dan** lunas | Distribusi |
-| **Ditolak** | Ditolak beserta alasannya | Pengaju (ajukan ulang bila masih perlu) |
+| **Ditolak** | Ditolak penyetuju beserta alasannya, atau semua itemnya ditolak saat verifikasi | Pengaju (ajukan ulang bila masih perlu) |
 | **Dibatalkan** | Dibatalkan sebelum dibayar dan sebelum ada barang yang diterima | — |
 
 Penanda **Barang sudah/belum diterima** berdiri sendiri dari status di atas, karena barang bisa
@@ -229,12 +311,33 @@ datang sebelum maupun sesudah dibayar.
 | Peran | Hak akses |
 |---|---|
 | **Manager Outlet / Head Store** | `procurement.requests.view`, `procurement.requests.submit` |
-| **Admin / GM / Direktur** | ditambah `procurement.requests.approve` |
-| **Tim Purchasing** | `procurement.requests.view`, `procurement.requests.purchasing` |
-| **Keuangan** | `finance.payments.view` |
+| **Bagian Perlengkapan (verifikator)** | `procurement.requests.view`, `procurement.requests.verify` |
+| **Penyetuju (owner)** | `procurement.requests.approve` |
+| **Petugas Logistik** | `procurement.requests.pickup` dan/atau `procurement.rawmaterials.pickup` (Pengambilan Barang) |
+| **Pembelian Barang & Perlengkapan** | `procurement.requests.view`, `procurement.requests.purchasing` |
+| **Keuangan** | `finance.payments.view`, `finance.payments.pay` |
 | **Logistik / Gudang** | `stockledger.adjust`, `stocktransfers.*` |
 | **Asset Officer** | `assets.create`, `assets.update`, `procurement.requests.submit` |
 | **PIC Projek** | `procurement.projects.view`, `procurement.projects.manage` (susun & tetapkan RAB) |
+| **Kepala Gudang Induk** | `procurement.rawmaterials.view`, `procurement.rawmaterials.submit` (Pengadaan Bahan Baku, lihat §12) |
+| **Manager Logistik** | `procurement.rawmaterials.view`, `procurement.rawmaterials.approve` |
+| **PPIC / Perencana Bahan** | `procurement.rawmaterials.view`, `procurement.rawmaterials.submit` (draft dari MRP) |
+| **Pembelian Bahan Baku** | `procurement.rawmaterials.view`, `procurement.rawmaterials.purchasing` |
+
+Di menu **Role**, izin ini tampil sebagai pilihan **Lihat · Buat/Hapus · Verifikasi · Approval ·
+Pembelian · Pengambilan Barang** pada baris *Pengadaan Barang, Perlengkapan & Jasa*, dan **Lihat ·
+Buat/Hapus · Approval · Pembelian · Pengambilan Barang** pada *Pengadaan Bahan Baku*. Satu
+izin boleh diberikan ke beberapa role sekaligus. Perubahan berlaku begitu disimpan; pengguna role
+itu cukup memuat ulang halaman. Cakupan outlet role ikut berlaku: role bercakupan outlet tertentu
+hanya bisa memverifikasi/menyetujui pengajuan outlet itu, jadi bagian perlengkapan yang memeriksa
+ke outlet lain sebaiknya bercakupan semua outlet.
+
+Izin `procurement.requests.*` hanya mengatur pengajuan **Barang** dan **Jasa**. Pengajuan
+**Bahan Baku** diatur `procurement.rawmaterials.*` (lihat, ajukan, setujui, pembelian,
+pengambilan) — tanpa verifikasi. Izin Keuangan (`finance.payments.view`, `finance.payments.pay`)
+berlaku untuk semua jenis, dan Dashboard Pengadaan menampilkan semua jenis. Izin bahan baku **tidak**
+disalin dari izin pengadaan barang: orangnya berbeda, jadi diberikan per role lewat menu **Role**
+(saat dipasang, hanya admin, superadmin, dan role PPIC — lihat & ajukan — yang memilikinya).
 
 Bila sebuah tombol tidak muncul, hak aksesnya belum diberikan — minta admin membukanya lewat
 menu **Role**.
@@ -262,9 +365,18 @@ dijelaskan — misalnya harga naik sejak penawaran diambil.
 Terima sebagian sesuai yang datang. Sisanya tetap muncul di antrean penerimaan sampai lengkap,
 dan terpantau di laporan "Pengadaan Belum Lengkap".
 
+**Barang yang diajukan ternyata masih ada di outlet lain — bagaimana?**
+Verifikator menolak item itu saat verifikasi dengan alasannya, lalu pemindahannya dikonfirmasi ke
+bagian perlengkapan (Mutasi Aset / Transfer Stok). Item lain di pengajuan yang sama tetap lanjut
+ke persetujuan.
+
+**Vendor mengganti nomor rekening — apakah pembayaran lama ikut berubah?**
+Tidak. Rekening disimpan pada setiap pembayaran saat dicatat. Pembayaran berikutnya memakai
+rekening baru, dan perubahannya tercatat di detail vendor.
+
 ---
 
-*Panduan ini mengikuti alur yang berjalan di aplikasi per 18 September 2026. Bila alurnya
+*Panduan ini mengikuti alur yang berjalan di aplikasi per 14 Oktober 2026. Bila alurnya
 berubah, dokumen ini ikut ditinjau.*
 
 ---
@@ -317,9 +429,63 @@ tersentuh**.
    projek, tetapi tampil terpisah sebagai "Belanja di luar RAB" — bahan evaluasi, bukan
    pelanggaran.
 3. Item yang nilainya **melebihi sisa baris** ditandai merah di form. Sistem tidak memblokir,
-   karena harga bisa naik; penyetuju yang memutuskan (lihat §3).
-4. Pecahan vendor dan pengisian harga final tetap membawa rujukan baris RAB-nya. Serapan baris
-   memakai harga final begitu diisi, HPS selama belum.
-5. Pembayaran dicatat per dokumen, jadi angka **Terbayar per baris** adalah alokasi proporsional
+   karena harga bisa naik; penyetuju yang memutuskan (lihat §3.2).
+4. **Anggaran baru terpakai setelah pengajuan disetujui.** Pengajuan yang masih Menunggu
+   Verifikasi atau Menunggu Persetujuan tidak mengurangi Sisa RAB; nilainya ditampilkan terpisah
+   sebagai *menunggu persetujuan*. Karena pengajuan yang sedang antre belum memotong sisa baris,
+   panel persetujuan memperingatkan penyetuju bila persetujuannya melampaui sisa itu.
+5. Pecahan vendor dan pengisian harga final tetap membawa rujukan baris RAB-nya. Angka
+   **Terpakai** memakai harga final begitu diisi, HPS selama belum.
+6. Pembayaran dicatat per dokumen, jadi angka **Terbayar per baris** adalah alokasi proporsional
    dari pembayaran dokumen ke item-itemnya.
 
+---
+
+## 12. Pengadaan Bahan Baku
+
+Bahan dapur (tepung, gula, daging, sayur, bumbu) diajukan lewat jenis pengadaan sendiri,
+terpisah dari Pengadaan Barang. Orang yang merencanakan dan menyetujui kebutuhan bahan berbeda
+dengan pengaju peralatan, jadi hak aksesnya pun dipisah.
+
+| | |
+|---|---|
+| **Siapa** | Kepala Gudang Induk (mengajukan), Manager Logistik (menyetujui), Pembelian Bahan Baku, Petugas Logistik, PPIC (draft MRP) |
+| **Menu** | Pengadaan → **Bahan Baku** |
+| **Izin** | `procurement.rawmaterials.view` · `.submit` · `.approve` · `.purchasing` · `.pickup` (lihat §9) |
+
+### Alur
+
+```
+  ┌───────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐  ┌────────────┐
+  │ PENGAJUAN     │─▶│ APPROVE      │─▶│ PEMBELIAN    │─▶│ PEMBAYARAN  │─▶│ PENGAMBILAN  │─▶│ PENERIMAAN │
+  └───────────────┘  └──────────────┘  └──────────────┘  └─────────────┘  └──────────────┘  └────────────┘
+   Kepala Gudang      Manager           Pembelian         Keuangan:         Petugas logistik  Gudang Induk
+   Induk / PPIC       Logistik          Bahan Baku:       mundur, cicil,    (atau diantar     (stok masuk,
+                                        harga, vendor,    per struk         vendor langsung)  foto wajib)
+                                        struk
+```
+
+Pembayaran dan pengambilan tidak harus berurutan: barang boleh diambil/diterima dulu lalu dibayar
+belakangan (bayar mundur), atau dibayar dulu baru diambil.
+
+### Ketentuan
+
+1. **Tanpa verifikasi.** Pengajuan bahan baku langsung berstatus **Menunggu Persetujuan** dan
+   pengajunya masih bisa mengubah isinya sampai disetujui. Selebihnya sama dengan Pengadaan
+   Barang: Approve / Tolak dengan alasan → isi harga final, pilih vendor, catat struk, pecah per
+   vendor bila perlu, ajukan bayar → Keuangan membayar (per struk, cicil, atau mundur) → barang
+   diambil petugas logistik atau diantar vendor → diterima Gudang Induk.
+2. **Seluruh barisnya diterima di Gudang Induk** (Gudang → **Penerimaan dari Pengadaan**),
+   termasuk bahan yang belum terdaftar di katalog stok. Pengajuan bahan baku tidak pernah
+   masuk antrean Penerimaan Peralatan dan tidak menjadi aset.
+3. **Tidak untuk projek.** Pengajuan bahan baku tidak bisa ditautkan ke projek; material projek
+   diajukan lewat Pengadaan Barang/Jasa dengan baris RAB (§11).
+4. **Draft dari MRP masuk ke sini.** Tombol buat PR di lembar kerja MRP (PPIC) menghasilkan
+   Pengadaan Bahan Baku berstatus Menunggu Persetujuan, lalu diproses seperti pengajuan lain.
+5. **Outlet tidak mengajukan bahan baku ke pengadaan.** Outlet meminta bahan ke Gudang Induk
+   lewat **Transfer Stok** (gudang asal: Gudang Induk); Gudang Induk menyetujui dan mengirimnya.
+6. Di laporan keuangan, belanja bahan baku dicatat sebagai **HPP bahan baku**, bukan belanja
+   modal.
+7. Larangan mencampur barang dapur dan peralatan (§1) tidak berlaku di sini karena seluruh
+   isinya memang bahan dapur. Peralatan dapur (kompor, freezer) tetap diajukan lewat Pengadaan
+   Barang.

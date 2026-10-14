@@ -211,8 +211,9 @@
           <PhotoCapture v-model="sendPhoto" label="Foto Barang Saat Dikirim"
             hint="Potret barangnya saat dimuat/berangkat dari outlet asal." />
         </div>
-        <div v-else-if="detail.photo_url" class="flex items-center gap-3">
-          <img :src="detail.photo_url" alt="Bukti kirim" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+        <!-- Alamat foto dari server disaring (T-75): hanya berkas /uploads/… yang ditampilkan. -->
+        <div v-else-if="safeUrl(detail.photo_url)" class="flex items-center gap-3">
+          <img :src="safeUrl(detail.photo_url)" alt="Bukti kirim" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
           <p class="text-xs text-gray-500">Foto saat dikirim dari {{ detail.from_outlet_name }}.</p>
         </div>
       </div>
@@ -248,6 +249,7 @@ import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
 import PhotoCapture from '@/components/PhotoCapture.vue'
+import { safeUrl } from '@/utils/safeUrl.js'
 
 const toast = useToastStore()
 const auth = useAuthStore()

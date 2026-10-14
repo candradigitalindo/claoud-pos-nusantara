@@ -1093,6 +1093,8 @@ func BuildCashierShiftReportExcel(outletID, status, dateFrom, dateTo string, sco
 func purchaseStatusLabel(s string) string {
 	switch s {
 	case "pending":
+		return "Menunggu Verifikasi"
+	case "verified":
 		return "Menunggu Persetujuan"
 	case "approved":
 		return "Disetujui"
@@ -1131,8 +1133,13 @@ func splitPaymentProof(proof string) string {
 // role admin ikut dipaksakan lewat ListPurchaseRequests.
 func BuildProcurementPaymentsExcel(status, requestType, projectID, search string, scopeIDs, wuScopeIDs []string) ([]byte, string, error) {
 	// parent_id="all" + excludeMasters=true meniru halaman Pembayaran: baris
-	// split ditampilkan satu-satu, baris master disembunyikan.
-	result, err := ListPurchaseRequests("", "", status, requestType, projectID, "all", true, search, scopeIDs, wuScopeIDs, 1, exportTxLimit)
+	// split ditampilkan satu-satu, baris master disembunyikan. Tanpa filter
+	// status = semua status berkomitmen, sama dengan pilihan "Semua" di sana.
+	listStatus := status
+	if listStatus == "" {
+		listStatus = PurchaseStatusCommittedFilter
+	}
+	result, err := ListPurchaseRequests("", "", listStatus, requestType, projectID, "all", true, search, scopeIDs, wuScopeIDs, nil, 1, exportTxLimit)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1146,11 +1153,8 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 		statusLabel = purchaseStatusLabel(status)
 	}
 	typeLabel := "Semua Tipe"
-	switch requestType {
-	case "barang":
-		typeLabel = "Barang"
-	case "jasa":
-		typeLabel = "Jasa"
+	if IsValidRequestType(requestType) {
+		typeLabel = RequestTypeLabel(requestType)
 	}
 
 	f := excelize.NewFile()
@@ -1180,9 +1184,11 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 		}
 		return *p
 	}
-	// Sisa tagihan hanya bermakna untuk status yang masih menunggu pelunasan.
+	// Sisa tagihan hanya bermakna untuk status yang masih menunggu pelunasan —
+	// termasuk 'received' yang baru dibayar sebagian: sisanya tetap bisa
+	// dilunasi dari halaman Pembayaran (T-12) dan tetap hutang di Neraca.
 	remainingOf := func(r models.PurchaseRequest) float64 {
-		if r.Status == "payment_requested" || r.Status == "partial" {
+		if r.Status == "payment_requested" || r.Status == "partial" || r.Status == "received" {
 			rem := r.TotalFinal - r.PaidAmount
 			if rem < 0 {
 				return 0
@@ -1234,7 +1240,7 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 		nominal float64
 		paid    float64
 	}
-	statusOrder := []string{"pending", "approved", "payment_requested", "partial", "paid", "received", "rejected", "cancelled"}
+	statusOrder := PurchaseStatuses
 	byStatus := map[string]*statusAgg{}
 	var grandNominal, grandPaid, grandRemaining float64
 	for _, r := range result.Requests {
@@ -1294,10 +1300,7 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 	}
 	for i, r := range result.Requests {
 		rw := i + 2
-		typeTxt := "Jasa"
-		if r.RequestType == "barang" {
-			typeTxt = "Barang"
-		}
+		typeTxt := RequestTypeLabel(r.RequestType)
 		names := make([]string, 0, len(r.Items))
 		for _, it := range r.Items {
 			if strings.TrimSpace(it.Name) != "" {

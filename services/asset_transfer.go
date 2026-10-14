@@ -397,6 +397,9 @@ func AssetTransferAction(id, action string, req models.AssetTransferActionReques
 		if strings.TrimSpace(req.PhotoURL) == "" {
 			return nil, Invalid("foto barang saat dikirim wajib diunggah — tanpa bukti, selisih di outlet tujuan tidak bisa ditelusuri")
 		}
+		if err := validateUploadField("foto barang saat dikirim", req.PhotoURL); err != nil {
+			return nil, err
+		}
 		if err := applyTransferSend(tx, before, actor); err != nil {
 			return nil, err
 		}

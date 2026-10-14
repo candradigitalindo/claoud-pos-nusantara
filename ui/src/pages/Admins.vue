@@ -68,7 +68,7 @@
                   <button class="btn-icon btn-icon--key"    title="Reset Password" @click="openResetPw(row)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   </button>
-                  <button class="btn-icon" :class="row.is_active ? 'btn-icon--off' : 'btn-icon--on'" :title="row.is_active ? 'Nonaktifkan' : 'Aktifkan'" @click="toggleActive(row)">
+                  <button class="btn-icon" :class="row.is_active ? 'btn-icon--off' : 'btn-icon--on'" :title="row.is_active ? 'Nonaktifkan (pengguna langsung dikeluarkan)' : 'Aktifkan'" @click="toggleActive(row)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
                   </button>
                   <button class="btn-icon btn-icon--delete" title="Hapus"          @click="confirmDelete(row)">
@@ -243,6 +243,10 @@
                   searchPlaceholder="Cari role…"
                 />
                 <p v-if="editRoleDesc" class="role-hint">{{ editRoleDesc }}</p>
+                <!-- Ganti role menaikkan versi sesi akun (T-55): semua sesinya dicabut. -->
+                <p v-if="editRoleChanged" class="logout-warn">
+                  Mengganti role akan mengeluarkan (logout) pengguna ini dari semua perangkat — ia harus login ulang dengan hak akses role baru.
+                </p>
               </div>
             </div>
             <div class="modal-footer">
@@ -287,6 +291,7 @@
                   <input v-model="resetPwForm.confirmPassword" type="password" class="field-input field-input--mono" placeholder="Ulangi password baru" />
                 </div>
               </div>
+              <p class="logout-warn">Reset password mengeluarkan (logout) pengguna ini dari semua perangkat — ia login ulang dengan password baru.</p>
             </div>
             <div class="modal-footer">
               <button class="modal-btn-cancel" @click="showResetPw = false">Batal</button>
@@ -335,13 +340,28 @@
 
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
+import { useRouter }      from 'vue-router'
 import { adminsApi }      from '@/api/admins.js'
 import { formatDateTime } from '@/utils/format.js'
 import { useToastStore }  from '@/stores/toast.js'
+import { useAuthStore }   from '@/stores/auth.js'
+import { setLoginNotice } from '@/utils/session.js'
 import AppAlert      from '@/components/ui/AppAlert.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 
 const toast = useToastStore()
+const authStore = useAuthStore()
+const router = useRouter()
+
+// Ganti role, reset password, dan aktif/nonaktif mencabut semua sesi akun itu
+// di server (T-55). Bila akun itu adalah akun yang sedang dipakai, keluar
+// sekarang dengan pesan yang jelas, bukan menunggu dilempar 401.
+function isSelf(row) { return !!row && row.id === authStore.admin?.id }
+function signOutSelf(message) {
+  setLoginNotice(message, 'warning')
+  authStore.logout()
+  router.replace('/login')
+}
 
 // ── Data ────────────────────────────────────────────────────
 const admins        = ref([])
@@ -358,7 +378,7 @@ async function loadAdmins() {
     const res = await adminsApi.list()
     admins.value = res.admins ?? res ?? []
   } catch (err) {
-    errorMsg.value = err?.response?.data?.message ?? 'Gagal memuat pengguna.'
+    errorMsg.value = err?.message || 'Gagal memuat pengguna.'
   } finally { loading.value = false }
 }
 
@@ -444,7 +464,7 @@ async function createAdmin() {
     showCreate.value = false
     await loadAdmins()
   } catch (err) {
-    createError.value = err?.response?.data?.message ?? 'Gagal membuat pengguna.'
+    createError.value = err?.message || 'Gagal membuat pengguna.'
   } finally { creating.value = false }
 }
 
@@ -455,6 +475,8 @@ const editForm    = reactive({ name: '', role: '', wa_phone: '', wa_notify: true
 const editLoading = ref(false)
 const editError   = ref('')
 
+const editRoleChanged = computed(() => !!editRow.value && !!editForm.role && editForm.role !== editRow.value.role)
+
 function openEdit(row) {
   editRow.value = row; editForm.name = row.name; editForm.role = row.role
   editForm.wa_phone = row.wa_phone || ''; editForm.wa_notify = row.wa_notify !== false
@@ -464,12 +486,20 @@ function openEdit(row) {
 async function saveEdit() {
   if (!editForm.name.trim()) { editError.value = 'Nama wajib diisi'; return }
   editLoading.value = true; editError.value = ''
+  const roleChanged = editRoleChanged.value
   try {
     await adminsApi.updateAdmin(editRow.value.id, { name: editForm.name.trim(), role: editForm.role, wa_phone: editForm.wa_phone.trim(), wa_notify: editForm.wa_notify })
-    toast.success('Pengguna berhasil diperbarui')
+    if (roleChanged && isSelf(editRow.value)) {
+      showEdit.value = false
+      signOutSelf('Role akun Anda diganti — silakan login ulang.')
+      return
+    }
+    toast.success(roleChanged
+      ? `Pengguna diperbarui — ${editRow.value.username} dikeluarkan dan perlu login ulang dengan role baru`
+      : 'Pengguna berhasil diperbarui')
     showEdit.value = false; await loadAdmins()
   } catch (err) {
-    editError.value = err?.response?.data?.error ?? 'Gagal memperbarui pengguna'
+    editError.value = err?.message || 'Gagal memperbarui pengguna'
   } finally { editLoading.value = false }
 }
 
@@ -495,22 +525,30 @@ async function saveResetPw() {
   resetPwLoading.value = true; resetPwError.value = ''
   try {
     await adminsApi.resetPassword(resetPwRow.value.id, resetPwForm.newPassword)
-    toast.success(`Password ${resetPwRow.value.username} berhasil direset`)
+    if (isSelf(resetPwRow.value)) {
+      showResetPw.value = false
+      signOutSelf('Password diganti, silakan login ulang.')
+      return
+    }
+    toast.success(`Password ${resetPwRow.value.username} berhasil direset — sesinya dikeluarkan`)
     showResetPw.value = false
   } catch (err) {
-    resetPwError.value = err?.response?.data?.error ?? 'Gagal mereset password'
+    resetPwError.value = err?.message || 'Gagal mereset password'
   } finally { resetPwLoading.value = false }
 }
 
 // ── Toggle Active ────────────────────────────────────────────
 async function toggleActive(row) {
+  // Menonaktifkan langsung mencabut sesi yang sedang berjalan — minta konfirmasi.
+  if (row.is_active && !window.confirm(`Nonaktifkan ${row.username}? Pengguna ini langsung dikeluarkan (logout) dari semua perangkat dan tidak bisa login sampai diaktifkan lagi.`)) return
   try {
     const updated = await adminsApi.toggleActive(row.id)
+    if (!updated.is_active && isSelf(row)) { signOutSelf('Akun Anda dinonaktifkan.'); return }
     const idx = admins.value.findIndex(a => a.id === row.id)
     if (idx >= 0) admins.value[idx] = updated
-    toast.success(updated.is_active ? `${row.username} diaktifkan` : `${row.username} dinonaktifkan`)
+    toast.success(updated.is_active ? `${row.username} diaktifkan` : `${row.username} dinonaktifkan dan dikeluarkan dari sesinya`)
   } catch (err) {
-    toast.error(err?.response?.data?.error ?? 'Gagal mengubah status')
+    toast.error(err?.message || 'Gagal mengubah status')
   }
 }
 
@@ -528,7 +566,7 @@ async function doDelete() {
     toast.success(`${deleteRow.value.username} berhasil dihapus`)
     showDelete.value = false; await loadAdmins()
   } catch (err) {
-    toast.error(err?.response?.data?.error ?? 'Gagal menghapus pengguna')
+    toast.error(err?.message || 'Gagal menghapus pengguna')
   } finally { deleteLoading.value = false }
 }
 </script>
@@ -648,6 +686,7 @@ async function doDelete() {
 .pw-label--strong { color: #059669; }
 
 .role-hint { font-size: .71rem; color: #7a9e8a; margin-top: .3rem; line-height: 1.4; }
+.logout-warn { margin-top: .6rem; padding: .45rem .6rem; border-radius: .5rem; font-size: .71rem; line-height: 1.4; color: #92400e; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.25); }
 
 /* Spinner */
 .btn-spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }

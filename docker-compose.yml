@@ -30,7 +30,9 @@ services:
       DB_SSLMODE: disable
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-webhook-secret}
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-admin-secret-token}
+      # Token statis superadmin (opsional). Tanpa nilai bawaan: kosong/lemah =
+      # jalur token statis nonaktif. Bila diisi: openssl rand -hex 32 di .env.
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       RATE_LIMIT_PER_MINUTE: 100
       # Penarikan angka medsos keluar lewat alamat ini bila diisi. Instagram dan
       # TikTok memblokir pembacaan anonim dari alamat datacenter, jadi tanpa

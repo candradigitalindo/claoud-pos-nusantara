@@ -33,6 +33,19 @@ func main() {
 		log.Fatalf("Migration failed: %v", err)
 	}
 
+	// Versi token untuk pencabutan sesi admin (T-55). Wajib ada sebelum server
+	// menerima permintaan: tanpa kolom ini setiap validasi sesi gagal (503).
+	if err := database.RunAuthMigrations(); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+
+	// Pemotongan bahan (satu bahan → beberapa hasil): template + dokumen.
+	// Tidak fatal: kegagalannya hanya mematikan fitur pemotongan, sedangkan
+	// sinkronisasi penjualan POS dan modul lain tetap harus berjalan.
+	if err := database.RunBreakdownMigrations(); err != nil {
+		log.Printf("Breakdown migration failed (fitur pemotongan tidak tersedia): %v", err)
+	}
+
 	if err := database.SeedAdmin(); err != nil {
 		log.Printf("Admin seeder warning: %v", err)
 	}

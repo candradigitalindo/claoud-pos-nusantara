@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -16,6 +17,13 @@ import (
 // dicadangkan ke email. Statusnya 'pending' sampai penjadwal berhasil mengirim.
 func SaveHandoverPhoto(ex assetExecer, moment, desk, refType, refID, refNumber, photoURL, notes, actor string) {
 	if strings.TrimSpace(photoURL) == "" {
+		return
+	}
+	// Pagar kedua (T-2): baris ini kelak dibaca dari disk dan disalin ke
+	// Drive. Titik masuk sudah memvalidasi; URL tak sah yang tetap sampai
+	// ke sini tidak dicatat.
+	if err := ValidateUploadURL(photoURL); err != nil {
+		log.Printf("[Foto] Bukti %s %s tidak dicatat: %v", refType, refID, err)
 		return
 	}
 	ex.Exec(`
@@ -74,6 +82,9 @@ func CreateAssetHandover(req models.AssetHandoverRequest, actor string, outletSc
 	}
 	if strings.TrimSpace(req.PhotoURL) == "" {
 		return nil, Invalid("foto serah terima wajib diunggah — tanpa bukti, penyerahan tidak bisa dibuktikan")
+	}
+	if err := validateUploadField("foto serah terima", req.PhotoURL); err != nil {
+		return nil, err
 	}
 
 	tx, err := database.DB.Begin()

@@ -44,7 +44,8 @@ func ppicReportWarehouses(warehouseID string, outletScope []string) ([]string, [
 }
 
 // GetPpicVarianceReport — pemakaian teoretis (penjualan × resep + WO × resep
-// internal) vs aktual (semua stok keluar kecuali transfer) per item.
+// internal + bahan pemotongan) vs aktual (semua stok keluar kecuali transfer)
+// per item.
 func GetPpicVarianceReport(dateFrom, dateTo, warehouseID string, outletScope []string) (*models.PpicVarianceReport, error) {
 	whIDs, outletIDs, err := ppicReportWarehouses(warehouseID, outletScope)
 	if err != nil {
@@ -168,6 +169,27 @@ func GetPpicVarianceReport(dateFrom, dateTo, warehouseID string, outletScope []s
 		}
 	}
 	woRows.Close()
+
+	// ── 2b. Teoretis dari pemotongan: bahan yang dipotong (mis. ayam utuh)
+	// memang habis menjadi hasil potongan — konversi terdokumentasi, bukan
+	// selisih. Susutnya dibaca dari yield dokumen pemotongan.
+	bdRows, err := database.DB.Query(`
+		SELECT input_item_id, SUM(input_qty_base)
+		FROM stock_breakdowns
+		WHERE warehouse_id = ANY($1)
+		AND created_at >= tz_day_start($2::date) AND created_at < tz_day_start($3::date + 1)
+		GROUP BY input_item_id`, pq.Array(whIDs), dateFrom, dateTo)
+	if err != nil {
+		return nil, err
+	}
+	for bdRows.Next() {
+		var id string
+		var qty float64
+		if bdRows.Scan(&id, &qty) == nil {
+			get(id).theoQty += qty
+		}
+	}
+	bdRows.Close()
 
 	// ── 3. Aktual: stok keluar kecuali transfer (relokasi bukan konsumsi) ──
 	actRows, err := database.DB.Query(`
@@ -372,8 +394,10 @@ func GetPpicOtifReport(dateFrom, dateTo string, outletScope []string) (*models.P
 		Rows: []models.PpicOtifRow{},
 		Note: "Basis: PR dengan tanggal-butuh (need_by_date) — otomatis terisi untuk PR hasil MRP. In-full memakai proxy status diterima.",
 	}
+	// Hanya pengajuan yang sudah disetujui (sudah dipesan ke vendor): yang
+	// masih menunggu verifikasi/persetujuan bukan kinerja vendor.
 	cond := ` WHERE pr.need_by_date IS NOT NULL AND COALESCE(pr.vendor_name, '') <> ''
-		AND pr.status NOT IN ('rejected','cancelled')
+		AND ` + prCommittedCond("pr") + `
 		AND pr.created_at >= tz_day_start($1::date) AND pr.created_at < tz_day_start($2::date + 1)`
 	args := []interface{}{dateFrom, dateTo}
 	if outletScope != nil {

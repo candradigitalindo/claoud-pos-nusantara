@@ -1,6 +1,85 @@
 package services
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// ── Status pengajuan pengadaan ─────────────────────────────────────────────
+//
+// Alur: pending (Menunggu Verifikasi) → verified (Menunggu Persetujuan) →
+// approved → payment_requested → partial/paid → received; atau rejected /
+// cancelled.
+//
+// "Berkomitmen" = sudah disetujui penyetuju. HANYA status ini yang dihitung
+// sebagai belanja berjalan: hutang usaha, akrual Buku Besar, projek berjalan
+// di Neraca, on-order MRP, tolak-GRN-manual, dan belanja vendor. pending dan
+// verified masih pra-persetujuan; rejected dan cancelled mati.
+//
+// Selalu DAFTAR PUTIH. Filter lama berbentuk daftar hitam (NOT IN ('pending',
+// 'rejected','cancelled')) membuat setiap status baru otomatis ikut terhitung —
+// begitu 'verified' ditambahkan, pengajuan yang belum disetujui owner langsung
+// masuk hutang, GL, dan MRP (T-42).
+
+// PurchaseStatuses: seluruh status yang sah (juga isi CHECK constraint di
+// database/migrations.go — ubah keduanya bersamaan).
+var PurchaseStatuses = []string{
+	"pending", "verified", "approved", "payment_requested", "partial", "paid", "received", "rejected", "cancelled",
+}
+
+// prCommittedStatuses: sudah disetujui — dihitung sebagai belanja berjalan.
+var prCommittedStatuses = []string{"approved", "payment_requested", "partial", "paid", "received"}
+
+// prPreApprovalStatuses: masih hidup tetapi belum disetujui.
+var prPreApprovalStatuses = []string{"pending", "verified"}
+
+func sqlStatusList(statuses []string) string {
+	return "'" + strings.Join(statuses, "','") + "'"
+}
+
+func statusIn(s string, list []string) bool {
+	for _, v := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+// prCommittedCond: baris berstatus berkomitmen (sudah disetujui).
+func prCommittedCond(alias string) string {
+	return fmt.Sprintf("%sstatus IN (%s)", prefixOf(alias), sqlStatusList(prCommittedStatuses))
+}
+
+// prPreApprovalCond: baris yang masih menunggu verifikasi atau persetujuan.
+func prPreApprovalCond(alias string) string {
+	return fmt.Sprintf("%sstatus IN (%s)", prefixOf(alias), sqlStatusList(prPreApprovalStatuses))
+}
+
+// prLiveCond: baris yang masih hidup — pra-persetujuan + berkomitmen (tidak
+// ditolak, tidak dibatalkan). Dipakai untuk angka "pengajuan berjalan" dan
+// pemesanan anggaran projek, BUKAN untuk uang/hutang.
+func prLiveCond(alias string) string {
+	return fmt.Sprintf("%sstatus IN (%s)", prefixOf(alias),
+		sqlStatusList(append(append([]string{}, prPreApprovalStatuses...), prCommittedStatuses...)))
+}
+
+// IsCommittedPurchaseStatus: status sudah disetujui (belanja berjalan).
+func IsCommittedPurchaseStatus(s string) bool { return statusIn(s, prCommittedStatuses) }
+
+// PurchaseStatusCommittedFilter: nilai filter status khusus (bukan status
+// dokumen) untuk ListPurchaseRequests — semua status berkomitmen sekaligus.
+// Pilihan "Semua" di halaman Pembayaran dan ekspor Excel-nya memakai ini:
+// dokumen yang belum disetujui owner, ditolak, atau batal bukan tagihan.
+const PurchaseStatusCommittedFilter = "committed"
+
+// isLivePurchaseStatus: status belum ditolak/dibatalkan (versi Go prLiveCond).
+func isLivePurchaseStatus(s string) bool {
+	return statusIn(s, prPreApprovalStatuses) || statusIn(s, prCommittedStatuses)
+}
+
+// IsValidPurchaseStatus: status dikenal (filter daftar, validasi input).
+func IsValidPurchaseStatus(s string) bool { return statusIn(s, PurchaseStatuses) }
 
 // Definisi tunggal angka pengadaan untuk keuangan.
 //
@@ -30,10 +109,12 @@ func prefixOf(alias string) string {
 
 // outstandingCondFor: baris yang masih menyisakan kewajiban bayar ke vendor.
 // Berbasis nominal, bukan nama status, supaya pengajuan yang sudah diterima
-// tapi belum lunas tetap terhitung sebagai hutang.
+// tapi belum lunas tetap terhitung sebagai hutang. Hanya status berkomitmen:
+// pengajuan yang baru diverifikasi (belum disetujui) bukan kewajiban kepada
+// siapa pun, walau harga finalnya sudah terisi.
 func outstandingCondFor(alias string) string {
 	p := prefixOf(alias)
-	return fmt.Sprintf("%[1]sstatus NOT IN ('pending','rejected','cancelled') AND %[1]stotal_final > %[1]spaid_amount", p)
+	return fmt.Sprintf("%[2]s AND %[1]stotal_final > %[1]spaid_amount", p, prCommittedCond(alias))
 }
 
 // payableExpr: nilai sisa kewajiban satu baris. Selalu dipakai bersama
@@ -57,7 +138,9 @@ func countableCond(alias string) string {
 
 // procurementClassExpr: kelas belanja sebuah pengajuan untuk laporan keuangan.
 //
-//	bahan  → HPP bahan baku (barang dapur, ada di katalog stok)
+//	bahan  → HPP bahan baku: pengajuan berjenis 'bahan' (Pengadaan Bahan
+//	         Baku, apa pun nama barisnya), atau pengajuan barang dapur yang
+//	         ada di katalog stok
 //	jasa   → beban jasa & layanan
 //	modal  → belanja modal: barang perlengkapan → Aset Tetap, BUKAN beban.
 //	         Bebannya masuk P&L lewat penyusutan.
@@ -67,11 +150,14 @@ func countableCond(alias string) string {
 // juta menurunkan laba kotor bulan itu sebesar 15 juta dan tidak pernah muncul
 // sebagai aset. Kelasnya diturunkan dari kolom yang sudah ada: goods_kind
 // (ditentukan saat pengajuan dibuat) dan project_id. Dokumen lama tanpa
-// goods_kind tetap dihitung 'bahan' — sama seperti sebelumnya.
+// goods_kind tetap dihitung 'bahan' — sama seperti sebelumnya. Pengajuan
+// berjenis 'bahan' diperiksa sebelum goods_kind supaya tidak pernah jatuh ke
+// 'modal' (bahan yang belum ada di katalog bukan aset tetap).
 func procurementClassExpr(alias string) string {
 	p := prefixOf(alias)
 	return fmt.Sprintf(`(CASE
 		WHEN %[1]sproject_id IS NOT NULL THEN 'projek'
+		WHEN %[1]srequest_type = 'bahan' THEN 'bahan'
 		WHEN %[1]srequest_type = 'jasa' THEN 'jasa'
 		WHEN COALESCE(%[1]sgoods_kind, '') = 'perlengkapan' THEN 'modal'
 		ELSE 'bahan' END)`, p)

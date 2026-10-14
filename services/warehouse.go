@@ -115,11 +115,12 @@ func GetStockItem(id string) (*models.StockItem, error) {
 		       min_stock, notes, is_active,
 		       TO_CHAR(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		       TO_CHAR(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		       (SELECT COALESCE(SUM(qty_base), 0) FROM stock_ledger WHERE item_id = stock_items.id) AS total_stock
+		       (SELECT COALESCE(SUM(qty_base), 0) FROM stock_ledger WHERE item_id = stock_items.id) AS total_stock,
+		       COALESCE(created_by, ''), COALESCE(updated_by, '')
 		FROM stock_items WHERE id = $1`, id).Scan(
 		&s.ID, &s.Code, &s.Name, &s.Category, &s.BaseUnit, &s.DistUnit,
 		&s.DistRatio, &s.DistUnitLabel, &s.AvgCost, &s.MinStock, &s.Notes, &s.IsActive,
-		&s.CreatedAt, &s.UpdatedAt, &s.TotalStock)
+		&s.CreatedAt, &s.UpdatedAt, &s.TotalStock, &s.CreatedBy, &s.UpdatedBy)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("bahan baku tidak ditemukan")
 	}
@@ -150,11 +151,13 @@ func CreateStockItem(req models.StockItemRequest, createdBy string) (*models.Sto
 	if err != nil {
 		return nil, err
 	}
+	// created_by/updated_by: jejak siapa yang mengubah katalog global — katalog
+	// menentukan jenis belanja dan meja penerimaan pengadaan (T-20).
 	_, err = tx.Exec(`
-		INSERT INTO stock_items (id, code, name, category, base_unit, dist_unit, dist_ratio, dist_unit_label, min_stock, notes)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		INSERT INTO stock_items (id, code, name, category, base_unit, dist_unit, dist_ratio, dist_unit_label, min_stock, notes, created_by, updated_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)`,
 		id, req.Code, req.Name, req.Category, req.BaseUnit, req.DistUnit,
-		req.DistRatio, req.DistUnitLabel, req.MinStock, req.Notes)
+		req.DistRatio, req.DistUnitLabel, req.MinStock, req.Notes, createdBy)
 	if err != nil {
 		tx.Rollback()
 		if strings.Contains(err.Error(), "unique") {
@@ -194,18 +197,6 @@ func setWarehouseLedgerTx(tx *sql.Tx, itemID, warehouseID string, minStock float
 }
 
 func UpdateStockItem(id string, req models.StockItemRequest, createdBy string) (*models.StockItem, error) {
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		return nil, fmt.Errorf("nama wajib diisi")
-	}
-	if req.Code == "" {
-		req.Code = generateStockItemCode(req.Name)
-	}
-	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
-	if req.DistRatio <= 0 {
-		req.DistRatio = 1
-	}
-
 	// The shared catalog (units, distribution, name) may only be edited from a central
 	// warehouse context. From an outlet, those fields are read-only — only the outlet's
 	// own min-stock / balance can change.
@@ -224,18 +215,82 @@ func UpdateStockItem(id string, req models.StockItemRequest, createdBy string) (
 	}
 
 	if updateCatalog {
+		// PUT parsial: kolom katalog yang TIDAK dikirim tetap bernilai lama.
+		// Dulu semua kolom ditimpa nilai kiriman, sehingga payload yang hanya
+		// membawa nama mengosongkan satuan, kategori, dan stok minimum (T-20).
+		sent := func(k string) bool { return req.Present == nil || req.Present[k] }
+		var cur models.StockItemRequest
+		if err := tx.QueryRow(`
+			SELECT code, name, COALESCE(category, ''), COALESCE(base_unit, ''), COALESCE(dist_unit, ''),
+			       COALESCE(dist_ratio, 1), COALESCE(dist_unit_label, ''), COALESCE(min_stock, 0), COALESCE(notes, '')
+			FROM stock_items WHERE id = $1 FOR UPDATE`, id).
+			Scan(&cur.Code, &cur.Name, &cur.Category, &cur.BaseUnit, &cur.DistUnit,
+				&cur.DistRatio, &cur.DistUnitLabel, &cur.MinStock, &cur.Notes); err != nil {
+			tx.Rollback()
+			if err == sql.ErrNoRows {
+				return nil, fmt.Errorf("bahan baku tidak ditemukan")
+			}
+			return nil, err
+		}
+		if sent("name") {
+			cur.Name = strings.TrimSpace(req.Name)
+		}
+		if cur.Name == "" {
+			tx.Rollback()
+			return nil, fmt.Errorf("nama wajib diisi")
+		}
+		if sent("code") {
+			cur.Code = req.Code
+		}
+		if strings.TrimSpace(cur.Code) == "" {
+			cur.Code = generateStockItemCode(cur.Name)
+		}
+		cur.Code = strings.ToUpper(strings.TrimSpace(cur.Code))
+		if sent("category") {
+			cur.Category = req.Category
+		}
+		if sent("base_unit") {
+			cur.BaseUnit = strings.TrimSpace(req.BaseUnit)
+		}
+		if cur.BaseUnit == "" {
+			cur.BaseUnit = "pcs"
+		}
+		if sent("dist_unit") {
+			cur.DistUnit = strings.TrimSpace(req.DistUnit)
+		}
+		if cur.DistUnit == "" {
+			cur.DistUnit = cur.BaseUnit
+		}
+		if sent("dist_ratio") {
+			cur.DistRatio = req.DistRatio
+		}
+		if cur.DistRatio <= 0 {
+			cur.DistRatio = 1
+		}
+		if sent("dist_unit_label") {
+			cur.DistUnitLabel = req.DistUnitLabel
+		}
+		if sent("min_stock") {
+			cur.MinStock = req.MinStock
+		}
+		if sent("notes") {
+			cur.Notes = req.Notes
+		}
 		_, err = tx.Exec(`
 			UPDATE stock_items SET code=$1, name=$2, category=$3, base_unit=$4, dist_unit=$5,
-			  dist_ratio=$6, dist_unit_label=$7, min_stock=$8, notes=$9, updated_at=NOW()
+			  dist_ratio=$6, dist_unit_label=$7, min_stock=$8, notes=$9, updated_by=$11, updated_at=NOW()
 			WHERE id=$10`,
-			req.Code, req.Name, req.Category, req.BaseUnit, req.DistUnit,
-			req.DistRatio, req.DistUnitLabel, req.MinStock, req.Notes, id)
+			cur.Code, cur.Name, cur.Category, cur.BaseUnit, cur.DistUnit,
+			cur.DistRatio, cur.DistUnitLabel, cur.MinStock, cur.Notes, id, createdBy)
 		if err != nil {
 			tx.Rollback()
 			if strings.Contains(err.Error(), "unique") {
 				return nil, fmt.Errorf("kode bahan baku sudah digunakan")
 			}
 			return nil, err
+		}
+		if req.BaseUnit == "" {
+			req.BaseUnit = cur.BaseUnit
 		}
 	}
 
@@ -268,10 +323,18 @@ func UpdateStockItem(id string, req models.StockItemRequest, createdBy string) (
 	return GetStockItem(id)
 }
 
-func ToggleStockItemActive(id string) error {
-	_, err := database.DB.Exec(
-		`UPDATE stock_items SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1`, id)
-	return err
+// ToggleStockItemActive mengaktifkan/menonaktifkan item katalog, dengan jejak
+// pelakunya (T-20).
+func ToggleStockItemActive(id, actor string) error {
+	res, err := database.DB.Exec(
+		`UPDATE stock_items SET is_active = NOT is_active, updated_by = $2, updated_at = NOW() WHERE id = $1`, id, actor)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("bahan baku tidak ditemukan")
+	}
+	return nil
 }
 
 func DeleteStockItem(id string) error {
@@ -385,6 +448,15 @@ func DeleteStockItemCategory(id string) error {
 // ── Warehouses ────────────────────────────────────────────────
 
 func ListWarehouses(warehouseType string, outletIDs []string, page, limit int) ([]models.Warehouse, int, error) {
+	return ListWarehousesScoped(warehouseType, outletIDs, false, page, limit)
+}
+
+// ListWarehousesScoped = ListWarehouses dengan opsi includeCentral: bagi
+// pengguna ber-scope outlet, Gudang Induk yang AKTIF ikut didaftar di samping
+// gudang outlet dalam cakupannya. Dipakai form Transfer Stok (opt-in
+// ?include_central=1) supaya outlet bisa memilih Gudang Induk sebagai gudang
+// asal — meminta stok; daftar gudang halaman lain tetap seperti semula.
+func ListWarehousesScoped(warehouseType string, outletIDs []string, includeCentral bool, page, limit int) ([]models.Warehouse, int, error) {
 	where := "WHERE 1=1"
 	args := []interface{}{}
 	i := 1
@@ -394,7 +466,11 @@ func ListWarehouses(warehouseType string, outletIDs []string, page, limit int) (
 		i++
 	}
 	if outletIDs != nil {
-		where += fmt.Sprintf(" AND w.outlet_id = ANY($%d)", i)
+		if includeCentral {
+			where += fmt.Sprintf(" AND (w.outlet_id = ANY($%d) OR (w.type = 'central' AND w.is_active = true))", i)
+		} else {
+			where += fmt.Sprintf(" AND w.outlet_id = ANY($%d)", i)
+		}
 		args = append(args, pq.Array(outletIDs))
 		i++
 	}
@@ -771,25 +847,45 @@ func GetStockMovements(warehouseID, itemID string, dateFrom, dateTo string, outl
 // applyMovement updates stock_ledger and handles batch-based FIFO tracking.
 // qty is in base_unit; positive = stock in, negative = stock out.
 func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, refType, refNumber, notes, createdBy string, qtyBase, qtyDist, costPerBase float64, expiryDate string) error {
+	_, err := applyMovementValued(tx, itemID, warehouseID, movType, unitUsed, refID, refType, refNumber, notes, createdBy, qtyBase, qtyDist, costPerBase, expiryDate)
+	return err
+}
+
+// movementOutcome: hasil applyMovementValued.
+type movementOutcome struct {
+	// value: stok keluar → total biaya FIFO yang benar-benar terpotong (tepat,
+	// sebelum dibulatkan ke kolom cost_per_base 2 desimal); stok masuk → qty ×
+	// biaya per satuan.
+	value float64
+	// earliestExpiry: stok keluar → kedaluwarsa terdekat (YYYY-MM-DD) dari
+	// batch yang benar-benar terpotong; "" bila tak satu pun ber-kedaluwarsa.
+	earliestExpiry string
+}
+
+// applyMovementValued = applyMovement, ditambah nilai movement-nya dan
+// kedaluwarsa batch yang terpotong. Pemotongan memakainya untuk membagi biaya
+// bahan ke hasil potongan dan mewariskan kedaluwarsa bahan ke batch hasil.
+func applyMovementValued(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, refType, refNumber, notes, createdBy string, qtyBase, qtyDist, costPerBase float64, expiryDate string) (movementOutcome, error) {
 	// Ensure ledger row exists
 	_, err := tx.Exec(`
 		INSERT INTO stock_ledger (id, item_id, warehouse_id, qty_base, avg_cost)
 		VALUES ($1, $2, $3, 0, 0) ON CONFLICT (item_id, warehouse_id) DO NOTHING`,
 		NewULID(), itemID, warehouseID)
 	if err != nil {
-		return err
+		return movementOutcome{}, err
 	}
 
 	// Lock ledger row
 	var curQty, curAvgCost float64
 	err = tx.QueryRow(`SELECT qty_base, avg_cost FROM stock_ledger WHERE item_id=$1 AND warehouse_id=$2 FOR UPDATE`, itemID, warehouseID).Scan(&curQty, &curAvgCost)
 	if err != nil {
-		return err
+		return movementOutcome{}, err
 	}
 
 	newQty := curQty + qtyBase
 	newAvgCost := curAvgCost
 	actualCostPerBase := costPerBase
+	out := movementOutcome{value: qtyBase * costPerBase}
 
 	if qtyBase > 0 {
 		// Stock IN: Create new batch
@@ -802,7 +898,7 @@ func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, re
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 			NewULID(), itemID, warehouseID, qtyBase, costPerBase, expiry, refID, refType)
 		if err != nil {
-			return fmt.Errorf("failed to create stock batch: %w", err)
+			return movementOutcome{}, fmt.Errorf("failed to create stock batch: %w", err)
 		}
 
 		// Update moving average (for reference)
@@ -819,12 +915,12 @@ func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, re
 		// paling akhir), baru urut umur — expiry dicatat per batch dan dimonitor
 		// PPIC, jadi konsumsi harus mengikutinya. Tie-break id (ULID ~ waktu).
 		rows, err := tx.Query(`
-			SELECT id, qty_base, cost_per_base
+			SELECT id, qty_base, cost_per_base, COALESCE(TO_CHAR(expiry_date, 'YYYY-MM-DD'), '')
 			FROM stock_batches
 			WHERE item_id=$1 AND warehouse_id=$2 AND qty_base > 0
 			ORDER BY (expiry_date IS NULL), expiry_date ASC, created_at ASC, id ASC`, itemID, warehouseID)
 		if err != nil {
-			return err
+			return movementOutcome{}, err
 		}
 		
 		type batchUpdate struct {
@@ -834,11 +930,11 @@ func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, re
 		var updates []batchUpdate
 
 		for rows.Next() && remainingToDeduct > 0 {
-			var bid string
+			var bid, bexp string
 			var bqty, bcost float64
-			if err := rows.Scan(&bid, &bqty, &bcost); err != nil {
+			if err := rows.Scan(&bid, &bqty, &bcost, &bexp); err != nil {
 				rows.Close()
-				return err
+				return movementOutcome{}, err
 			}
 
 			deduct := bqty
@@ -849,11 +945,14 @@ func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, re
 			updates = append(updates, batchUpdate{id: bid, qty: bqty - deduct})
 			totalDeductedCost += deduct * bcost
 			remainingToDeduct -= deduct
+			if bexp != "" && (out.earliestExpiry == "" || bexp < out.earliestExpiry) {
+				out.earliestExpiry = bexp
+			}
 		}
 		rows.Close()
 
 		if remainingToDeduct > 0.0001 { // allow small float epsilon
-			return fmt.Errorf("stok tidak mencukupi untuk FIFO (kurang %.4f)", remainingToDeduct)
+			return movementOutcome{}, fmt.Errorf("stok tidak mencukupi untuk FIFO (kurang %.4f)", remainingToDeduct)
 		}
 
 		// Execute batch updates
@@ -864,18 +963,19 @@ func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, re
 				_, err = tx.Exec(`UPDATE stock_batches SET qty_base=$1 WHERE id=$2`, up.qty, up.id)
 			}
 			if err != nil {
-				return err
+				return movementOutcome{}, err
 			}
 		}
 
 		// Calculate actual cost for the movement record
 		actualCostPerBase = totalDeductedCost / absQty
+		out.value = totalDeductedCost
 	}
 
 	_, err = tx.Exec(`UPDATE stock_ledger SET qty_base=$1, avg_cost=$2, updated_at=NOW() WHERE item_id=$3 AND warehouse_id=$4`,
 		newQty, newAvgCost, itemID, warehouseID)
 	if err != nil {
-		return err
+		return movementOutcome{}, err
 	}
 
 	var refIDArg interface{} = nil
@@ -891,7 +991,10 @@ func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, re
 		INSERT INTO stock_movements (id, item_id, warehouse_id, movement_type, qty_base, qty_dist, unit_used, cost_per_base, balance_after, ref_id, ref_type, ref_number, notes, created_by, expiry_date)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
 		NewULID(), itemID, warehouseID, movType, qtyBase, qtyDist, unitUsed, actualCostPerBase, newQty, refIDArg, refType, refNumber, notes, createdBy, expDateArg)
-	return err
+	if err != nil {
+		return movementOutcome{}, err
+	}
+	return out, nil
 }
 
 // CreateAdjustment records a manual stock movement.
@@ -1134,7 +1237,7 @@ func ListStockTransfers(status, warehouseID string, outletIDs []string, page, li
 	offset := (page - 1) * limit
 	args = append(args, limit, offset)
 	rows, err := database.DB.Query(fmt.Sprintf(`
-		SELECT st.id, st.transfer_number, st.from_warehouse_id, fw.name, st.to_warehouse_id, tw.name,
+		SELECT st.id, st.transfer_number, st.from_warehouse_id, fw.name, fw.type, st.to_warehouse_id, tw.name, tw.type,
 		       st.status, st.notes,
 		       COALESCE(st.approved_by,''), COALESCE(TO_CHAR(st.approved_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.sent_by,''), COALESCE(TO_CHAR(st.sent_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
@@ -1155,8 +1258,8 @@ func ListStockTransfers(status, warehouseID string, outletIDs []string, page, li
 	for rows.Next() {
 		var t models.StockTransfer
 		t.Items = []models.StockTransferItem{}
-		if err := rows.Scan(&t.ID, &t.TransferNumber, &t.FromWarehouseID, &t.FromWarehouse,
-			&t.ToWarehouseID, &t.ToWarehouse, &t.Status, &t.Notes,
+		if err := rows.Scan(&t.ID, &t.TransferNumber, &t.FromWarehouseID, &t.FromWarehouse, &t.FromWarehouseType,
+			&t.ToWarehouseID, &t.ToWarehouse, &t.ToWarehouseType, &t.Status, &t.Notes,
 			&t.ApprovedBy, &t.ApprovedAt, &t.SentBy, &t.SentAt,
 			&t.ReceivedBy, &t.ReceivedAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, 0, err
@@ -1180,6 +1283,21 @@ func WarehouseMutableInScope(warehouseID string, outletIDs []string) bool {
 	return cnt > 0
 }
 
+// WarehouseInOutletScope: gudang OUTLET milik salah satu outlet dalam cakupan.
+// Berbeda dengan WarehouseMutableInScope, Gudang Induk (tanpa outlet) TIDAK
+// termasuk — dipakai untuk hal yang bagi role per outlet hanya boleh atas
+// gudang outletnya sendiri (mis. stok minimum per gudang di katalog). nil = semua.
+func WarehouseInOutletScope(warehouseID string, outletIDs []string) bool {
+	if outletIDs == nil {
+		return true
+	}
+	var cnt int
+	database.DB.QueryRow(
+		`SELECT COUNT(*) FROM warehouses WHERE id = $1 AND type = 'outlet' AND outlet_id = ANY($2)`,
+		warehouseID, pq.Array(outletIDs)).Scan(&cnt)
+	return cnt > 0
+}
+
 // TransferInScope reports whether a transfer involves a warehouse the scoped user
 // may access (its from- or to-warehouse belongs to an in-scope outlet). nil = all.
 func TransferInScope(transferID string, outletIDs []string) bool {
@@ -1199,7 +1317,7 @@ func TransferInScope(transferID string, outletIDs []string) bool {
 func GetStockTransfer(id string) (*models.StockTransfer, error) {
 	var t models.StockTransfer
 	err := database.DB.QueryRow(`
-		SELECT st.id, st.transfer_number, st.from_warehouse_id, fw.name, st.to_warehouse_id, tw.name,
+		SELECT st.id, st.transfer_number, st.from_warehouse_id, fw.name, fw.type, st.to_warehouse_id, tw.name, tw.type,
 		       st.status, st.notes, COALESCE(st.photo_url,''),
 		       COALESCE(st.approved_by,''), COALESCE(TO_CHAR(st.approved_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.sent_by,''), COALESCE(TO_CHAR(st.sent_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
@@ -1211,8 +1329,8 @@ func GetStockTransfer(id string) (*models.StockTransfer, error) {
 		JOIN warehouses fw ON fw.id = st.from_warehouse_id
 		JOIN warehouses tw ON tw.id = st.to_warehouse_id
 		WHERE st.id = $1`, id).Scan(
-		&t.ID, &t.TransferNumber, &t.FromWarehouseID, &t.FromWarehouse,
-		&t.ToWarehouseID, &t.ToWarehouse, &t.Status, &t.Notes, &t.PhotoURL,
+		&t.ID, &t.TransferNumber, &t.FromWarehouseID, &t.FromWarehouse, &t.FromWarehouseType,
+		&t.ToWarehouseID, &t.ToWarehouse, &t.ToWarehouseType, &t.Status, &t.Notes, &t.PhotoURL,
 		&t.ApprovedBy, &t.ApprovedAt, &t.SentBy, &t.SentAt,
 		&t.ReceivedBy, &t.ReceivedAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
 	if err == sql.ErrNoRows {
@@ -1341,10 +1459,24 @@ func UpdateTransferReceivedQty(transferID, itemID string, receivedQtyBase float6
 // foto pengiriman: distribusi gudang induk → gudang outlet wajib berfoto sama
 // seperti penerimaan dari purchasing.
 func UpdateTransferStatusWithPhoto(id, newStatus, photoURL, actor string) (*models.StockTransfer, error) {
+	return UpdateTransferStatusFrom(id, newStatus, photoURL, actor, "")
+}
+
+// UpdateTransferStatusFrom = UpdateTransferStatusWithPhoto, tetapi hanya bila
+// status transfer — diperiksa ulang di bawah kunci baris — masih fromStatus
+// (kosong = tanpa syarat). Dipakai saat outlet membatalkan permintaannya ke
+// Gudang Induk: hanya selagi masih draft. Tanpa cek di dalam kunci,
+// persetujuan Gudang Induk yang terjadi bersamaan bisa ikut terbatalkan.
+func UpdateTransferStatusFrom(id, newStatus, photoURL, actor, fromStatus string) (*models.StockTransfer, error) {
 	if newStatus == "sent" && strings.TrimSpace(photoURL) == "" {
 		return nil, Invalid("foto barang saat dikirim wajib diunggah")
 	}
-	t, err := UpdateTransferStatus(id, newStatus, actor)
+	if newStatus == "sent" {
+		if err := validateUploadField("foto barang saat dikirim", photoURL); err != nil {
+			return nil, err
+		}
+	}
+	t, err := updateTransferStatus(id, newStatus, actor, fromStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -1357,6 +1489,10 @@ func UpdateTransferStatusWithPhoto(id, newStatus, photoURL, actor string) (*mode
 }
 
 func UpdateTransferStatus(id, newStatus, actor string) (*models.StockTransfer, error) {
+	return updateTransferStatus(id, newStatus, actor, "")
+}
+
+func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.StockTransfer, error) {
 	transfer, err := GetStockTransfer(id)
 	if err != nil {
 		return nil, err
@@ -1391,6 +1527,9 @@ func UpdateTransferStatus(id, newStatus, actor string) (*models.StockTransfer, e
 	var curStatus string
 	if err := tx.QueryRow(`SELECT status FROM stock_transfers WHERE id=$1 FOR UPDATE`, id).Scan(&curStatus); err != nil {
 		return nil, err
+	}
+	if fromStatus != "" && curStatus != fromStatus {
+		return nil, Invalid("status transfer sudah berubah menjadi '%s' — muat ulang halaman", curStatus)
 	}
 	if newStatus == "cancelled" {
 		if !cancelable[curStatus] {
@@ -2201,4 +2340,39 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 	}
 
 	return stats, nil
+}
+
+// StockCatalogName: nama + satuan beli satu item katalog stok, tanpa qty dan
+// biaya. Dipakai saran nama di form pengadaan bahan baku, supaya pengaju yang
+// tidak memegang izin gudang tetap bisa menyamakan nama dengan katalog.
+type StockCatalogName struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Unit     string `json:"unit"`
+	IsActive bool   `json:"is_active"`
+}
+
+// ListStockCatalogNames: seluruh item katalog (aktif & nonaktif). Satuan beli
+// mengikuti draft MRP: label satuan distribusi → satuan distribusi → satuan dasar.
+func ListStockCatalogNames() ([]StockCatalogName, error) {
+	rows, err := database.DB.Query(`
+		SELECT id, TRIM(name),
+		       COALESCE(NULLIF(dist_unit_label, ''), NULLIF(dist_unit, ''), base_unit, ''),
+		       COALESCE(is_active, true)
+		FROM stock_items
+		WHERE TRIM(name) <> ''
+		ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]StockCatalogName, 0)
+	for rows.Next() {
+		var r StockCatalogName
+		if err := rows.Scan(&r.ID, &r.Name, &r.Unit, &r.IsActive); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }

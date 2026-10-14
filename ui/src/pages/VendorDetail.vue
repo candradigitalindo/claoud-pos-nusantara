@@ -65,6 +65,22 @@
             </div>
           </div>
           <p v-else class="text-sm text-gray-400 italic">Belum ada data pembayaran.</p>
+          <!-- Riwayat perubahan rekening: pembayaran lama tetap memakai rekening
+               yang berlaku saat dibayar (dipotret per pembayaran). -->
+          <div v-if="vendor.bank_changes?.length" class="mt-3 border-t border-gray-100 pt-3">
+            <p class="mb-1.5 text-xs font-semibold text-gray-600">Riwayat Perubahan Rekening</p>
+            <ul class="space-y-1.5 text-xs">
+              <li v-for="c in vendor.bank_changes" :key="c.id" class="rounded-lg bg-gray-50 px-2.5 py-1.5">
+                <p class="text-gray-500">{{ formatDateTime(c.changed_at) }}<template v-if="c.changed_by"> · {{ c.changed_by }}</template></p>
+                <p class="break-words font-mono text-gray-700">
+                  {{ bankText(c.old_bank_name, c.old_account_number, c.old_account_holder) || '(kosong)' }}
+                  <span class="font-sans text-gray-400">→</span>
+                  {{ bankText(c.new_bank_name, c.new_account_number, c.new_account_holder) || '(kosong)' }}
+                </p>
+              </li>
+            </ul>
+            <p class="mt-1.5 text-[11px] text-gray-400">Pembayaran lama tetap tercatat dengan rekening yang berlaku saat dibayar.</p>
+          </div>
         </AppCard>
       </div>
 
@@ -118,12 +134,7 @@
             <select v-model="historyFilter" @change="fetchHistory(1)"
               class="rounded-lg border border-gray-300 px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
               <option value="">Semua Status</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Disetujui</option>
-              <option value="paid">Dibayar</option>
-              <option value="received">Diterima</option>
-              <option value="rejected">Ditolak</option>
-              <option value="cancelled">Dibatalkan</option>
+              <option v-for="o in STATUS_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
           </div>
         </div>
@@ -132,11 +143,9 @@
             <span class="text-gray-700 text-xs">{{ formatDate(row.created_at) }}</span>
           </template>
           <template #cell-request_type="{ row }">
-            <span :class="row.request_type === 'goods'
-              ? 'bg-blue-100 text-blue-700'
-              : 'bg-purple-100 text-purple-700'"
+            <span :class="typeBadgeCls(row.request_type)"
               class="px-2 py-0.5 rounded-full text-xs font-medium">
-              {{ row.request_type === 'goods' ? 'Barang' : 'Jasa' }}
+              {{ purchaseTypeLabel(row.request_type) }}
             </span>
           </template>
           <template #cell-items_summary="{ row }">
@@ -164,7 +173,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { vendorsApi } from '@/api/vendors.js'
-import { formatRupiah } from '@/utils/format.js'
+import { formatRupiah, formatDateTime } from '@/utils/format.js'
+import { purchaseTypeLabel, normalizePurchaseType, purchaseStatusLabel, purchaseStatusBadge, purchaseStatusOptions } from '@/utils/procurement.js'
 import AppCard   from '@/components/ui/AppCard.vue'
 import AppTable  from '@/components/ui/AppTable.vue'
 import AppAlert  from '@/components/ui/AppAlert.vue'
@@ -212,20 +222,20 @@ const HISTORY_COLUMNS = [
   { key: 'status',        label: 'Status', align: 'center' },
 ]
 
-const statusMap = {
-  pending:   { label: 'Pending',          cls: 'bg-amber-100 text-amber-700' },
-  approved:  { label: 'Disetujui',        cls: 'bg-blue-100 text-blue-700' },
-  partial:   { label: 'Dibayar Sebagian', cls: 'bg-amber-100 text-amber-700' },
-  paid:      { label: 'Dibayar',          cls: 'bg-emerald-100 text-emerald-700' },
-  received:  { label: 'Diterima',         cls: 'bg-green-100 text-green-800' },
-  rejected:  { label: 'Ditolak',          cls: 'bg-red-100 text-red-700' },
-  cancelled: { label: 'Dibatalkan',       cls: 'bg-gray-100 text-gray-500' },
+// Status pengajuan: satu sumber label (utils/procurement.js), status tak dikenal netral.
+const STATUS_OPTIONS = purchaseStatusOptions()
+function statusBadge(s) { return purchaseStatusBadge(s) }
+function bankText(bank, number, holder) {
+  return [bank, number, holder ? `a.n. ${holder}` : ''].filter(Boolean).join(' ')
 }
-function statusBadge(s) {
-  const m = statusMap[s] || statusMap.pending
-  return `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${m.cls}`
+function statusLabel(s) { return purchaseStatusLabel(s) }
+// Warna lencana jenis pengajuan: barang biru, bahan baku kuning, jasa ungu.
+function typeBadgeCls(t) {
+  const v = normalizePurchaseType(t)
+  if (v === 'barang') return 'bg-blue-100 text-blue-700'
+  if (v === 'bahan') return 'bg-amber-100 text-amber-700'
+  return 'bg-purple-100 text-purple-700'
 }
-function statusLabel(s) { return (statusMap[s] || statusMap.pending).label }
 
 function formatDate(s) {
   if (!s) return '-'

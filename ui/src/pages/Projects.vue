@@ -61,11 +61,11 @@
               <dt class="text-gray-400">PIC</dt>
               <dd class="text-gray-700">{{ p.pic || '-' }}</dd>
               <dt class="text-gray-400">Belanja</dt>
-              <dd class="text-gray-700">{{ p.request_count }} pengajuan</dd>
+              <dd class="text-gray-700">{{ p.request_count }} disetujui<span v-if="p.pending_count" class="text-gray-400"> · {{ p.pending_count }} menunggu persetujuan</span></dd>
               <dt class="text-gray-400">RAB</dt>
               <dd><span :class="rabBadge(p)">{{ rabLabel(p) }}</span> <span class="text-gray-700">{{ formatRupiah(p.budget) }}</span></dd>
             </dl>
-            <BudgetBar class="mt-2" :budget="p.budget" :committed="p.committed" :paid="p.paid" :estimated="p.estimated" />
+            <BudgetBar class="mt-2" :budget="p.budget" :committed="p.committed" :paid="p.paid" :estimated="p.estimated" :pending="p.pending_amount" />
             <div class="mt-2 flex items-end justify-between gap-2 border-t border-gray-100 pt-2">
               <div class="min-w-0 text-xs">
                 <p class="text-gray-400">Sisa RAB</p>
@@ -99,7 +99,7 @@
         <template #cell-budget="{ row }">
           <div class="min-w-[160px]">
             <p class="flex items-center gap-1.5 text-sm font-medium text-gray-900">{{ formatRupiah(row.budget) }} <span :class="rabBadge(row)">{{ rabLabel(row) }}</span></p>
-            <BudgetBar class="mt-1" :budget="row.budget" :committed="row.committed" :paid="row.paid" :estimated="row.estimated" />
+            <BudgetBar class="mt-1" :budget="row.budget" :committed="row.committed" :paid="row.paid" :estimated="row.estimated" :pending="row.pending_amount" />
           </div>
         </template>
         <template #cell-remaining_budget="{ row }">
@@ -109,6 +109,7 @@
         </template>
         <template #cell-request_count="{ row }">
           <span class="text-gray-600">{{ row.request_count }}</span>
+          <span v-if="row.pending_count" class="block text-[10px] text-gray-400">+{{ row.pending_count }} menunggu</span>
         </template>
         <template #cell-status="{ row }">
           <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
@@ -131,9 +132,12 @@
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div class="flex flex-col gap-1">
-            <label class="text-sm font-medium text-gray-700">Unit Kerja</label>
+            <label class="text-sm font-medium text-gray-700">Unit Kerja <span v-if="unitRequired" class="text-red-500">*</span></label>
             <SearchSelect v-model="form.work_unit_id" :options="workUnitOptions"
               placeholder="Pilih unit kerja…" searchPlaceholder="Cari unit kerja…" />
+            <p v-if="unitRequired" class="text-[11px] text-gray-500">
+              Wajib dipilih: projek tanpa unit kerja tidak akan terlihat oleh role Anda.
+            </p>
           </div>
           <AppInput v-model="form.pic" label="PIC / Penanggung Jawab" placeholder="Nama penanggung jawab" />
         </div>
@@ -275,14 +279,23 @@ const workUnits = ref([])
 const search = ref('')
 const filterStatus = ref('')
 
-const workUnitOptions = computed(() => [{ id: '', name: '— Tanpa Unit Kerja —' }, ...workUnits.value])
+const workUnitsFailed = ref(false)
+
+// Role bercakupan unit kerja tertentu wajib menautkan projek ke unit dalam
+// cakupannya — server menolak (400) projek tanpa unit dari role ini, karena
+// projek itu akan hilang dari daftarnya sendiri (T-49). Opsi "Tanpa Unit Kerja"
+// hanya untuk role bercakupan semua outlet.
+const unitRequired = computed(() => authStore.scopeType === 'specific')
+const workUnitOptions = computed(() => unitRequired.value
+  ? workUnits.value
+  : [{ id: '', name: '— Tanpa Unit Kerja —' }, ...workUnits.value])
 
 const totals = computed(() => {
   const sum = (k) => projects.value.reduce((a, p) => a + (p[k] || 0), 0)
   const budget = sum('budget'), committed = sum('committed')
   return [
     { label: 'Total RAB',    value: budget,              cls: 'text-gray-900' },
-    { label: 'Komitmen',     value: committed,           cls: 'text-blue-700' },
+    { label: 'Terpakai',     value: committed,           cls: 'text-blue-700' },
     { label: 'Terbayar',     value: sum('paid'),         cls: 'text-emerald-700' },
     { label: 'Sisa Hutang',  value: sum('outstanding'),  cls: 'text-amber-600' },
   ]
@@ -318,9 +331,16 @@ async function fetchList() {
 
 async function fetchWorkUnits() {
   try {
+    // apiClient membuka amplop: respons berupa array langsung; data:null dari
+    // server sampai sebagai {success:true} — dinormalisasi jadi array ber-id.
     const res = await workUnitsApi.myWorkUnits()
-    workUnits.value = Array.isArray(res) ? res : (res?.data || [])
-  } catch { /* dropdown opsional — daftar projek tetap tampil */ }
+    workUnits.value = (Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : [])).filter(u => u && u.id)
+    workUnitsFailed.value = false
+  } catch {
+    // dropdown opsional bagi role semua outlet — daftar projek tetap tampil
+    workUnits.value = []
+    workUnitsFailed.value = true
+  }
 }
 
 function goDetail(p) { router.push(`/projects/${p.id}`) }
@@ -329,6 +349,8 @@ function openCreate() {
   editingId.value = null
   form.value = emptyForm()
   formError.value = ''
+  // Hanya satu unit dalam cakupan → langsung terpilih.
+  if (unitRequired.value && workUnits.value.length === 1) form.value.work_unit_id = workUnits.value[0].id
   showForm.value = true
 }
 
@@ -346,6 +368,14 @@ function openEdit(p) {
 
 async function submitForm() {
   if (!form.value.name.trim()) { formError.value = 'Nama projek wajib diisi'; return }
+  if (unitRequired.value && !workUnits.value.some(u => u.id === form.value.work_unit_id)) {
+    formError.value = workUnits.value.length
+      ? 'Pilih unit kerja projek — projek tanpa unit kerja tidak akan terlihat oleh role Anda.'
+      : (workUnitsFailed.value
+        ? 'Daftar unit kerja tidak dapat dimuat — muat ulang halaman, lalu pilih unit kerja projek.'
+        : 'Role Anda belum memiliki unit kerja dalam cakupan — projek tidak bisa disimpan. Hubungi admin.')
+    return
+  }
   saving.value = true; formError.value = ''
   try {
     if (editingId.value) {

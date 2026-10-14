@@ -99,6 +99,7 @@
                 Batasan Unit Kerja
               </div>
               <p class="col-hint">Tentukan unit kerja yang dapat diakses pengguna dengan role ini.</p>
+              <p v-if="!role.is_system" class="logout-hint">Perubahan batasan langsung berlaku dan mengeluarkan (logout) semua pengguna role ini — mereka perlu login ulang.</p>
 
               <div class="scope-opts">
                 <label class="scope-opt" :class="{ 'scope-opt--on': (roleScopes[role.name]?.scope_type ?? role.scope_type) === 'all' }">
@@ -244,6 +245,7 @@
               <div class="space-y-4">
                 <AppInput v-model="editForm.name" label="Nama Role" placeholder="contoh: kasir" :error="editFormErrors.name" :disabled="editForm.isSystem" />
                 <p v-if="editForm.isSystem" class="text-xs text-gray-400 -mt-2">Nama role sistem tidak dapat diubah.</p>
+                <p v-else-if="editRenamed" class="logout-hint -mt-2">Mengganti nama role mengeluarkan (logout) semua pengguna role ini — mereka perlu login ulang.</p>
                 <AppInput v-model="editForm.description" label="Deskripsi" placeholder="Deskripsi singkat role" />
                 <div class="form-group">
                   <label class="form-label">Halaman Setelah Login</label>
@@ -311,6 +313,7 @@
             </div>
             <div class="modal-bd">
               <p class="text-sm text-gray-600 mb-3">Pilih unit kerja yang dapat diakses oleh role <strong class="capitalize">{{ scopeEditRole }}</strong>:</p>
+              <p class="logout-hint mb-3">Menyimpan cakupan yang berbeda mengeluarkan (logout) semua pengguna role ini — mereka perlu login ulang.</p>
               <div class="wu-list">
                 <label v-for="wu in workUnits" :key="wu.id" class="wu-item">
                   <input type="checkbox" :checked="scopeEditIDs.includes(wu.id)" @change="toggleScopeEditWU(wu.id)" />
@@ -343,6 +346,8 @@ import { adminsApi }    from '@/api/admins.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore }  from '@/stores/auth.js'
+import { useRouter }     from 'vue-router'
+import { setLoginNotice } from '@/utils/session.js'
 import AppInput   from '@/components/ui/AppInput.vue'
 import AppAlert   from '@/components/ui/AppAlert.vue'
 import AppSpinner from '@/components/ui/AppSpinner.vue'
@@ -351,6 +356,16 @@ import PermissionMatrix from '@/components/PermissionMatrix.vue'
 
 const toast     = useToastStore()
 const authStore = useAuthStore()
+const router    = useRouter()
+
+// Mengganti nama role atau cakupannya menaikkan versi sesi SEMUA pengguna role
+// itu di server (T-55) — mereka dikeluarkan. Bila role itu milik akun yang
+// sedang dipakai, keluar sekarang dengan pesan yang jelas.
+function signOutSelf(message) {
+  setLoginNotice(message, 'warning')
+  authStore.logout()
+  router.replace('/login')
+}
 
 // ── Static config ────────────────────────────────────
 
@@ -409,6 +424,7 @@ const REDIRECT_GROUPS = [
   { category: 'Pengadaan', options: [
     { value: '/procurement-dashboard', label: 'Dashboard Pengadaan', perm: 'procurement.dashboard.view' },
     { value: '/purchase-goods',        label: 'Pengadaan Barang',    perm: 'procurement.requests.view' },
+    { value: '/purchase-materials',    label: 'Pengadaan Bahan Baku', perm: 'procurement.rawmaterials.view' },
     { value: '/purchase-services',     label: 'Pengadaan Jasa',      perm: 'procurement.requests.view' },
     { value: '/projects',              label: 'Projek',              perm: 'procurement.projects.view' },
     { value: '/vendors',               label: 'Vendor',              perm: 'vendors.view' },
@@ -555,12 +571,33 @@ function showScopeModal(roleName) {
 
 // ── Actions ──────────────────────────────────────────
 
+// Sama dengan roleScopeChangedTx di server: jenis berbeda, atau himpunan unit
+// kerja berbeda untuk 'specific'. Menyimpan ulang cakupan yang sama tidak
+// mengeluarkan siapa pun.
+function scopeChanged(roleName, type, wuIDs) {
+  const role = roles.value.find(r => r.name === roleName)
+  const cur = roleScopes.value[roleName]
+  const oldType = cur?.scope_type ?? role?.scope_type ?? 'all'
+  if (oldType !== type) return true
+  if (type !== 'specific') return false
+  const a = new Set((cur?.work_unit_ids ?? []).map(String))
+  const b = new Set((wuIDs ?? []).map(String))
+  return a.size !== b.size || [...b].some(id => !a.has(id))
+}
+
 async function updateScope(roleName, type, wuIDs) {
   savingScope.value = roleName
+  const changed = scopeChanged(roleName, type, wuIDs)
   try {
     await adminsApi.updateRoleScope(roleName, { scope_type: type, work_unit_ids: wuIDs })
     roleScopes.value = { ...roleScopes.value, [roleName]: { scope_type: type, work_unit_ids: wuIDs } }
-    toast.success(`Scope ${roleName} diperbarui`)
+    if (changed && roleName === authStore.admin?.role) {
+      signOutSelf('Cakupan role Anda diubah — silakan login ulang.')
+      return
+    }
+    toast.success(changed
+      ? `Scope ${roleName} diperbarui — pengguna role ini dikeluarkan dan perlu login ulang`
+      : `Scope ${roleName} diperbarui`)
     if (roleName === authStore.admin?.role) await authStore.fetchPermissions()
   } catch (err) {
     toast.error(err?.message ?? 'Gagal memperbarui scope')
@@ -699,6 +736,8 @@ function openCopyRole(role) {
   showCreate.value = true
 }
 
+const editRenamed = computed(() => !editForm.isSystem && !!editForm.originalName && editForm.name.trim() !== '' && editForm.name.trim() !== editForm.originalName)
+
 function openEditRole(role) {
   editForm.name = role.name; editForm.description = role.description || ''
   editForm.originalName = role.name; editForm.isSystem = !!role.is_system
@@ -711,12 +750,18 @@ async function submitEditRole() {
   editFormErrors.name = editForm.name.trim() ? '' : 'Nama role wajib diisi'
   if (editFormErrors.name) return
   editing.value = true; editError.value = ''
+  const renamed = editRenamed.value
   try {
     await adminsApi.updateRole(editForm.originalName, {
       name: editForm.name.trim(), description: editForm.description.trim(),
       redirect_to: editForm.redirect_to || '/',
     })
-    toast.success('Role berhasil diperbarui!')
+    if (renamed && editForm.originalName === authStore.admin?.role) {
+      showEdit.value = false
+      signOutSelf('Nama role Anda diganti — silakan login ulang.')
+      return
+    }
+    toast.success(renamed ? 'Role diperbarui — pengguna role ini dikeluarkan dan perlu login ulang' : 'Role berhasil diperbarui!')
     showEdit.value = false
     await loadRoles()
   } catch (err) {
@@ -758,6 +803,10 @@ watch(showCreate, v => {
 .rp-title { font-size: 1.35rem; font-weight: 800; color: #111827; margin: 0; }
 .rp-sub   { font-size: .8rem; color: #6b7280; margin: .2rem 0 0; }
 .rp-loading { display: flex; justify-content: center; padding: 3rem; }
+.logout-hint {
+  font-size: .72rem; line-height: 1.4; color: #92400e;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: .5rem; padding: .4rem .6rem;
+}
 
 .btn-new {
   display: inline-flex; align-items: center; gap: .45rem;

@@ -3,6 +3,8 @@ import { apiClient as api } from './client.js'
 // ── Stock Items ───────────────────────────────────────────────
 export const stockItemsApi = {
   list: (params = {}) => api.get('/admin/stock-items', { params }),
+  // Nama + satuan katalog saja (tanpa qty/biaya) — saran di form pengadaan bahan baku.
+  names: () => api.get('/admin/stock-item-names'),
   get: (id) => api.get(`/admin/stock-items/${id}`),
   create: (data) => api.post('/admin/stock-items', data),
   update: (id, data) => api.put(`/admin/stock-items/${id}`, data),
@@ -54,6 +56,19 @@ export const recipeMastersApi = {
 export const stockItemRecipesApi = {
   get: (id) => api.get(`/admin/stock-items/${id}/recipes`),
   save: (id, items, visibility) => api.put(`/admin/stock-items/${id}/recipes`, { parent_item_id: id, items, visibility }),
+}
+
+// ── Pemotongan (satu bahan → beberapa hasil, lewat pola) ──────
+// templates/getTemplate/saveTemplate tidak ber-paginasi → apiClient
+// mengembalikan isinya langsung (bukan { data }). list ber-paginasi.
+// saveTemplate menyimpan SELURUH pola bahan: pola ber-id diperbarui, tanpa id
+// dibuat, yang tidak dikirim dihapus.
+export const stockBreakdownsApi = {
+  templates: () => api.get('/admin/stock-breakdown-templates'),
+  getTemplate: (itemId) => api.get(`/admin/stock-items/${itemId}/breakdown`),
+  saveTemplate: (itemId, patterns) => api.put(`/admin/stock-items/${itemId}/breakdown`, { patterns }),
+  list: (params = {}) => api.get('/admin/stock-breakdowns', { params }),
+  create: (data) => api.post('/admin/stock-breakdowns', data),
 }
 
 

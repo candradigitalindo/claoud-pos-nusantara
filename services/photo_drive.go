@@ -91,10 +91,16 @@ func driveEnabled() (bool, string) {
 }
 
 // uploadPhotoToDrive menyalin satu berkas dan mengembalikan id + tautan publiknya.
+//
+// Hanya berkas biasa di dalam folder uploads yang boleh disalin (T-2): URL
+// diurai lewat resolveUploadFile menjadi path absolut yang sudah dipastikan
+// terkurung di folder itu. Selain itu dikembalikan sebagai galat — barisnya
+// ditandai gagal dan rclone tidak pernah dipanggil. Path absolut juga mencegah
+// rclone membaca "nama:..." sebagai remote atau "-..." sebagai opsi.
 func uploadPhotoToDrive(localURL string) (string, string, error) {
-	path := strings.TrimPrefix(localURL, "/")
-	if _, err := os.Stat(path); err != nil {
-		return "", "", fmt.Errorf("berkas tidak ditemukan: %w", err)
+	path, err := resolveUploadFile(localURL)
+	if err != nil {
+		return "", "", fmt.Errorf("tidak disalin: %w", err)
 	}
 	// Susunan folder mengikuti bulan, sama seperti di server: gampang ditelusuri.
 	sub := filepath.Base(filepath.Dir(path))

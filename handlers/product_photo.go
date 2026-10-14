@@ -62,13 +62,22 @@ func UploadProductPhoto(c *fiber.Ctx) error {
 // DeleteProductPhoto clears a product's photo.
 func DeleteProductPhoto(c *fiber.Ctx) error {
 	id := c.Params("id")
+	// Cakupan outlet sama dengan UploadProductPhoto: tanpa cek ini pengguna
+	// ber-scope outlet bisa menghapus foto produk outlet lain.
+	if !validateRowOutletAccess(c, "cloud_products", id) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Outlet di luar akses Anda"})
+	}
 	var cur string
 	database.DB.QueryRow(`SELECT COALESCE(photo_url,'') FROM cloud_products WHERE id=$1`, id).Scan(&cur)
 	if _, err := database.DB.Exec(`UPDATE cloud_products SET photo_url='', updated_at=NOW() WHERE id=$1`, id); err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Gagal menghapus foto"})
 	}
+	// Berkas di disk hanya dihapus bila URL-nya terkurung di folder uploads
+	// (T-2); nilai lain cukup dikosongkan dari produk.
 	if cur != "" {
-		os.Remove(filepath.Join(".", strings.TrimPrefix(cur, "/")))
+		if p, err := services.UploadFilePath(cur); err == nil {
+			os.Remove(p)
+		}
 	}
 	return c.JSON(models.APIResponse{Success: true})
 }

@@ -1,15 +1,15 @@
 <template>
   <div class="space-y-5">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
       <h1 class="text-xl font-bold text-gray-900">Transfer Stok</h1>
-      <AppButton @click="openCreate">+ Buat Transfer</AppButton>
+      <AppButton @click="openCreate">{{ isOutletUser ? '+ Minta Stok / Transfer' : '+ Buat Transfer' }}</AppButton>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
 
     <AppCard :padding="false">
-      <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-        <div class="min-w-[180px]">
+      <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-100">
+        <div class="w-full sm:w-auto sm:min-w-[180px]">
           <SearchSelect
             v-model="filterStatus"
             :options="statusOptions"
@@ -20,7 +20,7 @@
             @change="applyFilters"
           />
         </div>
-        <div class="min-w-[260px] flex-1 max-w-md">
+        <div class="w-full sm:w-auto sm:min-w-[260px] sm:flex-1 sm:max-w-md">
           <SearchSelect
             v-model="filterWarehouse"
             :options="warehouseFilterOptions"
@@ -33,7 +33,29 @@
         </div>
       </div>
 
-      <AppTable :columns="COLUMNS" :rows="transfers" :loading="loading" emptyText="Belum ada transfer.">
+      <!-- Layar kecil: kartu, supaya status ("Menunggu Gudang Induk") tidak
+           tersembunyi di balik gulir tabel. -->
+      <div class="sm:hidden">
+        <div v-if="loading" class="p-6 text-center text-sm text-gray-400">Memuat…</div>
+        <div v-else-if="!transfers.length" class="p-6 text-center text-sm text-gray-400">Belum ada transfer.</div>
+        <ul v-else class="divide-y divide-gray-100">
+          <li v-for="row in transfers" :key="row.id">
+            <button @click="openDetail(row.id)" class="w-full px-4 py-3 text-left hover:bg-gray-50">
+              <div class="flex items-start justify-between gap-2">
+                <span class="font-mono text-sm text-emerald-600">{{ row.transfer_number }}</span>
+                <span :class="statusCls(row.status)" class="shrink-0 whitespace-nowrap text-xs font-medium px-2 py-0.5 rounded-full">
+                  {{ transferRowStatusLabel(row) }}
+                </span>
+              </div>
+              <p class="mt-1 text-sm text-gray-800 break-words">
+                {{ row.from_warehouse_name }} <span class="text-gray-400">→</span> {{ row.to_warehouse_name }}
+              </p>
+              <p class="mt-0.5 text-xs text-gray-500">{{ row.created_at.slice(0,10) }} · {{ row.created_by || '—' }}</p>
+            </button>
+          </li>
+        </ul>
+      </div>
+      <AppTable class="hidden sm:block" :columns="COLUMNS" :rows="transfers" :loading="loading" emptyText="Belum ada transfer.">
         <template #cell-transfer_number="{ row }">
           <button @click="openDetail(row.id)" class="font-mono text-sm text-emerald-600 hover:text-emerald-800 hover:underline">
             {{ row.transfer_number }}
@@ -41,14 +63,14 @@
         </template>
         <template #cell-route="{ row }">
           <div class="text-sm">
-            <span class="font-medium">{{ row.from_warehouse }}</span>
+            <span class="font-medium">{{ row.from_warehouse_name }}</span>
             <span class="text-gray-400 mx-1.5">→</span>
-            <span class="font-medium">{{ row.to_warehouse }}</span>
+            <span class="font-medium">{{ row.to_warehouse_name }}</span>
           </div>
         </template>
         <template #cell-status="{ row }">
-          <span :class="statusCls(row.status)" class="text-xs font-medium px-2 py-0.5 rounded-full">
-            {{ STATUS_LABELS[row.status] || row.status }}
+          <span :class="statusCls(row.status)" class="whitespace-nowrap text-xs font-medium px-2 py-0.5 rounded-full">
+            {{ transferRowStatusLabel(row) }}
           </span>
         </template>
         <template #cell-created_at="{ row }">
@@ -62,9 +84,9 @@
     </AppCard>
 
     <!-- Create Transfer Modal -->
-    <AppModal v-model="showCreate" title="Buat Transfer Stok" size="lg">
+    <AppModal v-model="showCreate" :title="isRequestForm ? 'Minta Stok ke Gudang Induk' : 'Buat Transfer Stok'" size="lg">
       <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div class="space-y-1">
             <label class="block text-sm font-medium text-gray-700">Gudang Asal</label>
             <SearchSelect
@@ -100,7 +122,19 @@
             <div class="text-xs text-gray-500">{{ describeWarehouse(selectedToWarehouse) }}</div>
           </div>
         </div>
-        <p class="text-xs text-gray-500 -mt-1">
+        <!-- Permintaan outlet ke Gudang Induk: tahap setujui & kirim milik
+             Gudang Induk (server menolaknya dari role per outlet). -->
+        <div v-if="isRequestForm" class="flex items-start gap-2 rounded-lg bg-blue-50 ring-1 ring-blue-100 px-3 py-2 text-xs text-blue-800">
+          <svg class="h-4 w-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>
+            Ini <b>permintaan stok ke Gudang Induk</b>. Gudang Induk akan menyetujui dan mengirim barangnya;
+            Anda mengonfirmasi penerimaan di gudang outlet saat barang tiba.
+          </span>
+        </div>
+        <p v-else-if="isOutletUser" class="text-xs text-gray-500 -mt-1">
+          Pilih <b>Gudang Induk</b> sebagai gudang asal untuk meminta stok, atau gudang outlet Anda untuk memindahkan stok antar outlet dalam cakupan Anda.
+        </p>
+        <p v-else class="text-xs text-gray-500 -mt-1">
           Transfer stok mendukung antar gudang induk, gudang induk ke outlet, dan antar gudang outlet.
         </p>
         <AppInput v-model="form.notes" label="Keterangan" placeholder="Opsional" />
@@ -114,8 +148,8 @@
           <div v-if="form.items.length === 0" class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-lg">
             Belum ada item. Klik "+ Tambah Item".
           </div>
-          <div v-for="(it, i) in form.items" :key="i" class="flex items-end gap-2 mb-2">
-            <div class="flex-1">
+          <div v-for="(it, i) in form.items" :key="i" class="flex flex-wrap sm:flex-nowrap items-end gap-2 mb-3 sm:mb-2">
+            <div class="w-full min-w-0 sm:w-auto sm:flex-1">
               <label class="block text-xs text-gray-500 mb-1">Bahan Baku</label>
               <SearchSelect
                 v-model="it.item_id"
@@ -132,7 +166,7 @@
               <input v-model.number="it.qty_dist" type="number" step="0.01" min="0"
                 class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
             </div>
-            <div class="w-28 text-xs text-gray-400 pb-2">
+            <div class="flex-1 sm:flex-none sm:w-28 text-xs text-gray-400 pb-2">
               <span v-if="it.qty_dist && it.dist_ratio">
                 = {{ (it.qty_dist * it.dist_ratio).toFixed(3) }} {{ it.base_unit }}
               </span>
@@ -143,7 +177,7 @@
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
-        <AppButton :loading="saving" @click="submitCreate">Buat Transfer</AppButton>
+        <AppButton :loading="saving" @click="submitCreate">{{ isRequestForm ? 'Kirim Permintaan' : 'Buat Transfer' }}</AppButton>
       </template>
     </AppModal>
 
@@ -161,15 +195,22 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 text-sm">
-          <div><span class="text-gray-500">Dari:</span> <strong>{{ detail.from_warehouse }}</strong></div>
-          <div><span class="text-gray-500">Ke:</span> <strong>{{ detail.to_warehouse }}</strong></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <div><span class="text-gray-500">Dari:</span> <strong>{{ detail.from_warehouse_name }}</strong></div>
+          <div><span class="text-gray-500">Ke:</span> <strong>{{ detail.to_warehouse_name }}</strong></div>
           <div v-if="detail.approved_by"><span class="text-gray-500">Disetujui:</span> {{ detail.approved_by }} · {{ detail.approved_at?.slice(0,10) }}</div>
           <div v-if="detail.sent_by"><span class="text-gray-500">Dikirim:</span> {{ detail.sent_by }} · {{ detail.sent_at?.slice(0,10) }}</div>
           <div v-if="detail.received_by"><span class="text-gray-500">Diterima:</span> {{ detail.received_by }} · {{ detail.received_at?.slice(0,10) }}</div>
         </div>
 
+        <!-- Role per outlet: tahap Gudang Induk tidak bertombol — jelaskan kenapa. -->
+        <div v-if="requestNotice" class="flex items-start gap-2 rounded-lg bg-blue-50 ring-1 ring-blue-100 px-3 py-2 text-xs text-blue-800">
+          <svg class="h-4 w-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>{{ requestNotice }}</span>
+        </div>
+
         <!-- Items table -->
+        <div class="overflow-x-auto">
         <table class="min-w-full text-sm border border-gray-100 rounded-lg overflow-hidden">
           <thead class="bg-gray-50 text-xs text-gray-500">
             <tr>
@@ -196,6 +237,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
         <p v-if="detail.notes" class="text-sm text-gray-500">{{ detail.notes }}</p>
 
@@ -205,8 +247,9 @@
           <PhotoCapture v-model="sendPhoto" label="Foto Barang Saat Dikirim"
             hint="Potret barangnya saat dimuat/berangkat dari gudang asal." />
         </div>
-        <div v-else-if="detail.photo_url" class="flex items-center gap-3">
-          <img :src="detail.photo_url" alt="Bukti kirim" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+        <!-- Alamat foto dari server disaring (T-75): hanya berkas /uploads/… yang ditampilkan. -->
+        <div v-else-if="safeUrl(detail.photo_url)" class="flex items-center gap-3">
+          <img :src="safeUrl(detail.photo_url)" alt="Bukti kirim" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
           <p class="text-xs text-gray-500">Foto saat dikirim dari {{ detail.from_warehouse_name }}.</p>
         </div>
 
@@ -214,8 +257,10 @@
         <div v-if="nextAction" class="flex justify-end">
           <AppButton :loading="saving" @click="doAction">{{ nextAction.label }}</AppButton>
         </div>
-        <div v-if="(detail.status === 'draft' || detail.status === 'approved') && canSend">
-          <button @click="doCancel" :disabled="saving" class="text-xs text-red-500 hover:text-red-700">Batalkan Transfer</button>
+        <div v-if="canCancelDetail">
+          <button @click="doCancel" :disabled="saving" class="text-xs text-red-500 hover:text-red-700">
+            {{ isOutletUser && isCentralRequest(detail) ? 'Batalkan Permintaan' : 'Batalkan Transfer' }}
+          </button>
         </div>
       </div>
       <div v-else class="py-8 text-center text-gray-400">Memuat...</div>
@@ -232,6 +277,7 @@ import { warehousesApi, stockItemsApi, stockTransfersApi } from '@/api/warehouse
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import PhotoCapture  from '@/components/PhotoCapture.vue'
+import { safeUrl } from '@/utils/safeUrl.js'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
 import AppTable      from '@/components/ui/AppTable.vue'
@@ -240,7 +286,7 @@ import AppInput      from '@/components/ui/AppInput.vue'
 import AppAlert      from '@/components/ui/AppAlert.vue'
 import AppPagination from '@/components/ui/AppPagination.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
-import { describeWarehouse, formatWarehouseOptionLabel, TRANSFER_STATUS_LABELS, transferStatusClass } from '@/utils/warehouse.js'
+import { describeWarehouse, formatWarehouseOptionLabel, TRANSFER_STATUS_LABELS, transferStatusClass, isCentralRequest, transferRowStatusLabel } from '@/utils/warehouse.js'
 
 const toast = useToastStore()
 const auth = useAuthStore()
@@ -249,6 +295,11 @@ const auth = useAuthStore()
 const canApprove = auth.hasPermission('stocktransfers.approve')
 const canSend    = auth.hasPermission('stocktransfers.update')
 const canReceive = auth.hasPermission('stocktransfers.receive')
+// Role per outlet boleh MEMINTA stok ke Gudang Induk (asal = Gudang Induk),
+// tetapi menyetujui, mengirim, dan menerima di Gudang Induk adalah tahap milik
+// role semua outlet — server menolaknya walau izinnya ada, jadi tombolnya
+// tidak ditampilkan.
+const isOutletUser = auth.scopeType === 'specific'
 const sendPhoto = ref('')
 const loading = ref(false)
 const saving = ref(false)
@@ -260,6 +311,9 @@ const totalPages = ref(1)
 const filterStatus = ref('')
 const filterWarehouse = ref('')
 const warehouseList = ref([])
+// Pilihan gudang form buat transfer: untuk role per outlet ditambah Gudang
+// Induk aktif (?include_central=1) — daftar filter tetap gudang outletnya.
+const formWarehouseList = ref([])
 const stockItemOptions = ref([])
 const stockItemMap = ref({})
 
@@ -273,7 +327,6 @@ const statusOptions = [
   { value: '', label: 'Semua Status' },
   ...STATUSES,
 ]
-const STATUS_LABELS = TRANSFER_STATUS_LABELS
 
 const NEXT_STATUS = { draft: 'approved', approved: 'sent', sent: 'received' }
 const NEXT_LABELS = { draft: 'Setujui Transfer', approved: 'Tandai Sudah Dikirim', sent: 'Konfirmasi Penerimaan' }
@@ -290,19 +343,42 @@ const COLUMNS = [
 const statusCls = transferStatusClass
 
 const NEXT_PERM = { approved: canApprove, sent: canSend, received: canReceive }
+// Tahap atas nama Gudang Induk (cermin centralTransferStageDenied di server).
+function centralStageBlocked(t, stage) {
+  if (!isOutletUser || !t) return false
+  if (stage === 'approved' || stage === 'sent') return isCentralRequest(t)
+  if (stage === 'received') return t.to_warehouse_type === 'central'
+  return false
+}
 const nextAction = computed(() => {
   if (!detail.value) return null
   const ns = NEXT_STATUS[detail.value.status]
-  if (!ns || !NEXT_PERM[ns]) return null
+  if (!ns || !NEXT_PERM[ns] || centralStageBlocked(detail.value, ns)) return null
   return { status: ns, label: NEXT_LABELS[detail.value.status] }
 })
-const isSending = computed(() => detail.value?.status === 'approved' && canSend)
-const isReceiving = computed(() => detail.value?.status === 'sent' && canReceive)
+const isSending = computed(() => detail.value?.status === 'approved' && canSend && !centralStageBlocked(detail.value, 'sent'))
+const isReceiving = computed(() => detail.value?.status === 'sent' && canReceive && !centralStageBlocked(detail.value, 'received'))
+// Batal: draft/disetujui. Permintaan ke Gudang Induk hanya bisa ditarik outlet
+// selagi draft; setelah disetujui pembatalan menjadi wewenang Gudang Induk.
+const canCancelDetail = computed(() => {
+  const t = detail.value
+  if (!t || !canSend || !['draft', 'approved'].includes(t.status)) return false
+  return !(isOutletUser && isCentralRequest(t) && t.status !== 'draft')
+})
+const requestNotice = computed(() => {
+  const t = detail.value
+  if (!t || !isOutletUser) return ''
+  if (isCentralRequest(t)) {
+    if (t.status === 'draft') return 'Menunggu Gudang Induk menyetujui permintaan ini. Gudang Induk akan menyetujui dan mengirim barangnya.'
+    if (t.status === 'approved') return 'Disetujui Gudang Induk — menunggu barang dikirim.'
+    if (t.status === 'sent') return 'Barang sudah dikirim Gudang Induk. Periksa jumlah yang tiba, lalu konfirmasi penerimaan.'
+  }
+  if (t.to_warehouse_type === 'central' && t.status === 'sent') return 'Penerimaan di Gudang Induk dicatat oleh Gudang Induk.'
+  return ''
+})
 
 const EMPTY_FORM = () => ({ from_warehouse_id: '', to_warehouse_id: '', notes: '', items: [] })
 const form = ref(EMPTY_FORM())
-
-const warehouseMap = computed(() => Object.fromEntries(warehouseList.value.map(w => [w.id, w])))
 
 const warehouseFilterOptions = computed(() =>
   [
@@ -311,20 +387,29 @@ const warehouseFilterOptions = computed(() =>
   ]
 )
 
+// Gagal memuat daftar form → pakai daftar biasa (toast sudah dari loadWarehouses).
+const formWarehouses = computed(() => formWarehouseList.value.length ? formWarehouseList.value : warehouseList.value)
+const formWarehouseMap = computed(() => Object.fromEntries(formWarehouses.value.map(w => [w.id, w])))
+
 const fromWarehouseOptions = computed(() =>
-  warehouseList.value
+  formWarehouses.value
     .filter(w => w.id !== form.value.to_warehouse_id)
     .map(w => ({ value: w.id, label: formatWarehouseOptionLabel(w) }))
 )
 
+// Role per outlet: tujuan hanya gudang outlet dalam cakupannya — Gudang Induk
+// → outlet lain dan antar Gudang Induk ditolak server.
 const toWarehouseOptions = computed(() =>
-  warehouseList.value
+  formWarehouses.value
     .filter(w => w.id !== form.value.from_warehouse_id)
+    .filter(w => !isOutletUser || w.type === 'outlet')
     .map(w => ({ value: w.id, label: formatWarehouseOptionLabel(w) }))
 )
 
-const selectedFromWarehouse = computed(() => warehouseMap.value[form.value.from_warehouse_id] || null)
-const selectedToWarehouse = computed(() => warehouseMap.value[form.value.to_warehouse_id] || null)
+const selectedFromWarehouse = computed(() => formWarehouseMap.value[form.value.from_warehouse_id] || null)
+const selectedToWarehouse = computed(() => formWarehouseMap.value[form.value.to_warehouse_id] || null)
+// Outlet memilih Gudang Induk sebagai asal = permintaan stok.
+const isRequestForm = computed(() => isOutletUser && selectedFromWarehouse.value?.type === 'central')
 
 let loadSeq = 0
 async function load() {
@@ -358,6 +443,15 @@ async function loadWarehouses() {
   }
 }
 
+async function loadFormWarehouses() {
+  try {
+    const data = await warehousesApi.list({ limit: 200, include_central: 1 })
+    formWarehouseList.value = data.data || []
+  } catch (e) {
+    formWarehouseList.value = []
+  }
+}
+
 async function loadStockItems() {
   try {
     const data = await stockItemsApi.list({ limit: 500, active_only: 'true' })
@@ -382,7 +476,7 @@ watch(() => form.value.to_warehouse_id, (nextValue) => {
     form.value.from_warehouse_id = ''
   }
 })
-onMounted(() => { load(); loadWarehouses(); loadStockItems() })
+onMounted(() => { load(); loadWarehouses(); loadFormWarehouses(); loadStockItems() })
 
 function addItem() {
   form.value.items.push({ item_id: '', qty_dist: 0, notes: '', dist_ratio: 1, base_unit: '', unit_label: '' })
@@ -401,6 +495,14 @@ function onItemSelect(it) {
 
 function openCreate() {
   form.value = EMPTY_FORM()
+  // Role per outlet: bentuk paling umum = minta dari Gudang Induk ke gudang
+  // outletnya sendiri — terisi otomatis bila pilihannya tunggal.
+  if (isOutletUser) {
+    const centrals = formWarehouses.value.filter(w => w.type === 'central')
+    const own = formWarehouses.value.filter(w => w.type === 'outlet')
+    if (centrals.length === 1) form.value.from_warehouse_id = centrals[0].id
+    if (own.length === 1) form.value.to_warehouse_id = own[0].id
+  }
   showCreate.value = true
 }
 
@@ -422,9 +524,10 @@ async function submitCreate() {
     return
   }
   saving.value = true
+  const isRequest = isRequestForm.value
   try {
     await stockTransfersApi.create(form.value)
-    toast.success('Transfer berhasil dibuat')
+    toast.success(isRequest ? 'Permintaan stok dikirim ke Gudang Induk' : 'Transfer berhasil dibuat')
     showCreate.value = false
     load()
   } catch (e) {

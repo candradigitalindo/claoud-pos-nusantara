@@ -408,9 +408,11 @@ func mrpAvailability(itemIDs []string, warehouseID, whType string, whOutletID sq
 	}
 	tRows.Close()
 
-	// On-order: PR yang sudah lolos pengajuan dan belum diterima, 60 hari
-	// terakhir. Nama sub item dicocokkan ke nama item stok (estimasi).
-	prCond := `pr.status NOT IN ('pending','rejected','cancelled') AND pr.received_at IS NULL
+	// On-order: PR yang sudah DISETUJUI dan belum diterima, 60 hari terakhir.
+	// Nama sub item dicocokkan ke nama item stok (estimasi). Daftar putih
+	// status berkomitmen: pengajuan yang baru diverifikasi belum tentu
+	// disetujui owner, jadi belum dihitung sebagai barang dalam pesanan (T-42).
+	prCond := prCommittedCond("pr") + ` AND pr.received_at IS NULL
 		AND pr.created_at >= NOW() - INTERVAL '60 days'`
 	args := []interface{}{}
 	if whType == "outlet" && whOutletID.Valid {
@@ -627,7 +629,7 @@ func MrpRunInScope(id string, outletIDs []string) bool {
 // CreateMrpPurchaseRequest membuat SATU draft PR (status awal alur pengadaan
 // existing) dari baris saran 'purchase' yang dipilih. Vendor sengaja dikosongkan
 // — diisi tim purchasing pada tahap "Isi Harga" seperti biasa.
-func CreateMrpPurchaseRequest(runID string, req models.MrpExecuteRequest, actor string) (*models.PurchaseRequest, error) {
+func CreateMrpPurchaseRequest(runID string, req models.MrpExecuteRequest, actor Actor) (*models.PurchaseRequest, error) {
 	run, err := GetMrpRun(runID)
 	if err != nil {
 		return nil, err
@@ -660,10 +662,13 @@ func CreateMrpPurchaseRequest(runID string, req models.MrpExecuteRequest, actor 
 	if req.Notes != "" {
 		notes += " " + req.Notes
 	}
+	// Kebutuhan bahan hasil MRP masuk Pengadaan Bahan Baku: diterima di
+	// Gudang Induk dan diatur izin procurement.rawmaterials.*.
 	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
-		OutletID:    outletID,
-		RequestType: "barang",
-		RequestedBy: actor,
+		OutletID:      outletID,
+		RequestType:   RequestTypeBahan,
+		RequestedBy:   actor.Name,
+		RequestedByID: actor.ID,
 		Items: []models.PurchaseRequestItem{{
 			Name:  "Kebutuhan Bahan (MRP) " + run.RunNumber,
 			Items: subs,

@@ -8,7 +8,16 @@ package models
 
 // ReceivingLine adalah satu sub-item pengajuan beserta usulan tujuannya.
 type ReceivingLine struct {
-	PRItemKey   string  `json:"pr_item_key"`
+	// PRItemKey = identitas baris DI DRAF INI, unik per draf — kirim balik apa
+	// adanya di receive-goods. Untuk baris milik dokumen yang dibuka nilainya
+	// sama dengan ItemKey; untuk baris pecahan yang dibuka lewat induknya
+	// diberi awalan id pecahan ("<id pecahan>:<kunci>"), supaya baris bernama
+	// kembar di induk dan pecahan tidak saling menimpa (T-29).
+	PRItemKey string `json:"pr_item_key"`
+	// ItemKey = kunci tersimpan baris itu di dokumen sumbernya. Aset, GRN,
+	// material projek, dan keputusan penerimaan ditautkan lewat pasangan
+	// (SourcePRID, ItemKey) — identitas baris yang stabil.
+	ItemKey string `json:"item_key"`
 	// SourcePRID = dokumen yang MEMEGANG item. Untuk pengajuan yang dipecah per
 	// vendor, ini id anaknya — bukan masternya yang tinggal cangkang.
 	SourcePRID  string  `json:"source_pr_id"`
@@ -42,6 +51,9 @@ type ReceivingDraft struct {
 	OutletID          string          `json:"outlet_id"`
 	OutletName        string          `json:"outlet_name"`
 	ProjectID         string          `json:"project_id,omitempty"`
+	// RequestType: jenis pengajuan. Bahan baku hanya boleh diterima ke stok
+	// gudang — layar menyembunyikan tujuan lain, server menolaknya.
+	RequestType       string          `json:"request_type"`
 	VendorName        string          `json:"vendor_name"`
 	InvoiceNumber     string          `json:"invoice_number"`
 	CanReceive        bool            `json:"can_receive"`
@@ -61,14 +73,24 @@ type ReceivingDraft struct {
 	TargetWarehouseType  string `json:"target_warehouse_type,omitempty"`
 	ReceivingWarehouseID string `json:"receiving_warehouse_id,omitempty"`
 	Lines             []ReceivingLine `json:"lines"`
+	// Pickups: pengambilan oleh petugas logistik yang masih dalam pengantaran
+	// (pengajuan ini beserta induk/pecahannya), terbaru dulu.
+	Pickups []PurchasePickup `json:"pickups"`
 }
 
 // ReceiveGoodsLine adalah keputusan petugas atas satu baris.
 type ReceiveGoodsLine struct {
-	PRItemKey   string `json:"pr_item_key"`
+	// PRItemKey = ReceivingLine.pr_item_key dari draf (identitas baris di draf).
+	PRItemKey string `json:"pr_item_key"`
+	// SourcePRID opsional: bila dikirim, baris dicocokkan lewat pasangan
+	// (source_pr_id, item_key) — PRItemKey boleh berisi item_key maupun
+	// pr_item_key draf.
+	SourcePRID  string `json:"source_pr_id,omitempty"`
 	Destination string `json:"destination"` // aset | material | stok | habis
 	Qty         int    `json:"qty"`
-	Reason      string `json:"reason"` // wajib untuk 'habis' bernilai besar
+	// Reason wajib untuk 'habis' (minimal 10 huruf, T-17): barang tidak boleh
+	// keluar dari catatan tanpa sebab tertulis.
+	Reason string `json:"reason"`
 
 	// Tujuan aset
 	AssetName        string  `json:"asset_name"`
@@ -80,7 +102,10 @@ type ReceiveGoodsLine struct {
 	Location         string  `json:"location"`
 	UsefulLifeMonths int     `json:"useful_life_months"`
 	ResidualValue    float64 `json:"residual_value"`
-	UnitPrice        float64 `json:"unit_price"`
+	// UnitPrice DIABAIKAN server (T-38): nilai aset/stok/material selalu
+	// harga final dokumen (atau HPS bila harga final belum ada). Field
+	// dipertahankan supaya klien lama tidak ditolak.
+	UnitPrice float64 `json:"unit_price"`
 
 	// Tujuan stok gudang
 	StockItemID string `json:"stock_item_id"`
@@ -96,6 +121,9 @@ type ReceiveGoodsRequest struct {
 	// tidak bisa dibedakan saat keduanya saling mengklaim.
 	PhotoURL string `json:"photo_url"`
 	Desk     string `json:"desk"` // perlengkapan | dapur — meja yang menerima
+	// PickupID: pengambilan oleh petugas logistik yang barangnya diterima di
+	// sini (kosong = diantar vendor). Pengambilan itu ditandai sudah diterima.
+	PickupID string `json:"pickup_id,omitempty"`
 	Lines    []ReceiveGoodsLine `json:"lines"`
 }
 
@@ -106,8 +134,14 @@ type ReceiveGoodsResult struct {
 	AssetsCreated     int      `json:"assets_created"`
 	AssetIDs          []string `json:"asset_ids"`
 	GRNNumber         string   `json:"grn_number,omitempty"`
+	// GRNNumbers: semua GRN yang terbit — satu per (gudang, dokumen sumber):
+	// baris pecahan yang diterima lewat induknya ditautkan ke pecahannya
+	// sendiri, supaya sisa per baris dihitung sama dari jalur mana pun (T-5).
+	GRNNumbers []string `json:"grn_numbers,omitempty"`
 	StockLinesQueued  int      `json:"stock_lines_queued"`
 	MaterialLines     int      `json:"material_lines"`
+	// ExpenseLines = baris yang dicatat sebagai habis pakai (tanpa aset/stok).
+	ExpenseLines int `json:"expense_lines"`
 	ReceiptStatus     string   `json:"receipt_status"`
 	// OutstandingLines = baris yang masih menunggu meja lain (mis. bagian aset
 	// sudah mencatat peralatan, gudang belum menerima barang dapurnya).

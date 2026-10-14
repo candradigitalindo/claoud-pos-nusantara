@@ -24,10 +24,17 @@ import (
 var dbReady bool
 
 func TestMain(m *testing.M) {
-	if err := database.Connect(config.Load()); err == nil {
-		if err := database.DB.Ping(); err == nil {
-			dbReady = true
-		}
+	cfg := config.Load()
+	// Tes menulis dan menghapus baris: hanya jalan di database uji yang
+	// namanya berakhiran _test, supaya salah konfigurasi (mis. dijalankan di
+	// network compose) tidak pernah menyentuh data nyata (T-85). Selain itu
+	// koneksi diarahkan ke alamat yang pasti gagal — database.DB tetap terisi
+	// sehingga tes tanpa requireDB mendapat galat, bukan panic.
+	if !strings.HasSuffix(cfg.DBName, "_test") {
+		cfg.DBHost, cfg.DBPort = "db-uji-dinonaktifkan.invalid", "1"
+	}
+	if err := database.Connect(cfg); err == nil {
+		dbReady = true
 	}
 	os.Exit(m.Run())
 }
@@ -36,9 +43,120 @@ func TestMain(m *testing.M) {
 func requireDB(t *testing.T) {
 	t.Helper()
 	if !dbReady {
-		t.Skip("butuh Postgres; set DB_HOST/DB_USER/DB_PASSWORD/DB_NAME untuk menjalankannya")
+		t.Skip("butuh Postgres uji; set DB_HOST/DB_USER/DB_PASSWORD dan DB_NAME berakhiran _test untuk menjalankannya")
 	}
 }
+
+// verifyAndApprove menjalankan alur persetujuan baru: pending → verify (tanpa
+// item ditolak, memakai version dari GET) → approve. Sejak ada langkah
+// verifikasi, approve langsung dari pending ditolak.
+func verifyAndApprove(t *testing.T, id string) {
+	t.Helper()
+	pr, err := GetPurchaseRequest(id)
+	if err != nil {
+		t.Fatalf("muat pengajuan: %v", err)
+	}
+	// Bahan baku lahir 'verified' (tanpa tahap verifikasi).
+	if pr.Status == "pending" {
+		if _, err := UpdatePurchaseStatus(id, models.UpdatePurchaseStatusInput{
+			Action: "verify", ActorName: "verifikator", Version: pr.Version,
+		}); err != nil {
+			t.Fatalf("verify: %v", err)
+		}
+	}
+	if _, err := UpdatePurchaseStatus(id, models.UpdatePurchaseStatusInput{Action: "approve", ActorName: "atasan"}); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if planned, ok := plannedFinalPrices[id]; ok {
+		delete(plannedFinalPrices, id)
+		purchasingFillsPrices(t, id, planned)
+	}
+}
+
+// Sejak T-39 harga final kiriman pengaju diabaikan server: hanya pembelian
+// yang mengisinya setelah pengajuan disetujui. Tes yang menyiapkan pengajuan
+// berharga membuatnya lewat createPricedPR — harga final yang dikirim diingat
+// di sini, lalu verifyAndApprove mengisinya lewat jalur pembelian
+// (UpdatePurchaseItems pada status approved) tepat setelah approve.
+var plannedFinalPrices = map[string][]models.PurchaseRequestItem{}
+
+// createPricedPR = CreatePurchaseRequest yang mengingat harga final rencana.
+func createPricedPR(in models.CreatePurchaseRequestInput) (*models.PurchaseRequest, error) {
+	planned := clonePurchaseItems(in.Items)
+	pr, err := CreatePurchaseRequest(in)
+	if err == nil {
+		plannedFinalPrices[pr.ID] = planned
+	}
+	return pr, err
+}
+
+// purchasingFillsPrices: langkah pembelian — harga final rencana dipasang ke
+// isi tersimpan (posisi grup & baris sama) pada pengajuan yang sudah disetujui.
+func purchasingFillsPrices(t *testing.T, id string, planned []models.PurchaseRequestItem) {
+	t.Helper()
+	cur, err := GetPurchaseRequest(id)
+	if err != nil {
+		t.Fatalf("muat pengajuan untuk isi harga: %v", err)
+	}
+	priced := false
+	items := clonePurchaseItems(cur.Items)
+	for g := range items {
+		for i := range items[g].Items {
+			if g < len(planned) && i < len(planned[g].Items) && planned[g].Items[i].FinalPrice > 0 {
+				items[g].Items[i].FinalPrice = planned[g].Items[i].FinalPrice
+				priced = true
+			}
+		}
+	}
+	if !priced {
+		return
+	}
+	in := models.UpdatePurchaseItemsInput{Items: items}
+	if cur.VendorID == nil || strings.TrimSpace(*cur.VendorID) == "" {
+		// Pembelian memilih vendor terdaftar saat mengisi harga (form wajib
+		// memilih dari daftar); tanpa itu pengajuan tidak bisa ditagihkan.
+		vid := testVendorID(t)
+		in.VendorID = &vid
+	}
+	if _, err := UpdatePurchaseItems(id, in); err != nil {
+		t.Fatalf("pembelian mengisi harga final: %v", err)
+	}
+}
+
+// Sejak 14 Okt 2026 pembayaran wajib ke vendor terdaftar — rekening tujuannya
+// dipotret dari data vendor saat dibayar. testVendorID = vendor berekening
+// bersama untuk tes yang sampai ke penagihan/pembayaran; testVendorNamed =
+// vendor terdaftar bernama tertentu (pecah vendor per nama). Vendor uji
+// dibiarkan di DB uji: menghapusnya bertabrakan dengan pengajuan yang
+// dibersihkan belakangan.
+var (
+	sharedTestVendor string
+	namedTestVendors = map[string]string{}
+)
+
+func testVendorID(t *testing.T) string {
+	t.Helper()
+	if sharedTestVendor == "" {
+		sharedTestVendor = testVendorNamed(t, "Vendor Uji Bersama")
+	}
+	return sharedTestVendor
+}
+
+func testVendorNamed(t *testing.T, name string) string {
+	t.Helper()
+	if id, ok := namedTestVendors[name]; ok {
+		return id
+	}
+	v, err := CreateVendor(models.CreateVendorRequest{
+		Name: name, BankName: "BCA", AccountNumber: "77" + strings.ToUpper(NewULID()[18:]), AccountHolder: name,
+	})
+	if err != nil {
+		t.Fatalf("vendor uji %s: %v", name, err)
+	}
+	namedTestVendors[name] = v.ID
+	return v.ID
+}
+
 
 func execScratch(q string, args ...interface{}) { database.DB.Exec(q, args...) }
 
@@ -46,7 +164,7 @@ func execScratch(q string, args ...interface{}) { database.DB.Exec(q, args...) }
 // bahwa item sisa tetap di master dan tidak ada nilai yang tergandakan.
 func TestSplitMovesItemsOutOfMaster(t *testing.T) {
 	requireDB(t)
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester",
 		Items: []models.PurchaseRequestItem{{
 			Name: "Sembako",
@@ -62,8 +180,16 @@ func TestSplitMovesItemsOutOfMaster(t *testing.T) {
 	}
 	defer database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1 OR parent_id = $1", pr.ID)
 
-	if pr.TotalFinal != 400000 {
-		t.Fatalf("total awal = %v, mau 400000", pr.TotalFinal)
+	// Harga final pengaju diabaikan (T-39): nilai pengajuan = HPS.
+	if pr.TotalFinal != 0 || pr.TotalAmount != 400000 {
+		t.Fatalf("total awal: final=%v amount=%v, mau 0 / 400000", pr.TotalFinal, pr.TotalAmount)
+	}
+	// Pecah vendor baru boleh setelah diverifikasi & disetujui; harga final
+	// diisi pembelian sesudahnya.
+	verifyAndApprove(t, pr.ID)
+	priced, err := GetPurchaseRequest(pr.ID)
+	if err != nil || priced.TotalFinal != 400000 {
+		t.Fatalf("total setelah harga final diisi pembelian: %v (err %v), mau 400000", priced.TotalFinal, err)
 	}
 
 	// Split SATU baris "Beras" saja (ada dua baris bernama sama).
@@ -108,7 +234,7 @@ func TestSplitMovesItemsOutOfMaster(t *testing.T) {
 // Master yang seluruh itemnya sudah dipecah tidak boleh bisa dibayar.
 func TestFullySplitMasterCannotBePaid(t *testing.T) {
 	requireDB(t)
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester",
 		Items: []models.PurchaseRequestItem{{
 			Name:  "ATK",
@@ -120,10 +246,9 @@ func TestFullySplitMasterCannotBePaid(t *testing.T) {
 	}
 	defer database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1 OR parent_id = $1", pr.ID)
 
-	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "approve", ActorName: "atasan"}); err != nil {
-		t.Fatalf("approve: %v", err)
-	}
+	verifyAndApprove(t, pr.ID)
 	if _, err := SplitPurchaseRequest(pr.ID, models.SplitPurchaseRequestInput{
+		VendorID:   testVendorNamed(t, "CV Lain"),
 		VendorName: "CV Lain",
 		Items: []models.PurchaseRequestItem{{
 			Name:  "ATK",
@@ -160,6 +285,7 @@ func TestDeletingChildReturnsItemsToParent(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	defer database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1 OR parent_id = $1", pr.ID)
+	verifyAndApprove(t, pr.ID)
 
 	master, err := SplitPurchaseRequest(pr.ID, models.SplitPurchaseRequestInput{
 		VendorName: "CV Lain",
@@ -232,6 +358,8 @@ func TestGuards(t *testing.T) {
 
 	// Sebaliknya, vendor yang memang dikirim tetap harus tersimpan — jangan
 	// sampai perbaikan di atas malah membuat form isi harga tidak berfungsi.
+	// Saat pending, nomor invoice dan harga final kiriman pengaju diabaikan
+	// (T-39) — keduanya urusan pembelian setelah disetujui.
 	newVendor := "CV Ganti"
 	if _, err := UpdatePurchaseItems(pr.ID, models.UpdatePurchaseItemsInput{
 		Items: []models.PurchaseRequestItem{{
@@ -244,12 +372,30 @@ func TestGuards(t *testing.T) {
 		t.Fatalf("update vendor: %v", err)
 	}
 	changed, _ := GetPurchaseRequest(pr.ID)
-	if changed.VendorName != newVendor || changed.InvoiceNumber != "INV-001" {
-		t.Errorf("vendor=%q invoice=%q, mau %q / INV-001", changed.VendorName, changed.InvoiceNumber, newVendor)
+	if changed.VendorName != newVendor || changed.InvoiceNumber != "" || changed.TotalFinal != 0 {
+		t.Errorf("pending: vendor=%q invoice=%q total_final=%v, mau %q / kosong / 0", changed.VendorName, changed.InvoiceNumber, changed.TotalFinal, newVendor)
+	}
+
+	// Setelah disetujui, form isi harga pembelian menyimpan harga final,
+	// vendor (dipilih dari daftar vendor terdaftar), dan invoice.
+	verifyAndApprove(t, pr.ID)
+	if _, err := UpdatePurchaseItems(pr.ID, models.UpdatePurchaseItemsInput{
+		Items: []models.PurchaseRequestItem{{
+			Name:  "Servis AC",
+			Items: []models.PurchaseSubItem{{Name: "Cuci AC", Qty: 3, HpsPrice: 100000, FinalPrice: 100000}},
+		}},
+		VendorID:      strPtr(testVendorNamed(t, newVendor)),
+		VendorName:    &newVendor,
+		InvoiceNumber: strPtr("INV-001"),
+	}); err != nil {
+		t.Fatalf("isi harga oleh pembelian: %v", err)
+	}
+	priced, _ := GetPurchaseRequest(pr.ID)
+	if priced.VendorName != newVendor || priced.InvoiceNumber != "INV-001" || priced.TotalFinal != 300000 {
+		t.Errorf("approved: vendor=%q invoice=%q total_final=%v, mau %q / INV-001 / 300000", priced.VendorName, priced.InvoiceNumber, priced.TotalFinal, newVendor)
 	}
 
 	// Bayar sebagian, lalu coba hapus sebagai admin.
-	UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "approve", ActorName: "atasan"})
 	UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "request_payment", ActorName: "purchasing"})
 	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{
 		Action: "pay", ActorName: "keuangan", PaymentAmount: 100000,
@@ -303,7 +449,7 @@ func TestProcurementQueriesRun(t *testing.T) {
 
 	// Pencarian harus menemukan lewat nama SUB-item, bukan hanya nama grup.
 	for _, q := range []string{"Tepung Cakra", "Bahan Baku", pr.RequestNumber} {
-		res, err := ListPurchaseRequests("", "", "", "", "", "all", true, q, nil, nil, 1, 20)
+		res, err := ListPurchaseRequests("", "", "", "", "", "all", true, q, nil, nil, nil, 1, 20)
 		if err != nil {
 			t.Fatalf("list search %q: %v", q, err)
 		}
@@ -328,7 +474,7 @@ func TestDashboardDoesNotDoubleCountSplit(t *testing.T) {
 		t.Fatalf("dashboard awal: %v", err)
 	}
 
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester",
 		Items: []models.PurchaseRequestItem{{
 			Name:  "Elektronik",
@@ -339,6 +485,7 @@ func TestDashboardDoesNotDoubleCountSplit(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	t.Cleanup(func() { execScratch("DELETE FROM purchase_requests WHERE id = $1 OR parent_id = $1", pr.ID) })
+	verifyAndApprove(t, pr.ID)
 
 	if _, err := SplitPurchaseRequest(pr.ID, models.SplitPurchaseRequestInput{
 		VendorName: "CV Lain",
@@ -371,7 +518,7 @@ func TestDashboardDoesNotDoubleCountSplit(t *testing.T) {
 // yatim: master disembunyikan total, jadi nilainya tidak pernah bisa ditagih.
 func TestPartiallySplitMasterRemainsPayable(t *testing.T) {
 	requireDB(t)
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester",
 		Items: []models.PurchaseRequestItem{{
 			Name: "Gudang",
@@ -386,7 +533,7 @@ func TestPartiallySplitMasterRemainsPayable(t *testing.T) {
 	}
 	t.Cleanup(func() { execScratch("DELETE FROM purchase_requests WHERE id = $1 OR parent_id = $1", pr.ID) })
 
-	UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "approve", ActorName: "atasan"})
+	verifyAndApprove(t, pr.ID)
 	if _, err := SplitPurchaseRequest(pr.ID, models.SplitPurchaseRequestInput{
 		VendorName: "CV Palet",
 		Items: []models.PurchaseRequestItem{{
@@ -402,7 +549,7 @@ func TestPartiallySplitMasterRemainsPayable(t *testing.T) {
 	}
 
 	// Halaman Pembayaran (exclude_masters) harus tetap memuat master ini.
-	list, err := ListPurchaseRequests("", "", "", "", "", "all", true, "", nil, nil, 1, 200)
+	list, err := ListPurchaseRequests("", "", "", "", "", "all", true, "", nil, nil, nil, 1, 200)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -448,7 +595,7 @@ const testOddItem = "Zzz-Uji-Barang-Perlengkapan-9f3a"
 
 func newReceivableGoodsPR(t *testing.T, price float64) *models.PurchaseRequest {
 	t.Helper()
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester", VendorName: "CV Uji",
 		Items: []models.PurchaseRequestItem{{
 			Name:  "Uji Penerimaan",
@@ -458,9 +605,7 @@ func newReceivableGoodsPR(t *testing.T, price float64) *models.PurchaseRequest {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "approve", ActorName: "atasan"}); err != nil {
-		t.Fatalf("approve: %v", err)
-	}
+	verifyAndApprove(t, pr.ID)
 	return pr
 }
 
@@ -484,8 +629,8 @@ func TestReceivedRequestIsLocked(t *testing.T) {
 	}
 	res, err := ReceiveGoods(pr.ID, models.ReceiveGoodsRequest{
 		PhotoURL: "/uploads/uji.jpg",
-		Lines:    []models.ReceiveGoodsLine{{PRItemKey: draft.Lines[0].PRItemKey, Destination: "habis", Qty: 2, Reason: "uji"}},
-	}, "petugas", false, nil)
+		Lines:    []models.ReceiveGoodsLine{{PRItemKey: draft.Lines[0].PRItemKey, Destination: "habis", Qty: 2, Reason: "langsung dipakai uji"}},
+	}, Actor{Name: "petugas"}, ReceiveAccess{Submit: true}, nil)
 	if err != nil {
 		t.Fatalf("receive: %v", err)
 	}
@@ -500,28 +645,36 @@ func TestReceivedRequestIsLocked(t *testing.T) {
 	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "cancel", ActorName: "pengaju"}); err == nil {
 		t.Error("pengajuan yang barangnya sudah diterima bisa dibatalkan")
 	}
-	if _, err := UpdatePurchaseItems(pr.ID, models.UpdatePurchaseItemsInput{Items: pr.Items}); err == nil {
-		t.Error("item pengajuan yang barangnya sudah diterima bisa diubah")
+	// Struktur (qty) tetap terkunci; harga saja yang boleh diisi (T-13 —
+	// diuji tersendiri di TestTempoPriceAfterReceiptThenPay).
+	changed := clonePurchaseItems(got.Items)
+	changed[0].Items[0].Qty = 5
+	if _, err := UpdatePurchaseItems(pr.ID, models.UpdatePurchaseItemsInput{Items: changed}); err == nil {
+		t.Error("qty pengajuan yang barangnya sudah diterima bisa diubah")
 	}
 	if err := DeletePurchaseRequest(pr.ID, true); err == nil {
 		t.Error("pengajuan yang barangnya sudah diterima bisa dihapus admin")
 	}
 }
 
-// Baris stok yang ditunda (petugas tanpa hak gudang) TIDAK dihitung selesai:
-// dokumen tetap terbuka, dan barisnya berpindah ke antrean Gudang Induk
-// meski namanya tidak ada di katalog stok.
+// Baris dapur yang ditunda (pengaju tanpa hak gudang) TIDAK dihitung selesai:
+// dokumen tetap terbuka, dan barisnya menunggu di antrean Gudang Induk.
+// Baris peralatan tidak boleh ditunda sebagai stok sama sekali (T-80) — lihat
+// TestReceiveLineAuthorityAndDestination.
 func TestQueuedStockLineStaysOpen(t *testing.T) {
 	requireDB(t)
-	pr := newReceivableGoodsPR(t, 50000)
-	defer cleanupReceivablePR(pr.ID)
+	name := "Minyak Uji Tunda " + recvSuffix()
+	recvStockItem(t, name)
+	pr := recvApprovedPR(t, RequestTypeBarang, []models.PurchaseRequestItem{{Name: "Dapur", Items: []models.PurchaseSubItem{
+		{Name: name, Qty: 2, Unit: "liter", HpsPrice: 50000, FinalPrice: 50000},
+	}}})
 
 	draft, _ := BuildReceivingDraft(pr.ID, nil)
 	key := draft.Lines[0].PRItemKey
 	res, err := ReceiveGoods(pr.ID, models.ReceiveGoodsRequest{
 		PhotoURL: "/uploads/uji.jpg",
 		Lines:    []models.ReceiveGoodsLine{{PRItemKey: key, Destination: "stok", Qty: 2}},
-	}, "petugas-aset", false, nil)
+	}, Actor{Name: "pengaju"}, ReceiveAccess{Submit: true}, nil)
 	if err != nil {
 		t.Fatalf("receive: %v", err)
 	}
@@ -530,7 +683,7 @@ func TestQueuedStockLineStaysOpen(t *testing.T) {
 	}
 
 	inQueue := func(kind string) bool {
-		rows, err := ListReceivingQueue(kind, nil)
+		rows, err := ListReceivingQueue(kind, nil, nil)
 		if err != nil {
 			t.Fatalf("queue %s: %v", kind, err)
 		}

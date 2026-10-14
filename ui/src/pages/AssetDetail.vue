@@ -75,8 +75,9 @@
           </div>
         </dl>
         <div v-if="asset.notes" class="mt-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-700 break-words">{{ asset.notes }}</div>
-        <div v-if="asset.photo_url" class="mt-3">
-          <img :src="asset.photo_url" alt="Foto aset" class="max-h-56 rounded-lg border border-gray-200" />
+        <!-- Alamat foto dari server disaring (T-75): hanya berkas /uploads/… yang ditampilkan. -->
+        <div v-if="safeUrl(asset.photo_url)" class="mt-3">
+          <img :src="safeUrl(asset.photo_url)" alt="Foto aset" class="max-h-56 rounded-lg border border-gray-200" />
         </div>
       </AppCard>
 
@@ -219,6 +220,7 @@ import {
   CONDITIONS, MTYPES, MOVEMENT_TYPES, TRACKING_MODES,
   condCls, condLabel, statusCls, statusLabel, printAssetLabels, woStatusCls, woStatusLabel,
 } from '@/utils/assets.js'
+import { safeUrl } from '@/utils/safeUrl.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'

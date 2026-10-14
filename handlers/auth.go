@@ -4,6 +4,7 @@ import (
 	"cloud-pos/config"
 	"cloud-pos/models"
 	"cloud-pos/services"
+	"errors"
 	"math"
 	"strings"
 
@@ -31,6 +32,13 @@ func AdminLogin(cfg *config.Config) fiber.Handler {
 		result, err := services.AdminLogin(req, cfg.JWTSecret)
 		if err != nil {
 			services.RecordLogin(req.Username, "", "failed", ip, ua)
+			// Galat DB saat membaca akun/izin/scope: login ditolak (T-56) dengan
+			// 503 & pesan umum — detail galat hanya di log server.
+			if errors.Is(err, services.ErrAuthUnavailable) {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(models.APIResponse{
+					Success: false, Error: "Login belum dapat diproses, coba lagi sebentar lagi",
+				})
+			}
 			return c.Status(fiber.StatusUnauthorized).JSON(models.APIResponse{
 				Success: false, Error: err.Error(),
 			})
@@ -453,7 +461,18 @@ func GetMyPermissions(c *fiber.Ctx) error {
 		})
 	}
 
-	scopeType, scopeOutletIDs := services.GetRoleScopeOutletIDs(role)
+	// Scope = hasil validasi sesi di middleware (dibaca dari DB, gagal-
+	// tertutup) — tidak dihitung ulang, agar yang ditampilkan selalu sama
+	// dengan yang ditegakkan. Selain "all" berarti specific.
+	scopeType, _ := c.Locals("admin_scope").(string)
+	var scopeOutletIDs []string
+	if scopeType != "all" {
+		scopeType = "specific"
+		scopeOutletIDs, _ = c.Locals("admin_outlet_ids").([]string)
+		if scopeOutletIDs == nil {
+			scopeOutletIDs = []string{}
+		}
+	}
 
 	return c.JSON(models.APIResponse{
 		Success: true,

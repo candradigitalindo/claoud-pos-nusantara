@@ -3,7 +3,7 @@
     <label class="lbl">{{ label }} <span v-if="required" class="text-red-500">*</span></label>
 
     <div v-if="modelValue" class="flex items-start gap-3">
-      <img :src="modelValue" alt="Bukti foto" class="h-24 w-24 rounded-lg border border-gray-200 object-cover" />
+      <img v-if="previewUrl" :src="previewUrl" alt="Bukti foto" class="h-24 w-24 rounded-lg border border-gray-200 object-cover" />
       <div class="min-w-0">
         <p class="text-xs text-emerald-700">Foto terunggah.</p>
         <p class="mt-0.5 text-[11px] text-gray-500">Salinannya dikirim ke email cadangan secara otomatis.</p>
@@ -27,9 +27,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { apiClient } from '@/api/client.js'
 import { useToastStore } from '@/stores/toast.js'
+import { safeUrl } from '@/utils/safeUrl.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -41,6 +42,8 @@ const emit = defineEmits(['update:modelValue'])
 
 const toast = useToastStore()
 const uploading = ref(false)
+// Pratinjau hanya untuk alamat unggahan yang sah (T-75).
+const previewUrl = computed(() => safeUrl(props.modelValue))
 const input = ref(null)
 
 async function onPick(e) {
@@ -56,8 +59,10 @@ async function onPick(e) {
     const fd = new FormData()
     fd.append('file', file)
     const res = await apiClient.post('/admin/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-    const url = res?.url || res?.data?.url || res?.data
-    if (!url) throw new Error('Server tidak mengembalikan alamat berkas')
+    // apiClient membuka amplop {success,data} → { url, filename }. Hanya path
+    // unggahan /uploads/… yang dipakai; server juga menolak selain itu.
+    const url = safeUrl(res?.url ?? res?.data?.url)
+    if (!url) throw new Error('Server tidak mengembalikan alamat berkas yang sah')
     emit('update:modelValue', url)
   } catch (err) {
     toast.error(err?.message || 'Gagal mengunggah foto')

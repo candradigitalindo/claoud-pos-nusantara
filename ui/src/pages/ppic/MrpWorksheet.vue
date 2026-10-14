@@ -248,7 +248,7 @@ function toggleAll(on) {
 }
 
 async function createPR() {
-  if (!confirm(`Buat 1 draft PR berisi ${selPurchase.value.length} item? PR masuk alur persetujuan Pengadaan → Barang (vendor & harga diisi purchasing).`)) return
+  if (!confirm(`Buat 1 draft PR berisi ${selPurchase.value.length} item? PR masuk Pengadaan → Bahan Baku dan langsung menunggu persetujuan Manager Logistik (vendor & harga diisi pembelian).`)) return
   executing.value = true
   try {
     const pr = await ppicApi.mrpCreatePR(run.value.id, selPurchase.value)

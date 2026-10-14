@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+
 	"cloud-pos/models"
 	"cloud-pos/services"
 
@@ -38,11 +40,44 @@ func GetStockItem(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: item})
 }
 
+// ── Katalog stok global (T-20) ──
+//
+// Definisi item katalog (kode, nama, satuan, kategori, aktif/nonaktif) berlaku
+// untuk SEMUA gudang dan menentukan jenis belanja serta meja penerimaan
+// pengadaan. Katalog itu milik Gudang Induk: hanya pengguna yang berhak atas
+// Gudang Induk — role bercakupan semua outlet, karena Gudang Induk tidak
+// terikat outlet mana pun — yang boleh membuat, mengubah, menonaktifkan, atau
+// menghapusnya. Role per outlet hanya boleh mengubah kolom PER GUDANG (stok
+// minimum, saldo) untuk gudang outletnya sendiri. Dulu cek cakupan hanya
+// berjalan bila warehouse_id diisi, dan toggle tidak dicek sama sekali.
+
+const catalogDeniedMsg = "Katalog stok global hanya dikelola Gudang Induk (role dengan cakupan semua outlet). Dari outlet, Anda hanya bisa mengubah stok minimum dan saldo gudang outlet Anda."
+
+// catalogManager: pemanggil berhak atas definisi katalog global.
+func catalogManager(c *fiber.Ctx) bool { return getOutletScope(c) == nil }
+
+// sentJSONKeys: kunci JSON tingkat atas yang benar-benar dikirim (nil bila
+// badan bukan objek JSON — perlakuan lama: semua dianggap dikirim).
+func sentJSONKeys(body []byte) map[string]bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil
+	}
+	keys := make(map[string]bool, len(raw))
+	for k := range raw {
+		keys[k] = true
+	}
+	return keys
+}
+
 // CreateStockItem menangani penambahan item stok baru ke dalam sistem.
 func CreateStockItem(c *fiber.Ctx) error {
 	var req models.StockItemRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
+	}
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: catalogDeniedMsg})
 	}
 	// Konteks per-gudang (min-stock / stok awal) hanya untuk gudang dalam scope user.
 	if req.WarehouseID != "" && !services.WarehouseMutableInScope(req.WarehouseID, getOutletScope(c)) {
@@ -62,8 +97,17 @@ func UpdateStockItem(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
 	}
-	// Konteks per-gudang (min-stock / set_stock) hanya untuk gudang dalam scope user.
-	if req.WarehouseID != "" && !services.WarehouseMutableInScope(req.WarehouseID, getOutletScope(c)) {
+	req.Present = sentJSONKeys(c.Body())
+	scope := getOutletScope(c)
+	if !catalogManager(c) {
+		// Role per outlet: hanya kolom per gudang untuk gudang OUTLET dalam
+		// cakupannya — service tidak menyentuh katalog dari konteks outlet.
+		// Tanpa gudang (konteks katalog) atau dengan Gudang Induk → ditolak.
+		if req.WarehouseID == "" || !services.WarehouseInOutletScope(req.WarehouseID, scope) {
+			return c.Status(403).JSON(models.APIResponse{Error: catalogDeniedMsg})
+		}
+	} else if req.WarehouseID != "" && !services.WarehouseMutableInScope(req.WarehouseID, scope) {
+		// Konteks per-gudang (min-stock / set_stock) hanya untuk gudang dalam scope user.
 		return c.Status(403).JSON(models.APIResponse{Error: "Akses gudang tidak diizinkan"})
 	}
 	actor, _ := c.Locals("admin_username").(string)
@@ -75,8 +119,14 @@ func UpdateStockItem(c *fiber.Ctx) error {
 }
 
 // ToggleStockItemActive mengubah status aktif/nonaktif dari sebuah item stok.
+// Menonaktifkan item katalog mengubah jenis belanja pengajuan baru, jadi
+// tunduk pada aturan katalog global.
 func ToggleStockItemActive(c *fiber.Ctx) error {
-	if err := services.ToggleStockItemActive(c.Params("id")); err != nil {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: catalogDeniedMsg})
+	}
+	actor, _ := c.Locals("admin_username").(string)
+	if err := services.ToggleStockItemActive(c.Params("id"), actor); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
 	return c.JSON(models.APIResponse{Success: true, Message: "status diperbarui"})
@@ -84,6 +134,9 @@ func ToggleStockItemActive(c *fiber.Ctx) error {
 
 // DeleteStockItem menghapus data item stok dari sistem.
 func DeleteStockItem(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: catalogDeniedMsg})
+	}
 	if err := services.DeleteStockItem(c.Params("id")); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -100,7 +153,14 @@ func ListStockItemCategories(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: cats})
 }
 
+// Kategori item stok adalah bagian katalog global (dipakai semua gudang),
+// jadi tunduk pada aturan yang sama dengan item katalog: hanya role bercakupan
+// semua outlet yang boleh membuat, mengubah, atau menghapusnya.
+
 func CreateStockItemCategory(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: catalogDeniedMsg})
+	}
 	var req models.StockItemCategoryRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
@@ -113,6 +173,9 @@ func CreateStockItemCategory(c *fiber.Ctx) error {
 }
 
 func UpdateStockItemCategory(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: catalogDeniedMsg})
+	}
 	var req models.StockItemCategoryRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
@@ -125,6 +188,9 @@ func UpdateStockItemCategory(c *fiber.Ctx) error {
 }
 
 func DeleteStockItemCategory(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: catalogDeniedMsg})
+	}
 	if err := services.DeleteStockItemCategory(c.Params("id")); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -134,10 +200,14 @@ func DeleteStockItemCategory(c *fiber.Ctx) error {
 // ── Warehouses ────────────────────────────────────────────────
 
 // ListWarehouses mengambil daftar semua gudang yang terdaftar.
+// ?include_central=1 (opt-in, hanya form Transfer Stok): role per outlet ikut
+// melihat Gudang Induk aktif supaya bisa memilihnya sebagai gudang asal —
+// meminta stok ke Gudang Induk. Tanpa parameter, daftar tetap gudang outletnya.
 func ListWarehouses(c *fiber.Ctx) error {
 	page, limit := getPagination(c)
 	wtype := c.Query("type")
-	whs, total, err := services.ListWarehouses(wtype, getOutletScope(c), page, limit)
+	includeCentral := c.Query("include_central") == "1" || c.Query("include_central") == "true"
+	whs, total, err := services.ListWarehousesScoped(wtype, getOutletScope(c), includeCentral, page, limit)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -267,6 +337,41 @@ func CreateAdjustment(c *fiber.Ctx) error {
 
 // ── Stock Transfers ───────────────────────────────────────────
 
+// ── Permintaan outlet ke Gudang Induk ──
+//
+// WarehouseMutableInScope menganggap Gudang Induk (tanpa outlet) dalam cakupan
+// siapa pun — itulah yang membuat outlet bisa MEMINTA stok: membuat transfer
+// Gudang Induk → gudang outletnya. Tetapi tahap yang dijalankan atas nama
+// Gudang Induk (menyetujui dan mengirim permintaan itu, membatalkannya setelah
+// disetujui, menerima barang di Gudang Induk) milik role bercakupan semua
+// outlet — Gudang Induk tidak terikat outlet mana pun, sama seperti katalog
+// global (T-20). Tanpa aturan ini role outlet yang kebetulan memegang
+// stocktransfers.approve/update bisa menyetujui dan mengirim permintaannya
+// sendiri. Penerimaan di gudang outlet tetap oleh outlet.
+
+// centralTransferStageDenied: pesan penolakan bila pemanggil ber-scope outlet
+// menjalankan tahap atas nama Gudang Induk; "" = boleh.
+func centralTransferStageDenied(c *fiber.Ctx, t *models.StockTransfer, status string) string {
+	if getOutletScope(c) == nil {
+		return ""
+	}
+	switch status {
+	case "approved", "sent":
+		if t.FromWarehouseType == "central" {
+			return "Permintaan ke Gudang Induk disetujui dan dikirim oleh Gudang Induk (role dengan cakupan semua outlet). Outlet Anda mengonfirmasi penerimaan saat barang tiba."
+		}
+	case "cancelled":
+		if t.FromWarehouseType == "central" && t.Status != "draft" {
+			return "Permintaan yang sudah disetujui Gudang Induk hanya bisa dibatalkan oleh Gudang Induk."
+		}
+	case "received":
+		if t.ToWarehouseType == "central" {
+			return "Penerimaan di Gudang Induk dicatat oleh Gudang Induk (role dengan cakupan semua outlet)."
+		}
+	}
+	return ""
+}
+
 // ListStockTransfers mengambil daftar pengiriman stok antar gudang.
 func ListStockTransfers(c *fiber.Ctx) error {
 	page, limit := getPagination(c)
@@ -307,6 +412,13 @@ func CreateStockTransfer(c *fiber.Ctx) error {
 	scope := getOutletScope(c)
 	if !services.WarehouseMutableInScope(req.FromWarehouseID, scope) || !services.WarehouseMutableInScope(req.ToWarehouseID, scope) {
 		return c.Status(403).JSON(models.APIResponse{Error: "Akses gudang tidak diizinkan"})
+	}
+	// Role per outlet: minimal satu sisi gudang OUTLET dalam cakupannya.
+	// Meminta dari Gudang Induk (Gudang Induk → gudang outletnya) boleh;
+	// Gudang Induk → outlet lain sudah tertolak di atas, dan Gudang Induk ↔
+	// Gudang Induk adalah urusan Gudang Induk sendiri.
+	if scope != nil && !services.WarehouseInOutletScope(req.FromWarehouseID, scope) && !services.WarehouseInOutletScope(req.ToWarehouseID, scope) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Akses gudang tidak diizinkan: salah satu gudang harus gudang outlet Anda"})
 	}
 	actor, _ := c.Locals("admin_username").(string)
 	t, err := services.CreateStockTransfer(req, actor)
@@ -362,8 +474,17 @@ func UpdateTransferStatus(c *fiber.Ctx) error {
 			return c.Status(403).JSON(models.APIResponse{Error: "hanya gudang asal yang bisa melakukan ini"})
 		}
 	}
+	if msg := centralTransferStageDenied(c, t, body.Status); msg != "" {
+		return c.Status(403).JSON(models.APIResponse{Error: msg})
+	}
+	// Outlet membatalkan permintaannya ke Gudang Induk hanya selagi draft;
+	// syarat itu diperiksa ulang di bawah kunci baris oleh service.
+	fromStatus := ""
+	if scope != nil && body.Status == "cancelled" && t.FromWarehouseType == "central" {
+		fromStatus = "draft"
+	}
 	actor, _ := c.Locals("admin_username").(string)
-	t, err = services.UpdateTransferStatusWithPhoto(c.Params("id"), body.Status, body.PhotoURL, actor)
+	t, err = services.UpdateTransferStatusFrom(c.Params("id"), body.Status, body.PhotoURL, actor, fromStatus)
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -389,8 +510,12 @@ func UpdateReceivedQty(c *fiber.Ctx) error {
 	if !roleHasPermission(c, "stocktransfers.receive") {
 		return c.Status(403).JSON(models.APIResponse{Error: "Anda tidak punya izin menerima transfer (stocktransfers.receive)"})
 	}
-	if t, err := services.GetStockTransfer(transferID); err != nil || !services.WarehouseMutableInScope(t.ToWarehouseID, scope) {
+	t, err := services.GetStockTransfer(transferID)
+	if err != nil || !services.WarehouseMutableInScope(t.ToWarehouseID, scope) {
 		return c.Status(403).JSON(models.APIResponse{Error: "hanya gudang tujuan yang bisa mengisi jumlah diterima"})
+	}
+	if msg := centralTransferStageDenied(c, t, "received"); msg != "" {
+		return c.Status(403).JSON(models.APIResponse{Error: msg})
 	}
 	if err := services.UpdateTransferReceivedQty(transferID, itemID, body.ReceivedQtyBase); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
@@ -605,4 +730,15 @@ func GetGoodsReceipt(c *fiber.Ctx) error {
 		return c.Status(404).JSON(models.APIResponse{Error: "Penerimaan tidak ditemukan"})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: g})
+}
+
+// ListStockCatalogNames — nama + satuan katalog stok untuk saran di form
+// pengadaan bahan baku. Tanpa qty/biaya, jadi boleh dibuka pemegang izin
+// pengadaan bahan baku yang tidak punya izin gudang.
+func ListStockCatalogNames(c *fiber.Ctx) error {
+	list, err := services.ListStockCatalogNames()
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Error: "Gagal memuat katalog stok: " + err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: list})
 }

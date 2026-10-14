@@ -24,8 +24,17 @@ var projectStatuses = map[string]bool{
 // yang dipakai GetProjectDetail saat mengambil daftar belanjanya.
 var projectPRFilter = "project_id = $1 AND NOT " + fullySplitMasterCond("")
 
-// committedCond = pengajuan yang masih hidup (belum ditolak/dibatalkan).
-const committedCond = "status NOT IN ('rejected','cancelled')"
+// committedCond = pengajuan yang SUDAH DISETUJUI owner (status berkomitmen).
+// Keputusan owner 14 Okt 2026: pengajuan yang belum disetujui — menunggu
+// verifikasi maupun persetujuan — berada di luar anggaran terpakai; nilainya
+// hanya ditampilkan terpisah sebagai "menunggu persetujuan" (pendingCond).
+// Anggaran baru terpakai saat disetujui, jadi penyetuju diberi peringatan
+// bila persetujuannya melampaui sisa RAB. Daftar putih status supaya status
+// baru tidak ikut diam-diam (T-42).
+var committedCond = prCommittedCond("")
+
+// pendingCond = pengajuan yang masih antre (menunggu verifikasi/persetujuan).
+var pendingCond = prPreApprovalCond("")
 
 func generateProjectNumber(t time.Time) (string, error) {
 	prefix := "PRJ-" + t.Format("0601") + "-" // PRJ-YYMM-
@@ -58,8 +67,10 @@ func summarySelect() string {
 		COALESCE(SUM(total_amount) FILTER (WHERE %[1]s), 0) AS committed,
 		COALESCE(SUM(total_amount) FILTER (WHERE %[1]s AND total_final = 0), 0) AS estimated,
 		COALESCE(SUM(paid_amount), 0) AS paid,
-		COALESCE(SUM(total_final - paid_amount) FILTER (WHERE %[2]s), 0) AS outstanding`,
-		committedCond, outstandingCond)
+		COALESCE(SUM(total_final - paid_amount) FILTER (WHERE %[2]s), 0) AS outstanding,
+		COUNT(*) FILTER (WHERE %[3]s) AS pending_count,
+		COALESCE(SUM(total_amount) FILTER (WHERE %[3]s), 0) AS pending_amount`,
+		committedCond, outstandingCond, pendingCond)
 }
 
 // fillDerived mengisi angka turunan yang tidak datang dari SQL.
@@ -117,7 +128,8 @@ func ListProjects(status, search string, outletIDs, wuIDs []string) ([]models.Pr
 		       p.start_date, p.target_date, p.status, p.notes, p.created_by,
 		       p.created_at, p.updated_at,
 		       COALESCE(s.request_count, 0), COALESCE(s.committed, 0), COALESCE(s.estimated, 0),
-		       COALESCE(s.paid, 0), COALESCE(s.outstanding, 0)
+		       COALESCE(s.paid, 0), COALESCE(s.outstanding, 0),
+		       COALESCE(s.pending_count, 0), COALESCE(s.pending_amount, 0)
 		FROM projects p
 		LEFT JOIN outlets o ON o.id = p.outlet_id
 		LEFT JOIN work_units wu ON wu.id = p.work_unit_id
@@ -146,6 +158,7 @@ func ListProjects(status, search string, outletIDs, wuIDs []string) ([]models.Pr
 			&start, &target, &p.Status, &p.Notes, &p.CreatedBy,
 			&p.CreatedAt, &p.UpdatedAt,
 			&p.RequestCount, &p.Committed, &p.Estimated, &p.Paid, &p.Outstanding,
+			&p.PendingCount, &p.PendingAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -169,7 +182,8 @@ func GetProject(id string) (*models.Project, error) {
 		       p.start_date, p.target_date, p.status, p.notes, p.created_by,
 		       p.created_at, p.updated_at,
 		       COALESCE(s.request_count, 0), COALESCE(s.committed, 0), COALESCE(s.estimated, 0),
-		       COALESCE(s.paid, 0), COALESCE(s.outstanding, 0)
+		       COALESCE(s.paid, 0), COALESCE(s.outstanding, 0),
+		       COALESCE(s.pending_count, 0), COALESCE(s.pending_amount, 0)
 		FROM projects p
 		LEFT JOIN outlets o ON o.id = p.outlet_id
 		LEFT JOIN work_units wu ON wu.id = p.work_unit_id
@@ -184,6 +198,7 @@ func GetProject(id string) (*models.Project, error) {
 		&start, &target, &p.Status, &p.Notes, &p.CreatedBy,
 		&p.CreatedAt, &p.UpdatedAt,
 		&p.RequestCount, &p.Committed, &p.Estimated, &p.Paid, &p.Outstanding,
+		&p.PendingCount, &p.PendingAmount,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("projek tidak ditemukan")
@@ -204,7 +219,7 @@ func GetProjectDetail(id string, outletIDs, wuIDs []string) (*models.ProjectDeta
 	if err != nil {
 		return nil, err
 	}
-	list, err := ListPurchaseRequests("", "", "", "", id, "all", true, "", outletIDs, wuIDs, 1, 500)
+	list, err := ListPurchaseRequests("", "", "", "", id, "all", true, "", outletIDs, wuIDs, nil, 1, 500)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +227,15 @@ func GetProjectDetail(id string, outletIDs, wuIDs []string) (*models.ProjectDeta
 	if err != nil {
 		return nil, err
 	}
-	p.OffRabCommitted, p.OffRabPaid = fillRabAbsorption(rab, list.Requests)
+	// Serapan per baris dihitung dari SEMUA pengajuan projek, bukan hanya
+	// yang terlihat oleh penonton (T-25) — angkanya harus sama dengan kepala
+	// projek (GetProject menjumlah semua pengajuan) bagi siapa pun yang
+	// membukanya. Scope penonton hanya membatasi rincian daftar belanja.
+	all, err := projectAbsorptionRequests(id)
+	if err != nil {
+		return nil, err
+	}
+	p.OffRabCommitted, p.OffRabPaid = fillRabAbsorption(rab, all)
 	return &models.ProjectDetailResponse{Project: *p, RabItems: rab, Requests: list.Requests}, nil
 }
 

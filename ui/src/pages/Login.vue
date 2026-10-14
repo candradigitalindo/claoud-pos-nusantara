@@ -26,6 +26,17 @@
     <!-- ── Form ── -->
     <form class="space-y-4" @submit.prevent="submit">
 
+      <!-- Pesan sesi: mengapa pengguna kembali ke halaman ini (password
+           diganti, sesi dicabut server, dsb. — lihat utils/session.js). -->
+      <Transition name="slide-down">
+        <div v-if="notice && !errorMsg" class="notice-toast" :class="`notice-toast--${notice.type}`" role="status">
+          <svg class="w-3.5 h-3.5 flex-shrink-0 mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          <span>{{ notice.message }}</span>
+        </div>
+      </Transition>
+
       <!-- Error toast -->
       <Transition name="slide-down">
         <div v-if="errorMsg" class="err-toast">
@@ -105,9 +116,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.js'
+import { takeLoginNotice } from '@/utils/session.js'
 
 const router    = useRouter()
 const authStore = useAuthStore()
@@ -117,12 +129,16 @@ const fieldErrors  = reactive({ username: '', password: '' })
 const loading      = ref(false)
 const errorMsg     = ref('')
 const showPassword = ref(false)
+// Pesan titipan (ditampilkan sekali), mis. "Password diganti, silakan login ulang".
+const notice       = ref(null)
+onMounted(() => { notice.value = takeLoginNotice() })
 
 async function submit() {
   fieldErrors.username = form.username ? '' : 'Username wajib diisi'
   fieldErrors.password = form.password ? '' : 'Password wajib diisi'
   errorMsg.value = ''
   if (fieldErrors.username || fieldErrors.password) return
+  notice.value = null
 
   loading.value = true
   try {
@@ -263,6 +279,15 @@ async function submit() {
   backdrop-filter: blur(8px); border-radius: .75rem;
   padding: .625rem .875rem; font-size: .8rem; color: #fca5a5;
 }
+/* Pesan sesi (info / berhasil / peringatan) */
+.notice-toast {
+  display: flex; align-items: flex-start; gap: .5rem;
+  backdrop-filter: blur(8px); border-radius: .75rem;
+  padding: .625rem .875rem; font-size: .8rem; line-height: 1.35;
+  background: rgba(126,184,154,.14); border: 1px solid rgba(126,184,154,.35); color: #c9ead8;
+}
+.notice-toast--success { background: rgba(16,185,129,.15); border-color: rgba(16,185,129,.35); color: #a7f3d0; }
+.notice-toast--warning { background: rgba(245,158,11,.14); border-color: rgba(245,158,11,.35); color: #fde68a; }
 .slide-down-enter-active, .slide-down-leave-active { transition: all .25s cubic-bezier(.22,.68,0,1.2); }
 .slide-down-enter-from, .slide-down-leave-to       { opacity: 0; transform: translateY(-8px); }
 

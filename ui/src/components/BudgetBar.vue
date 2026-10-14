@@ -1,10 +1,11 @@
 <!--
   BudgetBar.vue — bar serapan RAB sebuah projek.
 
-  Dua lapis dalam satu track: komitmen (nilai yang sudah dikunci lewat
-  pengajuan yang masih hidup) sebagai dasar, terbayar (uang yang benar-benar
-  keluar) sebagai lapis gelap di atasnya. Track memerah begitu komitmen
-  melewati RAB.
+  Dua lapis dalam satu track: terpakai (nilai pengajuan yang sudah disetujui
+  owner) sebagai dasar, terbayar (uang yang benar-benar keluar) sebagai lapis
+  gelap di atasnya. Track memerah begitu anggaran terpakai melewati RAB.
+  Pengajuan yang masih menunggu verifikasi/persetujuan TIDAK termasuk terpakai
+  (keputusan owner 14 Okt 2026) — nilainya hanya ditulis sebagai keterangan.
 -->
 <template>
   <div>
@@ -16,12 +17,13 @@
       </div>
     </div>
     <p class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] leading-tight text-gray-500">
-      <span :class="over ? 'font-semibold text-red-600' : ''">Komitmen {{ formatRupiah(committed) }}</span>
+      <span :class="over ? 'font-semibold text-red-600' : ''">Terpakai {{ formatRupiah(committed) }}</span>
       <span class="text-gray-300">·</span>
       <span>Terbayar {{ formatRupiah(paid) }}</span>
       <span v-if="budget > 0" class="text-gray-400">({{ absorbed }}% RAB)</span>
       <span v-if="estimated > 0" class="text-amber-600">· {{ formatRupiah(estimated) }} masih estimasi HPS</span>
       <span v-if="over" class="font-semibold text-red-600">melebihi RAB</span>
+      <span v-if="pending > 0" class="text-gray-400">· {{ formatRupiah(pending) }} menunggu persetujuan (belum terpakai)</span>
     </p>
   </div>
 </template>
@@ -36,6 +38,8 @@ const props = defineProps({
   paid:      { type: Number, default: 0 },
   // Bagian dari committed yang harganya belum diisi purchasing (masih HPS).
   estimated: { type: Number, default: 0 },
+  // Nilai pengajuan yang belum disetujui — keterangan saja, tidak masuk bar.
+  pending:   { type: Number, default: 0 },
 })
 
 const over = computed(() => props.budget > 0 && props.committed > props.budget)

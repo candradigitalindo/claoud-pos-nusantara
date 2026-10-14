@@ -68,6 +68,19 @@ var AllPermissions = []string{
 	// Pengadaan
 	"procurement.dashboard.view",
 	"procurement.requests.view", "procurement.requests.submit", "procurement.requests.approve", "procurement.requests.purchasing",
+	// Verifikasi (pending → verified) sebelum persetujuan: memeriksa
+	// ketersediaan, mis. barang masih ada di outlet lain. Hanya disemai ke
+	// admin & superadmin; role lain diberi lewat halaman Role.
+	"procurement.requests.verify",
+	// Pengadaan Bahan Baku (request_type 'bahan'): diatur izin sendiri —
+	// procurement.requests.* kini hanya mengatur barang & jasa (lihat
+	// procurement_types.go). Tanpa verifikasi: Kepala Gudang Induk mengajukan,
+	// Manager Logistik menyetujui (keputusan owner 14 Okt 2026).
+	"procurement.rawmaterials.view", "procurement.rawmaterials.submit", "procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing",
+	// Pengambilan barang dari vendor oleh petugas logistik (foto + waktu),
+	// sebelum diantar ke tempat penerimaan. Opsional: barang yang diantar
+	// vendor langsung diterima tanpa langkah ini.
+	"procurement.requests.pickup", "procurement.rawmaterials.pickup",
 	// Projek pembangunan/renovasi: payung RAB di atas pengadaan.
 	// .manage = buat/ubah/hapus projek dan menetapkan RAB-nya.
 	"procurement.projects.view", "procurement.projects.manage",
@@ -121,23 +134,25 @@ func AdminLogin(req models.AdminLoginRequest, jwtSecret string) (*models.AdminLo
 	var admin models.CloudAdmin
 	var passwordHash string
 	var lastLogin sql.NullTime
+	var tokenVersion int
 
 	err := database.DB.QueryRow(
-		`SELECT id, username, password_hash, name, role, is_active, last_login_at, created_at, updated_at
+		`SELECT id, username, password_hash, name, role, COALESCE(is_active, false), last_login_at, created_at, updated_at, token_version
 		FROM cloud_admins WHERE username = $1`,
 		req.Username,
 	).Scan(&admin.ID, &admin.Username, &passwordHash, &admin.Name, &admin.Role,
-		&admin.IsActive, &lastLogin, &admin.CreatedAt, &admin.UpdatedAt)
+		&admin.IsActive, &lastLogin, &admin.CreatedAt, &admin.UpdatedAt, &tokenVersion)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("username atau password salah")
 	}
 	if err != nil {
-		return nil, err
+		return nil, authUnavailable("baca akun", err)
 	}
 
 	// Trim CHAR(26) whitespace
 	admin.ID = strings.TrimSpace(admin.ID)
+	admin.Role = strings.TrimSpace(admin.Role)
 
 	if !admin.IsActive {
 		return nil, fmt.Errorf("akun admin tidak aktif")
@@ -151,33 +166,34 @@ func AdminLogin(req models.AdminLoginRequest, jwtSecret string) (*models.AdminLo
 		admin.LastLoginAt = &lastLogin.Time
 	}
 
-	// Update last_login_at
-	if _, err := database.DB.Exec("UPDATE cloud_admins SET last_login_at = NOW() WHERE id = $1", admin.ID); err != nil {
-		log.Printf("Failed to update last_login_at for admin %s: %v", admin.ID, err)
+	// Izin & scope role dibaca SEBELUM token terbit. Galat DB = login gagal
+	// (T-56) — dulu galat diam-diam menjadi izin kosong atau scope "all"
+	// selama umur token. superadmin memegang semua izin.
+	perms := AllPermissions
+	if admin.Role != "superadmin" {
+		perms, err = GetRolePermissions(admin.Role)
+		if err != nil {
+			return nil, authUnavailable("baca izin role", err)
+		}
+	}
+	scope, err := ResolveRoleScope(admin.Role)
+	if err != nil {
+		return nil, authUnavailable("baca scope role", err)
+	}
+	var scopeOutletIDs []string
+	if scope.Type == "specific" {
+		scopeOutletIDs = scope.OutletIDs
 	}
 
 	// Generate JWT token
-	token, err := generateJWT(admin, jwtSecret)
+	token, err := generateJWT(admin, tokenVersion, scope, jwtSecret)
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuat token: %w", err)
 	}
 
-	// Load role permissions
-	perms, err := GetRolePermissions(admin.Role)
-	if err != nil {
-		perms = []string{} // fallback to empty
-	}
-
-	// superadmin gets all permissions
-	if admin.Role == "superadmin" {
-		perms = AllPermissions
-	}
-
-	// Load role scope
-	scopeType, scopeOutletIDs := GetRoleScopeOutletIDs(admin.Role)
-	if admin.Role == "superadmin" {
-		scopeType = "all"
-		scopeOutletIDs = nil
+	// Update last_login_at
+	if _, err := database.DB.Exec("UPDATE cloud_admins SET last_login_at = NOW() WHERE id = $1", admin.ID); err != nil {
+		log.Printf("Failed to update last_login_at for admin %s: %v", admin.ID, err)
 	}
 
 	// Load redirect_to for the role
@@ -192,50 +208,50 @@ func AdminLogin(req models.AdminLoginRequest, jwtSecret string) (*models.AdminLo
 		Token:          token,
 		Admin:          admin,
 		Permissions:    perms,
-		ScopeType:      scopeType,
+		ScopeType:      scope.Type,
 		ScopeOutletIDs: scopeOutletIDs,
 		RedirectTo:     redirectTo,
 	}, nil
 }
 
-func generateJWT(admin models.CloudAdmin, secret string) (string, error) {
-	// Load scope for JWT claims
-	scopeType, scopeOutletIDs := GetRoleScopeOutletIDs(admin.Role)
-	if admin.Role == "superadmin" {
-		scopeType = "all"
-		scopeOutletIDs = nil
-	}
-
+// generateJWT menerbitkan token sesi admin. "ver" = cloud_admins.token_version
+// saat login (T-55); middleware menolak token yang versinya sudah tertinggal.
+// Klaim scope/outlet_ids/work_unit_ids hanya informasi — middleware membaca
+// scope dari DB, bukan dari token.
+func generateJWT(admin models.CloudAdmin, tokenVersion int, scope RoleScope, secret string) (string, error) {
+	now := time.Now().UTC()
 	claims := jwt.MapClaims{
+		"typ":      adminTokenType,
 		"sub":      admin.ID,
 		"username": admin.Username,
 		"name":     admin.Name,
 		"role":     admin.Role,
-		"scope":    scopeType,
-		"iat":      time.Now().UTC().Unix(),
-		"exp":      time.Now().UTC().Add(24 * time.Hour).Unix(),
+		"ver":      tokenVersion,
+		"scope":    scope.Type,
+		"iat":      now.Unix(),
+		"exp":      now.Add(24 * time.Hour).Unix(),
 	}
-	if scopeType == "specific" && len(scopeOutletIDs) > 0 {
-		claims["outlet_ids"] = scopeOutletIDs
+	if scope.Type == "specific" && len(scope.OutletIDs) > 0 {
+		claims["outlet_ids"] = scope.OutletIDs
 	}
-	if scopeType == "specific" {
-		wuIDs := GetRoleScopeWorkUnitIDs(admin.Role)
-		if len(wuIDs) > 0 {
-			claims["work_unit_ids"] = wuIDs
-		}
+	if scope.Type == "specific" && len(scope.WorkUnitIDs) > 0 {
+		claims["work_unit_ids"] = scope.WorkUnitIDs
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
 }
 
+// ValidateJWT hanya memeriksa tanda tangan & kedaluwarsa (exp wajib ada).
+// Untuk sesi admin pakai AuthenticateAdminJWT, yang juga mencocokkan token
+// dengan keadaan akun di DB.
 func ValidateJWT(tokenString, secret string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithExpirationRequired())
 
 	if err != nil {
 		return nil, err
@@ -352,10 +368,14 @@ func UpdateAdminRole(adminID string, req models.UpdateAdminRoleRequest) (*models
 		return nil, fmt.Errorf("role '%s' tidak valid", req.Role)
 	}
 
+	// Role yang benar-benar berganti menaikkan versi token (T-55): sesi lama
+	// akun ini tertolak dan pengguna login ulang dengan izin role baru.
 	var admin models.CloudAdmin
 	var lastLogin sql.NullTime
 	err = database.DB.QueryRow(
-		`UPDATE cloud_admins SET role = $1, updated_at = NOW()
+		`UPDATE cloud_admins SET role = $1::text,
+			token_version = token_version + CASE WHEN role IS DISTINCT FROM $1::text THEN 1 ELSE 0 END,
+			updated_at = NOW()
 		WHERE id = $2
 		RETURNING id, username, name, role, is_active, last_login_at, created_at, updated_at`,
 		req.Role, adminID,
@@ -368,6 +388,7 @@ func UpdateAdminRole(adminID string, req models.UpdateAdminRoleRequest) (*models
 		return nil, err
 	}
 	admin.ID = strings.TrimSpace(admin.ID)
+	InvalidateAdminSession(admin.ID)
 	if lastLogin.Valid {
 		admin.LastLoginAt = &lastLogin.Time
 	}
@@ -546,36 +567,20 @@ func CreateRole(req models.CreateRoleRequest) (*models.Role, error) {
 
 // GetRoleScopeOutletIDs returns the scope type and the outlet IDs a role can access.
 // For "all" scope, returns ("all", nil). For "specific", returns ("specific", []outletIDs).
+//
+// Gagal-tertutup (T-56): galat DB → ("specific", kosong), tidak pernah "all".
+// Dulu galat query — dan role yang tidak terdaftar — jatuh ke "all". Pemanggil
+// yang bisa menolak permintaan sebaiknya memakai ResolveRoleScope.
 func GetRoleScopeOutletIDs(role string) (string, []string) {
-	var scopeType string
-	err := database.DB.QueryRow(
-		`SELECT COALESCE(scope_type, 'all') FROM roles WHERE name = $1`, role,
-	).Scan(&scopeType)
-	if err != nil || scopeType != "specific" {
-		return "all", nil
-	}
-
-	rows, err := database.DB.Query(
-		`SELECT DISTINCT w.outlet_id FROM role_work_unit_scope s
-		 JOIN work_units w ON w.id = s.work_unit_id
-		 WHERE s.role = $1 AND w.outlet_id IS NOT NULL`, role,
-	)
+	sc, err := ResolveRoleScope(role)
 	if err != nil {
-		return "all", nil
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, strings.TrimSpace(id))
-		}
-	}
-	if len(ids) == 0 {
+		log.Printf("[Auth] scope role %q gagal dibaca — diperlakukan tanpa outlet: %v", role, err)
 		return "specific", []string{}
 	}
-	return "specific", ids
+	if sc.Type == "all" {
+		return "all", nil
+	}
+	return "specific", sc.OutletIDs
 }
 
 // GetRoleScopeWorkUnitIDs returns the work unit IDs assigned to a role scope.
@@ -650,6 +655,12 @@ func UpdateRoleScope(role string, req models.UpdateRoleScopeRequest) error {
 		return err
 	}
 
+	changed, err := roleScopeChangedTx(tx, role, req)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
 	if _, err := tx.Exec(`UPDATE roles SET scope_type = $1 WHERE name = $2`, req.ScopeType, role); err != nil {
 		tx.Rollback()
 		return err
@@ -674,7 +685,72 @@ func UpdateRoleScope(role string, req models.UpdateRoleScopeRequest) error {
 		}
 	}
 
-	return tx.Commit()
+	// Scope berubah → sesi semua pengguna role ini dicabut (T-55): mereka login
+	// ulang dan layar memuat scope baru. Middleware memang sudah membaca scope
+	// dari DB, tetapi tanpa login ulang UI masih menampilkan outlet lama.
+	// Menyimpan ulang scope yang sama tidak mengeluarkan siapa pun.
+	if changed {
+		if _, err := tx.Exec(`UPDATE cloud_admins SET token_version = token_version + 1 WHERE role = $1`, role); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	InvalidateAllAdminSessions()
+	return nil
+}
+
+// roleScopeChangedTx: apakah permintaan mengubah scope role — jenisnya, atau
+// himpunan unit kerja bila specific — dibanding yang tersimpan. Baris role
+// dikunci agar dua penyimpanan bersamaan tidak saling menyalip.
+func roleScopeChangedTx(tx *sql.Tx, role string, req models.UpdateRoleScopeRequest) (bool, error) {
+	var oldType string
+	err := tx.QueryRow(`SELECT COALESCE(scope_type, 'all') FROM roles WHERE name = $1 FOR UPDATE`, role).Scan(&oldType)
+	if err == sql.ErrNoRows {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(oldType) != req.ScopeType {
+		return true, nil
+	}
+	if req.ScopeType != "specific" {
+		return false, nil
+	}
+
+	rows, err := tx.Query(`SELECT work_unit_id FROM role_work_unit_scope WHERE role = $1`, role)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	lama := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return false, err
+		}
+		lama[strings.TrimSpace(id)] = true
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	baru := map[string]bool{}
+	for _, id := range req.WorkUnitIDs {
+		baru[strings.TrimSpace(id)] = true
+	}
+	if len(lama) != len(baru) {
+		return true, nil
+	}
+	for id := range baru {
+		if !lama[id] {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // GetOutletIDsForScope returns the pq.Array-compatible value for SQL scope filtering.
@@ -811,7 +887,9 @@ func UpdateRole(currentName string, req models.UpdateRoleRequest) (*models.Role,
 			tx.Rollback()
 			return nil, err
 		}
-		if _, err := tx.Exec(`UPDATE cloud_admins SET role = $1 WHERE role = $2`, newName, currentName); err != nil {
+		// Rename = role akun berganti nama: token lama membawa nama lama, jadi
+		// versinya dinaikkan dan pengguna login ulang (T-55).
+		if _, err := tx.Exec(`UPDATE cloud_admins SET role = $1, token_version = token_version + 1 WHERE role = $2`, newName, currentName); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
@@ -819,6 +897,9 @@ func UpdateRole(currentName string, req models.UpdateRoleRequest) (*models.Role,
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	if newName != currentName {
+		InvalidateAllAdminSessions()
 	}
 
 	var role models.Role
@@ -850,8 +931,14 @@ func ChangePassword(adminID string, req models.ChangePasswordRequest) error {
 		return err
 	}
 
-	_, err = database.DB.Exec(`UPDATE cloud_admins SET password_hash = $1, updated_at = NOW() WHERE id = $2`, string(newHash), adminID)
-	return err
+	// Ganti password mencabut SEMUA sesi akun ini, termasuk yang sedang
+	// dipakai (T-55): token yang mungkin bocor tidak bisa dipakai lagi.
+	_, err = database.DB.Exec(`UPDATE cloud_admins SET password_hash = $1, token_version = token_version + 1, updated_at = NOW() WHERE id = $2`, string(newHash), adminID)
+	if err != nil {
+		return err
+	}
+	InvalidateAdminSession(adminID)
+	return nil
 }
 
 // UpdateProfile updates the admin's display name.
@@ -906,10 +993,14 @@ func UpdateAdmin(adminID string, req models.UpdateAdminRequest) (*models.CloudAd
 		waNotify = *req.WANotify
 	}
 
+	// Hanya pergantian role yang menaikkan versi token (T-55); ubah nama atau
+	// nomor WA tidak mengeluarkan pengguna.
 	var admin models.CloudAdmin
 	var lastLogin sql.NullTime
 	err := database.DB.QueryRow(
-		`UPDATE cloud_admins SET name = $1, role = $2, wa_phone = COALESCE($4, wa_phone), wa_notify = COALESCE($5, wa_notify), updated_at = NOW()
+		`UPDATE cloud_admins SET name = $1, role = $2::text,
+			token_version = token_version + CASE WHEN role IS DISTINCT FROM $2::text THEN 1 ELSE 0 END,
+			wa_phone = COALESCE($4, wa_phone), wa_notify = COALESCE($5, wa_notify), updated_at = NOW()
 		WHERE id = $3
 		RETURNING id, username, name, role, is_active, last_login_at, created_at, updated_at, COALESCE(wa_phone,''), COALESCE(wa_notify,true)`,
 		name, role, adminID, waPhone, waNotify,
@@ -922,6 +1013,7 @@ func UpdateAdmin(adminID string, req models.UpdateAdminRequest) (*models.CloudAd
 		return nil, err
 	}
 	admin.ID = strings.TrimSpace(admin.ID)
+	InvalidateAdminSession(admin.ID)
 	if lastLogin.Valid {
 		admin.LastLoginAt = &lastLogin.Time
 	}
@@ -940,22 +1032,26 @@ func ResetAdminPassword(adminID string, req models.ResetAdminPasswordRequest) er
 		return err
 	}
 
-	res, err := database.DB.Exec(`UPDATE cloud_admins SET password_hash = $1, updated_at = NOW() WHERE id = $2`, string(hash), adminID)
+	// Reset oleh admin juga mencabut semua sesi akun itu (T-55).
+	res, err := database.DB.Exec(`UPDATE cloud_admins SET password_hash = $1, token_version = token_version + 1, updated_at = NOW() WHERE id = $2`, string(hash), adminID)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("admin tidak ditemukan")
 	}
+	InvalidateAdminSession(adminID)
 	return nil
 }
 
 // ToggleAdminActive toggles the is_active flag of an admin.
 func ToggleAdminActive(adminID string) (*models.CloudAdmin, error) {
+	// Versi token ikut naik (T-55): penonaktifan langsung menolak sesi yang
+	// ada, dan mengaktifkan kembali tidak menghidupkan token lama.
 	var admin models.CloudAdmin
 	var lastLogin sql.NullTime
 	err := database.DB.QueryRow(
-		`UPDATE cloud_admins SET is_active = NOT is_active, updated_at = NOW()
+		`UPDATE cloud_admins SET is_active = NOT is_active, token_version = token_version + 1, updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, username, name, role, is_active, last_login_at, created_at, updated_at`,
 		adminID,
@@ -968,6 +1064,7 @@ func ToggleAdminActive(adminID string) (*models.CloudAdmin, error) {
 		return nil, err
 	}
 	admin.ID = strings.TrimSpace(admin.ID)
+	InvalidateAdminSession(admin.ID)
 	if lastLogin.Valid {
 		admin.LastLoginAt = &lastLogin.Time
 	}
@@ -983,6 +1080,8 @@ func DeleteAdmin(adminID string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("admin tidak ditemukan")
 	}
+	// Akun terhapus → token-nya tertolak (akun tidak ditemukan) seketika.
+	InvalidateAdminSession(adminID)
 	return nil
 }
 

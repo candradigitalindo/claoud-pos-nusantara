@@ -229,8 +229,8 @@ func CreateMrpPurchaseRequest(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
 	}
-	actor, _ := c.Locals("admin_username").(string)
-	pr, err := services.CreateMrpPurchaseRequest(c.Params("id"), req, actor)
+	// Pengaju = akun yang login (id + nama tampilan), sama dengan form (T-7).
+	pr, err := services.CreateMrpPurchaseRequest(c.Params("id"), req, purchaseActor(c))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}

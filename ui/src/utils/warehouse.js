@@ -8,6 +8,8 @@ export const MOVEMENT_LABELS = {
   spoiled: 'Rusak', expired: 'Kadaluarsa', return_in: 'Retur Masuk',
   transfer_in: 'Transfer Masuk', transfer_out: 'Transfer Keluar',
   sale: 'Penjualan', production_in: 'Hasil Produksi', production_out: 'Bahan Produksi',
+  // Pemotongan: satu bahan (mis. ayam utuh) → beberapa hasil (paha, dada, …).
+  breakdown_out: 'Pemotongan (bahan)', breakdown_in: 'Pemotongan (hasil)',
 }
 
 export function movementLabel(type) {
@@ -28,6 +30,8 @@ export function movementClass(type) {
     sale: 'bg-cyan-100 text-cyan-700',
     production_in: 'bg-teal-100 text-teal-700',
     production_out: 'bg-yellow-100 text-yellow-700',
+    breakdown_in: 'bg-lime-100 text-lime-700',
+    breakdown_out: 'bg-pink-100 text-pink-700',
   }
   return map[type] || 'bg-gray-100 text-gray-600'
 }
@@ -39,6 +43,18 @@ export const TRANSFER_STATUS_LABELS = {
 
 export function transferStatusLabel(status) {
   return TRANSFER_STATUS_LABELS[status] ?? status
+}
+
+// Transfer berasal dari Gudang Induk = permintaan stok outlet: draft-nya
+// menunggu Gudang Induk menyetujui & mengirim (role semua outlet).
+export function isCentralRequest(transfer) {
+  return (transfer?.from_warehouse_type ?? '') === 'central'
+}
+
+// Label status untuk satu baris transfer (menyertakan konteks permintaan).
+export function transferRowStatusLabel(transfer) {
+  if (transfer?.status === 'draft' && isCentralRequest(transfer)) return 'Menunggu Gudang Induk'
+  return transferStatusLabel(transfer?.status)
 }
 
 // Kelas badge (chip Tailwind) per status transfer.

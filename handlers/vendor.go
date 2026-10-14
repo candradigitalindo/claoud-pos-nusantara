@@ -53,7 +53,7 @@ func UpdateVendor(c *fiber.Ctx) error {
 			Success: false, Error: "Format data tidak valid",
 		})
 	}
-	v, err := services.UpdateVendor(id, req)
+	v, err := services.UpdateVendor(id, req, purchaseActor(c))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
 			Success: false, Error: err.Error(),

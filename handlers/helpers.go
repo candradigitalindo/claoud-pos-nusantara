@@ -3,6 +3,7 @@ package handlers
 import (
 	"cloud-pos/database"
 	"cloud-pos/services"
+	"database/sql"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -242,5 +243,44 @@ func validatePurchaseRequestScope(c *fiber.Ctx, prID string) bool {
 		}
 	}
 
+	return false
+}
+
+// validateProjectScope: projek boleh diakses bila outlet ATAU unit kerjanya
+// masuk scope role — aturan yang sama dengan daftar projek (prScopeCond).
+// Projek pusat (tanpa outlet & unit) hanya untuk scope all. Dulu endpoint
+// /projects/:id* membuka detail, RAB, dan materialnya untuk siapa pun yang
+// tahu id-nya (T-24, T-49). Projek yang tidak ada → true: biarkan service
+// membalas "projek tidak ditemukan".
+func validateProjectScope(c *fiber.Ctx, projectID string) bool {
+	outletScope := getOutletScope(c)
+	wuScope := getWorkUnitScope(c)
+	if outletScope == nil && wuScope == nil {
+		return true // all scope
+	}
+	var outletID, workUnitID sql.NullString
+	err := database.DB.QueryRow(
+		"SELECT outlet_id, work_unit_id FROM projects WHERE id = $1", projectID,
+	).Scan(&outletID, &workUnitID)
+	if err == sql.ErrNoRows {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	if outletID.Valid {
+		for _, id := range outletScope {
+			if id == strings.TrimSpace(outletID.String) {
+				return true
+			}
+		}
+	}
+	if workUnitID.Valid {
+		for _, id := range wuScope {
+			if id == strings.TrimSpace(workUnitID.String) {
+				return true
+			}
+		}
+	}
 	return false
 }

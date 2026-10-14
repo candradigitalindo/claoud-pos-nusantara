@@ -144,12 +144,18 @@
 
         <div v-if="detail.photos?.length">
           <p class="text-xs font-bold uppercase tracking-wide text-gray-500">Bukti Foto</p>
+          <!-- Alamat foto dari server disaring dulu (T-75): yang tidak sah
+               tidak dipasang sebagai tautan maupun gambar. -->
           <div class="mt-2 flex flex-wrap gap-2">
-            <a v-for="p in detail.photos" :key="p.id" class="w-28" :href="p.drive_url || p.photo_url" target="_blank" rel="noopener">
-              <img :src="photoSrc(p)" alt="Bukti" class="h-24 w-28 rounded-lg border border-gray-200 object-cover"
-                @error="$event.target.src = photoFallback(p)" />
+            <component :is="photoHref(p) ? 'a' : 'div'" v-for="p in detail.photos" :key="p.id" class="w-28"
+              v-bind="linkAttrs(photoHref(p))">
+              <img v-if="photoSrc(p)" :src="photoSrc(p)" alt="Bukti" class="h-24 w-28 rounded-lg border border-gray-200 object-cover"
+                @error="onPhotoError($event, p)" />
+              <div v-else class="flex h-24 w-28 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-1 text-center text-[10px] text-gray-400">
+                Alamat foto tidak sah
+              </div>
               <p class="mt-1 text-[10px]" :class="backupCls(p.backup_status)">{{ backupLabel(p.backup_status) }}</p>
-            </a>
+            </component>
           </div>
         </div>
       </div>
@@ -171,7 +177,8 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import PhotoCapture from '@/components/PhotoCapture.vue'
-import { photoSrc, photoFallback, backupLabel, backupCls } from '@/utils/assets.js'
+import { photoSrc, photoHref, onPhotoError, backupLabel, backupCls } from '@/utils/assets.js'
+import { linkAttrs } from '@/utils/safeUrl.js'
 
 const toast = useToastStore()
 const auth = useAuthStore()

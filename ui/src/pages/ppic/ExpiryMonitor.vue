@@ -196,7 +196,7 @@ function expiryTextClass(r) {
 function bucketPill(b) {
   return { expired: 'pill-red', d3: 'pill-red', d7: 'pill-amber', d30: 'pill-yellow', safe: 'pill-green' }[b] ?? 'pill-gray'
 }
-const REF_LABELS = { goods_receipt: 'Penerimaan', purchase_in: 'Pembelian', production_in: 'Produksi', transfer_in: 'Transfer', manual: 'Manual', adjustment: 'Penyesuaian' }
+const REF_LABELS = { goods_receipt: 'Penerimaan', purchase_in: 'Pembelian', production_in: 'Produksi', transfer_in: 'Transfer', manual: 'Manual', adjustment: 'Penyesuaian', stock_breakdown: 'Pemotongan' }
 function refLabel(t) { return REF_LABELS[t] ?? (t || '—') }
 
 function fmtQty(v) { return Number(v ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 2 }) }

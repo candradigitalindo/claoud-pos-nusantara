@@ -17,6 +17,23 @@ type Vendor struct {
 	UnpaidAmount  float64   `json:"unpaid_amount"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+	// BankChanges: riwayat perubahan rekening terbaru (paling baru dulu) —
+	// hanya diisi GetVendor, untuk peringatan di form bayar dan halaman vendor.
+	BankChanges []VendorBankChange `json:"bank_changes,omitempty"`
+}
+
+// VendorBankChange: satu perubahan rekening vendor — siapa, kapan, lama → baru.
+// Pembayaran lama tidak terpengaruh (rekeningnya dipotret per pembayaran).
+type VendorBankChange struct {
+	ID               string    `json:"id"`
+	OldBankName      string    `json:"old_bank_name"`
+	OldAccountNumber string    `json:"old_account_number"`
+	OldAccountHolder string    `json:"old_account_holder"`
+	NewBankName      string    `json:"new_bank_name"`
+	NewAccountNumber string    `json:"new_account_number"`
+	NewAccountHolder string    `json:"new_account_holder"`
+	ChangedBy        string    `json:"changed_by"`
+	ChangedAt        time.Time `json:"changed_at"`
 }
 
 // CreateVendorRequest is the payload for creating a vendor.

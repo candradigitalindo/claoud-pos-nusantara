@@ -88,6 +88,11 @@
               <span class="legend-val">{{ data.type_split.barang }} ({{ formatRupiah(data.type_split.barang_total) }})</span>
             </div>
             <div class="legend-item">
+              <span class="legend-dot" style="background: #f59e0b" />
+              <span class="legend-label">Bahan Baku</span>
+              <span class="legend-val">{{ data.type_split.bahan || 0 }} ({{ formatRupiah(data.type_split.bahan_total || 0) }})</span>
+            </div>
+            <div class="legend-item">
               <span class="legend-dot" style="background: #8b5cf6" />
               <span class="legend-label">Jasa</span>
               <span class="legend-val">{{ data.type_split.jasa }} ({{ formatRupiah(data.type_split.jasa_total) }})</span>
@@ -152,7 +157,8 @@
                   <th>Unit Kerja</th>
                   <th class="text-right">Nominal</th>
                   <th class="text-center">Total</th>
-                  <th class="text-center">Pending</th>
+                  <th class="text-center">Menunggu Verifikasi</th>
+                  <th v-if="wuHasVerified" class="text-center">Menunggu Persetujuan</th>
                   <th class="text-center">Disetujui</th>
                   <th class="text-center">Dibayar</th>
                   <th class="text-center">Diterima</th>
@@ -169,6 +175,7 @@
                   <td class="text-right font-semibold">{{ formatRupiah(wu.total_amount) }}</td>
                   <td class="text-center">{{ wu.total }}</td>
                   <td class="text-center"><span v-if="wu.pending" class="badge badge-pending">{{ wu.pending }}</span><span v-else class="text-gray-300">0</span></td>
+                  <td v-if="wuHasVerified" class="text-center"><span v-if="wu.verified" class="badge badge-verified">{{ wu.verified }}</span><span v-else class="text-gray-300">0</span></td>
                   <td class="text-center"><span v-if="wu.approved" class="badge badge-approved">{{ wu.approved }}</span><span v-else class="text-gray-300">0</span></td>
                   <td class="text-center"><span v-if="wu.paid" class="badge badge-paid">{{ wu.paid }}</span><span v-else class="text-gray-300">0</span></td>
                   <td class="text-center"><span v-if="wu.received" class="badge badge-received">{{ wu.received }}</span><span v-else class="text-gray-300">0</span></td>
@@ -191,7 +198,8 @@
                 <span class="wmc-total">{{ wu.total }} pengadaan</span>
               </div>
               <div class="wmc-badges">
-                <span v-if="wu.pending" class="badge badge-pending">Pending {{ wu.pending }}</span>
+                <span v-if="wu.pending" class="badge badge-pending">Menunggu Verifikasi {{ wu.pending }}</span>
+                <span v-if="wu.verified" class="badge badge-verified">Menunggu Persetujuan {{ wu.verified }}</span>
                 <span v-if="wu.approved" class="badge badge-approved">Disetujui {{ wu.approved }}</span>
                 <span v-if="wu.paid" class="badge badge-paid">Dibayar {{ wu.paid }}</span>
                 <span v-if="wu.received" class="badge badge-received">Diterima {{ wu.received }}</span>
@@ -203,6 +211,7 @@
                 <div class="wmc-bar-seg wmc-seg-received" :style="{ width: pct(wu.received, wu.total) }" />
                 <div class="wmc-bar-seg wmc-seg-paid" :style="{ width: pct(wu.paid, wu.total) }" />
                 <div class="wmc-bar-seg wmc-seg-approved" :style="{ width: pct(wu.approved, wu.total) }" />
+                <div class="wmc-bar-seg wmc-seg-verified" :style="{ width: pct(wu.verified || 0, wu.total) }" />
                 <div class="wmc-bar-seg wmc-seg-pending" :style="{ width: pct(wu.pending, wu.total) }" />
                 <div class="wmc-bar-seg wmc-seg-rejected" :style="{ width: pct(wu.rejected + wu.cancelled, wu.total) }" />
               </div>
@@ -219,13 +228,17 @@ import { ref, computed, onMounted } from 'vue'
 import { Doughnut, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
-  ArcElement, BarElement, LineElement, PointElement, CategoryScale, LinearScale,
+  ArcElement, BarElement, LineElement, LineController, PointElement, CategoryScale, LinearScale,
   Tooltip, Legend, Filler
 } from 'chart.js'
 import { outletsApi } from '@/api/outlets.js'
 import { formatRupiah } from '@/utils/format.js'
 
-ChartJS.register(ArcElement, BarElement, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler)
+// Grafik tren = Bar dengan dataset bertipe 'line' (grafik campuran): komponen
+// Bar hanya mendaftarkan BarController, jadi LineController wajib didaftarkan
+// di sini — tanpanya Chart.js melempar "line" is not a registered controller
+// dan grafik tren kosong (lihat juga VendorDetail.vue).
+ChartJS.register(ArcElement, BarElement, LineElement, LineController, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler)
 
 const props = defineProps({
   outlet: { type: Object, default: null },
@@ -268,10 +281,16 @@ const statCards = computed(() => {
       svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8"/><path d="M12 3v4"/><circle cx="12" cy="14" r="2.5"/></svg>`,
     },
     {
-      label: 'Pending', theme: 'amber',
-      value: d.status_breakdown.pending.toLocaleString('id-ID'),
-      sub: 'Menunggu persetujuan',
+      label: 'Menunggu Verifikasi', theme: 'amber',
+      value: (d.status_breakdown.pending || 0).toLocaleString('id-ID'),
+      sub: 'Belum diperiksa verifikator',
       svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    },
+    {
+      label: 'Menunggu Persetujuan', theme: 'indigo',
+      value: (d.status_breakdown.verified || 0).toLocaleString('id-ID'),
+      sub: 'Sudah diverifikasi, menunggu approval',
+      svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`,
     },
     {
       label: 'Dibatalkan / Ditolak', theme: 'red',
@@ -284,13 +303,16 @@ const statCards = computed(() => {
 
 // ── Status chart ──
 const STATUS_COLORS = {
-  pending: '#f59e0b', approved: '#3b82f6', partial: '#d97706',
+  pending: '#f59e0b', verified: '#6366f1', approved: '#3b82f6', payment_requested: '#f97316', partial: '#d97706',
   paid: '#8b5cf6', received: '#10b981', rejected: '#ef4444', cancelled: '#6b7280',
 }
 const STATUS_LABELS = {
-  pending: 'Pending', approved: 'Disetujui', partial: 'Dibayar Sebagian',
+  pending: 'Menunggu Verifikasi', verified: 'Menunggu Persetujuan', approved: 'Disetujui', payment_requested: 'Menunggu Bayar', partial: 'Dibayar Sebagian',
   paid: 'Dibayar', received: 'Diterima', rejected: 'Ditolak', cancelled: 'Dibatalkan',
 }
+// Kolom "Menunggu Persetujuan" per unit kerja hanya bila server mengirim
+// hitungannya (field `verified` di baris unit kerja).
+const wuHasVerified = computed(() => (data.value?.work_units || []).some(wu => wu && 'verified' in wu))
 
 const statusLegend = computed(() => {
   if (!data.value) return []
@@ -319,10 +341,10 @@ const typeChartData = computed(() => {
   if (!data.value) return { labels: [], datasets: [] }
   const ts = data.value.type_split
   return {
-    labels: ['Barang', 'Jasa'],
+    labels: ['Barang', 'Bahan Baku', 'Jasa'],
     datasets: [{
-      data: [ts.barang, ts.jasa],
-      backgroundColor: ['#3b82f6', '#8b5cf6'],
+      data: [ts.barang, ts.bahan || 0, ts.jasa],
+      backgroundColor: ['#3b82f6', '#f59e0b', '#8b5cf6'],
       borderWidth: 0,
       hoverOffset: 6,
     }],
@@ -560,6 +582,7 @@ function pct(val, total) {
 .sc-emerald .sc-blob { background: #10b981; }
 .sc-amber   .sc-blob { background: #f59e0b; }
 .sc-red     .sc-blob { background: #ef4444; }
+.sc-indigo  .sc-blob { background: #6366f1; }
 
 .sc-icon-wrap {
   display: flex; align-items: center; justify-content: center;
@@ -569,6 +592,7 @@ function pct(val, total) {
 .sc-emerald .sc-icon-wrap { background: rgba(16,185,129,.13);  color: #059669; }
 .sc-amber   .sc-icon-wrap { background: rgba(245,158,11,.13);  color: #d97706; }
 .sc-red     .sc-icon-wrap { background: rgba(239,68,68,.12);   color: #dc2626; }
+.sc-indigo  .sc-icon-wrap { background: rgba(99,102,241,.12);  color: #4f46e5; }
 
 .sc-top { display: flex; align-items: center; gap: .65rem; margin-bottom: .65rem; }
 .sc-label {
@@ -687,6 +711,7 @@ function pct(val, total) {
   border-radius: 999px; font-size: .65rem; font-weight: 700;
 }
 .badge-pending   { background: rgba(245,158,11,.13); color: #b45309; }
+.badge-verified  { background: rgba(99,102,241,.13);  color: #4338ca; }
 .badge-approved  { background: rgba(59,130,246,.13);  color: #1d4ed8; }
 .badge-paid      { background: rgba(139,92,246,.13);  color: #6d28d9; }
 .badge-received  { background: rgba(16,185,129,.13);  color: #047857; }
@@ -720,6 +745,7 @@ function pct(val, total) {
 .wmc-bar-seg { height: 100%; transition: width .3s ease; }
 .wmc-seg-received { background: #10b981; }
 .wmc-seg-paid { background: #8b5cf6; }
+.wmc-seg-verified { background: #6366f1; }
 .wmc-seg-approved { background: #3b82f6; }
 .wmc-seg-pending { background: #f59e0b; }
 .wmc-seg-rejected { background: #ef4444; }

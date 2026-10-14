@@ -2,12 +2,30 @@ package handlers
 
 import (
 	"errors"
+	"strings"
 
 	"cloud-pos/models"
 	"cloud-pos/services"
 
 	"github.com/gofiber/fiber/v2"
 )
+
+// projectMaterialGuard: material di URL harus milik projek di URL, dan
+// projeknya dalam cakupan role (T-49). Dulu handler hanya memakai :mid,
+// sehingga id material projek outlet lain cukup untuk mencatat pemakaian atau
+// menutup sisanya. Bila ditolak, respons sudah ditulis.
+func projectMaterialGuard(c *fiber.Ctx) (bool, error) {
+	pid, mid := c.Params("id"), c.Params("mid")
+	if !validateProjectScope(c, pid) {
+		return false, projectForbidden(c)
+	}
+	m, err := services.GetProjectMaterial(mid)
+	if err != nil || strings.TrimSpace(m.ProjectID) != strings.TrimSpace(pid) {
+		return false, c.Status(fiber.StatusNotFound).JSON(models.APIResponse{
+			Success: false, Error: "Material projek tidak ditemukan"})
+	}
+	return true, nil
+}
 
 // invalidOr mengubah error validasi menjadi 400 berisi pesannya, sisanya 500.
 func invalidOr(c *fiber.Ctx, err error, fallback string) error {
@@ -19,6 +37,9 @@ func invalidOr(c *fiber.Ctx, err error, fallback string) error {
 }
 
 func ListProjectMaterials(c *fiber.Ctx) error {
+	if !validateProjectScope(c, c.Params("id")) {
+		return projectForbidden(c)
+	}
 	list, err := services.ListProjectMaterials(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
@@ -29,6 +50,9 @@ func ListProjectMaterials(c *fiber.Ctx) error {
 }
 
 func ListProjectMaterialLogs(c *fiber.Ctx) error {
+	if ok, err := projectMaterialGuard(c); !ok {
+		return err
+	}
 	list, err := services.ListProjectMaterialLogs(c.Params("mid"))
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
@@ -38,6 +62,9 @@ func ListProjectMaterialLogs(c *fiber.Ctx) error {
 }
 
 func RecordProjectMaterialUsage(c *fiber.Ctx) error {
+	if ok, err := projectMaterialGuard(c); !ok {
+		return err
+	}
 	var req models.ProjectMaterialUsageRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format data tidak valid"})
@@ -51,6 +78,9 @@ func RecordProjectMaterialUsage(c *fiber.Ctx) error {
 
 // SettleProjectMaterial menentukan nasib sisa material saat projek ditutup.
 func SettleProjectMaterial(c *fiber.Ctx) error {
+	if ok, err := projectMaterialGuard(c); !ok {
+		return err
+	}
 	var req models.ProjectMaterialSettleRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format data tidak valid"})
@@ -66,7 +96,7 @@ func SettleProjectMaterial(c *fiber.Ctx) error {
 }
 
 func ListUnsettledProjectMaterials(c *fiber.Ctx) error {
-	list, err := services.ListUnsettledProjectMaterials()
+	list, err := services.ListUnsettledProjectMaterials(getOutletScope(c), getWorkUnitScope(c))
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
 			Success: false, Error: "Gagal memuat laporan: " + err.Error()})

@@ -40,7 +40,7 @@ func backdatePayment(t *testing.T, prID string, amount float64, to time.Time) {
 
 func approvedPR(t *testing.T, total float64) *models.PurchaseRequest {
 	t.Helper()
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester",
 		Items: []models.PurchaseRequestItem{{
 			Name:  "Material",
@@ -50,10 +50,9 @@ func approvedPR(t *testing.T, total float64) *models.PurchaseRequest {
 	if err != nil {
 		t.Fatalf("create PR: %v", err)
 	}
-	for _, act := range []string{"approve", "request_payment"} {
-		if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: act, ActorName: "tester"}); err != nil {
-			t.Fatalf("%s: %v", act, err)
-		}
+	verifyAndApprove(t, pr.ID)
+	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "request_payment", ActorName: "tester"}); err != nil {
+		t.Fatalf("request_payment: %v", err)
 	}
 	return pr
 }
@@ -160,7 +159,7 @@ func TestAccountsPayableMatchesPaymentsPage(t *testing.T) {
 // Pembayaran itu dulu dibuang laporan oleh filter "split_status IS NULL".
 func TestPartiallySplitMasterPaymentReachesCashFlow(t *testing.T) {
 	requireDB(t)
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester",
 		Items: []models.PurchaseRequestItem{{
 			Name: "Material",
@@ -176,9 +175,7 @@ func TestPartiallySplitMasterPaymentReachesCashFlow(t *testing.T) {
 	defer database.DB.Exec("DELETE FROM payment_histories WHERE purchase_request_id IN (SELECT id FROM purchase_requests WHERE id = $1 OR parent_id = $1)", pr.ID)
 	defer database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1 OR parent_id = $1", pr.ID)
 
-	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "approve", ActorName: "tester"}); err != nil {
-		t.Fatalf("approve: %v", err)
-	}
+	verifyAndApprove(t, pr.ID)
 	// Pasir pindah ke vendor lain; Semen 300.000 tetap di master.
 	if _, err := SplitPurchaseRequest(pr.ID, models.SplitPurchaseRequestInput{
 		VendorName: "CV Pasir",

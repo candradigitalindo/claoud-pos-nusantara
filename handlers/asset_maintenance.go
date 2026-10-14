@@ -78,8 +78,8 @@ var (
 
 // CreateMaintenancePurchaseRequest menurunkan work order menjadi Pengadaan Jasa.
 func CreateMaintenancePurchaseRequest(c *fiber.Ctx) error {
-	actor := assetActor(c)
-	pr, err := services.CreateMaintenancePurchaseRequest(c.Params("id"), actor, getOutletScope(c))
+	// Pengaju = akun yang login (id + nama tampilan), sama dengan form (T-7).
+	pr, err := services.CreateMaintenancePurchaseRequest(c.Params("id"), purchaseActor(c), getOutletScope(c))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: err.Error()})
 	}

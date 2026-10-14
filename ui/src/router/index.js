@@ -340,7 +340,14 @@ const routes = [
         path: 'purchase-goods',
         name: 'PurchaseGoods',
         component: PurchaseGoods,
-        meta: { title: 'Pengadaan Barang — Cloud POS', requiresAuth: true, permission: 'procurement.requests.view' },
+        meta: { title: 'Pengadaan Barang — Cloud POS', requiresAuth: true, permission: 'procurement.requests.view', requestType: 'barang' },
+      },
+      {
+        // Komponen sama dengan Pengadaan Barang; jenis & izinnya dibedakan lewat meta.
+        path: 'purchase-materials',
+        name: 'PurchaseMaterials',
+        component: PurchaseGoods,
+        meta: { title: 'Pengadaan Bahan Baku — Cloud POS', requiresAuth: true, permission: 'procurement.rawmaterials.view', requestType: 'bahan' },
       },
       {
         path: 'purchase-services',

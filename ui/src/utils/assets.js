@@ -4,6 +4,11 @@
 // kondisi = bagaimana barangnya, status = di mana posisinya dalam siklus hidup.
 // Sebelum Fase 1 keduanya bercampur, sehingga 'perbaikan' muncul sebagai kondisi.
 
+import { safeUrl, TRUSTED_HOSTS } from './safeUrl.js'
+
+// Id berkas Google Drive (lihat driveIDPattern di services/photo_drive.go).
+const DRIVE_FILE_ID = /^[A-Za-z0-9_-]{10,}$/
+
 export const CONDITIONS = {
   baik: 'Baik',
   rusak_ringan: 'Rusak Ringan',
@@ -324,14 +329,37 @@ export function opnameStatusCls(s) {
  * tag <img>. Selama belum tersalin, berkas lokal yang dipakai.
  */
 export function photoSrc(p, width = 1200) {
-  if (p?.drive_file_id) {
-    return `https://drive.google.com/thumbnail?id=${p.drive_file_id}&sz=w${width}`
+  // Id berkas Drive dari server disusun ke URL kita sendiri — hanya id yang
+  // berbentuk id Drive yang dipakai (T-75); berkas lokal lewat safeUrl.
+  const id = String(p?.drive_file_id || '').trim()
+  if (DRIVE_FILE_ID.test(id)) {
+    return `https://drive.google.com/thumbnail?id=${id}&sz=w${Number(width) || 1200}`
   }
-  return p?.photo_url || ''
+  return safeUrl(p?.photo_url)
 }
 
 /** Alamat cadangan bila tautan Drive gagal dimuat — dipakai di @error. */
-export function photoFallback(p) { return p?.photo_url || '' }
+export function photoFallback(p) { return safeUrl(p?.photo_url) }
+
+/**
+ * Tujuan klik satu bukti foto: salinan Drive bila ada, selain itu berkas
+ * unggahan. '' = tidak ada alamat sah — jangan dirender sebagai tautan.
+ */
+export function photoHref(p) {
+  return safeUrl(p?.drive_url, { hosts: TRUSTED_HOSTS.drive }) || safeUrl(p?.photo_url)
+}
+
+/**
+ * Penanganan @error <img> bukti foto: ganti SEKALI ke berkas lokal. Tanpa
+ * penanda ini gambar yang gagal memasang src yang sama berulang-ulang.
+ */
+export function onPhotoError(event, p) {
+  const img = event?.target
+  if (!img || img.dataset.fallback) return
+  img.dataset.fallback = '1'
+  const fb = photoFallback(p)
+  if (fb && img.getAttribute('src') !== fb) img.src = fb
+}
 
 export function backupLabel(s) {
   if (s === 'sent') return '✓ tersalin ke Drive'

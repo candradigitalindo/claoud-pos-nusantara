@@ -578,23 +578,47 @@ func DeleteAssetMaintenance(assetID, maintenanceID string, outletScope []string)
 // CreateMaintenancePurchaseRequest menurunkan work order menjadi pengajuan
 // Pengadaan Jasa. Biaya perawatan dan biaya pengadaan jadi berasal dari satu
 // angka, bukan dua entri yang diketik terpisah di dua modul.
-func CreateMaintenancePurchaseRequest(id, requestedBy string, outletScope []string) (*models.PurchaseRequest, error) {
+func CreateMaintenancePurchaseRequest(id string, requestedBy Actor, outletScope []string) (*models.PurchaseRequest, error) {
 	wo, err := GetMaintenance(id, outletScope)
 	if err != nil {
 		return nil, fmt.Errorf("work order tidak ditemukan")
 	}
-	if wo.PurchaseRequestID != "" {
-		return nil, fmt.Errorf("work order ini sudah tertaut pengajuan %s", wo.PurchaseRequestNumber)
-	}
 	if wo.Status == "selesai" || wo.Status == "batal" {
 		return nil, fmt.Errorf("work order sudah %s", wo.Status)
 	}
+
+	// Baris work order dikunci selama pengajuan dibuat dan ditautkan, lalu
+	// tautannya diperiksa ulang DI BAWAH kunci: dulu dua klik "Buat Pengajuan"
+	// melahirkan dua PR jasa untuk satu WO (T-57). Tautan ke PR yang sudah
+	// ditolak/dibatalkan (atau terhapus) tidak menghalangi pengajuan ulang.
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var linked sql.NullString
+	if err := tx.QueryRow(`SELECT purchase_request_id FROM asset_maintenances WHERE id = $1 FOR UPDATE`, id).Scan(&linked); err != nil {
+		return nil, fmt.Errorf("work order tidak ditemukan")
+	}
+	if prev := strings.TrimSpace(linked.String); prev != "" {
+		var number, status string
+		err := tx.QueryRow(`SELECT request_number, status FROM purchase_requests WHERE id = $1`, prev).Scan(&number, &status)
+		switch {
+		case err == sql.ErrNoRows:
+			// PR lama sudah terhapus: tautan basi, boleh diajukan ulang.
+		case err != nil:
+			return nil, err
+		case status != "rejected" && status != "cancelled":
+			return nil, Invalid("work order ini sudah tertaut pengajuan %s", number)
+		}
+	}
 	name := fmt.Sprintf("Perbaikan %s", wo.AssetName)
 	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
-		OutletID:    wo.OutletID,
-		RequestType: "jasa",
-		RequestedBy: requestedBy,
-		Notes:       fmt.Sprintf("Dari work order %s (%s)", wo.WONumber, wo.AssetNo),
+		OutletID:      wo.OutletID,
+		RequestType:   "jasa",
+		RequestedBy:   requestedBy.Name,
+		RequestedByID: requestedBy.ID,
+		Notes:         fmt.Sprintf("Dari work order %s (%s)", wo.WONumber, wo.AssetNo),
 		Items: []models.PurchaseRequestItem{{
 			Name: name,
 			Items: []models.PurchaseSubItem{{
@@ -605,10 +629,16 @@ func CreateMaintenancePurchaseRequest(id, requestedBy string, outletScope []stri
 	if err != nil {
 		return nil, err
 	}
-	if _, err := database.DB.Exec(`UPDATE asset_maintenances SET purchase_request_id=$1 WHERE id=$2`, pr.ID, id); err != nil {
-		return nil, err
+	if _, err := tx.Exec(`UPDATE asset_maintenances SET purchase_request_id=$1 WHERE id=$2`, pr.ID, id); err == nil {
+		err = tx.Commit()
+		if err == nil {
+			return pr, nil
+		}
 	}
-	return pr, nil
+	// Tautan gagal disimpan: pengajuan yang baru lahir dibuang lagi supaya
+	// tidak ada PR jasa yatim di luar work order-nya.
+	database.DB.Exec(`DELETE FROM purchase_requests WHERE id = $1 AND status = 'pending'`, pr.ID)
+	return nil, fmt.Errorf("gagal menautkan pengajuan ke work order")
 }
 
 // ── Penjadwal harian ────────────────────────────────────────────────────────

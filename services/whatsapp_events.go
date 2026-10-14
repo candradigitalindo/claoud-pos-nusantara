@@ -197,9 +197,11 @@ _{company}_`,
 	},
 	// ── Pengadaan ──
 	{
-		Key: "purchase.submitted", Label: "Pengajuan pengadaan baru", Group: "Pengadaan", Audience: "internal",
-		Permissions:  []string{"procurement.requests.approve"},
-		Description:  "Pengajuan baru menunggu persetujuan.",
+		// Pengajuan baru masuk ke VERIFIKATOR dulu (cek ketersediaan, mis.
+		// barang masih ada di outlet lain), bukan langsung ke penyetuju (T-60).
+		Key: "purchase.submitted", Label: "Pengajuan pengadaan baru (menunggu verifikasi)", Group: "Pengadaan", Audience: "internal",
+		Permissions:  []string{"procurement.requests.verify"},
+		Description:  "Pengajuan baru menunggu verifikasi.",
 		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes"},
 		Template: `📝 *Pengajuan Baru {number}*
 Jenis: {type} · Oleh: {requested_by}
@@ -209,6 +211,39 @@ Perkiraan: *{total}*
 {items}
 
 Catatan: {notes}
+Menunggu verifikasi.`,
+	},
+	{
+		// Bahan baku tidak melalui verifikasi: pengajuan Kepala Gudang Induk
+		// langsung ke penyetujunya (Manager Logistik) — keputusan owner 14 Okt
+		// 2026.
+		Key: "purchase.rawmaterial_submitted", Label: "Pengajuan bahan baku baru (menunggu persetujuan)", Group: "Pengadaan", Audience: "internal",
+		Permissions:  []string{"procurement.rawmaterials.approve"},
+		Description:  "Pengajuan bahan baku baru langsung menunggu persetujuan (tanpa verifikasi).",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes"},
+		Template: `📝 *Pengajuan Bahan Baku {number}*
+Oleh: {requested_by} · {outlet} {work_unit}
+Perkiraan: *{total}*
+
+{items}
+
+Catatan: {notes}
+Menunggu persetujuan.`,
+	},
+	{
+		Key: "purchase.verified", Label: "Pengajuan terverifikasi (menunggu persetujuan)", Group: "Pengadaan", Audience: "internal",
+		Permissions: []string{"procurement.requests.approve"}, Extra: "pengaju",
+		Description:  "Verifikator meloloskan pengajuan; item yang ditolak beserta alasannya ikut disebut.",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "actor", "rejected_count", "rejected_list", "verification_notes"},
+		Template: `🔎 *Pengajuan {number} terverifikasi* oleh {actor}
+{type} · {requested_by} · {outlet} {work_unit} {project}
+Nilai: *{total}*
+
+{items}
+
+Item ditolak: {rejected_count}
+{rejected_list}
+Catatan verifikator: {verification_notes}
 Menunggu persetujuan.`,
 	},
 	{
@@ -222,10 +257,12 @@ Nilai: {total}. Lanjut ke pembelian.`,
 	{
 		Key: "purchase.rejected", Label: "Pengajuan ditolak", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{}, Extra: "pengaju",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "actor", "reason"},
+		Description:  "Ditolak verifikator (saat menunggu verifikasi) maupun penyetuju (saat menunggu persetujuan).",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "actor", "reason", "rejected_list"},
 		Template: `⛔ *Pengajuan {number} ditolak* oleh {actor}
 {type} · {requested_by} · {outlet} {work_unit}
-Alasan: {reason}`,
+Alasan: {reason}
+{rejected_list}`,
 	},
 	{
 		Key: "purchase.payment_requested", Label: "Pengajuan pembayaran ke keuangan", Group: "Pengadaan", Audience: "internal",
@@ -471,8 +508,19 @@ func waTitle(s string) string {
 // notifyWA merender template event dan memasukkan pesan ke antrean: ke nomor
 // pelanggan (audience customer) atau ke semua penerima internal yang
 // berlangganan event ini (dan cocok filter outlet-nya).
-// extraNames: nama akun yang ikut dikirimi di luar aturan posisi (mis. pengaju).
+// extraNames: nama akun (atau "id:<ULID>") yang ikut dikirimi di luar aturan
+// posisi (mis. pengaju).
 func notifyWA(event, refID, outletID string, vars map[string]string, customerPhone string, extraNames ...string) {
+	notifyWAWith(event, refID, outletID, vars, customerPhone, nil, extraNames...)
+}
+
+// notifyWAMapped = notifyWA untuk event internal yang izin penerimanya
+// diterjemahkan dulu lewat mapPerm (lihat waPermMapper).
+func notifyWAMapped(event, refID, outletID string, vars map[string]string, mapPerm waPermMapper, extraNames ...string) {
+	notifyWAWith(event, refID, outletID, vars, "", mapPerm, extraNames...)
+}
+
+func notifyWAWith(event, refID, outletID string, vars map[string]string, customerPhone string, mapPerm waPermMapper, extraNames ...string) {
 	if waGatewayURL == "" {
 		return
 	}
@@ -505,7 +553,7 @@ func notifyWA(event, refID, outletID string, vars map[string]string, customerPho
 		}
 		return
 	}
-	for _, r := range waRecipientsFor(event, outletID, extraNames...) {
+	for _, r := range waRecipientsForMapped(event, outletID, mapPerm, extraNames...) {
 		if _, err := EnqueueWAMessage(models.WAMessage{
 			Target: r.Target, TargetName: r.Name, Audience: "internal", Kind: "notify",
 			Event: event, RefID: refID, Body: body,
@@ -860,45 +908,148 @@ func waPurchaseVars(pr *models.PurchaseRequest) map[string]string {
 			lines = append(lines, "• "+grp.Name)
 		}
 	}
+	vendor := waOr(pr.VendorName, "-")
+	if len(pr.Children) > 0 {
+		// Induk hasil pecah vendor: SATU pesan berisi rincian per vendor
+		// beserta statusnya, dan total = bagian yang masih hidup. Dulu tiap
+		// pecahan dikirimi pesan sendiri ditambah pesan induk bernilai
+		// gabungan yang terbaca seperti tagihan tambahan (T-62).
+		vendor, total = waSplitVendorBreakdown(pr)
+	}
 	return map[string]string{
-		"number": pr.RequestNumber, "type": waTitle(waOr(pr.RequestType, "-")),
+		"number": pr.RequestNumber, "type": waOr(RequestTypeLabel(pr.RequestType), "-"),
 		"requested_by": waOr(pr.RequestedBy, "-"), "outlet": waOr(outlet, "Pusat"), "work_unit": wu, "project": project,
-		"vendor": waOr(pr.VendorName, "-"), "total": waRp(total), "items": strings.Join(lines, "\n"),
+		"vendor": vendor, "total": waRp(total), "items": strings.Join(lines, "\n"),
 		"notes": waOr(pr.Notes, "-"), "paid_total": waRp(pr.PaidAmount),
 	}
 }
 
-// NotifyPurchaseEvent: action = submitted | approve | reject | request_payment | pay.
+// waSplitVendorBreakdown: rincian per vendor sebuah induk hasil pecah vendor
+// (sisa milik induk + tiap pecahan hidup) beserta totalnya. Pecahan yang
+// dibatalkan/ditolak tidak disebut dan tidak dijumlahkan.
+func waSplitVendorBreakdown(pr *models.PurchaseRequest) (string, float64) {
+	value := func(p models.PurchaseRequest) float64 {
+		if p.TotalFinal > 0 {
+			return p.TotalFinal
+		}
+		return p.TotalAmount
+	}
+	ownFinal, ownAmount := pr.TotalFinal, pr.TotalAmount
+	for _, c := range pr.Children {
+		ownFinal -= c.TotalFinal
+		ownAmount -= c.TotalAmount
+	}
+	parts := []string{}
+	total := 0.0
+	if len(pr.Items) > 0 {
+		own := ownFinal
+		if own <= 0 {
+			own = ownAmount
+		}
+		total += own
+		parts = append(parts, fmt.Sprintf("• %s (sisa induk) — %s · %s",
+			waOr(pr.VendorName, "vendor belum dipilih"), waRp(own), purchaseStatusLabel(pr.Status)))
+	}
+	for _, c := range pr.Children {
+		if c.Status == "cancelled" || c.Status == "rejected" {
+			continue
+		}
+		total += value(c)
+		parts = append(parts, fmt.Sprintf("• %s (No. %s) — %s · %s",
+			waOr(c.VendorName, "-"), c.RequestNumber, waRp(value(c)), purchaseStatusLabel(c.Status)))
+	}
+	return fmt.Sprintf("%d vendor\n%s", len(parts), strings.Join(parts, "\n")), total
+}
+
+// waRejectedItemsVars: jumlah & daftar item yang ditolak saat verifikasi
+// (dengan alasannya) untuk pesan purchase.verified / purchase.rejected.
+// Daftar kosong bila tidak ada, supaya barisnya hilang dari pesan.
+func waRejectedItemsVars(pr *models.PurchaseRequest) (count, list string) {
+	items := []models.RejectedPurchaseItem{}
+	for _, it := range pr.RejectedItems {
+		if it.Stage == "" || it.Stage == "verifikasi" {
+			items = append(items, it)
+		}
+	}
+	lines := []string{}
+	for i, it := range items {
+		if i >= 12 {
+			lines = append(lines, fmt.Sprintf("… dan %d item lain", len(items)-12))
+			break
+		}
+		lines = append(lines, fmt.Sprintf("• %s ×%d %s — %s", it.Name, it.Qty, it.Unit, waOr(it.Reason, "-")))
+	}
+	return fmt.Sprintf("%d", len(items)), strings.Join(lines, "\n")
+}
+
+// waPurchaseOutlet: outlet perutean WA sebuah pengajuan. Pengajuan pusat
+// (tanpa outlet maupun unit kerja, mis. MRP Gudang Induk) hanya boleh dibuka
+// role bercakupan semua outlet (T-43), jadi pesannya pun hanya untuk mereka:
+// penanda waCentralOutlet tidak pernah ada di daftar outlet role per outlet,
+// dan penerima tambahan yang dibatasi outlet tidak ikut. Dulu outlet kosong
+// berarti "semua role", sehingga isi pengajuan pusat terkirim ke role per
+// outlet yang tidak bisa membuka dokumennya. Pengaju tetap dikabari (extra).
+func waPurchaseOutlet(pr *models.PurchaseRequest) string {
+	if pr.OutletID != nil {
+		if o := strings.TrimSpace(*pr.OutletID); o != "" {
+			return o
+		}
+	}
+	if pr.WorkUnitID != nil && strings.TrimSpace(*pr.WorkUnitID) != "" {
+		return "" // unit kerja tanpa outlet: perutean lama (tanpa saring outlet)
+	}
+	return waCentralOutlet
+}
+
+// NotifyPurchaseEvent: action = submitted | verify | approve | reject | request_payment | pay.
 func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason string, amount float64) {
 	if pr == nil {
 		return
 	}
 	event := map[string]string{
-		"submitted": "purchase.submitted", "approve": "purchase.approved", "reject": "purchase.rejected",
-		"request_payment": "purchase.payment_requested", "pay": "purchase.paid",
+		"submitted": "purchase.submitted", "verify": "purchase.verified", "approve": "purchase.approved",
+		"reject": "purchase.rejected", "request_payment": "purchase.payment_requested", "pay": "purchase.paid",
 	}[action]
 	if event == "" {
 		return
+	}
+	if action == "submitted" && pr.RequestType == RequestTypeBahan {
+		// Tanpa tahap verifikasi: langsung ke penyetuju bahan baku.
+		event = "purchase.rawmaterial_submitted"
 	}
 	vars := waPurchaseVars(pr)
 	vars["actor"] = waOr(actor, "-")
 	vars["reason"] = waOr(reason, "-")
 	vars["amount"] = waRp(amount)
-	outletID := ""
-	if pr.OutletID != nil {
-		outletID = strings.TrimSpace(*pr.OutletID)
+	vars["rejected_count"], vars["rejected_list"] = waRejectedItemsVars(pr)
+	if action == "reject" && reason != allItemsRejectedReason {
+		// Penolakan oleh penyetuju: alasannya sendiri sudah cukup; daftar item
+		// yang dulu ditolak verifikator hanya relevan bila SEMUA ditolak.
+		vars["rejected_list"] = ""
 	}
+	vars["verification_notes"] = waOr(pr.VerificationNotes, "-")
+	outletID := waPurchaseOutlet(pr)
 	ref := pr.ID + ":" + action
 	if action == "pay" {
 		ref += ":" + fmt.Sprintf("%.0f", pr.PaidAmount)
 	}
-	// Pengaju ikut diberi tahu nasib pengajuannya (disetujui/ditolak/dibayar),
-	// dicocokkan dengan nama akun; tidak untuk "submitted" (ia yang membuatnya).
+	// Pengaju ikut diberi tahu nasib pengajuannya (diverifikasi/disetujui/
+	// ditolak/dibayar); tidak untuk "submitted" (ia yang membuatnya).
+	// Dicocokkan lewat id akun bila ada — nama tampilan bisa kembar atau
+	// berubah (T-7) — dan lewat nama untuk data lama.
 	extra := ""
 	if action != "submitted" {
 		extra = pr.RequestedBy
+		if pr.RequestedByID != nil && strings.TrimSpace(*pr.RequestedByID) != "" {
+			extra = waExtraIDPrefix + strings.TrimSpace(*pr.RequestedByID)
+		}
 	}
-	notifyWA(event, ref, outletID, vars, "", extra)
+	// Penerima berbasis posisi dihitung dari izin padanan jenisnya: event
+	// pengajuan bahan baku sampai ke pemegang procurement.rawmaterials.*,
+	// bukan procurement.requests.* (finance.payments.pay tetap sama).
+	notifyWAMapped(event, ref, outletID, vars, func(perm string) string {
+		return MapProcurementPermission(perm, pr.RequestType)
+	}, extra)
 }
 
 // ── PPIC ────────────────────────────────────────────────────────────────────

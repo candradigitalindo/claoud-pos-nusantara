@@ -6,9 +6,11 @@ type ProcurementWorkUnitStat struct {
 	WorkUnitName     string  `json:"work_unit_name"`
 	Total            int     `json:"total"`
 	TotalAmount      float64 `json:"total_amount"`
-	Pending          int     `json:"pending"`
+	Pending          int     `json:"pending"`  // Menunggu Verifikasi
+	Verified         int     `json:"verified"` // Menunggu Persetujuan
 	Approved         int     `json:"approved"`
 	PaymentRequested int     `json:"payment_requested"`
+	Partial          int     `json:"partial"`
 	Paid             int     `json:"paid"`
 	Received         int     `json:"received"`
 	Rejected         int     `json:"rejected"`
@@ -24,13 +26,17 @@ type ProcurementMonthlyTrend struct {
 
 // ProcurementStatusBreakdown holds counts by status.
 type ProcurementStatusBreakdown struct {
-	Pending          int `json:"pending"`
+	Pending          int `json:"pending"`  // Menunggu Verifikasi
+	Verified         int `json:"verified"` // Menunggu Persetujuan
 	Approved         int `json:"approved"`
 	PaymentRequested int `json:"payment_requested"`
-	Paid             int `json:"paid"`
-	Received         int `json:"received"`
-	Rejected         int `json:"rejected"`
-	Cancelled        int `json:"cancelled"`
+	// Partial: dibayar sebagian. Dulu tidak dihitung sehingga jumlah grafik
+	// status lebih kecil dari total pengajuan (T-63).
+	Partial   int `json:"partial"`
+	Paid      int `json:"paid"`
+	Received  int `json:"received"`
+	Rejected  int `json:"rejected"`
+	Cancelled int `json:"cancelled"`
 }
 
 // ProcurementTypeSplit holds counts by request type.
@@ -39,6 +45,9 @@ type ProcurementTypeSplit struct {
 	BarangTotal float64 `json:"barang_total"`
 	Jasa        int     `json:"jasa"`
 	JasaTotal   float64 `json:"jasa_total"`
+	// Pengadaan Bahan Baku (request_type 'bahan').
+	Bahan      int     `json:"bahan"`
+	BahanTotal float64 `json:"bahan_total"`
 }
 
 // ProcurementDashboardResponse is the response for the outlet procurement dashboard.

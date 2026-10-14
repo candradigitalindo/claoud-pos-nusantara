@@ -33,7 +33,7 @@ func TestProjectSummaryNotDoubleCountedAfterSplit(t *testing.T) {
 	proj := newTestProject(t, 1000000)
 	defer database.DB.Exec("DELETE FROM projects WHERE id = $1", proj.ID)
 
-	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
+	pr, err := createPricedPR(models.CreatePurchaseRequestInput{
 		RequestType: "barang", RequestedBy: "tester", ProjectID: proj.ID,
 		Items: []models.PurchaseRequestItem{{
 			Name: "Material",
@@ -52,16 +52,29 @@ func TestProjectSummaryNotDoubleCountedAfterSplit(t *testing.T) {
 		t.Fatalf("project_id PR = %v, mau %s", pr.ProjectID, proj.ID)
 	}
 
-	// Sebelum split: komitmen = 500.000 + 200.000.
+	// Belum disetujui: belum memakai anggaran, hanya tercatat menunggu
+	// persetujuan (keputusan owner 14 Okt 2026).
 	before, err := GetProject(proj.ID)
 	if err != nil {
 		t.Fatalf("get project: %v", err)
 	}
-	if before.Committed != 700000 {
-		t.Fatalf("komitmen sebelum split = %v, mau 700000", before.Committed)
+	if before.Committed != 0 || before.PendingAmount != 700000 || before.PendingCount != 1 {
+		t.Fatalf("sebelum disetujui: komitmen=%v menunggu=%v (%d dokumen), mau 0 / 700000 / 1",
+			before.Committed, before.PendingAmount, before.PendingCount)
 	}
-	if before.RemainingBudget != 300000 {
-		t.Errorf("sisa RAB = %v, mau 300000", before.RemainingBudget)
+	if before.RemainingBudget != 1000000 {
+		t.Errorf("sisa RAB = %v, mau 1000000 (pengajuan yang belum disetujui di luar anggaran terpakai)", before.RemainingBudget)
+	}
+
+	// Pecah vendor baru boleh setelah diverifikasi & disetujui. Anggaran
+	// terpakai saat disetujui: 500.000 + 200.000.
+	verifyAndApprove(t, pr.ID)
+	mid, _ := GetProject(proj.ID)
+	if mid.Committed != 700000 || mid.PendingAmount != 0 {
+		t.Fatalf("setelah disetujui: komitmen=%v menunggu=%v, mau 700000 / 0", mid.Committed, mid.PendingAmount)
+	}
+	if mid.RemainingBudget != 300000 {
+		t.Errorf("sisa RAB setelah disetujui = %v, mau 300000", mid.RemainingBudget)
 	}
 
 	// Pecah Keramik ke vendor lain.
@@ -108,9 +121,9 @@ func TestProjectSummaryNotDoubleCountedAfterSplit(t *testing.T) {
 	}
 }
 
-// Pengajuan yang belum diberi harga oleh purchasing tetap memakan RAB memakai
-// HPS-nya, dan porsi itu dilaporkan terpisah sebagai Estimated. Kalau tidak,
-// sisa RAB terlihat lega padahal belanjanya sudah antre.
+// Pengajuan yang SUDAH DISETUJUI tetapi belum diberi harga oleh purchasing
+// tetap memakan RAB memakai HPS-nya, dan porsi itu dilaporkan terpisah sebagai
+// Estimated. Sebelum disetujui nilainya hanya tercatat menunggu persetujuan.
 func TestProjectCountsUnpricedRequestAtHps(t *testing.T) {
 	requireDB(t)
 	proj := newTestProject(t, 1000000)
@@ -130,6 +143,16 @@ func TestProjectCountsUnpricedRequestAtHps(t *testing.T) {
 	}
 	defer database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1", pr.ID)
 
+	pending, err := GetProject(proj.ID)
+	if err != nil {
+		t.Fatalf("get project: %v", err)
+	}
+	if pending.Committed != 0 || pending.Estimated != 0 || pending.PendingAmount != 400000 || pending.RemainingBudget != 1000000 {
+		t.Errorf("belum disetujui: komitmen=%v estimated=%v menunggu=%v sisa=%v, mau 0 / 0 / 400000 / 1000000",
+			pending.Committed, pending.Estimated, pending.PendingAmount, pending.RemainingBudget)
+	}
+
+	verifyAndApprove(t, pr.ID)
 	p, err := GetProject(proj.ID)
 	if err != nil {
 		t.Fatalf("get project: %v", err)
@@ -149,7 +172,8 @@ func TestProjectCountsUnpricedRequestAtHps(t *testing.T) {
 	}
 
 	// Purchasing mengisi harga final lebih murah: komitmen ikut turun dan
-	// porsi estimasi hilang.
+	// porsi estimasi hilang. (Harga final hanya diisi pembelian pada dokumen
+	// yang sudah disetujui — T-39.)
 	if _, err := UpdatePurchaseItems(pr.ID, models.UpdatePurchaseItemsInput{
 		Items: []models.PurchaseRequestItem{{
 			Name:  "Material",
@@ -189,6 +213,7 @@ func TestProjectIgnoresFullySplitMaster(t *testing.T) {
 		t.Fatalf("create PR: %v", err)
 	}
 	defer database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1 OR parent_id = $1", pr.ID)
+	verifyAndApprove(t, pr.ID)
 
 	if _, err := SplitPurchaseRequest(pr.ID, models.SplitPurchaseRequestInput{
 		VendorName: "CV Pasir",
@@ -266,6 +291,11 @@ func TestProjectOverBudgetAndDeleteGuard(t *testing.T) {
 	}
 	defer database.DB.Exec("DELETE FROM purchase_requests WHERE id = $1", pr.ID)
 
+	// Belum disetujui: belum melampaui apa pun, hanya menunggu persetujuan.
+	if p, _ := GetProject(proj.ID); p.OverBudget || p.PendingAmount != 250000 {
+		t.Errorf("belum disetujui: over_budget=%v menunggu=%v, mau false / 250000", p.OverBudget, p.PendingAmount)
+	}
+	verifyAndApprove(t, pr.ID)
 	p, err := GetProject(proj.ID)
 	if err != nil {
 		t.Fatalf("get project: %v", err)

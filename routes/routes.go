@@ -105,8 +105,8 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin := api.Group("/admin", middleware.AdminAuth(cfg))
 
 	// Work Units (Move to top to avoid 404/conflicts)
-	admin.Get("/work-units/me", middleware.RequirePermission("procurement.requests.view"), handlers.GetMyWorkUnit)
-	admin.Get("/my-work-units", middleware.RequirePermission("procurement.requests.view"), handlers.GetMyWorkUnits)
+	admin.Get("/work-units/me", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.GetMyWorkUnit)
+	admin.Get("/my-work-units", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.GetMyWorkUnits)
 	admin.Get("/work-units", middleware.RequirePermission("workunits.view"), handlers.ListWorkUnits)
 	admin.Get("/work-units/:id", middleware.RequirePermission("workunits.view"), handlers.GetWorkUnit)
 	admin.Post("/work-units", middleware.RequirePermission("workunits.create"), handlers.CreateWorkUnit)
@@ -252,8 +252,10 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/procurement-payments/export", middleware.RequirePermission("finance.payments.view"), handlers.ExportProcurementPayments)
 	// Projek (pembangunan/renovasi) — payung RAB di atas pengadaan.
 	// Lihat dibuka juga untuk pemegang izin pengadaan: form pengajuan perlu
-	// memuat daftar projek untuk dipilih. Ubah/hapus tetap terkunci di manage.
-	admin.Get("/projects", middleware.RequireAnyPermission("procurement.projects.view", "procurement.requests.submit", "procurement.requests.view"), handlers.ListProjects)
+	// memuat daftar projek untuk dipilih — dan untuk keuangan, karena halaman
+	// Pembayaran punya filter Projek (dulu role keuangan murni kena 403 sehingga
+	// pilihannya hanya "Semua Projek"). Ubah/hapus tetap terkunci di manage.
+	admin.Get("/projects", middleware.RequireAnyPermission("procurement.projects.view", "procurement.requests.submit", "procurement.requests.view", "finance.payments.view"), handlers.ListProjects)
 	admin.Get("/projects/:id", middleware.RequirePermission("procurement.projects.view"), handlers.GetProject)
 	admin.Post("/projects", middleware.RequirePermission("procurement.projects.manage"), handlers.CreateProject)
 	admin.Put("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), handlers.UpdateProject)
@@ -273,31 +275,53 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/projects/:id/materials/:mid/settle", middleware.RequirePermission("procurement.projects.manage"), handlers.SettleProjectMaterial)
 	admin.Get("/project-materials/unsettled", middleware.RequirePermission("procurement.projects.view"), handlers.ListUnsettledProjectMaterials)
 
-	admin.Get("/purchase-requests", middleware.RequirePermission("procurement.requests.view"), handlers.ListPurchaseRequests)
-	admin.Get("/purchase-requests/:id", middleware.RequirePermission("procurement.requests.view"), handlers.GetPurchaseRequest)
+	// Halaman Pembayaran (finance.payments.view) memuat daftar & detail lewat
+	// rute yang sama; handler membatasinya ke daftar exclude_masters dan detail
+	// (lihat ListPurchaseRequests/GetPurchaseRequest). Tanpa kunci itu di sini,
+	// role keuangan murni ditolak sebelum aturan handler sempat berlaku.
+	admin.Get("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.ListPurchaseRequests)
+	admin.Get("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetPurchaseRequest)
 	admin.Get("/purchase-requests/:id/payment-histories", middleware.RequirePermission("finance.payments.view"), handlers.GetPaymentHistories)
-	admin.Post("/purchase-requests/:id/split", middleware.RequirePermission("procurement.requests.purchasing"), handlers.SplitPurchaseRequest)
-	// Serah Terima pengadaan → aset / stok gudang (docs/perlengkapan-aset.md §8)
-	admin.Get("/purchase-requests/:id/receiving-draft", middleware.RequirePermission("procurement.requests.submit"), handlers.GetReceivingDraft)
-	admin.Post("/purchase-requests/:id/receive-goods", middleware.RequirePermission("procurement.requests.submit"), handlers.ReceiveGoods)
-	admin.Post("/purchase-requests", middleware.RequirePermission("procurement.requests.submit"), handlers.CreatePurchaseRequest)
-	admin.Put("/purchase-requests/:id/status", middleware.RequirePermission("procurement.requests.view"), handlers.UpdatePurchaseStatus)
-	admin.Put("/purchase-requests/:id/items", middleware.RequirePermission("procurement.requests.view"), handlers.UpdatePurchaseItems)
-	admin.Delete("/purchase-requests/:id", middleware.RequirePermission("procurement.requests.submit"), handlers.DeletePurchaseRequest)
+	admin.Post("/purchase-requests/:id/split", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), handlers.SplitPurchaseRequest)
+	// Struk pembelian (dibayar per struk) dicatat bagian pembelian atau
+	// petugas logistik; pengambilan barang dari vendor oleh petugas logistik.
+	// Izin per jenis diperiksa handler.
+	strukPerms := []string{"procurement.requests.purchasing", "procurement.rawmaterials.purchasing", "procurement.requests.pickup", "procurement.rawmaterials.pickup"}
+	admin.Post("/purchase-requests/:id/struks", middleware.RequireAnyPermission(strukPerms...), handlers.AddPurchaseStruk)
+	admin.Delete("/purchase-requests/:id/struks/:strukId", middleware.RequireAnyPermission(strukPerms...), handlers.DeletePurchaseStruk)
+	admin.Post("/purchase-requests/:id/pickups", middleware.RequireAnyPermission("procurement.requests.pickup", "procurement.rawmaterials.pickup"), handlers.AddPurchasePickup)
+	// Serah Terima pengadaan → aset / stok gudang (docs/perlengkapan-aset.md §8).
+	// Penerima: pengaju jenisnya (semua baris), bagian Aset (assets.create —
+	// baris peralatan), atau petugas gudang (stockledger.adjust — baris
+	// dapur/stok). Wewenang per baris diputus handler & service (T-10, T-17).
+	receivePerms := []string{"procurement.requests.submit", "procurement.rawmaterials.submit", "assets.create", "stockledger.adjust"}
+	admin.Get("/purchase-requests/:id/receiving-draft", middleware.RequireAnyPermission(receivePerms...), handlers.GetReceivingDraft)
+	admin.Post("/purchase-requests/:id/receive-goods", middleware.RequireAnyPermission(receivePerms...), handlers.ReceiveGoods)
+	admin.Post("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), handlers.CreatePurchaseRequest)
+	// finance.payments.pay: keuangan membayar (aksi pay); izin per aksi diputus handler.
+	admin.Put("/purchase-requests/:id/status", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.pay"), handlers.UpdatePurchaseStatus)
+	admin.Put("/purchase-requests/:id/items", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.UpdatePurchaseItems)
+	admin.Delete("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), handlers.DeletePurchaseRequest)
 
 	// File upload — dipakai untuk bukti pembayaran pengadaan
-	admin.Post("/upload", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.view", "assets.create", "assets.update", "reservations.update"), handlers.UploadFile)
+	// stockledger.adjust: petugas gudang mengunggah foto serah terima barang dapur.
+	admin.Post("/upload", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.view", "procurement.rawmaterials.view", "assets.create", "assets.update", "reservations.update", "stockledger.adjust"), handlers.UploadFile)
 
 	// Bank Accounts
-	admin.Get("/bank-accounts", middleware.RequirePermission("finance.bank.view"), handlers.ListBankAccounts)
+	// finance.payments.pay ikut boleh membaca daftar: form bayar di halaman
+	// Pembayaran wajib memilih rekening asal, jadi role yang hanya diberi hak
+	// bayar (tanpa kelola rekening) dulu tidak bisa mencatat pembayaran sama
+	// sekali. Isinya hanya nama bank, nomor, dan pemilik — tanpa saldo.
+	admin.Get("/bank-accounts", middleware.RequireAnyPermission("finance.bank.view", "finance.payments.pay"), handlers.ListBankAccounts)
 	admin.Post("/bank-accounts", middleware.RequirePermission("finance.bank.create"), handlers.CreateBankAccount)
 	admin.Put("/bank-accounts/:id", middleware.RequirePermission("finance.bank.update"), handlers.UpdateBankAccount)
 	admin.Delete("/bank-accounts/:id", middleware.RequirePermission("finance.bank.delete"), handlers.DeleteBankAccount)
 
 	// Vendors
 	// Vendor list/lookup is also needed by procurement requesters (to pick a vendor).
-	admin.Get("/vendors", middleware.RequireAnyPermission("vendors.view", "procurement.requests.view", "procurement.requests.submit", "procurement.requests.purchasing"), handlers.ListVendors)
-	admin.Get("/vendors/:id", middleware.RequireAnyPermission("vendors.view", "procurement.requests.view", "procurement.requests.submit", "procurement.requests.purchasing"), handlers.GetVendor)
+	admin.Get("/vendors", middleware.RequireAnyPermission("vendors.view", "procurement.requests.view", "procurement.requests.submit", "procurement.requests.purchasing", "procurement.rawmaterials.view", "procurement.rawmaterials.submit", "procurement.rawmaterials.purchasing"), handlers.ListVendors)
+	// finance.payments.view: modal Bayar memuat rekening vendor tujuan dari sini.
+	admin.Get("/vendors/:id", middleware.RequireAnyPermission("vendors.view", "procurement.requests.view", "procurement.requests.submit", "procurement.requests.purchasing", "procurement.rawmaterials.view", "procurement.rawmaterials.submit", "procurement.rawmaterials.purchasing", "finance.payments.view"), handlers.GetVendor)
 	admin.Get("/vendors/:id/detail", middleware.RequirePermission("vendors.view"), handlers.GetVendorDetail)
 	admin.Get("/vendors/:id/purchases", middleware.RequirePermission("vendors.view"), handlers.ListVendorPurchases)
 	// Manajemen Aset + histori perawatan (scoped per outlet)
@@ -327,7 +351,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Work order perawatan lintas aset. "summary" didaftarkan sebelum ":id".
 	// Antrean serah terima. Dua meja: "perlengkapan" (bagian Aset) dan "dapur"
 	// (Gudang Induk); izinnya sengaja longgar — yang membatasi adalah kind.
-	admin.Get("/receiving-queue", middleware.RequireAnyPermission("assets.view", "stockledger.adjust", "procurement.requests.view"), handlers.ListReceivingQueue)
+	admin.Get("/receiving-queue", middleware.RequireAnyPermission("assets.view", "stockledger.adjust", "procurement.requests.view", "procurement.rawmaterials.view"), handlers.ListReceivingQueue)
 	// Distribusi aset ke PIC pengaju — lanjutan setelah bagian aset menerima.
 	admin.Get("/asset-handovers", middleware.RequirePermission("assets.view"), handlers.ListAssetHandovers)
 	admin.Get("/asset-handovers/awaiting", middleware.RequirePermission("assets.view"), handlers.ListAssetsAwaitingHandover)
@@ -426,6 +450,8 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Stock Items
 	admin.Get("/stock-items", middleware.RequireAnyPermission(whView...), handlers.ListStockItems)
+	// Saran nama katalog di form pengadaan bahan baku (nama + satuan saja).
+	admin.Get("/stock-item-names", middleware.RequireAnyPermission(append(append([]string{}, whView...), "procurement.rawmaterials.view")...), handlers.ListStockCatalogNames)
 	admin.Get("/stock-items/:id", middleware.RequireAnyPermission(whView...), handlers.GetStockItem)
 	admin.Post("/stock-items", middleware.RequirePermission("stockitems.create"), handlers.CreateStockItem)
 	admin.Put("/stock-items/:id", middleware.RequirePermission("stockitems.update"), handlers.UpdateStockItem)
@@ -456,6 +482,14 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/stock-items/:id/recipes", middleware.RequirePermission("recipes.view"), handlers.GetStockItemRecipes)
 	admin.Put("/stock-items/:id/recipes", middleware.RequirePermission("recipes.update"), handlers.SaveStockItemRecipes)
 	admin.Post("/stock-items/:id/produce", middleware.RequirePermission("recipes.create"), handlers.ProduceStockItem)
+	// Pemotongan (satu bahan → beberapa hasil, mis. ayam utuh → paha/dada/sayap).
+	// Template dibaca juga oleh pemegang stockledger.adjust (form Pemotongan
+	// butuh hasil standar & bobotnya); diubah hanya pengelola katalog (handler).
+	admin.Get("/stock-breakdown-templates", middleware.RequireAnyPermission("recipes.view", "stockledger.adjust"), handlers.ListStockItemBreakdowns)
+	admin.Get("/stock-items/:id/breakdown", middleware.RequireAnyPermission("recipes.view", "stockledger.adjust"), handlers.GetStockItemBreakdown)
+	admin.Put("/stock-items/:id/breakdown", middleware.RequirePermission("recipes.update"), handlers.SaveStockItemBreakdown)
+	admin.Get("/stock-breakdowns", middleware.RequireAnyPermission(whView...), handlers.ListStockBreakdowns)
+	admin.Post("/stock-breakdowns", middleware.RequirePermission("stockledger.adjust"), handlers.CreateStockBreakdown)
 	admin.Get("/recipe-masters", middleware.RequirePermission("recipes.view"), handlers.ListRecipeMasters)
 	admin.Get("/recipe-masters/:id", middleware.RequirePermission("recipes.view"), handlers.GetRecipeMaster)
 	admin.Post("/recipe-masters", middleware.RequirePermission("recipes.create"), handlers.CreateRecipeMaster)
