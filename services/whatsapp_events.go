@@ -200,8 +200,8 @@ _{company}_`,
 		// Pengajuan baru masuk ke VERIFIKATOR dulu (cek ketersediaan, mis.
 		// barang masih ada di outlet lain), bukan langsung ke penyetuju (T-60).
 		Key: "purchase.submitted", Label: "Pengajuan pengadaan baru (menunggu verifikasi)", Group: "Pengadaan", Audience: "internal",
-		Permissions:  []string{"procurement.requests.verify"},
-		Description:  "Pengajuan baru menunggu verifikasi.",
+		Permissions: []string{"procurement.requests.verify"}, Extra: "pengaju",
+		Description:  "Pengajuan baru menunggu verifikasi; pengaju menerima tanda terima.",
 		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes"},
 		Template: `📝 *Pengajuan Baru {number}*
 Jenis: {type} · Oleh: {requested_by}
@@ -218,8 +218,8 @@ Menunggu verifikasi.`,
 		// langsung ke penyetujunya (Manager Logistik) — keputusan owner 14 Okt
 		// 2026.
 		Key: "purchase.rawmaterial_submitted", Label: "Pengajuan bahan baku baru (menunggu persetujuan)", Group: "Pengadaan", Audience: "internal",
-		Permissions:  []string{"procurement.rawmaterials.approve"},
-		Description:  "Pengajuan bahan baku baru langsung menunggu persetujuan (tanpa verifikasi).",
+		Permissions: []string{"procurement.rawmaterials.approve"}, Extra: "pengaju",
+		Description:  "Pengajuan bahan baku baru langsung menunggu persetujuan (tanpa verifikasi); pengaju menerima tanda terima.",
 		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes"},
 		Template: `📝 *Pengajuan Bahan Baku {number}*
 Oleh: {requested_by} · {outlet} {work_unit}
@@ -256,8 +256,9 @@ Nilai: {total}. Lanjut ke pembelian.`,
 	},
 	{
 		Key: "purchase.rejected", Label: "Pengajuan ditolak", Group: "Pengadaan", Audience: "internal",
-		Permissions: []string{}, Extra: "pengaju",
-		Description:  "Ditolak verifikator (saat menunggu verifikasi) maupun penyetuju (saat menunggu persetujuan).",
+		// Verifikator ikut tahu hasil akhir pengajuan yang pernah diperiksanya.
+		Permissions: []string{"procurement.requests.verify"}, Extra: "pengaju",
+		Description:  "Ditolak verifikator (saat menunggu verifikasi) maupun penyetuju (saat menunggu persetujuan); pengaju dan verifikator diberi tahu.",
 		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "actor", "reason", "rejected_list"},
 		Template: `⛔ *Pengajuan {number} ditolak* oleh {actor}
 {type} · {requested_by} · {outlet} {work_unit}
@@ -265,8 +266,17 @@ Alasan: {reason}
 {rejected_list}`,
 	},
 	{
+		Key: "purchase.priced", Label: "Harga & vendor ditetapkan", Group: "Pengadaan", Audience: "internal",
+		Permissions: []string{}, Extra: "pengaju",
+		Description:  "Pembelian mengisi harga final dan vendor; pengaju tahu perkembangan pengajuannya.",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "total", "actor"},
+		Template: `🛒 *Pengajuan {number} siap dibeli*
+Vendor: {vendor} · harga final *{total}*
+Ditetapkan oleh {actor}. Selanjutnya menunggu pembayaran.`,
+	},
+	{
 		Key: "purchase.payment_requested", Label: "Pengajuan pembayaran ke keuangan", Group: "Pengadaan", Audience: "internal",
-		Permissions:  []string{"finance.payments.pay"},
+		Permissions: []string{"finance.payments.pay"}, Extra: "pengaju",
 		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "total", "actor"},
 		Template: `💰 *Permintaan Pembayaran {number}*
 Vendor: {vendor}
@@ -275,12 +285,49 @@ Diajukan oleh {actor}. Mohon diproses di menu Pembayaran.`,
 	},
 	{
 		Key: "purchase.paid", Label: "Pembayaran pengadaan dicairkan", Group: "Pengadaan", Audience: "internal",
-		Permissions: []string{"procurement.requests.purchasing"}, Extra: "pengaju",
+		// Pembelian, keuangan (bukti pencairan), dan pengaju.
+		Permissions: []string{"procurement.requests.purchasing", "finance.payments.pay"}, Extra: "pengaju",
 		Placeholders: []string{"company", "number", "vendor", "outlet", "work_unit", "amount", "total", "paid_total", "actor"},
 		Template: `🏦 *Pembayaran {number}*
 Vendor: {vendor} · {outlet} {work_unit}
 Dibayar: *{amount}* oleh {actor}
 Total dibayar: {paid_total} dari {total}`,
+	},
+	{
+		// Pengingat harian (jam pengingat) untuk pengajuan yang belum ditindak
+		// > 2 hari: dikirim ke yang memegang bolanya — verifikator (menunggu
+		// verifikasi), penyetuju (menunggu persetujuan), pembelian (disetujui
+		// tanpa harga), keuangan (menunggu pembayaran). Izin dipilih per
+		// status saat dikirim; Permissions di sini hanya bawaan untuk layar.
+		Key: "purchase.stale", Label: "Pengingat pengajuan tertahan (> 2 hari)", Group: "Pengadaan", Audience: "internal", Scheduled: true,
+		Permissions:  []string{"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing", "finance.payments.pay"},
+		Description:  "Setiap hari pada jam pengingat: pengajuan yang belum ditindak lebih dari 2 hari dikirim ke pemegang tahapnya (dan pengaju).",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "status_label", "days", "next_action"},
+		Template: `⏰ *Pengajuan {number} tertahan {days} hari*
+Status: {status_label} · {type} · {requested_by} · {outlet} {work_unit}
+Nilai: {total}
+{next_action}`,
+	},
+	{
+		Key: "purchase.picked_up", Label: "Barang diambil petugas logistik", Group: "Pengadaan", Audience: "internal",
+		// Tempat penerimaan bersiap: gudang (bahan/dapur) atau bagian aset.
+		Permissions: []string{"stockledger.adjust", "assets.create"}, Extra: "pengaju",
+		Description:  "Petugas logistik mencatat pengambilan dari vendor; barang dalam pengantaran.",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "items", "actor", "notes"},
+		Template: `🚚 *Barang {number} dalam pengantaran*
+Diambil {actor} dari {vendor} · {type} · {outlet} {work_unit}
+{items}
+Catatan: {notes}
+Siapkan penerimaan.`,
+	},
+	{
+		Key: "purchase.received", Label: "Barang diterima", Group: "Pengadaan", Audience: "internal",
+		Permissions: []string{"procurement.requests.purchasing"}, Extra: "pengaju",
+		Description:  "Tempat penerimaan mencatat barang masuk (sebagian atau lengkap).",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "actor", "notes", "receipt_status"},
+		Template: `📦 *Barang {number} diterima* ({receipt_status})
+Oleh {actor} · {type} · {outlet} {work_unit}
+{notes}`,
 	},
 	// ── Gudang / PPIC ──
 	{
@@ -1009,6 +1056,7 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 	event := map[string]string{
 		"submitted": "purchase.submitted", "verify": "purchase.verified", "approve": "purchase.approved",
 		"reject": "purchase.rejected", "request_payment": "purchase.payment_requested", "pay": "purchase.paid",
+		"priced": "purchase.priced", "picked_up": "purchase.picked_up", "received": "purchase.received",
 	}[action]
 	if event == "" {
 		return
@@ -1021,6 +1069,14 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 	vars["actor"] = waOr(actor, "-")
 	vars["reason"] = waOr(reason, "-")
 	vars["amount"] = waRp(amount)
+	if action == "picked_up" || action == "received" {
+		// Catatan pengambilan / ringkasan penerimaan dikirim lewat parameter reason.
+		vars["notes"] = waOr(reason, "-")
+	}
+	vars["receipt_status"] = map[string]string{"received": "lengkap", "partial": "sebagian"}[pr.ReceiptStatus]
+	if vars["receipt_status"] == "" {
+		vars["receipt_status"] = "sebagian"
+	}
 	vars["rejected_count"], vars["rejected_list"] = waRejectedItemsVars(pr)
 	if action == "reject" && reason != allItemsRejectedReason {
 		// Penolakan oleh penyetuju: alasannya sendiri sudah cukup; daftar item
@@ -1033,16 +1089,13 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 	if action == "pay" {
 		ref += ":" + fmt.Sprintf("%.0f", pr.PaidAmount)
 	}
-	// Pengaju ikut diberi tahu nasib pengajuannya (diverifikasi/disetujui/
-	// ditolak/dibayar); tidak untuk "submitted" (ia yang membuatnya).
-	// Dicocokkan lewat id akun bila ada — nama tampilan bisa kembar atau
-	// berubah (T-7) — dan lewat nama untuk data lama.
-	extra := ""
-	if action != "submitted" {
-		extra = pr.RequestedBy
-		if pr.RequestedByID != nil && strings.TrimSpace(*pr.RequestedByID) != "" {
-			extra = waExtraIDPrefix + strings.TrimSpace(*pr.RequestedByID)
-		}
+	// Pengaju selalu diberi tahu perkembangan pengajuannya — termasuk tanda
+	// terima saat diajukan (konsep owner 14 Okt 2026). Dicocokkan lewat id
+	// akun bila ada — nama tampilan bisa kembar atau berubah (T-7) — dan
+	// lewat nama untuk data lama.
+	extra := pr.RequestedBy
+	if pr.RequestedByID != nil && strings.TrimSpace(*pr.RequestedByID) != "" {
+		extra = waExtraIDPrefix + strings.TrimSpace(*pr.RequestedByID)
 	}
 	// Penerima berbasis posisi dihitung dari izin padanan jenisnya: event
 	// pengajuan bahan baku sampai ke pemegang procurement.rawmaterials.*,
@@ -1164,5 +1217,70 @@ func CheckDeviceOffline(s models.WASettings) {
 			"pending_sync": fmt.Sprintf("%d", pending), "battery": bat,
 		}
 		notifyWA("device.offline", id+":"+day, id, vars, "")
+	}
+}
+
+// stalePurchaseStage: izin pemegang bola dan kalimat tindak lanjut per status
+// pengajuan yang tertahan.
+var stalePurchaseStage = map[string]struct {
+	perm, next string
+}{
+	"pending":           {"procurement.requests.verify", "Mohon diverifikasi (cek ketersediaan di outlet lain)."},
+	"verified":          {"procurement.requests.approve", "Mohon disetujui atau ditolak."},
+	"approved":          {"procurement.requests.purchasing", "Mohon isi harga & vendor lalu ajukan pembayarannya."},
+	"payment_requested": {"finance.payments.pay", "Mohon diproses pembayarannya."},
+}
+
+// SendStalePurchaseReminders mengirim pengingat untuk pengajuan yang berhenti
+// di satu tahap lebih dari dua hari (dihitung dari perubahan terakhir).
+// Dipanggil penjadwal sekali sehari pada jam pengingat; dedupe antrean
+// (event, ref, target) memakai ref ber-tanggal supaya besok dikirim lagi.
+func SendStalePurchaseReminders(now time.Time) {
+	rows, err := database.DB.Query(`
+		SELECT id, status FROM purchase_requests
+		WHERE status IN ('pending', 'verified', 'approved', 'payment_requested')
+		  AND parent_id IS NULL
+		  AND NOT (status = 'approved' AND COALESCE(total_final, 0) > 0)
+		  AND updated_at < $1
+		ORDER BY updated_at`, now.UTC().Add(-48*time.Hour))
+	if err != nil {
+		log.Printf("[WA] pengingat pengajuan tertahan: %v", err)
+		return
+	}
+	type stale struct{ id, status string }
+	var list []stale
+	for rows.Next() {
+		var st stale
+		if rows.Scan(&st.id, &st.status) == nil {
+			list = append(list, stale{strings.TrimSpace(st.id), st.status})
+		}
+	}
+	rows.Close()
+	day := now.In(GetTimezoneLocation()).Format("2006-01-02")
+	for _, st := range list {
+		stage, ok := stalePurchaseStage[st.status]
+		if !ok {
+			continue
+		}
+		pr, err := GetPurchaseRequest(st.id)
+		if err != nil {
+			continue
+		}
+		vars := waPurchaseVars(pr)
+		vars["status_label"] = purchaseStatusLabel(pr.Status)
+		updated, _ := time.Parse(time.RFC3339, pr.UpdatedAt)
+		vars["days"] = fmt.Sprintf("%d", int(now.Sub(updated).Hours()/24))
+		vars["next_action"] = stage.next
+		extra := pr.RequestedBy
+		if pr.RequestedByID != nil && strings.TrimSpace(*pr.RequestedByID) != "" {
+			extra = waExtraIDPrefix + strings.TrimSpace(*pr.RequestedByID)
+		}
+		// Penerima = pemegang izin tahap ini saja (padanan jenisnya) + pengaju.
+		perm := MapProcurementPermission(stage.perm, pr.RequestType)
+		notifyWAWith("purchase.stale", pr.ID+":stale:"+day, waPurchaseOutlet(pr), vars, "",
+			func(string) string { return perm }, extra)
+	}
+	if len(list) > 0 {
+		log.Printf("[WA] %d pengingat pengajuan tertahan diantrekan (%s)", len(list), day)
 	}
 }

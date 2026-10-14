@@ -245,6 +245,9 @@ type UpdatePurchaseItemsInput struct {
 	InvoiceNumber *string               `json:"invoice_number,omitempty"`
 	// Version opsional (lihat UpdatePurchaseStatusInput.Version).
 	Version string `json:"version,omitempty"`
+	// ActorName: nama akun yang login — diisi handler, bukan body — untuk
+	// notifikasi "harga & vendor ditetapkan".
+	ActorName string `json:"-"`
 	// ExpectedStatus: status yang dipakai handler memilih izin (pending →
 	// submit, approved → purchasing). Beda saat dikunci → 409.
 	ExpectedStatus string `json:"-"`

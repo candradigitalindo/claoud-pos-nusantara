@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/lib/pq v1.11.2
-	go.mau.fi/whatsmeow v0.0.0-20260919103545-0057a822e79a
+	go.mau.fi/whatsmeow v0.0.0-20261014094007-f16f9ca30d6a
 	google.golang.org/protobuf v1.36.12
 )
 

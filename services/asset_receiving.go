@@ -976,6 +976,10 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 		parts = append(parts, "barang lengkap diterima, menunggu pembayaran")
 	}
 	res.Message = strings.Join(parts, " · ")
+	// Pengaju dan pembelian tahu barangnya sudah sampai (sebagian/lengkap).
+	if pr, err := GetPurchaseRequest(prID); err == nil {
+		go NotifyPurchaseEvent(pr, "received", actor.Name, res.Message, 0)
+	}
 	return res, nil
 }
 

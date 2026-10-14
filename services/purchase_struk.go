@@ -338,6 +338,10 @@ func AddPurchasePickup(prID string, in models.AddPurchasePickupInput, actor Acto
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	// Tempat penerimaan dan pengaju tahu barang sedang diantar.
+	if pr, err := GetPurchaseRequest(prID); err == nil {
+		go NotifyPurchaseEvent(pr, "picked_up", actor.Name, in.Notes, 0)
+	}
 	list, err := ListPurchasePickups(database.DB, prID)
 	if err != nil {
 		return nil, err

@@ -384,9 +384,9 @@ func TestPurchaseStatusLabelVerification(t *testing.T) {
 
 func TestWAVerificationEvents(t *testing.T) {
 	sub := waSpec("purchase.submitted")
-	if sub == nil || len(sub.Permissions) != 1 || sub.Permissions[0] != "procurement.requests.verify" ||
+	if sub == nil || len(sub.Permissions) != 1 || sub.Permissions[0] != "procurement.requests.verify" || sub.Extra != "pengaju" ||
 		!strings.Contains(sub.Template, "Menunggu verifikasi") {
-		t.Errorf("purchase.submitted harus ke pemegang verify dengan teks 'Menunggu verifikasi': %+v", sub)
+		t.Errorf("purchase.submitted harus ke pemegang verify + pengaju (tanda terima) dengan teks 'Menunggu verifikasi': %+v", sub)
 	}
 	ver := waSpec("purchase.verified")
 	if ver == nil {

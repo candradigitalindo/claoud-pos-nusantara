@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"errors"
 	"cloud-pos/database"
 	"cloud-pos/models"
 	"cloud-pos/services"
+	"errors"
 	"log"
 	"strings"
 
@@ -427,6 +427,7 @@ func UpdatePurchaseItems(c *fiber.Ctx) error {
 			Success: false, Error: "Items tidak boleh kosong.",
 		})
 	}
+	input.ActorName = purchaseActor(c).Name
 
 	// Check current status to determine required permission
 	var currentStatus, reqType string

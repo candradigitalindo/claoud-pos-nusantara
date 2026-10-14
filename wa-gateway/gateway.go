@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -50,6 +51,10 @@ type gateway struct {
 	mu        sync.Mutex
 	container *sqlstore.Container
 	client    *whatsmeow.Client
+	// db: koneksi ke database yang sama untuk jurnal kejadian sesi
+	// (wa_gateway_events). Status di memori hilang saat container dibuat
+	// ulang; jurnal inilah yang menjawab "kenapa nomornya lepas".
+	db *sql.DB
 
 	state     string
 	note      string
@@ -80,6 +85,90 @@ type statusSnapshot struct {
 	SentCount   int64  `json:"sent_count"`
 	LastSentAt  string `json:"last_sent_at,omitempty"`
 	UptimeSec   int64  `json:"uptime_sec"`
+	// Events: jurnal kejadian sesi terbaru (dari database), terbaru dulu.
+	Events []sessionEvent `json:"events"`
+}
+
+// sessionEvent: satu baris jurnal sesi (tersambung, dicabut, diblokir, ...).
+type sessionEvent struct {
+	At     string `json:"at"`
+	Kind   string `json:"kind"`
+	JID    string `json:"jid"`
+	Detail string `json:"detail"`
+}
+
+// Kind jurnal sesi.
+const (
+	evPaired     = "paired"      // perangkat baru dipasangkan (QR dipindai)
+	evConnected  = "connected"   // tersambung & siap kirim
+	evOffline    = "offline"     // koneksi putus, menyambung ulang
+	evLoggedOut  = "logged_out"  // sesi dicabut oleh WhatsApp / dari HP
+	evBanned     = "banned"      // nomor diblokir sementara
+	evOutdated   = "outdated"    // pustaka whatsmeow ditolak server (perlu build ulang)
+	evConnectErr = "connect_err" // koneksi ditolak server
+	evReplaced   = "replaced"    // sesi diambil alih koneksi lain
+	evLogout     = "logout"      // dilepas lewat aplikasi
+)
+
+func openEventStore(dsn string) (*sql.DB, error) {
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(2)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS wa_gateway_events (
+		id         BIGSERIAL PRIMARY KEY,
+		at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+		kind       VARCHAR(20) NOT NULL,
+		jid        VARCHAR(40) NOT NULL DEFAULT '',
+		detail     TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return nil, err
+	}
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_wa_gateway_events_at ON wa_gateway_events(at DESC)`)
+	return db, nil
+}
+
+// journal mencatat kejadian sesi. Tidak pernah memblokir alur koneksi:
+// kegagalan menulis hanya dicatat di log.
+func (g *gateway) journal(kind, jid, detail string) {
+	if g.db == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := g.db.ExecContext(ctx, `INSERT INTO wa_gateway_events (kind, jid, detail) VALUES ($1, $2, $3)`,
+			kind, jid, detail); err != nil {
+			log.Printf("Jurnal sesi gagal ditulis (%s): %v", kind, err)
+		}
+		// Jurnal lama dipangkas: cukup 200 baris terakhir.
+		_, _ = g.db.ExecContext(ctx, `DELETE FROM wa_gateway_events WHERE id < (
+			SELECT COALESCE(MIN(id), 0) FROM (SELECT id FROM wa_gateway_events ORDER BY id DESC LIMIT 200) t)`)
+	}()
+}
+
+func (g *gateway) recentEvents(limit int) []sessionEvent {
+	out := []sessionEvent{}
+	if g.db == nil {
+		return out
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	rows, err := g.db.QueryContext(ctx, `SELECT at, kind, jid, detail FROM wa_gateway_events ORDER BY id DESC LIMIT $1`, limit)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var e sessionEvent
+		var at time.Time
+		if rows.Scan(&at, &e.Kind, &e.JID, &e.Detail) == nil {
+			e.At = at.UTC().Format(time.RFC3339)
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func newGateway(dsn string) (*gateway, error) {
@@ -100,11 +189,20 @@ func newGateway(dsn string) (*gateway, error) {
 		startedAt: time.Now(),
 		http:      &http.Client{Timeout: 30 * time.Second},
 	}
+	if db, err := openEventStore(dsn); err != nil {
+		log.Printf("Jurnal sesi tidak tersedia: %v", err)
+	} else {
+		g.db = db
+	}
 	g.setClient(device)
 	if device.ID != nil {
 		g.state = stateConnecting
 		g.note = "Menyambung ke WhatsApp..."
 		go g.connectExisting()
+	} else if last := g.recentEvents(1); len(last) > 0 && (last[0].Kind == evLoggedOut || last[0].Kind == evBanned || last[0].Kind == evOutdated) {
+		// Container dibuat ulang setelah sesi dicabut: alasan terakhirnya
+		// tetap ditampilkan, bukan "belum ada nomor" seolah tak pernah dipasang.
+		g.note = "Sesi sebelumnya dicabut: " + last[0].Detail + " Pindai QR lagi."
 	}
 	return g, nil
 }
@@ -127,6 +225,7 @@ func (g *gateway) connectExisting() {
 		g.note = "Gagal menyambung: " + err.Error()
 		g.mu.Unlock()
 		log.Printf("Connect gagal: %v", err)
+		g.journal(evConnectErr, g.jidString(), "Gagal menyambung saat mulai: "+err.Error())
 	}
 }
 
@@ -139,37 +238,49 @@ func (g *gateway) handleEvent(evt interface{}) {
 		g.qrCode = ""
 		g.note = "Tersambung"
 		log.Printf("Tersambung sebagai %s", g.jidString())
+		g.journal(evConnected, g.jidString(), "Tersambung dan siap mengirim.")
 	case *events.PairSuccess:
 		g.note = "Perangkat dipasangkan: " + v.ID.String()
 		log.Printf("Pairing sukses: %s (%s)", v.ID, v.Platform)
+		g.journal(evPaired, v.ID.User, "QR dipindai; perangkat dipasangkan ("+v.Platform+").")
 	case *events.Disconnected:
 		if g.state == stateConnected {
 			g.state = stateOffline
 			g.note = "Koneksi putus, menyambung ulang otomatis..."
+			g.journal(evOffline, g.jidString(), "Koneksi putus; menyambung ulang otomatis.")
 		}
 	case *events.StreamReplaced:
 		g.state = stateOffline
 		g.note = "Sesi diambil alih koneksi lain (gateway dijalankan dua kali?)"
+		g.journal(evReplaced, g.jidString(), "Sesi diambil alih koneksi lain (gateway berjalan dua kali?).")
 	case *events.LoggedOut:
 		// whatsmeow sudah menghapus perangkat dari store; siapkan perangkat
 		// kosong agar pemindaian QR berikutnya bisa langsung dilakukan.
+		// Alasannya dicatat ke jurnal: inilah satu-satunya jejak setelah
+		// store perangkat terhapus.
+		jid := g.jidString()
+		reason := loggedOutReason(v)
 		g.state = stateLoggedOut
 		g.qrCode = ""
-		g.note = "Nomor dikeluarkan dari perangkat tertaut (logout dari HP). Pindai QR lagi."
+		g.note = "Sesi dicabut oleh WhatsApp: " + reason + " Pindai QR lagi."
 		log.Printf("Logged out (onConnect=%v, reason=%v)", v.OnConnect, v.Reason)
+		g.journal(evLoggedOut, jid, reason)
 		go g.replaceDevice()
 	case *events.TemporaryBan:
 		g.state = stateBanned
 		g.note = "WhatsApp memblokir sementara nomor ini: " + v.String()
 		log.Printf("BANNED: %s", v.String())
+		g.journal(evBanned, g.jidString(), "Diblokir sementara: "+v.String())
 	case *events.ClientOutdated:
 		g.state = stateError
 		g.note = "Versi pustaka whatsmeow sudah kedaluwarsa — gateway perlu di-build ulang dengan versi terbaru."
 		log.Printf("Client outdated")
+		g.journal(evOutdated, g.jidString(), "Server menolak versi pustaka (whatsmeow) — gateway perlu di-build ulang.")
 	case *events.ConnectFailure:
 		g.state = stateError
 		g.note = fmt.Sprintf("Koneksi ditolak (%v): %s", v.Reason, v.Message)
 		log.Printf("Connect failure: %v %s", v.Reason, v.Message)
+		g.journal(evConnectErr, g.jidString(), fmt.Sprintf("Koneksi ditolak (%v): %s", v.Reason, v.Message))
 	case *events.KeepAliveTimeout:
 		g.note = "Server tidak merespons keep-alive, mencoba lagi..."
 	case *events.Message:
@@ -178,6 +289,24 @@ func (g *gateway) handleEvent(evt interface{}) {
 		if v.Info.Chat.Server == types.DefaultUserServer {
 			log.Printf("Pesan masuk dari %s (diabaikan)", v.Info.Chat.User)
 		}
+	}
+}
+
+// loggedOutReason menerjemahkan alasan pencabutan sesi menjadi kalimat yang
+// bisa ditindaklanjuti admin.
+func loggedOutReason(v *events.LoggedOut) string {
+	code := fmt.Sprint(v.Reason)
+	switch {
+	case strings.Contains(code, "401") && strings.Contains(code, "another device"):
+		return "WhatsApp mengeluarkan gateway dari perangkat tertaut (kode 401, 'logged out from another device'). " +
+			"Biasanya: nomor dikeluarkan dari menu Perangkat Tertaut di HP, versi pustaka gateway tertinggal, " +
+			"atau nomor baru yang langsung dipakai mengirim pesan."
+	case strings.Contains(code, "403"):
+		return "WhatsApp menolak perangkat ini (kode 403) — nomor kemungkinan dibatasi; tunggu beberapa jam sebelum memasang ulang."
+	case v.OnConnect:
+		return "Sesi ditolak saat menyambung (" + code + ") — perangkat sudah tidak terdaftar di HP."
+	default:
+		return "Sesi dicabut (" + code + ")."
 	}
 }
 
@@ -222,6 +351,7 @@ func (g *gateway) snapshot() statusSnapshot {
 	if !g.lastSent.IsZero() {
 		s.LastSentAt = g.lastSent.UTC().Format(time.RFC3339)
 	}
+	s.Events = g.recentEvents(10)
 	return s
 }
 
@@ -320,6 +450,7 @@ func (g *gateway) logout() error {
 			_ = g.client.Store.Delete(ctx)
 		}
 	}
+	g.journal(evLogout, g.jidString(), "Nomor dilepas lewat aplikasi.")
 	g.setClient(g.container.NewDevice())
 	g.state = stateLoggedOut
 	g.qrCode = ""
@@ -341,6 +472,9 @@ func (g *gateway) shutdown() {
 	}
 	if g.container != nil {
 		g.container.Close()
+	}
+	if g.db != nil {
+		g.db.Close()
 	}
 }
 

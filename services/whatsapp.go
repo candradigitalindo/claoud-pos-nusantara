@@ -871,6 +871,7 @@ func waSchedulerLoop() {
 		if now.Hour() == s.ReminderHour && waMarker("wa_last_reminder") != day {
 			UpdateSettings(map[string]string{"wa_last_reminder": day})
 			go SendReservationReminders(now)
+			go SendStalePurchaseReminders(now)
 		}
 		if now.Minute()%10 == 0 {
 			go CheckDeviceOffline(s)

@@ -66,6 +66,10 @@
             Sesi tersimpan di database dan bertahan walau server/container dimulai ulang. Nomor ini juga
             muncul di HP pada WhatsApp → Perangkat Tertaut; mengeluarkannya dari sana memutus gateway.
           </p>
+          <p class="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+            Nomor yang baru dipasang: biarkan tersambung dulu beberapa menit sebelum mengirim pesan uji.
+            WhatsApp kadang mencabut perangkat baru yang langsung aktif mengirim.
+          </p>
           <div v-if="canManage" class="flex justify-end">
             <AppButton variant="danger" size="sm" :loading="busy.logout" @click="logout">Lepas nomor (logout)</AppButton>
           </div>
@@ -87,6 +91,18 @@
               {{ qrDataUrl ? 'Minta QR baru' : 'Tampilkan QR' }}
             </AppButton>
           </div>
+        </div>
+
+        <!-- Jurnal sesi dari gateway (tersimpan di database): menjelaskan
+             kenapa nomor lepas — dicabut WhatsApp, diblokir, pustaka usang. -->
+        <div v-if="status?.gateway.events?.length" class="mt-4 border-t border-gray-100 pt-3">
+          <p class="mb-1.5 text-xs font-semibold text-gray-600">Riwayat sesi</p>
+          <ul class="space-y-1 text-xs">
+            <li v-for="(ev, i) in status.gateway.events" :key="i" class="flex items-start gap-2">
+              <span class="mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="EVENT_CLS[ev.kind] || 'bg-gray-100 text-gray-600'">{{ EVENT_LBL[ev.kind] || ev.kind }}</span>
+              <span class="min-w-0 break-words text-gray-600"><span class="text-gray-400">{{ formatDateTime(ev.at) }}</span><template v-if="ev.jid"> · +{{ ev.jid }}</template> — {{ ev.detail }}</span>
+            </li>
+          </ul>
         </div>
       </AppCard>
 
@@ -415,6 +431,7 @@ import { whatsappApi } from '@/api/whatsapp.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useToastStore } from '@/stores/toast.js'
+import { formatDateTime } from '@/utils/format.js'
 
 const auth = useAuthStore()
 const toast = useToastStore()
@@ -460,6 +477,15 @@ let pollTimer = null
 let qrTimer = null
 
 const loggedIn = computed(() => !!(status.value?.gateway.logged_in && status.value?.gateway.connected))
+const EVENT_LBL = {
+  paired: 'Dipasang', connected: 'Tersambung', offline: 'Terputus', logged_out: 'Dicabut', banned: 'Diblokir',
+  outdated: 'Pustaka usang', connect_err: 'Ditolak', replaced: 'Diambil alih', logout: 'Dilepas',
+}
+const EVENT_CLS = {
+  paired: 'bg-blue-100 text-blue-700', connected: 'bg-emerald-100 text-emerald-700', offline: 'bg-amber-100 text-amber-700',
+  logged_out: 'bg-red-100 text-red-700', banned: 'bg-red-100 text-red-700', outdated: 'bg-red-100 text-red-700',
+  connect_err: 'bg-red-100 text-red-700', replaced: 'bg-amber-100 text-amber-700', logout: 'bg-gray-100 text-gray-600',
+}
 const STATE_LABEL = {
   connected: 'Tersambung', connecting: 'Menyambung…', pairing: 'Menunggu QR dipindai', qr_timeout: 'QR kedaluwarsa',
   logged_out: 'Belum dipasang', offline: 'Terputus', banned: 'Diblokir sementara', error: 'Bermasalah',

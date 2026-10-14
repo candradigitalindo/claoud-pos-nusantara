@@ -22,6 +22,16 @@ type WAGatewayStatus struct {
 	SentCount   int64  `json:"sent_count"`
 	LastSentAt  string `json:"last_sent_at,omitempty"`
 	UptimeSec   int64  `json:"uptime_sec"`
+	// Events: jurnal sesi dari gateway (tersambung, dicabut, diblokir),
+	// terbaru dulu — menjelaskan kenapa nomor lepas walau sesi disimpan di DB.
+	Events []WAGatewayEvent `json:"events"`
+}
+
+type WAGatewayEvent struct {
+	At     string `json:"at"`
+	Kind   string `json:"kind"`
+	JID    string `json:"jid"`
+	Detail string `json:"detail"`
 }
 
 type WAGroup struct {

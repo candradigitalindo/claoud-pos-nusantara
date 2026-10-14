@@ -2102,6 +2102,12 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	if hasReceipts && cur.Status != "approved" {
 		return nil, Invalid(receivedLockMsg, "itemnya tidak bisa diubah lagi")
 	}
+	// wasPriced: dokumen sudah berharga final sebelum perubahan ini (untuk
+	// notifikasi "harga & vendor ditetapkan" yang hanya dikirim sekali).
+	var wasPriced bool
+	if err := tx.QueryRow(`SELECT COALESCE(total_final, 0) > 0 FROM purchase_requests WHERE id = $1`, id).Scan(&wasPriced); err != nil {
+		return nil, err
+	}
 
 	items := input.Items
 	var stored []models.PurchaseRequestItem
@@ -2211,7 +2217,13 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 		return nil, err
 	}
 
-	return GetPurchaseRequest(id)
+	pr, err := GetPurchaseRequest(id)
+	// Pengaju dikabari begitu harga final & vendornya ditetapkan pembelian
+	// (sekali: saat dokumen yang tadinya tanpa harga menjadi berharga).
+	if err == nil && cur.Status == "approved" && !wasPriced && totalFinal > 0 {
+		go NotifyPurchaseEvent(pr, "priced", input.ActorName, "", 0)
+	}
+	return pr, err
 }
 
 func DeletePurchaseRequest(id string, isAdmin bool) error {
