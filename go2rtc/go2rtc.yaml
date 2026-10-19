@@ -1,0 +1,9 @@
+api:
+  listen: ":1984"
+rtsp:
+  listen: ""
+webrtc:
+  listen: ""
+streams: {}
+log:
+  level: error

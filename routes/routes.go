@@ -9,6 +9,8 @@ import (
 )
 
 func Setup(app *fiber.App, cfg *config.Config) {
+	// Media CCTV harus melewati pemeriksaan akun, izin, outlet, dan sesi HLS.
+	app.Get("/cctv/*", handlers.CCTVRelay)
 	// App distribution files: force the correct MIME + download disposition so an
 	// APK saves as ".apk" (not ".zip"). Registered before the static handler so it
 	// takes precedence for /uploads/apps/<name>.
@@ -100,6 +102,10 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// CCTV auth subrequest — dipanggil nginx auth_request untuk melindungi relay
 	// /cctv/. Divalidasi via cookie stream token (request media tidak bawa header).
 	api.Get("/cctv/authz", handlers.CCTVAuthz(cfg))
+	api.Post("/cctv/logout", handlers.ClearCCTVSession)
+	gateway := api.Group("/cctv/gateway", handlers.CCTVGatewayAuth)
+	gateway.Post("/poll", handlers.PollCCTVGateway)
+	gateway.Post("/result", handlers.CompleteCCTVGateway)
 
 	// Admin API (authenticated by admin token or JWT)
 	admin := api.Group("/admin", middleware.AdminAuth(cfg))
@@ -167,6 +173,16 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// CCTV — monitoring live/putar ulang (view) + kelola kamera (create/update/delete).
 	// Relay-only: cloud tidak menyimpan video; hanya konfigurasi + relay go2rtc.
 	admin.Get("/cameras", middleware.RequirePermission("cameras.view"), handlers.GetCameras)
+	admin.Get("/cameras/options", middleware.RequirePermission("cameras.view"), handlers.GetCCTVOptions)
+	admin.Get("/cctv/gateways", middleware.RequirePermission("cameras.view"), handlers.GetCCTVGateways)
+	admin.Post("/outlets/:id/cctv-gateway", middleware.RequirePermission("cameras.create"), handlers.CreateCCTVGateway(false))
+	admin.Post("/outlets/:id/cctv-gateway/rotate", middleware.RequirePermission("cameras.update"), handlers.CreateCCTVGateway(true))
+	admin.Delete("/outlets/:id/cctv-gateway", middleware.RequirePermission("cameras.delete"), handlers.DeleteCCTVGateway)
+	admin.Post("/outlets/:id/cameras/probe", middleware.RequireAnyPermission("cameras.create", "cameras.update"), handlers.ProbeCameraConfiguration)
+	admin.Post("/outlets/:id/cameras/onvif/profiles", middleware.RequireAnyPermission("cameras.create", "cameras.update"), handlers.DiscoverCameraONVIFProfiles)
+	admin.Post("/outlets/:id/cameras/tuya/discover", middleware.RequireAnyPermission("cameras.create", "cameras.update"), handlers.DiscoverTuyaCameras)
+	admin.Post("/cameras/:camId/test", middleware.RequirePermission("cameras.view"), handlers.TestCameraConnection)
+	admin.Post("/cameras/session", middleware.RequirePermission("cameras.view"), handlers.RefreshCCTVSession)
 	admin.Get("/outlets/:id/cameras", middleware.RequirePermission("cameras.view"), handlers.GetOutletCameras)
 	admin.Post("/outlets/:id/cameras", middleware.RequirePermission("cameras.create"), handlers.CreateCamera)
 	admin.Put("/cameras/:camId", middleware.RequirePermission("cameras.update"), handlers.UpdateCamera)

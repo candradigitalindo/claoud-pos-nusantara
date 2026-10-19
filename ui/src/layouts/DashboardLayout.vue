@@ -530,6 +530,7 @@ const NAV_ITEMS_DATA = [
       { to: '/settings/timezone', label: 'Zona Waktu', permission: 'settings.timezone.view' },
       { to: '/settings/tax',     label: 'Pajak', permission: 'settings.tax.view' },
       { to: '/settings/devices', label: 'Perangkat', permission: 'devices.view' },
+      { to: '/settings/cctv', label: 'CCTV', permission: 'cameras.view' },
     ],
   },
   {

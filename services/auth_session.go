@@ -394,7 +394,12 @@ func AuthenticateAdminJWT(tokenString, secret string) (*AdminSession, error) {
 	if err != nil {
 		return nil, err
 	}
+	return authenticateAdminClaims(tc)
+}
 
+// authenticateAdminClaims dipakai sesi admin dan cookie relay CCTV setelah
+// masing-masing memverifikasi tanda tangan dan jenis tokennya sendiri.
+func authenticateAdminClaims(tc adminTokenClaims) (*AdminSession, error) {
 	st, err := adminSessions.account(tc.sub)
 	if err != nil {
 		log.Printf("[Auth] periksa sesi akun %s gagal: %v", tc.sub, err)

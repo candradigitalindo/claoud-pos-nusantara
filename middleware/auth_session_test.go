@@ -103,7 +103,7 @@ func sesiKlaimMW(sub, role string, ver int) jwt.MapClaims {
 // valid"), tidak sampai ke pencocokan akun.
 func TestAdminAuthMenolakTokenBukanSesiAdmin(t *testing.T) {
 	services.InitCCTV("", sesiRahasiaMW, "")
-	cctv, err := services.IssueCCTVToken("01ADMIN000SUPERADMIN00001")
+	cctv, err := services.IssueCCTVToken(sesiTandaTanganMW(t, sesiKlaimMW("01ADMIN000SUPERADMIN00001", "superadmin", 0), sesiRahasiaMW))
 	if err != nil {
 		t.Fatal(err)
 	}

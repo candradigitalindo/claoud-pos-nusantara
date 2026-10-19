@@ -4,5 +4,7 @@ uploads/
 ui/node_modules/
 ui/dist/
 .env
+.env.cctv-gateway
+cctv-gateway.env
 .git
 *.md

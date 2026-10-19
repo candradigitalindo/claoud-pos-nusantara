@@ -114,6 +114,8 @@ export const useAuthStore = defineStore('auth', () => {
    * Called by the UI on manual logout or on 401 response from API.
    */
   function logout() {
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    fetch(`${apiBase}/cctv/logout`, { method: 'POST', credentials: 'include', keepalive: true }).catch(() => {})
     token.value = ''
     admin.value = null
     permissions.value = []

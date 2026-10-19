@@ -2,6 +2,10 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
+	"net/url"
+	"strings"
+	"time"
 
 	"cloud-pos/config"
 	"cloud-pos/models"
@@ -20,7 +24,7 @@ func GetCameras(c *fiber.Ctx) error {
 	}
 	cams, err := services.ListCameras(outletID, getOutletScope(c))
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal memuat kamera: " + err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal memuat kamera"})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: cams})
 }
@@ -33,7 +37,7 @@ func GetOutletCameras(c *fiber.Ctx) error {
 	}
 	cams, err := services.ListCamerasByOutlet(outletID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal memuat kamera: " + err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal memuat kamera"})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: cams})
 }
@@ -45,12 +49,20 @@ func CreateCamera(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses outlet tidak diizinkan"})
 	}
 	var req models.CreateCameraRequest
-	if err := c.BodyParser(&req); err != nil {
+	if len(c.Body()) > 48<<10 || c.BodyParser(&req) != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format permintaan tidak valid"})
+	}
+	if req.SourceTicket != "" {
+		admin, _ := c.Locals("admin_id").(string)
+		source, err := services.ResolveCCTVCloudTicket(req.SourceTicket, admin, outletID)
+		if err != nil {
+			return cctvError(c, err)
+		}
+		req.SourceURL = &source
 	}
 	cam, err := services.CreateCamera(outletID, req)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal menambah kamera: " + err.Error()})
+		return cctvError(c, err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(models.APIResponse{Success: true, Data: cam})
 }
@@ -62,12 +74,24 @@ func UpdateCamera(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses kamera tidak diizinkan"})
 	}
 	var req models.UpdateCameraRequest
-	if err := c.BodyParser(&req); err != nil {
+	if len(c.Body()) > 48<<10 || c.BodyParser(&req) != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format permintaan tidak valid"})
+	}
+	if req.SourceTicket != "" {
+		outlet, err := services.GetCameraOutletID(id)
+		if err != nil {
+			return cctvError(c, err)
+		}
+		admin, _ := c.Locals("admin_id").(string)
+		source, err := services.ResolveCCTVCloudTicket(req.SourceTicket, admin, outlet)
+		if err != nil {
+			return cctvError(c, err)
+		}
+		req.SourceURL = &source
 	}
 	cam, err := services.UpdateCamera(id, req)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal memperbarui kamera: " + err.Error()})
+		return cctvError(c, err)
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: cam, Message: "Kamera berhasil diperbarui"})
 }
@@ -80,7 +104,7 @@ func ToggleCamera(c *fiber.Ctx) error {
 	}
 	cam, err := services.ToggleCamera(id)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal mengubah status kamera"})
+		return cctvError(c, err)
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: cam})
 }
@@ -92,7 +116,7 @@ func DeleteCamera(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses kamera tidak diizinkan"})
 	}
 	if err := services.DeleteCamera(id); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal menghapus kamera"})
+		return cctvError(c, err)
 	}
 	return c.JSON(models.APIResponse{Success: true, Message: "Kamera berhasil dihapus"})
 }
@@ -100,19 +124,19 @@ func DeleteCamera(c *fiber.Ctx) error {
 // ── Streaming (live + playback) ─────────────────────────────────────────────
 
 // StartCameraStream — mulai live view. Mendaftarkan stream ke go2rtc, menerbitkan
-// cookie stream token (untuk relay /cctv/), dan mengembalikan URL HLS/WebRTC.
+// cookie stream token (untuk relay /cctv/), dan mengembalikan URL HLS.
 func StartCameraStream(cfg *config.Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		id := c.Params("camId")
 		if !cameraInScope(c, id) {
 			return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses kamera tidak diizinkan"})
 		}
+		if err := setCCTVCookie(c); err != nil {
+			return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Streaming CCTV memerlukan sesi login admin yang masih berlaku"})
+		}
 		resp, err := services.StartLive(id)
 		if err != nil {
-			return c.Status(fiber.StatusBadGateway).JSON(models.APIResponse{Success: false, Error: "Gagal memulai stream: " + err.Error()})
-		}
-		if err := setCCTVCookie(c); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal menyiapkan sesi stream"})
+			return cctvError(c, err)
 		}
 		return c.JSON(models.APIResponse{Success: true, Data: resp})
 	}
@@ -129,12 +153,15 @@ func StartCameraPlayback(cfg *config.Config) fiber.Handler {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format permintaan tidak valid"})
 		}
-		resp, err := services.StartPlayback(id, req)
-		if err != nil {
-			return c.Status(fiber.StatusBadGateway).JSON(models.APIResponse{Success: false, Error: "Gagal memulai putar ulang: " + err.Error()})
+		if _, err := services.BuildPlaybackRTSP(models.OutletCamera{}, "", req.Start, req.End); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: err.Error()})
 		}
 		if err := setCCTVCookie(c); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: "Gagal menyiapkan sesi stream"})
+			return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Streaming CCTV memerlukan sesi login admin yang masih berlaku"})
+		}
+		resp, err := services.StartPlayback(id, req)
+		if err != nil {
+			return cctvError(c, err)
 		}
 		return c.JSON(models.APIResponse{Success: true, Data: resp})
 	}
@@ -142,7 +169,18 @@ func StartCameraPlayback(cfg *config.Config) fiber.Handler {
 
 // StopCameraStream — hentikan & bersihkan stream playback transient (?name=).
 func StopCameraStream(c *fiber.Ctx) error {
-	services.StopStream(c.Query("name"))
+	id := c.Params("camId")
+	// Periksa kecocokan nama sebelum melakukan panggilan ke relay.
+	streamCamera, err := services.CCTVStreamCameraID(c.Query("name"))
+	if err != nil || streamCamera != id {
+		return cctvError(c, services.ErrCCTVAccessDenied)
+	}
+	if !cameraInScope(c, id) {
+		return cctvError(c, services.ErrCCTVAccessDenied)
+	}
+	if err := services.StopStream(id, c.Query("name")); err != nil {
+		return cctvError(c, err)
+	}
 	return c.JSON(models.APIResponse{Success: true})
 }
 
@@ -152,12 +190,66 @@ func StopCameraStream(c *fiber.Ctx) error {
 // tidak membawa header Authorization.
 func CCTVAuthz(cfg *config.Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		tok := c.Cookies("cctv_token")
-		if tok == "" || services.ValidateCCTVToken(tok) != nil {
-			return c.SendStatus(fiber.StatusUnauthorized)
+		u, err := url.ParseRequestURI(c.Get("X-Original-URI"))
+		if err != nil || !strings.HasPrefix(u.Path, "/cctv/") {
+			return cctvError(c, services.ErrCCTVAccessDenied)
+		}
+		if _, err := services.CCTVMediaSource(c.Cookies("cctv_token"), strings.TrimPrefix(u.Path, "/cctv"), u.RawQuery); err != nil {
+			return cctvError(c, err)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	}
+}
+
+// CCTVRelay melindungi seluruh playlist/segmen; tidak ada proxy umum ke API
+// go2rtc. Kredensial dan body galat upstream tidak pernah diteruskan.
+func CCTVRelay(c *fiber.Ctx) error {
+	body, contentType, err := services.RelayCCTVMedia(c.Cookies("cctv_token"), strings.TrimPrefix(c.Path(), "/cctv"), string(c.Context().QueryArgs().QueryString()))
+	if err != nil {
+		return cctvError(c, err)
+	}
+	c.Set("Content-Type", contentType)
+	c.Set("Cache-Control", "private, no-store")
+	c.Set("X-Content-Type-Options", "nosniff")
+	return c.Send(body)
+}
+
+func RefreshCCTVSession(c *fiber.Ctx) error {
+	if err := setCCTVCookie(c); err != nil {
+		return cctvError(c, err)
+	}
+	return c.JSON(models.APIResponse{Success: true})
+}
+
+func ClearCCTVSession(c *fiber.Ctx) error {
+	c.Cookie(&fiber.Cookie{Name: "cctv_token", Path: "/cctv", Expires: time.Unix(1, 0), MaxAge: -1, HTTPOnly: true, Secure: c.Protocol() == "https", SameSite: "Lax"})
+	return c.JSON(models.APIResponse{Success: true})
+}
+
+func cctvError(c *fiber.Ctx, err error) error {
+	status, message := fiber.StatusBadGateway, "Stream belum tersedia; periksa koneksi kamera dan layanan relay"
+	switch {
+	case errors.Is(err, services.ErrAuthUnavailable):
+		status, message = fiber.StatusServiceUnavailable, services.ErrAuthUnavailable.Error()
+	case errors.Is(err, services.ErrAuthTokenInvalid), errors.Is(err, services.ErrAuthAccountInactive), errors.Is(err, services.ErrAuthSessionRevoked):
+		status, message = fiber.StatusUnauthorized, "Sesi CCTV sudah tidak berlaku; buka ulang kamera"
+	case errors.Is(err, services.ErrCCTVAccessDenied):
+		status, message = fiber.StatusForbidden, services.ErrCCTVAccessDenied.Error()
+	case errors.Is(err, services.ErrCameraInactive):
+		status, message = fiber.StatusForbidden, services.ErrCameraInactive.Error()
+	case errors.Is(err, services.ErrCameraValidation):
+		status, message = fiber.StatusBadRequest, err.Error()
+	case errors.Is(err, services.ErrPlaybackUnsupported):
+		status, message = fiber.StatusUnprocessableEntity, err.Error()
+	case errors.Is(err, services.ErrCCTVGatewayOffline):
+		status, message = fiber.StatusFailedDependency, err.Error()
+	case errors.Is(err, services.ErrCCTVStreamLimit):
+		status, message = fiber.StatusTooManyRequests, err.Error()
+	case errors.Is(err, sql.ErrNoRows):
+		status, message = fiber.StatusNotFound, "Kamera tidak ditemukan"
+	}
+	c.Set("Cache-Control", "private, no-store")
+	return c.Status(status).JSON(models.APIResponse{Success: false, Error: message})
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -176,8 +268,7 @@ func cameraInScope(c *fiber.Ctx, camID string) bool {
 
 // setCCTVCookie menyetel cookie stream token (Path=/cctv, HttpOnly) berumur pendek.
 func setCCTVCookie(c *fiber.Ctx) error {
-	adminID, _ := c.Locals("admin_id").(string)
-	tok, err := services.IssueCCTVToken(adminID)
+	tok, err := services.IssueCCTVToken(strings.TrimPrefix(c.Get("Authorization"), "Bearer "))
 	if err != nil {
 		return err
 	}
@@ -186,6 +277,7 @@ func setCCTVCookie(c *fiber.Ctx) error {
 		Value:    tok,
 		Path:     "/cctv",
 		HTTPOnly: true,
+		Secure:   c.Protocol() == "https",
 		SameSite: "Lax",
 		MaxAge:   3600,
 	})

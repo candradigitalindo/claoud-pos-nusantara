@@ -415,6 +415,12 @@ const routes = [
         component: DeviceMonitor,
         meta: { title: 'Perangkat — Cloud POS', requiresAuth: true, permission: 'devices.view' },
       },
+      {
+        path: 'settings/cctv',
+        name: 'Cctv',
+        component: () => import('@/pages/Cctv.vue'),
+        meta: { title: 'CCTV — Cloud POS', requiresAuth: true, permission: 'cameras.view' },
+      },
       // ── WhatsApp ────────────────────────────────────────
       {
         path: 'whatsapp',

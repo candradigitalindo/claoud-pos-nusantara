@@ -72,3 +72,18 @@ COPY --from=wa-builder /wa-gateway ./wa-gateway
 
 EXPOSE 4100
 CMD ["./wa-gateway"]
+
+# Penghubung memakai standard library Go saja; pemasangan outlet tidak perlu
+# membangun API cloud atau mengunduh seluruh dependensi backend.
+FROM golang:1.24-alpine AS cctv-gateway-builder
+WORKDIR /gateway
+COPY go.mod ./
+COPY internal/cctvrelay/ ./internal/cctvrelay/
+COPY cmd/cctv-gateway/ ./cmd/cctv-gateway/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /cctv-gateway ./cmd/cctv-gateway
+
+# Penghubung outlet: relay lokal + klien HTTPS keluar, tanpa VPN/port publik.
+FROM alexxit/go2rtc:1.9.14 AS cctv-gateway
+COPY --from=cctv-gateway-builder /cctv-gateway /usr/local/bin/cctv-gateway
+COPY go2rtc/gateway.yaml /etc/cctv/go2rtc.yaml
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/cctv-gateway"]

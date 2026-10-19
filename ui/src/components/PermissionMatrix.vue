@@ -424,7 +424,7 @@ const CATEGORIES = [
       { type: 'toggles', label: 'Zona Waktu', icon: IC.clock, toggles: [{ key: 'settings.timezone.view', label: 'Lihat' }, { key: 'settings.timezone.update', label: 'Ubah' }] },
       { type: 'toggles', label: 'Pajak', icon: IC.tax, toggles: [{ key: 'settings.tax.view', label: 'Lihat' }, { key: 'settings.tax.update', label: 'Ubah' }] },
       { type: 'single', key: 'devices.view', label: 'Perangkat (Monitoring)', icon: IC.gauge },
-      { type: 'crud', module: 'cameras', label: 'Kamera CCTV (API)', icon: IC.gauge },
+      { type: 'crud', module: 'cameras', label: 'Kamera CCTV', icon: IC.gauge },
     ],
   },
 ]

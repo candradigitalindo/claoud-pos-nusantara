@@ -57,6 +57,10 @@ func main() {
 	// CCTV relay: siapkan kunci enkripsi kredensial RTSP, secret stream token,
 	// dan alamat media server go2rtc.
 	services.InitCCTV(cfg.CameraEncKey, cfg.JWTSecret, cfg.Go2rtcURL)
+	if err := database.RunCCTVMigrations(); err != nil {
+		log.Printf("CCTV migration failed: %v", err)
+	}
+	services.StartCCTVStreamCleaner()
 
 	// PPIC: evaluasi alert harian (expired/ROP) + broadcast SSE ke dashboard.
 	services.StartPpicScheduler()
@@ -78,10 +82,10 @@ func main() {
 	services.StartNarrativeScheduler()
 
 	app := fiber.New(fiber.Config{
-		AppName:        "Nusantara POS Cloud API v1.0.0",
-		BodyLimit:      200 * 1024 * 1024,
-		ServerHeader:   "NusantaraPOS-Cloud",
-		UnescapePath:   true,
+		AppName:      "Nusantara POS Cloud API v1.0.0",
+		BodyLimit:    200 * 1024 * 1024,
+		ServerHeader: "NusantaraPOS-Cloud",
+		UnescapePath: true,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {

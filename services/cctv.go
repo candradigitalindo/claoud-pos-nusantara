@@ -3,10 +3,10 @@ package services
 // CCTV — integrasi kamera CCTV outlet secara RELAY-ONLY (zero-retention).
 //
 // Prinsip:
-//   - Cloud TIDAK PERNAH menyimpan video. go2rtc hanya me-relay/transcode aliran
-//     RTSP dari DVR outlet ke browser (WebRTC/HLS in-memory). Rekaman tetap di DVR.
-//   - Cloud tidak bisa masuk ke LAN outlet (NAT). go2rtc menjangkau DVR lewat overlay
-//     privat (Tailscale/WireGuard) yang di-dial keluar dari edge outlet.
+//   - Cloud TIDAK PERNAH menyimpan video. go2rtc me-relay aliran
+//     dari perangkat outlet ke browser (HLS in-memory). Rekaman tetap di DVR.
+//   - Perangkat lokal dijangkau melalui penghubung HTTPS keluar dari outlet,
+//     tanpa VPN. Sumber cloud vendor dapat dijangkau langsung oleh relay cloud.
 //   - Kredensial RTSP disimpan terenkripsi (AES-256-GCM) dan hanya dipakai server-side;
 //     dikirim ke go2rtc via API internal (tidak pernah ke browser).
 //
@@ -14,7 +14,6 @@ package services
 // API internal → browser menonton lewat nginx /cctv/ (dilindungi cookie stream token).
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -23,8 +22,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,13 +34,14 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/lib/pq"
+	"github.com/oklog/ulid/v2"
 )
 
 var (
 	cctvEncKey    []byte // 32-byte AES key (turunan SHA-256)
 	cctvSecret    string // secret untuk stream token (HS256)
 	go2rtcBaseURL string
-	cctvHTTP      = &http.Client{Timeout: 6 * time.Second}
+	cctvHTTP      = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 )
 
 // InitCCTV menyiapkan kunci enkripsi, secret token, dan alamat go2rtc. Dipanggil
@@ -111,37 +113,67 @@ func decryptSecret(enc string) (string, error) {
 
 // ── Stream token (cookie berumur pendek untuk akses relay /cctv/) ───────────
 
-// IssueCCTVToken menerbitkan JWT bertipe "cctv" (HS256) untuk admin tertentu,
-// dipakai sebagai cookie yang divalidasi nginx auth_request pada tiap request /cctv/.
-func IssueCCTVToken(adminID string) (string, error) {
+// IssueCCTVToken menurunkan cookie media dari JWT login, tanpa menyalin token
+// admin ke browser. Cookie mengikuti versi/role sesi asal dan tidak boleh
+// berumur lebih panjang daripada sesi tersebut. Token statis tidak diterima.
+func IssueCCTVToken(adminJWT string) (string, error) {
+	original, err := ValidateJWT(adminJWT, cctvSecret)
+	if err != nil {
+		return "", ErrAuthTokenInvalid
+	}
+	tc, err := parseAdminTokenClaims(original)
+	if err != nil || tc.role == "" {
+		return "", ErrAuthTokenInvalid
+	}
+	expires, err := original.GetExpirationTime()
+	if err != nil || expires == nil {
+		return "", ErrAuthTokenInvalid
+	}
+	deadline := time.Now().UTC().Add(time.Hour)
+	if expires.Time.Before(deadline) {
+		deadline = expires.Time
+	}
 	claims := jwt.MapClaims{
-		"typ": "cctv",
-		"sub": adminID,
-		"iat": time.Now().UTC().Unix(),
-		"exp": time.Now().UTC().Add(1 * time.Hour).Unix(),
+		"typ":  "cctv",
+		"sub":  tc.sub,
+		"role": tc.role,
+		"ver":  tc.version,
+		"iat":  time.Now().UTC().Unix(),
+		"exp":  deadline.Unix(),
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(cctvSecret))
 }
 
 // ValidateCCTVToken memvalidasi cookie stream token.
 func ValidateCCTVToken(tok string) error {
+	_, err := authenticateCCTVToken(tok)
+	return err
+}
+
+func authenticateCCTVToken(tok string) (*AdminSession, error) {
 	parsed, err := jwt.Parse(tok, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("metode tanda tangan tidak sesuai")
-		}
 		return []byte(cctvSecret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 	if err != nil {
-		return err
+		return nil, ErrAuthTokenInvalid
 	}
 	claims, ok := parsed.Claims.(jwt.MapClaims)
 	if !ok || !parsed.Valid {
-		return fmt.Errorf("token tidak valid")
+		return nil, ErrAuthTokenInvalid
 	}
 	if t, _ := claims["typ"].(string); t != "cctv" {
-		return fmt.Errorf("tipe token bukan cctv")
+		return nil, ErrAuthTokenInvalid
 	}
-	return nil
+	// Cookie lama tanpa versi/role ditolak; bukan sesi yang dapat dicabut.
+	if _, ok := claims["ver"]; !ok {
+		return nil, ErrAuthTokenInvalid
+	}
+	claims["typ"] = adminTokenType
+	tc, err := parseAdminTokenClaims(claims)
+	if err != nil || tc.role == "" {
+		return nil, ErrAuthTokenInvalid
+	}
+	return authenticateAdminClaims(tc)
 }
 
 // ── Pembangun URL RTSP (Hikvision / Dahua) ──────────────────────────────────
@@ -162,7 +194,7 @@ func camPort(p int) int {
 }
 
 func rtspBase(cam models.OutletCamera, pass string) *url.URL {
-	u := &url.URL{Scheme: "rtsp", Host: fmt.Sprintf("%s:%d", cam.Host, camPort(cam.Port))}
+	u := &url.URL{Scheme: "rtsp", Host: net.JoinHostPort(cam.Host, strconv.Itoa(camPort(cam.Port)))}
 	if cam.RTSPUsername != "" {
 		u.User = url.UserPassword(cam.RTSPUsername, pass)
 	}
@@ -170,8 +202,9 @@ func rtspBase(cam models.OutletCamera, pass string) *url.URL {
 }
 
 // BuildLiveRTSP menyusun URL RTSP live sub-stream (default) sesuai merk.
-//   Hikvision: /Streaming/Channels/<ch><stream>  (ch1 sub = 102, main = 101)
-//   Dahua:     /cam/realmonitor?channel=<ch>&subtype=<0|1>
+//
+//	Hikvision: /Streaming/Channels/<ch><stream>  (ch1 sub = 102, main = 101)
+//	Dahua:     /cam/realmonitor?channel=<ch>&subtype=<0|1>
 func BuildLiveRTSP(cam models.OutletCamera, pass string) string {
 	u := rtspBase(cam, pass)
 	ch := cam.Channel
@@ -198,14 +231,15 @@ func BuildLiveRTSP(cam models.OutletCamera, pass string) string {
 
 // BuildPlaybackRTSP menyusun URL RTSP putar-ulang dari rekaman DVR untuk rentang waktu.
 // Aliran playback bersifat transient — cloud tidak menyimpan apa pun.
-//   Hikvision: /Streaming/tracks/<ch>01?starttime=YYYYMMDDThhmmssZ&endtime=...
-//   Dahua:     /cam/playback?channel=<ch>&subtype=0&starttime=YYYY_MM_DD_hh_mm_ss&endtime=...
+//
+//	Hikvision: /Streaming/tracks/<ch>01?starttime=YYYYMMDDThhmmssZ&endtime=...
+//	Dahua:     /cam/playback?channel=<ch>&subtype=0&starttime=YYYY_MM_DD_hh_mm_ss&endtime=...
 func BuildPlaybackRTSP(cam models.OutletCamera, pass, start, end string) (string, error) {
-	st, err := parsePlaybackTime(start)
+	st, err := parseCameraPlaybackTime(cam, start)
 	if err != nil {
 		return "", fmt.Errorf("waktu mulai tidak valid")
 	}
-	et, err := parsePlaybackTime(end)
+	et, err := parseCameraPlaybackTime(cam, end)
 	if err != nil {
 		return "", fmt.Errorf("waktu selesai tidak valid")
 	}
@@ -226,14 +260,25 @@ func BuildPlaybackRTSP(cam models.OutletCamera, pass, start, end string) (string
 	// Hikvision — starttime/endtime dalam format ISO basic + 'Z'.
 	u.Path = fmt.Sprintf("/Streaming/tracks/%d", ch*100+1)
 	u.RawQuery = fmt.Sprintf("starttime=%s&endtime=%s",
-		st.Format("20060102T150405Z"), et.Format("20060102T150405Z"))
+		st.UTC().Format("20060102T150405Z"), et.UTC().Format("20060102T150405Z"))
 	return u.String(), nil
 }
 
-func parsePlaybackTime(s string) (time.Time, error) {
+func parseCameraPlaybackTime(cam models.OutletCamera, s string) (time.Time, error) {
+	tz := cam.Timezone
+	if tz == "" {
+		tz = "Asia/Jakarta"
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: zona waktu kamera tidak valid", ErrCameraValidation)
+	}
 	s = strings.TrimSpace(s)
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.In(loc), nil
+	}
 	for _, f := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04:05"} {
-		if t, err := time.Parse(f, s); err == nil {
+		if t, err := time.ParseInLocation(f, s, loc); err == nil {
 			return t, nil
 		}
 	}
@@ -247,18 +292,19 @@ func parsePlaybackTime(s string) (time.Time, error) {
 // menulis apa pun ke disk (relay in-memory).
 func Go2rtcPublish(name, src string) error {
 	q := url.Values{"name": {name}, "src": {src}}
-	req, err := http.NewRequest(http.MethodPut, go2rtcBaseURL+"/api/streams?"+q.Encode(), nil)
+	// PATCH mengubah sumber di RAM. PUT juga menulis URL berkredensial ke
+	// konfigurasi go2rtc; kredensial relay tidak boleh dipersistenkan.
+	req, err := http.NewRequest(http.MethodPatch, go2rtcBaseURL+"/api/streams?"+q.Encode(), nil)
 	if err != nil {
 		return err
 	}
 	resp, err := cctvHTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("go2rtc tidak dapat dihubungi: %w", err)
+		return fmt.Errorf("go2rtc tidak dapat dihubungi")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("go2rtc gagal daftar stream (%d): %s", resp.StatusCode, bytes.TrimSpace(body))
+		return fmt.Errorf("go2rtc gagal daftar stream (%d)", resp.StatusCode)
 	}
 	return nil
 }
@@ -275,6 +321,9 @@ func Go2rtcDelete(name string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("go2rtc gagal menghentikan stream (%d)", resp.StatusCode)
+	}
 	return nil
 }
 
@@ -288,13 +337,15 @@ func scanCameras(rows *sql.Rows) ([]models.OutletCamera, error) {
 		var pwdEnc, outletName string
 		if err := rows.Scan(&c.ID, &c.OutletID, &outletName, &c.Name, &c.Brand, &c.Host, &c.Port,
 			&c.Channel, &c.Subtype, &c.RTSPUsername, &pwdEnc, &c.IsActive, &c.SortOrder,
-			&c.CreatedAt, &c.UpdatedAt); err != nil {
+			&c.CreatedAt, &c.UpdatedAt, &c.ConnectionType, &c.AccessMode, &c.HasSourceURL, &c.HasPlaybackURL, &c.Timezone); err != nil {
 			return nil, err
 		}
 		c.ID = strings.TrimSpace(c.ID)
 		c.OutletID = strings.TrimSpace(c.OutletID)
 		c.OutletName = strings.TrimSpace(outletName)
 		c.HasPassword = pwdEnc != ""
+		c.ConnectionType = cameraConnection(c)
+		c.SupportsPlayback = c.ConnectionType == "hikvision" || c.ConnectionType == "dahua" || c.HasPlaybackURL
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -302,7 +353,7 @@ func scanCameras(rows *sql.Rows) ([]models.OutletCamera, error) {
 
 const cameraCols = `c.id, c.outlet_id, COALESCE(o.name,''), c.name, c.brand, c.host, c.port,
 	c.channel, c.subtype, c.rtsp_username, c.rtsp_password_enc, c.is_active, c.sort_order,
-	c.created_at, c.updated_at`
+	c.created_at, c.updated_at, c.connection_type, c.access_mode, c.source_url_enc <> '', c.playback_url_enc <> '', c.timezone`
 
 // ListCameras mengembalikan kamera semua outlet dalam scope (opsional filter satu outlet).
 func ListCameras(outletID string, scope []string) ([]models.OutletCamera, error) {
@@ -371,95 +422,145 @@ func GetCameraOutletID(id string) (string, error) {
 }
 
 // getCameraSecret mengembalikan kamera + password RTSP terdekripsi (server-side only).
-func getCameraSecret(id string) (*models.OutletCamera, string, error) {
-	cam, err := GetCamera(id)
+func getCameraConnectionSecrets(id string, requireActive bool) (*models.OutletCamera, string, string, string, error) {
+	cam, err := cctvCameraLoader(id)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", "", err
 	}
-	var enc string
-	if err := database.DB.QueryRow(`SELECT rtsp_password_enc FROM outlet_cameras WHERE id = $1`, strings.TrimSpace(id)).Scan(&enc); err != nil {
-		return nil, "", err
+	if requireActive && !cam.IsActive {
+		return nil, "", "", "", ErrCameraInactive
+	}
+	var enc, sourceEnc, playbackEnc string
+	if err := database.DB.QueryRow(`SELECT rtsp_password_enc, source_url_enc, playback_url_enc FROM outlet_cameras WHERE id=$1`, strings.TrimSpace(id)).Scan(&enc, &sourceEnc, &playbackEnc); err != nil {
+		return nil, "", "", "", err
 	}
 	pass, err := decryptSecret(enc)
 	if err != nil {
-		return nil, "", fmt.Errorf("gagal dekripsi kredensial kamera")
+		return nil, "", "", "", fmt.Errorf("gagal membuka kredensial kamera")
 	}
-	return cam, pass, nil
+	source, err := decryptSecret(sourceEnc)
+	if err != nil {
+		return nil, "", "", "", fmt.Errorf("gagal membuka sumber kamera")
+	}
+	playback, err := decryptSecret(playbackEnc)
+	if err != nil {
+		return nil, "", "", "", fmt.Errorf("gagal membuka sumber rekaman")
+	}
+	return cam, pass, source, playback, nil
 }
 
 func CreateCamera(outletID string, req models.CreateCameraRequest) (*models.OutletCamera, error) {
-	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Host) == "" {
-		return nil, fmt.Errorf("nama dan host wajib diisi")
-	}
-	encPwd, err := encryptSecret(req.RTSPPassword)
-	if err != nil {
-		return nil, err
-	}
 	active := true
 	if req.IsActive != nil {
 		active = *req.IsActive
 	}
-	ch := req.Channel
-	if ch <= 0 {
-		ch = 1
+	cam := models.OutletCamera{ID: NewULID(), OutletID: strings.TrimSpace(outletID), Name: req.Name, Brand: req.Brand,
+		ConnectionType: req.ConnectionType, AccessMode: req.AccessMode, Host: req.Host, Port: req.Port, Channel: req.Channel, Subtype: req.Subtype,
+		RTSPUsername: strings.TrimSpace(req.RTSPUsername), IsActive: active, SortOrder: req.SortOrder, Timezone: req.Timezone}
+	source, playback := "", ""
+	if req.SourceURL != nil {
+		source = strings.TrimSpace(*req.SourceURL)
 	}
-	id := NewULID()
-	_, err = database.DB.Exec(`INSERT INTO outlet_cameras
-		(id, outlet_id, name, brand, host, port, channel, subtype, rtsp_username, rtsp_password_enc, is_active, sort_order)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		id, strings.TrimSpace(outletID), strings.TrimSpace(req.Name), normBrand(req.Brand),
-		strings.TrimSpace(req.Host), camPort(req.Port), ch, req.Subtype,
-		strings.TrimSpace(req.RTSPUsername), encPwd, active, req.SortOrder)
+	if req.PlaybackURL != nil {
+		playback = strings.TrimSpace(*req.PlaybackURL)
+	}
+	if err := validateCameraConfig(&cam, source, playback); err != nil {
+		return nil, err
+	}
+	pwdEnc, err := encryptSecret(req.RTSPPassword)
 	if err != nil {
 		return nil, err
 	}
-	return GetCamera(id)
+	sourceEnc, err := encryptSecret(source)
+	if err != nil {
+		return nil, err
+	}
+	playbackEnc, err := encryptSecret(playback)
+	if err != nil {
+		return nil, err
+	}
+	_, err = database.DB.Exec(`INSERT INTO outlet_cameras
+ (id,outlet_id,name,brand,host,port,channel,subtype,rtsp_username,rtsp_password_enc,is_active,sort_order,connection_type,access_mode,source_url_enc,playback_url_enc,timezone)
+ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		cam.ID, cam.OutletID, cam.Name, cam.Brand, cam.Host, cam.Port, cam.Channel, cam.Subtype, cam.RTSPUsername, pwdEnc, cam.IsActive, cam.SortOrder, cam.ConnectionType, cam.AccessMode, sourceEnc, playbackEnc, cam.Timezone)
+	if err != nil {
+		return nil, err
+	}
+	return GetCamera(cam.ID)
+}
+
+func prepareCameraUpdate(current *models.OutletCamera, req models.UpdateCameraRequest, password, source, playback string) (models.OutletCamera, string, string, string, error) {
+	cam := *current
+	if req.ConnectionType != "" && req.ConnectionType != current.ConnectionType && req.SourceURL == nil {
+		source = ""
+	}
+	cam.Name, cam.Brand, cam.Host, cam.Port, cam.Channel, cam.Subtype, cam.RTSPUsername, cam.SortOrder = req.Name, req.Brand, req.Host, req.Port, req.Channel, req.Subtype, strings.TrimSpace(req.RTSPUsername), req.SortOrder
+	if req.ConnectionType != "" {
+		cam.ConnectionType = req.ConnectionType
+	}
+	if req.Timezone != "" {
+		cam.Timezone = req.Timezone
+	}
+	if req.AccessMode != "" {
+		cam.AccessMode = req.AccessMode
+	}
+	if req.IsActive != nil {
+		cam.IsActive = *req.IsActive
+	}
+	if req.RTSPPassword != nil {
+		password = *req.RTSPPassword
+	}
+	if req.SourceURL != nil {
+		source = strings.TrimSpace(*req.SourceURL)
+	}
+	if req.PlaybackURL != nil {
+		playback = strings.TrimSpace(*req.PlaybackURL)
+	}
+	if err := validateCameraConfig(&cam, source, playback); err != nil {
+		return cam, "", "", "", err
+	}
+	return cam, password, source, playback, nil
 }
 
 func UpdateCamera(id string, req models.UpdateCameraRequest) (*models.OutletCamera, error) {
-	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Host) == "" {
-		return nil, fmt.Errorf("nama dan host wajib diisi")
+	unlock := lockCCTVCamera(id)
+	defer unlock()
+	current, password, source, playback, err := getCameraConnectionSecrets(id, false)
+	if err != nil {
+		return nil, err
 	}
-	ch := req.Channel
-	if ch <= 0 {
-		ch = 1
+	cam, password, source, playback, err := prepareCameraUpdate(current, req, password, source, playback)
+	if err != nil {
+		return nil, err
 	}
-	active := true
-	if req.IsActive != nil {
-		active = *req.IsActive
+	pwdEnc, err := encryptSecret(password)
+	if err != nil {
+		return nil, err
 	}
-	// Password: hanya ditimpa bila dikirim (non-nil). String kosong = kosongkan.
-	if req.RTSPPassword != nil {
-		encPwd, err := encryptSecret(*req.RTSPPassword)
-		if err != nil {
-			return nil, err
-		}
-		_, err = database.DB.Exec(`UPDATE outlet_cameras SET
-			name=$1, brand=$2, host=$3, port=$4, channel=$5, subtype=$6, rtsp_username=$7,
-			rtsp_password_enc=$8, is_active=$9, sort_order=$10, updated_at=(now() AT TIME ZONE 'UTC')
-			WHERE id=$11`,
-			strings.TrimSpace(req.Name), normBrand(req.Brand), strings.TrimSpace(req.Host),
-			camPort(req.Port), ch, req.Subtype, strings.TrimSpace(req.RTSPUsername),
-			encPwd, active, req.SortOrder, strings.TrimSpace(id))
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		_, err := database.DB.Exec(`UPDATE outlet_cameras SET
-			name=$1, brand=$2, host=$3, port=$4, channel=$5, subtype=$6, rtsp_username=$7,
-			is_active=$8, sort_order=$9, updated_at=(now() AT TIME ZONE 'UTC')
-			WHERE id=$10`,
-			strings.TrimSpace(req.Name), normBrand(req.Brand), strings.TrimSpace(req.Host),
-			camPort(req.Port), ch, req.Subtype, strings.TrimSpace(req.RTSPUsername),
-			active, req.SortOrder, strings.TrimSpace(id))
-		if err != nil {
-			return nil, err
-		}
+	sourceEnc, err := encryptSecret(source)
+	if err != nil {
+		return nil, err
 	}
+	playbackEnc, err := encryptSecret(playback)
+	if err != nil {
+		return nil, err
+	}
+	_, err = database.DB.Exec(`UPDATE outlet_cameras SET name=$1,brand=$2,host=$3,port=$4,channel=$5,subtype=$6,rtsp_username=$7,rtsp_password_enc=$8,is_active=$9,sort_order=$10,connection_type=$11,access_mode=$12,source_url_enc=$13,playback_url_enc=$14,timezone=$15,updated_at=(now() AT TIME ZONE 'UTC') WHERE id=$16`,
+		cam.Name, cam.Brand, cam.Host, cam.Port, cam.Channel, cam.Subtype, cam.RTSPUsername, pwdEnc, cam.IsActive, cam.SortOrder, cam.ConnectionType, cam.AccessMode, sourceEnc, playbackEnc, cam.Timezone, strings.TrimSpace(id))
+	if err != nil {
+		return nil, err
+	}
+	invalidateCameraStreams(*current)
 	return GetCamera(id)
 }
 
 func ToggleCamera(id string) (*models.OutletCamera, error) {
+	unlock := lockCCTVCamera(id)
+	defer unlock()
+	current, err := GetCamera(id)
+	if err != nil {
+		return nil, err
+	}
 	res, err := database.DB.Exec(`UPDATE outlet_cameras SET is_active = NOT is_active, updated_at=(now() AT TIME ZONE 'UTC') WHERE id=$1`, strings.TrimSpace(id))
 	if err != nil {
 		return nil, err
@@ -467,10 +568,17 @@ func ToggleCamera(id string) (*models.OutletCamera, error) {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil, sql.ErrNoRows
 	}
+	invalidateCameraStreams(*current)
 	return GetCamera(id)
 }
 
 func DeleteCamera(id string) error {
+	unlock := lockCCTVCamera(id)
+	defer unlock()
+	current, err := GetCamera(id)
+	if err != nil {
+		return err
+	}
 	res, err := database.DB.Exec(`DELETE FROM outlet_cameras WHERE id=$1`, strings.TrimSpace(id))
 	if err != nil {
 		return err
@@ -478,20 +586,24 @@ func DeleteCamera(id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return sql.ErrNoRows
 	}
+	invalidateCameraStreams(*current)
 	return nil
 }
 
 // StartLive membangun stream live di go2rtc dan mengembalikan info stream.
 func StartLive(id string) (*models.StreamResponse, error) {
-	cam, pass, err := getCameraSecret(id)
+	unlock := lockCCTVCamera(id)
+	defer unlock()
+	cam, pass, source, _, err := getCameraConnectionSecrets(id, true)
 	if err != nil {
 		return nil, err
 	}
-	if !cam.IsActive {
-		return nil, fmt.Errorf("kamera nonaktif")
+	src, err := resolveCameraSource(*cam, pass, source)
+	if err != nil {
+		return nil, err
 	}
-	name := "cam_" + cam.ID
-	if err := Go2rtcPublish(name, BuildLiveRTSP(*cam, pass)); err != nil {
+	name, err := registerCCTVStream(*cam, src, "live")
+	if err != nil {
 		return nil, err
 	}
 	return streamResp(name, "live"), nil
@@ -499,37 +611,50 @@ func StartLive(id string) (*models.StreamResponse, error) {
 
 // StartPlayback membangun stream putar-ulang transient di go2rtc.
 func StartPlayback(id string, req models.PlaybackRequest) (*models.StreamResponse, error) {
-	cam, pass, err := getCameraSecret(id)
+	unlock := lockCCTVCamera(id)
+	defer unlock()
+	cam, pass, _, playback, err := getCameraConnectionSecrets(id, true)
 	if err != nil {
 		return nil, err
 	}
-	src, err := BuildPlaybackRTSP(*cam, pass, req.Start, req.End)
+	src, err := BuildCameraPlayback(*cam, pass, playback, req.Start, req.End)
 	if err != nil {
 		return nil, err
 	}
-	// Nama unik agar sesi playback tidak saling menimpa; dibersihkan saat Stop.
-	nonce := NewULID()
-	name := "pb_" + cam.ID + "_" + strings.ToLower(nonce[len(nonce)-8:])
-	if err := Go2rtcPublish(name, src); err != nil {
+	name, err := registerCCTVStream(*cam, src, "playback")
+	if err != nil {
 		return nil, err
 	}
 	return streamResp(name, "playback"), nil
 }
 
-// StopStream menghapus named-stream dari go2rtc (best-effort).
-func StopStream(name string) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return
+// CCTVStreamCameraID hanya menerima nama terbitan backend, bukan URL RTSP,
+// sumber sembarang, atau prefix parsial milik kamera lain.
+func CCTVStreamCameraID(name string) (string, error) {
+	var id, suffix string
+	if strings.HasPrefix(name, "cam_") && (len(name) == 30 || len(name) == 39 && name[30] == '_') {
+		id = name[4:30]
+		if len(name) == 39 {
+			suffix = name[31:]
+		}
+	} else if strings.HasPrefix(name, "pb_") && len(name) == 38 && name[29] == '_' {
+		id, suffix = name[3:29], name[30:]
 	}
-	_ = Go2rtcDelete(name)
+	for _, ch := range suffix {
+		if !strings.ContainsRune("0123456789abcdefghjkmnpqrstvwxyz", ch) {
+			return "", ErrCCTVAccessDenied
+		}
+	}
+	if _, err := ulid.ParseStrict(id); err != nil || id != strings.ToUpper(id) {
+		return "", ErrCCTVAccessDenied
+	}
+	return id, nil
 }
 
 func streamResp(name, mode string) *models.StreamResponse {
 	return &models.StreamResponse{
-		Name:      name,
-		Mode:      mode,
-		HLSURL:    "/cctv/api/stream.m3u8?src=" + url.QueryEscape(name),
-		WebRTCURL: "/cctv/api/webrtc?src=" + url.QueryEscape(name),
+		Name:   name,
+		Mode:   mode,
+		HLSURL: "/cctv/api/stream.m3u8?src=" + url.QueryEscape(name),
 	}
 }

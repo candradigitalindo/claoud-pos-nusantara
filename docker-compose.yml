@@ -33,6 +33,8 @@ services:
       # Token statis superadmin (opsional). Tanpa nilai bawaan: kosong/lemah =
       # jalur token statis nonaktif. Bila diisi: openssl rand -hex 32 di .env.
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      GO2RTC_URL: http://go2rtc:1984
+      CAMERA_ENC_KEY: ${CAMERA_ENC_KEY:-}
       RATE_LIMIT_PER_MINUTE: 100
       # Penarikan angka medsos keluar lewat alamat ini bila diisi. Instagram dan
       # TikTok memblokir pembacaan anonim dari alamat datacenter, jadi tanpa
@@ -86,6 +88,25 @@ services:
     restart: unless-stopped
     expose:
       - "4200"
+
+  # Relay CCTV internal. Konfigurasi runtime di tmpfs; PATCH stream tidak
+  # menyimpan URL/kredensial kamera ke disk. Browser mengakses media lewat Go.
+  go2rtc:
+    image: alexxit/go2rtc:1.9.14
+    restart: unless-stopped
+    read_only: true
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "cp /etc/go2rtc.yaml /config/go2rtc.yaml && exec /usr/local/bin/go2rtc -config /config/go2rtc.yaml"
+    environment:
+      TZ: Asia/Jakarta
+    volumes:
+      - ./go2rtc/go2rtc.yaml:/etc/go2rtc.yaml:ro
+    tmpfs:
+      - /config
+      - /tmp
+    expose:
+      - "1984"
 
   nginx:
     build:

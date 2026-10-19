@@ -11,6 +11,8 @@ cloud-api-linux
 # ── Secrets / env (keep .env.example) ──────────
 .env
 .env.local
+.env.cctv-gateway
+cctv-gateway.env
 *.local.json
 
 # ── Runtime data ───────────────────────────────

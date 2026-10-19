@@ -24,13 +24,21 @@ import (
 	"cloud-pos/services"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const sesiRahasiaSSE = "rahasia-jwt-uji-sse-0123456789abcdef"
 
 func TestEventsMenolakTokenCCTV(t *testing.T) {
 	services.InitCCTV("", sesiRahasiaSSE, "")
-	tok, err := services.IssueCCTVToken("01ADMIN000SUPERADMIN00001")
+	adminToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"typ": "admin", "sub": "01ADMIN000SUPERADMIN00001", "role": "superadmin", "ver": 0,
+		"exp": time.Now().Add(time.Hour).Unix(),
+	}).SignedString([]byte(sesiRahasiaSSE))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := services.IssueCCTVToken(adminToken)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -97,11 +97,15 @@ apiClient.interceptors.response.use(
     // terganggu); 502/504 = proxy tidak mendapat jawaban dari server. Ketiganya
     // bukan alasan keluar: sesi dibiarkan, pengguna cukup mencoba lagi.
     const unavailable = status === 503 || status === 502 || status === 504
-    const message = unavailable
+    // Endpoint media CCTV mengirim galat kamera/relay yang sudah disanitasi.
+    // Pertahankan pesannya agar operator dapat membedakan kamera putus dari
+    // galat sistem umum, tanpa mengubah penanganan sesi atau API lain.
+    const cameraFailure = /\/admin\/(cameras\/[^/]+\/(stream|playback|test|stop)|outlets\/[^/]+\/cameras\/(probe|onvif\/profiles))$/.test(error.config?.url || '') && error.response?.data?.error
+    const message = cameraFailure || (unavailable
       ? SERVICE_UNAVAILABLE_MSG
       : (error.response?.data?.error ||
         error.message ||
-        'Terjadi kesalahan jaringan')
+        'Terjadi kesalahan jaringan'))
     // Kode HTTP ikut dibawa supaya halaman bisa membedakan, mis., 409
     // "pengajuan berubah, muat ulang" dari galat biasa; pemanggil lama yang
     // hanya membaca `message` tidak terpengaruh.

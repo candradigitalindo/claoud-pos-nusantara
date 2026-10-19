@@ -1,0 +1,16 @@
+# Jalankan pada satu komputer yang selalu menyala di jaringan outlet.
+# Tidak membuka port masuk. CCTV_CLOUD_URL dan CCTV_GATEWAY_TOKEN diisi di
+# berkas cctv-gateway.env (token dibuat dari Pengaturan > CCTV).
+services:
+  cctv-gateway:
+    build:
+      context: .
+      target: cctv-gateway
+    restart: unless-stopped
+    read_only: true
+    environment:
+      CCTV_CLOUD_URL: ${CCTV_CLOUD_URL:?Isi alamat HTTPS Cloud POS}
+      CCTV_GATEWAY_TOKEN: ${CCTV_GATEWAY_TOKEN:?Isi token penghubung outlet}
+      CCTV_START_RELAY: "1"
+    tmpfs:
+      - /tmp
