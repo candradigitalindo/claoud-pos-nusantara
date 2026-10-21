@@ -212,9 +212,7 @@
                   <template v-else>{{ ev.route_desc }}</template>
                 </p>
               </div>
-              <button type="button" class="text-xs font-semibold text-emerald-700 hover:underline" @click="toggleEdit(ev.key)">
-                {{ editing[ev.key] ? 'Tutup' : 'Ubah template' }}
-              </button>
+              <AppActionButton :icon="editing[ev.key] ? 'cancel' : 'edit'" :label="(editing[ev.key] ? 'Tutup' : 'Ubah template')" type="button" @click="toggleEdit(ev.key)" />
             </div>
             <div v-if="editing[ev.key]" class="mt-3 grid gap-3 lg:grid-cols-2">
               <div>
@@ -223,8 +221,8 @@
                   <button v-for="p in ev.placeholders" :key="p" type="button" class="ph" @click="insertPlaceholder(ev.key, p)">{{ '{' + p + '}' }}</button>
                 </div>
                 <div class="mt-2 flex flex-wrap gap-2">
-                  <AppButton size="sm" variant="secondary" @click="preview(ev)">Pratinjau</AppButton>
-                  <AppButton size="sm" variant="ghost" :disabled="!canManage" @click="settings.templates[ev.key] = ev.default_template">Kembalikan bawaan</AppButton>
+                  <AppActionButton icon="view" label="Pratinjau" @click="preview(ev)" />
+                  <AppActionButton icon="refresh" label="Kembalikan bawaan" :disabled="!canManage" @click="settings.templates[ev.key] = ev.default_template" />
                 </div>
                 <div v-if="ev.audience === 'internal'" class="mt-3 rounded-lg bg-gray-50 p-3">
                   <p class="lbl">Posisi penerima</p>
@@ -347,8 +345,8 @@
                 <td class="px-3 py-2"><span class="chip" :class="r.is_active ? 'chip--ok' : 'chip--off'">{{ r.is_active ? 'aktif' : 'nonaktif' }}</span></td>
                 <td class="px-3 py-2 text-right whitespace-nowrap">
                   <template v-if="canManage">
-                    <button class="text-xs font-semibold text-emerald-700 hover:underline" @click="openRecipient(r)">Ubah</button>
-                    <button class="ml-3 text-xs font-semibold text-red-600 hover:underline" @click="deleteRecipient(r)">Hapus</button>
+                    <AppActionButton icon="edit" label="Ubah" @click="openRecipient(r)" />
+                    <AppActionButton icon="delete" label="Hapus" @click="deleteRecipient(r)" class="ml-3" />
                   </template>
                 </td>
               </tr>
@@ -381,10 +379,10 @@
         <div v-else>
           <label class="lbl">Grup</label>
           <div class="flex gap-2">
-            <select v-model="recipientForm.target" class="form-input">
+            <SearchableSelect v-model="recipientForm.target" class="form-input">
               <option value="">— pilih grup yang diikuti nomor gateway —</option>
               <option v-for="g in groups" :key="g.jid" :value="g.jid">{{ g.name }} ({{ g.participants }} anggota)</option>
-            </select>
+            </SearchableSelect>
             <AppButton type="button" size="sm" variant="secondary" :loading="busy.groups" @click="loadGroups">Muat grup</AppButton>
           </div>
           <p class="hint">Nomor gateway harus sudah menjadi anggota grup itu. Hanya tersedia saat tersambung.</p>
@@ -424,6 +422,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import AppAlert from '@/components/ui/AppAlert.vue'

@@ -44,13 +44,13 @@
     <AppCard>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <SearchSelect v-model="filterOutlet" :options="outletFilterOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" @change="load" />
-        <select v-model="filterStatus" class="form-input">
+        <SearchableSelect v-model="filterStatus" class="form-input">
           <option value="">Semua status</option>
           <option value="online">Online</option>
           <option value="idle">Idle</option>
           <option value="offline">Offline</option>
           <option value="no_data">Tanpa data</option>
-        </select>
+        </SearchableSelect>
         <div class="text-xs text-gray-400 flex items-center sm:justify-end">
           <span v-if="lastUpdated">Diperbarui {{ lastUpdated }}</span>
         </div>
@@ -233,6 +233,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { devicesApi } from '@/api/devices.js'
 import { outletsApi } from '@/api/outlets.js'

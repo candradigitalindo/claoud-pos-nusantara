@@ -105,10 +105,10 @@
           </div>
           <div>
             <label class="lbl">Mode</label>
-            <select v-model="form[line.pr_item_key].tracking_mode" class="form-input">
+            <SearchableSelect v-model="form[line.pr_item_key].tracking_mode" class="form-input">
               <option value="tunggal">Tunggal (bernomor per unit)</option>
               <option value="massal">Massal (satu baris)</option>
-            </select>
+            </SearchableSelect>
           </div>
           <div>
             <label class="lbl">Lokasi</label>
@@ -180,6 +180,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, watch } from 'vue'
 import { receivingApi } from '@/api/purchase.js'
 import { outletsApi } from '@/api/outlets.js'

@@ -14,17 +14,17 @@
     <AppCard>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <SearchSelect v-model="filterOutlet" :options="outletFilterOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" @change="load" />
-        <select v-model="filterStatus" @change="load" class="form-input">
+        <SearchableSelect v-model="filterStatus" @change="load" class="form-input">
           <option value="">Semua status</option>
           <option v-for="(l,k) in STATUS" :key="k" :value="k">{{ l }}</option>
-        </select>
+        </SearchableSelect>
         <DateRangePicker v-model="range" clearable />
       </div>
       <div v-if="selectedOutletObj?.slug" class="mt-3 flex items-center gap-2 flex-wrap text-xs">
         <span class="text-gray-500">Link reservasi publik:</span>
         <input :value="publicUrl" readonly class="flex-1 min-w-[200px] font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1" />
-        <button @click="copyLink" class="px-2 py-1 rounded font-medium" :class="copied ? 'text-emerald-600 bg-emerald-50' : 'text-gray-600 bg-gray-100'">{{ copied ? 'Tersalin!' : 'Salin' }}</button>
-        <a :href="publicUrl" target="_blank" rel="noopener" class="px-2 py-1 rounded font-medium text-emerald-700 bg-emerald-50">Buka</a>
+        <AppActionButton icon="copy" :label="(copied ? 'Tersalin!' : 'Salin')" @click="copyLink" />
+        <AppActionButton icon="link" label="Buka" :href="publicUrl" target="_blank" rel="noopener" />
       </div>
       <!-- Kebijakan DP untuk reservasi dari halaman publik; admin bisa mengubah per reservasi. -->
       <div v-if="canUpdate" class="mt-3 flex items-center gap-2 flex-wrap text-xs border-t border-gray-100 pt-3">
@@ -54,8 +54,8 @@
             <p class="text-xs text-gray-600">Total <b>{{ formatRupiah(r.total) }}</b> · Dibayar {{ formatRupiah(r.paid_amount) }} · Sisa <b class="text-amber-600">{{ formatRupiah(r.remaining) }}</b></p>
             <p v-if="r.pending_amount > 0" class="text-xs font-semibold text-amber-700">Bukti {{ formatRupiah(r.pending_amount) }} menunggu validasi</p>
             <div class="flex gap-2 pt-1">
-              <button @click="openEdit(r)" class="flex-1 text-center text-xs font-medium px-2 py-1.5 rounded-lg bg-gray-100 text-gray-700">Detail</button>
-              <button v-if="canDelete" @click="confirmDelete(r)" class="text-center text-xs font-medium px-3 py-1.5 rounded-lg bg-red-50 text-red-600">Hapus</button>
+              <AppActionButton icon="view" label="Detail" @click="openEdit(r)" />
+              <AppActionButton icon="delete" label="Hapus" v-if="canDelete" @click="confirmDelete(r)" />
             </div>
           </li>
         </ul>
@@ -80,8 +80,8 @@
         <template #cell-source="{ row }"><span class="text-xs" :class="row.source==='public' ? 'text-emerald-600' : 'text-gray-400'">{{ row.source==='public' ? 'Publik' : 'Admin' }}</span></template>
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-1 justify-end">
-            <button @click="openEdit(row)" class="text-gray-600 hover:text-gray-900 text-xs font-medium px-2 py-1 rounded hover:bg-gray-100">Detail</button>
-            <button v-if="canDelete" @click="confirmDelete(row)" class="text-red-600 hover:text-red-800 text-xs font-medium px-2 py-1 rounded hover:bg-red-50">Hapus</button>
+            <AppActionButton icon="view" label="Detail" @click="openEdit(row)" />
+            <AppActionButton icon="delete" label="Hapus" v-if="canDelete" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -99,8 +99,8 @@
           <span class="font-medium text-gray-900 w-full sm:w-44 shrink-0 truncate">{{ o.name }}</span>
           <input :value="urlFor(o)" readonly @focus="$event.target.select()" class="flex-1 min-w-[160px] font-mono text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1" />
           <div class="flex gap-1.5 shrink-0">
-            <button @click="copyOutlet(o)" class="px-2.5 py-1 rounded text-xs font-medium" :class="copiedId === o.id ? 'text-emerald-600 bg-emerald-50' : 'text-gray-600 bg-gray-100 hover:bg-gray-200'">{{ copiedId === o.id ? 'Tersalin!' : 'Salin' }}</button>
-            <a :href="urlFor(o)" target="_blank" rel="noopener" class="px-2.5 py-1 rounded text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100">Buka</a>
+            <AppActionButton icon="copy" :label="(copiedId === o.id ? 'Tersalin!' : 'Salin')" @click="copyOutlet(o)" />
+            <AppActionButton icon="link" label="Buka" :href="urlFor(o)" target="_blank" rel="noopener" />
           </div>
         </li>
       </ul>
@@ -116,7 +116,7 @@
             <span v-if="editing.outlet_name" class="meta-chip">{{ editing.outlet_name }}</span>
             <span class="meta-chip">{{ editing.source === 'public' ? 'Dari halaman publik' : 'Dibuat admin' }}</span>
             <span v-if="editing.status === 'cancelled' && editing.cancel_disposition" class="meta-chip meta-chip--red">Uang muka {{ editing.cancel_disposition === 'refund' ? 'dikembalikan (refund)' : 'hangus' }}</span>
-            <a v-if="editing.source === 'public' && statusLinkFor(editing)" :href="statusLinkFor(editing)" target="_blank" rel="noopener" class="sm:ml-auto text-xs font-semibold text-emerald-700 underline">Link status pelanggan</a>
+            <AppActionButton icon="link" label="Link status pelanggan" v-if="editing.source === 'public' && statusLinkFor(editing)" :href="statusLinkFor(editing)" target="_blank" rel="noopener" />
           </div>
           <p class="text-[11px] leading-relaxed text-gray-500">
             {{ statusHint(editing) }}
@@ -198,7 +198,7 @@
                   <input v-model.number="it.qty" type="number" min="1" inputmode="numeric" class="form-input !w-16 !py-1 text-center" :disabled="locked" />
                 </label>
                 <span class="ml-auto sm:ml-0 sm:w-28 text-right text-sm font-semibold">{{ formatRupiah(it.price * it.qty) }}</span>
-                <button v-if="!locked" type="button" @click="form.items.splice(i,1)" class="px-1 text-lg leading-none text-red-400 hover:text-red-600" aria-label="Hapus item">×</button>
+                <AppActionButton icon="delete" label="Hapus baris" v-if="!locked" type="button" @click="form.items.splice(i,1)" />
               </li>
             </ul>
             <p v-else class="empty-hint">Belum ada menu dipilih. Reservasi tanpa menu tetap bisa dibuat; DP diisi manual.</p>
@@ -224,10 +224,10 @@
               </div>
               <div v-if="!editing">
                 <label class="lbl">Status awal</label>
-                <select v-model="form.status" class="form-input">
+                <SearchableSelect v-model="form.status" class="form-input">
                   <option value="pending">Menunggu DP</option>
                   <option value="confirmed" :disabled="(form.down_payment || 0) > 0">Langsung dikonfirmasi (tanpa DP)</option>
-                </select>
+                </SearchableSelect>
                 <p class="hint">{{ form.status === 'confirmed' ? 'Tanpa DP: meja dianggap pasti walau belum ada uang masuk.' : 'Otomatis menjadi Dikonfirmasi begitu DP tervalidasi.' }}</p>
               </div>
             </div>
@@ -267,7 +267,7 @@
                 <span class="text-gray-800">{{ formatRupiah(p.amount) }}</span>
                 <span class="st-badge" :class="payCls(p.status)">{{ PAY_STATUS[p.status] || p.status }}</span>
                 <!-- Bukti dari server disaring (T-75): hanya berkas unggahan /uploads/… yang jadi tautan. -->
-                <a v-if="safeUrl(p.proof_url)" :href="safeUrl(p.proof_url)" target="_blank" rel="noopener noreferrer" class="text-xs text-emerald-700 underline">bukti</a>
+                <AppActionButton icon="photo" label="bukti" v-if="safeUrl(p.proof_url)" :href="safeUrl(p.proof_url)" target="_blank" rel="noopener noreferrer" />
                 <span v-else-if="p.proof_url" class="text-xs text-gray-400" title="Alamat bukti tidak sah — tidak ditampilkan sebagai tautan">bukti (alamat tidak sah)</span>
               </div>
               <p class="text-xs text-gray-400 mt-0.5">
@@ -278,8 +278,8 @@
               <p v-if="p.notes" class="text-xs text-gray-500 mt-0.5">{{ p.notes }}</p>
               <p v-if="p.rejected_reason" class="text-xs text-red-600 mt-0.5">Ditolak: {{ p.rejected_reason }}</p>
               <div v-if="p.status === 'pending' && canUpdate" class="mt-1.5 flex gap-2">
-                <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="validatePayment(p)">Validasi</button>
-                <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="rejectPayment(p)">Tolak</button>
+                <AppActionButton icon="approve" label="Validasi" type="button" :disabled="acting" @click="validatePayment(p)" />
+                <AppActionButton icon="reject" label="Tolak" type="button" :disabled="acting" @click="rejectPayment(p)" />
               </div>
             </li>
           </ul>
@@ -290,11 +290,11 @@
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label class="lbl">Jenis</label>
-                <select v-model="payForm.type" class="form-input">
+                <SearchableSelect v-model="payForm.type" class="form-input">
                   <option v-if="editing.status !== 'cancelled'" value="dp">DP</option>
                   <option v-if="editing.status !== 'cancelled'" value="pelunasan">Pelunasan</option>
                   <option v-if="editing.status === 'cancelled' && editing.cancel_disposition === 'refund'" value="refund">Refund ke pelanggan</option>
-                </select>
+                </SearchableSelect>
               </div>
               <div>
                 <label class="lbl">Nominal</label>
@@ -302,16 +302,16 @@
               </div>
               <div>
                 <label class="lbl">Metode</label>
-                <select v-model="payForm.method" class="form-input">
+                <SearchableSelect v-model="payForm.method" class="form-input">
                   <option value="transfer">Transfer</option><option value="qris">QRIS</option><option value="cash">Tunai</option><option value="lainnya">Lainnya</option>
-                </select>
+                </SearchableSelect>
               </div>
               <div>
                 <label class="lbl">Rekening</label>
-                <select v-model="payForm.bank_account_id" class="form-input">
+                <SearchableSelect v-model="payForm.bank_account_id" class="form-input">
                   <option value="">—</option>
                   <option v-for="b in settings.bank_accounts" :key="b.id" :value="b.id">{{ b.bank_name }} {{ b.account_number }}</option>
-                </select>
+                </SearchableSelect>
               </div>
               <div>
                 <label class="lbl">Tanggal bayar</label>
@@ -346,9 +346,9 @@
         <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center">
           <button type="button" class="btn-ghost w-full sm:w-auto sm:mr-auto" @click="modal=false">Tutup</button>
           <div v-if="editing && canUpdate && !locked" class="flex gap-2">
-            <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg bg-red-50 text-red-700" :disabled="acting" @click="askCancel">Batalkan</button>
-            <button v-if="editing.status === 'pending'" type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50" :disabled="acting || !editing.dp_paid" :title="editing.dp_paid ? '' : 'DP belum tervalidasi'" @click="setStatus('confirmed')">Konfirmasi</button>
-            <button type="button" class="flex-1 sm:flex-none text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-600 text-white" :disabled="acting" @click="setStatus('done')">Selesai</button>
+            <AppActionButton icon="cancel" label="Batalkan" type="button" :disabled="acting" @click="askCancel" />
+            <AppActionButton icon="approve" :label="editing.dp_paid ? '' : 'DP belum tervalidasi'" v-if="editing.status === 'pending'" type="button" :disabled="acting || !editing.dp_paid" @click="setStatus('confirmed')" />
+            <AppActionButton icon="approve" label="Selesai" type="button" :disabled="acting" @click="setStatus('done')" />
           </div>
           <AppButton v-if="!locked && (editing ? canUpdate : canCreate)" form="resv-form" type="submit" :loading="saving" class="w-full sm:w-auto">{{ editing ? 'Simpan Perubahan' : 'Buat Reservasi' }}</AppButton>
         </div>
@@ -358,6 +358,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { reservationsApi } from '@/api/reservations.js'
 import { productsApi } from '@/api/products.js'

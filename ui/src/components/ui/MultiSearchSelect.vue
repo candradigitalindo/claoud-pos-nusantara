@@ -170,7 +170,8 @@ function deselect(val) {
   emit('change', newValue)
 }
 
-function onScrollOrResize() {
+function onScrollOrResize(event) {
+  if (event?.target && panelEl.value?.contains(event.target)) return
   if (open.value) close()
 }
 

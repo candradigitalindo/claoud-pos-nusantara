@@ -82,8 +82,8 @@
             <p v-if="!selectedOutlet" class="row-outlet">{{ p.outlet_name || '—' }}</p>
           </div>
           <div class="mcard-acts">
-            <button class="act-edit" @click="openEditProd(p)" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-            <button class="act-del" @click="openDelete(p, 'product')" title="Hapus"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button>
+            <AppActionButton icon="edit" label="Edit" @click="openEditProd(p)" />
+            <AppActionButton icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
           </div>
         </div>
       </div>
@@ -143,12 +143,8 @@
                 </td>
                 <td class="td-actions">
                   <div class="action-btns">
-                    <button class="act-edit" @click="openEditProd(p)" title="Edit">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button class="act-del" @click="openDelete(p, 'product')" title="Hapus">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                    </button>
+                    <AppActionButton icon="edit" label="Edit" @click="openEditProd(p)" />
+                    <AppActionButton icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
                   </div>
                 </td>
               </tr>
@@ -188,8 +184,8 @@
             <p v-if="!selectedOutlet" class="row-outlet">{{ c.outlet_name || '—' }}</p>
           </div>
           <div class="mcard-acts">
-            <button class="act-edit" @click="openEditCat(c)" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-            <button class="act-del" @click="openDelete(c, 'category')" title="Hapus"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button>
+            <AppActionButton icon="edit" label="Edit" @click="openEditCat(c)" />
+            <AppActionButton icon="delete" label="Hapus" @click="openDelete(c, 'category')" />
           </div>
         </div>
       </div>
@@ -236,12 +232,8 @@
                 </td>
                 <td class="td-actions">
                   <div class="action-btns">
-                    <button class="act-edit" @click="openEditCat(c)" title="Edit">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button class="act-del" @click="openDelete(c, 'category')" title="Hapus">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                    </button>
+                    <AppActionButton icon="edit" label="Edit" @click="openEditCat(c)" />
+                    <AppActionButton icon="delete" label="Hapus" @click="openDelete(c, 'category')" />
                   </div>
                 </td>
               </tr>
@@ -424,6 +416,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, watch, onMounted, computed } from 'vue'
 import { productsApi } from '@/api/products.js'
 import { outletsApi }  from '@/api/outlets.js'

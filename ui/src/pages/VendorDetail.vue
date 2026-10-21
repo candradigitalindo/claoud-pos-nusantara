@@ -131,11 +131,11 @@
         <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <h3 class="text-sm font-semibold text-gray-700">Histori Pengadaan</h3>
           <div class="flex items-center gap-2">
-            <select v-model="historyFilter" @change="fetchHistory(1)"
+            <SearchableSelect v-model="historyFilter" @change="fetchHistory(1)"
               class="rounded-lg border border-gray-300 px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
               <option value="">Semua Status</option>
               <option v-for="o in STATUS_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
-            </select>
+            </SearchableSelect>
           </div>
         </div>
         <AppTable :columns="HISTORY_COLUMNS" :rows="filteredHistory" :loading="historyLoading" emptyText="Belum ada histori pengadaan.">
@@ -170,6 +170,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { vendorsApi } from '@/api/vendors.js'

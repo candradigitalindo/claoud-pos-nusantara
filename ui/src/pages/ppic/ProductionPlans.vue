@@ -17,12 +17,12 @@
         </div>
         <div class="flex gap-2 flex-wrap">
           <template v-if="detail.status === 'draft'">
-            <AppButton v-if="canCreate" variant="secondary" :loading="acting" @click="doCancel">Batalkan</AppButton>
-            <AppButton v-if="canApprove" variant="primary" :loading="acting" @click="doApprove">Approve</AppButton>
+            <AppActionButton icon="cancel" label="Batalkan" v-if="canCreate" :loading="acting" @click="doCancel" />
+            <AppActionButton icon="approve" label="Approve" v-if="canApprove" :loading="acting" @click="doApprove" />
           </template>
           <template v-else-if="detail.status === 'approved'">
-            <AppButton v-if="canCreate" variant="secondary" :loading="acting" @click="doCancel">Batalkan</AppButton>
-            <AppButton v-if="canApprove" variant="primary" :loading="acting" @click="doRelease">Release → Buat Work Order</AppButton>
+            <AppActionButton icon="cancel" label="Batalkan" v-if="canCreate" :loading="acting" @click="doCancel" />
+            <AppActionButton icon="send" label="Release → Buat Work Order" v-if="canApprove" :loading="acting" @click="doRelease" />
           </template>
           <router-link v-else-if="detail.status === 'released' || detail.status === 'closed'" to="/ppic/work-orders" class="text-xs font-semibold text-emerald-700 hover:underline self-center">
             Lihat Work Order →
@@ -152,6 +152,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
 import { warehousesApi } from '@/api/warehouse'

@@ -75,10 +75,10 @@
                 </p>
               </button>
               <div class="flex items-center gap-0.5 shrink-0">
-                <button @click="openRecipe(row)" title="Resep" class="p-1.5 rounded text-indigo-600 hover:bg-indigo-50"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg></button>
-                <button v-if="canManageBreakdown" @click="openBreakdownTemplate(row)" title="Atur Pemotongan" class="p-1.5 rounded text-pink-600 hover:bg-pink-50"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg></button>
-                <button v-if="canEditRow" @click="openEdit(row)" :title="isCatalogManager ? 'Edit' : 'Atur stok minimal & saldo'" class="p-1.5 rounded text-emerald-600 hover:bg-emerald-50"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
-                <button v-if="canDeleteItem" @click="confirmDelete(row)" title="Hapus" class="p-1.5 rounded text-red-500 hover:bg-red-50"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                <AppActionButton icon="recipe" label="Resep" @click="openRecipe(row)" />
+                <AppActionButton icon="cut" label="Atur Pemotongan" v-if="canManageBreakdown" @click="openBreakdownTemplate(row)" />
+                <AppActionButton icon="edit" :label="isCatalogManager ? 'Edit' : 'Atur stok minimal &amp; saldo'" v-if="canEditRow" @click="openEdit(row)" />
+                <AppActionButton icon="delete" label="Hapus" v-if="canDeleteItem" @click="confirmDelete(row)" />
               </div>
             </div>
             <div class="mt-2 flex items-center gap-4 text-xs">
@@ -134,49 +134,15 @@
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-0.5">
             <!-- Recipe (SFG) -->
-            <button @click="openRecipe(row)" title="Atur Resep (Bahan Setengah Jadi)"
-              class="p-1.5 rounded text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 transition-colors">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
-              </svg>
-            </button>
+            <AppActionButton icon="recipe" label="Atur Resep (Bahan Setengah Jadi)" @click="openRecipe(row)" />
             <!-- Template pemotongan (satu bahan → beberapa hasil) — katalog global -->
-            <button v-if="canManageBreakdown" @click="openBreakdownTemplate(row)" title="Atur Pemotongan"
-              class="p-1.5 rounded text-pink-600 hover:text-pink-800 hover:bg-pink-50 transition-colors">
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>
-              </svg>
-            </button>
+            <AppActionButton icon="cut" label="Atur Pemotongan" v-if="canManageBreakdown" @click="openBreakdownTemplate(row)" />
             <!-- Edit (role per outlet: hanya stok minimal & saldo gudang outletnya) -->
-            <button v-if="canEditRow" @click="openEdit(row)" :title="isCatalogManager ? 'Edit' : 'Atur stok minimal & saldo'"
-              class="p-1.5 rounded text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-              </svg>
-            </button>
+            <AppActionButton icon="edit" :label="isCatalogManager ? 'Edit' : 'Atur stok minimal &amp; saldo'" v-if="canEditRow" @click="openEdit(row)" />
             <!-- Toggle aktif — definisi katalog global -->
-            <button v-if="canToggleItem" @click="toggleActive(row)" :title="row.is_active ? 'Nonaktifkan' : 'Aktifkan'"
-              class="p-1.5 rounded transition-colors"
-              :class="row.is_active ? 'text-amber-500 hover:text-amber-700 hover:bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'">
-              <svg v-if="row.is_active" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-              </svg>
-              <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-            </button>
+            <AppActionButton :icon="row.is_active ? 'disable' : 'enable'" :label="row.is_active ? 'Nonaktifkan' : 'Aktifkan'" v-if="canToggleItem" @click="toggleActive(row)" />
             <!-- Hapus — definisi katalog global -->
-            <button v-if="canDeleteItem" @click="confirmDelete(row)" title="Hapus"
-              class="p-1.5 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-              </svg>
-            </button>
+            <AppActionButton icon="delete" label="Hapus" v-if="canDeleteItem" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -251,9 +217,9 @@
           <div class="grid grid-cols-2 gap-x-5 gap-y-4">
             <div class="col-span-2">
               <label class="block text-sm font-medium text-gray-700 mb-1">Satuan Input Stok</label>
-              <select v-model="stockEntryUnit" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
+              <SearchableSelect v-model="stockEntryUnit" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
                 <option v-for="unit in stockUnitOptions(form)" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
-              </select>
+              </SearchableSelect>
             </div>
             <AppInput v-model.number="entryMinStock" :label="`Stok Minimal (${stockEntryUnit || 'unit'})`" type="number" step="0.001" placeholder="0" />
 
@@ -362,20 +328,8 @@
                   <td class="px-3 py-2 text-gray-400 text-xs truncate max-w-[140px]">{{ cat.notes || '—' }}</td>
                   <td v-if="canEditCategory || canDeleteCategory" class="px-3 py-2 text-center">
                     <div class="flex items-center justify-center gap-1">
-                      <button v-if="canEditCategory" @click="openEditCategory(cat)" title="Edit"
-                        class="p-1.5 rounded text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                        </svg>
-                      </button>
-                      <button v-if="canDeleteCategory" @click="deleteCategoryItem(cat)" title="Hapus"
-                        class="p-1.5 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                        </svg>
-                      </button>
+                      <AppActionButton icon="edit" label="Edit" v-if="canEditCategory" @click="openEditCategory(cat)" />
+                      <AppActionButton icon="delete" label="Hapus" v-if="canDeleteCategory" @click="deleteCategoryItem(cat)" />
                     </div>
                   </td>
                 </tr>
@@ -493,9 +447,7 @@
                 <input v-model="p.name" type="text" maxlength="100" placeholder="mis. Per Bagian"
                   class="w-full min-w-0 text-sm font-semibold border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
               </div>
-              <button @click="bdPatterns.splice(pi, 1)" title="Hapus pola" class="p-2 rounded text-red-400 hover:text-red-600 hover:bg-red-50">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-              </button>
+              <AppActionButton icon="delete" label="Hapus pola" @click="bdPatterns.splice(pi, 1)" />
             </div>
             <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
               <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
@@ -520,9 +472,7 @@
                       labelKey="label"
                     />
                   </div>
-                  <button @click="p.outputs.splice(idx, 1)" title="Hapus baris" class="p-2 rounded text-red-400 hover:text-red-600 hover:bg-red-50">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
+                  <AppActionButton icon="delete" label="Hapus baris" @click="p.outputs.splice(idx, 1)" />
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                   <div class="min-w-0">
@@ -626,9 +576,7 @@
                     {{ it.unit || '—' }}
                   </td>
                   <td class="px-3 py-2 text-center">
-                    <button @click="recipeItems.splice(idx, 1)" class="text-red-400 hover:text-red-600">
-                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
+                    <AppActionButton icon="delete" label="Hapus komponen" @click="recipeItems.splice(idx, 1)" />
                   </td>
                 </tr>
                 <tr v-if="recipeItems.length === 0">
@@ -649,6 +597,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { stockQtyText, stockUnitOptions, stockUnitRatio, stockUnitLabel, preferredStockUnit } from '@/utils/stockUnits.js'
 import { computed, ref, watch, onMounted } from 'vue'
 import { stockItemsApi, stockLedgerApi, warehousesApi, stockItemCategoriesApi, stockItemRecipesApi, stockBreakdownsApi } from '@/api/warehouse.js'

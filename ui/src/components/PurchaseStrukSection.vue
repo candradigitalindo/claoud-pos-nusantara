@@ -33,9 +33,8 @@
         <div class="flex shrink-0 flex-wrap items-center gap-2">
           <span v-if="s.remaining <= 0" class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lunas</span>
           <span v-else class="text-[11px] text-amber-700">Sisa {{ formatRupiah(s.remaining) }}<template v-if="s.paid_amount > 0"> · dibayar {{ formatRupiah(s.paid_amount) }}</template></span>
-          <a v-if="safeUrl(s.photo_url)" :href="safeUrl(s.photo_url)" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">Foto</a>
-          <button v-if="canManage && !(s.paid_amount > 0)" type="button" :disabled="busy" @click="remove(s)"
-            class="text-red-500 hover:text-red-700 disabled:opacity-50">Hapus</button>
+          <AppActionButton icon="photo" label="Foto" v-if="safeUrl(s.photo_url)" :href="safeUrl(s.photo_url)" target="_blank" rel="noopener noreferrer" />
+          <AppActionButton icon="delete" label="Hapus" v-if="canManage && !(s.paid_amount > 0)" type="button" :disabled="busy" @click="remove(s)" />
         </div>
       </li>
     </ul>
@@ -69,6 +68,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed } from 'vue'
 import { purchaseApi } from '@/api/purchase.js'
 import { formatRupiah, formatDate, todayDateString } from '@/utils/format.js'

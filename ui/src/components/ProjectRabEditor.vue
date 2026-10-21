@@ -17,9 +17,7 @@
         <input v-model.trim="g.section" :disabled="disabled" class="input-sm min-w-0 flex-1 font-semibold"
           placeholder="Nama bagian pekerjaan — mis. Pekerjaan Persiapan, Pekerjaan Sipil, Mekanikal & Elektrikal" />
         <span class="hidden shrink-0 text-xs font-semibold text-gray-700 sm:inline">{{ formatRupiah(groupTotal(g)) }}</span>
-        <button v-if="!disabled" type="button" class="act-del shrink-0" :disabled="groups.length <= 1" title="Hapus bagian" @click="removeGroup(gi)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-        </button>
+        <AppActionButton icon="delete" label="Hapus bagian" v-if="!disabled" type="button" :disabled="groups.length <= 1" @click="removeGroup(gi)" />
       </div>
 
       <!-- Desktop: tabel -->
@@ -45,18 +43,16 @@
                 <input v-model.trim="r.notes" :disabled="disabled" class="input-sm mt-1 w-full border-dashed text-[11px]" placeholder="Spesifikasi / catatan (opsional)" />
               </td>
               <td class="px-2 py-1.5">
-                <select v-model="r.kind" :disabled="disabled" class="input-sm w-full">
+                <SearchableSelect v-model="r.kind" :disabled="disabled" class="input-sm w-full">
                   <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
-                </select>
+                </SearchableSelect>
               </td>
               <td class="px-2 py-1.5"><input v-model.number="r.qty" :disabled="disabled" type="number" min="0" step="any" class="input-sm w-full text-right" /></td>
               <td class="px-2 py-1.5"><input v-model.trim="r.unit" :disabled="disabled" class="input-sm w-full" placeholder="m², sak, ls" /></td>
               <td class="px-2 py-1.5"><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="Rp 0" /></td>
               <td class="px-2 py-1.5 text-right font-semibold text-gray-800">{{ formatRupiah(rowTotal(r)) }}</td>
               <td class="px-2 py-1.5">
-                <button v-if="!disabled" type="button" class="act-del" title="Hapus baris" @click="removeRow(g, ri)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
+                <AppActionButton icon="delete" label="Hapus baris" v-if="!disabled" type="button" @click="removeRow(g, ri)" />
               </td>
             </tr>
           </tbody>
@@ -69,15 +65,13 @@
           <div class="flex items-center gap-2">
             <span class="text-xs text-gray-400">{{ romawi(gi) }}.{{ ri + 1 }}</span>
             <input v-model.trim="r.name" :disabled="disabled" class="input-sm min-w-0 flex-1" placeholder="Uraian pekerjaan / barang" />
-            <button v-if="!disabled" type="button" class="act-del shrink-0" title="Hapus baris" @click="removeRow(g, ri)">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
+            <AppActionButton icon="delete" label="Hapus baris" v-if="!disabled" type="button" @click="removeRow(g, ri)" />
           </div>
           <div class="grid grid-cols-2 gap-1.5">
             <label class="fld"><span>Jenis</span>
-              <select v-model="r.kind" :disabled="disabled" class="input-sm w-full">
+              <SearchableSelect v-model="r.kind" :disabled="disabled" class="input-sm w-full">
                 <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
-              </select>
+              </SearchableSelect>
             </label>
             <label class="fld"><span>Satuan</span><input v-model.trim="r.unit" :disabled="disabled" class="input-sm w-full" placeholder="m², sak, ls" /></label>
             <label class="fld"><span>Volume</span><input v-model.number="r.qty" :disabled="disabled" type="number" min="0" step="any" class="input-sm w-full text-right" /></label>
@@ -102,6 +96,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, watch } from 'vue'
 import { formatRupiah } from '@/utils/format.js'
 import RupiahInput from '@/components/ui/RupiahInput.vue'

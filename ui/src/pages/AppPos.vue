@@ -45,17 +45,11 @@
             <div class="flex items-center gap-1.5">
               <input :value="fullUrl(row.url)" readonly
                 class="flex-1 min-w-0 text-xs font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1.5" />
-              <button @click="copyUrl(row)" :title="copied === row.name ? 'Tersalin!' : 'Salin URL'"
-                class="p-2 rounded shrink-0" :class="copied === row.name ? 'text-emerald-600 bg-emerald-50' : 'text-gray-500 bg-gray-50'">
-                <svg v-if="copied === row.name" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-              </button>
+              <AppActionButton :icon="copied === row.name ? 'approve' : 'copy'" :label="copied === row.name ? 'Tersalin!' : 'Salin URL'" @click="copyUrl(row)" />
             </div>
             <div class="flex gap-2">
-              <a :href="fullUrl(row.url)" target="_blank" rel="noopener"
-                class="flex-1 text-center text-sm font-medium px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100">Download</a>
-              <button v-if="canDelete" @click="confirmDelete(row)"
-                class="flex-1 text-sm font-medium px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Hapus</button>
+              <AppActionButton icon="download" label="Download" :href="fullUrl(row.url)" target="_blank" rel="noopener" />
+              <AppActionButton icon="delete" label="Hapus" v-if="canDelete" @click="confirmDelete(row)" />
             </div>
           </li>
         </ul>
@@ -79,19 +73,13 @@
           <div class="flex items-center gap-1.5">
             <input :value="fullUrl(row.url)" readonly
               class="text-xs font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1 w-[260px] max-w-full" />
-            <button @click="copyUrl(row)" :title="copied === row.name ? 'Tersalin!' : 'Salin URL'"
-              class="p-1.5 rounded hover:bg-gray-100" :class="copied === row.name ? 'text-emerald-600' : 'text-gray-500'">
-              <svg v-if="copied === row.name" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-            </button>
+            <AppActionButton :icon="copied === row.name ? 'approve' : 'copy'" :label="copied === row.name ? 'Tersalin!' : 'Salin URL'" @click="copyUrl(row)" />
           </div>
         </template>
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-1 justify-end">
-            <a :href="fullUrl(row.url)" target="_blank" rel="noopener"
-              class="text-emerald-600 hover:text-emerald-800 text-xs font-medium px-2 py-1 rounded hover:bg-emerald-50">Download</a>
-            <button v-if="canDelete" @click="confirmDelete(row)"
-              class="text-red-600 hover:text-red-800 text-xs font-medium px-2 py-1 rounded hover:bg-red-50">Hapus</button>
+            <AppActionButton icon="download" label="Download" :href="fullUrl(row.url)" target="_blank" rel="noopener" />
+            <AppActionButton icon="delete" label="Hapus" v-if="canDelete" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -100,6 +88,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, onMounted } from 'vue'
 import { appFilesApi } from '@/api/appFiles.js'
 import { useToastStore } from '@/stores/toast.js'

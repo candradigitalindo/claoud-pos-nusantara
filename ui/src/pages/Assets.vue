@@ -26,14 +26,14 @@
     <AppCard>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SearchSelect v-model="filterOutlet" :options="outletFilterOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" @change="load" />
-        <select v-model="filterStatus" @change="load" class="form-input">
+        <SearchableSelect v-model="filterStatus" @change="load" class="form-input">
           <option value="">Semua status</option>
           <option v-for="(lbl, key) in STATUSES" :key="key" :value="key">{{ lbl }}</option>
-        </select>
-        <select v-model="filterCondition" @change="load" class="form-input">
+        </SearchableSelect>
+        <SearchableSelect v-model="filterCondition" @change="load" class="form-input">
           <option value="">Semua kondisi</option>
           <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
-        </select>
+        </SearchableSelect>
         <input v-model="search" @input="debouncedLoad" type="search" placeholder="Cari nama / nomor / seri…" class="form-input" />
       </div>
     </AppCard>
@@ -86,9 +86,9 @@
               <dd class="text-gray-700">{{ a.maintenance_count }}× · {{ a.last_maintenance ? formatDateStr(a.last_maintenance) : 'belum ada' }}</dd>
             </dl>
             <div class="flex gap-2 pt-1">
-              <button @click="goDetail(a)" class="act-btn bg-emerald-50 text-emerald-700 hover:bg-emerald-100">Detail</button>
-              <button v-if="canUpdate" @click="openEdit(a)" class="act-btn bg-gray-100 text-gray-700 hover:bg-gray-200">Edit</button>
-              <button v-if="canDelete" @click="confirmDelete(a)" class="act-btn bg-red-50 text-red-600 hover:bg-red-100">Hapus</button>
+              <AppActionButton icon="view" label="Detail" @click="goDetail(a)" />
+              <AppActionButton icon="edit" label="Edit" v-if="canUpdate" @click="openEdit(a)" />
+              <AppActionButton icon="delete" label="Hapus" v-if="canDelete" @click="confirmDelete(a)" />
             </div>
           </li>
         </ul>
@@ -122,9 +122,9 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="flex items-center justify-end gap-1">
-            <button @click="goDetail(row)" class="rounded px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800">Detail</button>
-            <button v-if="canUpdate" @click="openEdit(row)" class="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">Edit</button>
-            <button v-if="canDelete" @click="confirmDelete(row)" class="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-800">Hapus</button>
+            <AppActionButton icon="view" label="Detail" @click="goDetail(row)" />
+            <AppActionButton icon="edit" label="Edit" v-if="canUpdate" @click="openEdit(row)" />
+            <AppActionButton icon="delete" label="Hapus" v-if="canDelete" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -168,9 +168,9 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label class="lbl">Mode Pencatatan</label>
-            <select v-model="form.tracking_mode" class="form-input">
+            <SearchableSelect v-model="form.tracking_mode" class="form-input">
               <option v-for="(lbl, key) in TRACKING_MODES" :key="key" :value="key">{{ lbl }}</option>
-            </select>
+            </SearchableSelect>
           </div>
           <div>
             <label class="lbl">Jumlah</label>
@@ -202,15 +202,15 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label class="lbl">Kondisi</label>
-            <select v-model="form.condition" class="form-input">
+            <SearchableSelect v-model="form.condition" class="form-input">
               <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
-            </select>
+            </SearchableSelect>
           </div>
           <div>
             <label class="lbl">Status</label>
-            <select v-model="form.status" class="form-input" :disabled="systemStatusLocked">
+            <SearchableSelect v-model="form.status" class="form-input" :disabled="systemStatusLocked">
               <option v-for="(lbl, key) in EDITABLE_STATUSES" :key="key" :value="key">{{ lbl }}</option>
-            </select>
+            </SearchableSelect>
             <p v-if="systemStatusLocked" class="mt-1 text-[11px] text-amber-600">
               Status “{{ statusLabel(editing.status) }}” diatur oleh dokumen, bukan form ini.
             </p>
@@ -270,6 +270,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { assetCategoriesApi } from '@/api/assetCategories.js'

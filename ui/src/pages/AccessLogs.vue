@@ -18,11 +18,11 @@
         <input v-model="search" @input="debouncedLoad" placeholder="Cari username / IP / role..."
           class="flex-1 min-w-[180px] text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-400" />
         <DateRangePicker v-model="range" clearable />
-        <select v-model="status" @change="reload" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-400">
+        <SearchableSelect v-model="status" @change="reload" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-400">
           <option value="">Semua status</option>
           <option value="success">Berhasil</option>
           <option value="failed">Gagal</option>
-        </select>
+        </SearchableSelect>
         <button @click="setToday" class="text-sm px-3 py-2 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 font-medium">Hari Ini</button>
         <button @click="reload" class="text-sm px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700">Muat ulang</button>
       </div>
@@ -63,6 +63,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, watch, onMounted } from 'vue'
 import { accessLogsApi } from '@/api/accessLogs.js'
 import { formatDateTime } from '@/utils/format.js'

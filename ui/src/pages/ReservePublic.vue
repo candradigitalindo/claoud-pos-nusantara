@@ -68,7 +68,7 @@
         <div class="rp-fields">
           <div><label>Nominal transfer <span>*</span></label><input v-model.number="pay.amount" type="number" inputmode="numeric" min="1" /></div>
           <div v-if="status.bank_accounts?.length"><label>Transfer ke rekening</label>
-            <select v-model="pay.bank_account_id"><option value="">— pilih —</option><option v-for="b in status.bank_accounts" :key="b.id" :value="b.id">{{ b.bank_name }} {{ b.account_number }}</option></select></div>
+            <SearchableSelect v-model="pay.bank_account_id"><option value="">— pilih —</option><option v-for="b in status.bank_accounts" :key="b.id" :value="b.id">{{ b.bank_name }} {{ b.account_number }}</option></SearchableSelect></div>
           <div><label>Tanggal transfer</label><input v-model="pay.paid_at" type="date" /></div>
           <div><label>Foto bukti transfer <span>*</span></label><input type="file" accept="image/*" @change="onProof" /></div>
           <div><label>Catatan</label><input v-model="pay.notes" placeholder="opsional" /></div>
@@ -162,7 +162,7 @@
                 <span class="rp-oi-name">{{ it.name }}</span>
                 <span class="rp-oi-qty">{{ it.qty }}×</span>
                 <span class="rp-oi-sub">{{ rupiah(it.price * it.qty) }}</span>
-                <button class="rp-oi-del" @click="remove(it.id)">×</button>
+                <AppActionButton icon="delete" label="Hapus baris" @click="remove(it.id)" />
               </li>
             </ul>
             <div class="rp-order-total"><span>Total</span><b>{{ rupiah(total) }}</b></div>
@@ -182,6 +182,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { publicApi } from '@/api/public.js'
@@ -454,7 +456,7 @@ onMounted(async () => {
 .rp-bank b { color: #fff; }
 .rp-bank span { font-family: ui-monospace, monospace; font-size: .95rem; font-weight: 700; color: #cdeede; letter-spacing: .04em; }
 .rp-bank small { width: 100%; font-size: .74rem; color: rgba(255,255,255,.6); }
-.rp-fields select { width: 100%; padding: .65rem .75rem; border-radius: .65rem; border: 1px solid rgba(255,255,255,.16); font-size: .9rem; outline: none; background: rgba(255,255,255,.07); color: #fff; }
+.rp-fields .searchable-select { width: 100%; padding: .65rem .75rem; border-radius: .65rem; border: 1px solid rgba(255,255,255,.16); font-size: .9rem; outline: none; background: rgba(255,255,255,.07); color: #fff; }
 .rp-fields select option { color: #111; }
 .rp-fields input[type=file] { padding: .5rem; font-size: .82rem; }
 .rp-ok { color: #cdeede; font-size: .85rem; margin-top: .7rem; }

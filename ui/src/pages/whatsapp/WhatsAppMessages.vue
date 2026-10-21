@@ -15,19 +15,19 @@
     <AppCard>
       <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
         <input v-model="q" type="search" class="form-input" placeholder="Cari nomor, nama, isi pesan, event…" />
-        <select v-model="statusF" class="form-input">
+        <SearchableSelect v-model="statusF" class="form-input">
           <option value="">Semua status</option>
           <option value="pending">Menunggu</option>
           <option value="sent">Terkirim</option>
           <option value="failed">Gagal</option>
           <option value="cancelled">Dibatalkan</option>
-        </select>
-        <select v-model="kindF" class="form-input">
+        </SearchableSelect>
+        <SearchableSelect v-model="kindF" class="form-input">
           <option value="">Semua jenis</option>
           <option value="notify">Notifikasi</option>
           <option value="broadcast">Broadcast</option>
           <option value="test">Uji</option>
-        </select>
+        </SearchableSelect>
       </div>
     </AppCard>
 
@@ -66,7 +66,7 @@
                 <button class="text-left" @click="toggle(m.id)">
                   <span class="whitespace-pre-wrap" :class="expanded[m.id] ? '' : 'line-clamp-2'">{{ m.body }}</span>
                 </button>
-                <a v-if="m.image_url" :href="m.image_url" target="_blank" class="mt-0.5 block text-emerald-700 hover:underline">gambar ↗</a>
+                <AppActionButton icon="photo" label="gambar ↗" v-if="m.image_url" :href="m.image_url" target="_blank" />
               </td>
               <td class="px-3 py-2 text-xs">
                 <span class="chip" :class="STATUS_CLS[m.status]">{{ STATUS_LBL[m.status] || m.status }}</span>
@@ -75,8 +75,8 @@
               </td>
               <td class="px-3 py-2 text-right whitespace-nowrap text-xs">
                 <template v-if="canManage">
-                  <button v-if="m.status === 'failed' || m.status === 'cancelled'" class="font-semibold text-emerald-700 hover:underline" @click="retry(m)">Ulangi</button>
-                  <button v-if="m.status === 'pending'" class="font-semibold text-red-600 hover:underline" @click="cancel(m)">Batalkan</button>
+                  <AppActionButton icon="refresh" label="Ulangi" v-if="m.status === 'failed' || m.status === 'cancelled'" @click="retry(m)" />
+                  <AppActionButton icon="cancel" label="Batalkan" v-if="m.status === 'pending'" @click="cancel(m)" />
                 </template>
               </td>
             </tr>
@@ -91,6 +91,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppAlert from '@/components/ui/AppAlert.vue'

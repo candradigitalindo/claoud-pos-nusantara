@@ -23,7 +23,7 @@
         <article v-for="camera in monitored" :key="`${camera.id}:${camera.updated_at || ''}`" class="min-w-0 rounded-lg bg-white p-3">
           <div class="mb-2 flex items-start justify-between gap-2">
             <div class="min-w-0"><h3 class="truncate font-semibold text-gray-900">{{ camera.name }}</h3><p class="truncate text-xs text-gray-500">{{ camera.outlet_name }}</p></div>
-            <button class="text-sm text-gray-600 underline" :aria-label="`Tutup monitor ${camera.name}`" @click="toggleMonitor(camera)">Tutup</button>
+            <AppActionButton icon="unmonitor" label="Tutup" @click="toggleMonitor(camera)" />
           </div>
           <CctvVideo :camera="camera" />
         </article>
@@ -46,7 +46,7 @@
       <section v-for="group in groups" :key="group.id" class="space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="font-semibold text-gray-900">{{ group.name }} <span class="ml-1 text-xs font-normal text-gray-500">{{ group.cameras.length }} kamera</span></h2>
-          <div class="flex flex-wrap items-center gap-3"><span v-if="group.cameras.some(c => c.access_mode === 'gateway')" class="text-xs" :class="gatewayFor(group.id)?.online ? 'text-emerald-700' : 'text-amber-700'">Penghubung {{ gatewayFor(group.id)?.online ? 'online' : 'belum tersambung' }}</span><AppButton size="sm" variant="secondary" :disabled="!group.cameras.some(c => c.is_active)" @click="monitorOutlet(group)">Pantau outlet</AppButton></div>
+          <div class="flex flex-wrap items-center gap-3"><span v-if="group.cameras.some(c => c.access_mode === 'gateway')" class="text-xs" :class="gatewayFor(group.id)?.online ? 'text-emerald-700' : 'text-amber-700'">Penghubung {{ gatewayFor(group.id)?.online ? 'online' : 'belum tersambung' }}</span><AppActionButton icon="monitor" label="Pantau outlet" :disabled="!group.cameras.some(c => c.is_active)" @click="monitorOutlet(group)" /></div>
         </div>
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <article v-for="camera in group.cameras" :key="camera.id" class="rounded-xl border border-gray-200 bg-white p-5">
@@ -59,18 +59,18 @@
         </div>
         <p class="mt-4 text-xs text-gray-500">{{ brandName(camera.brand) }} · {{ connectionName(camera.connection_type) }}<template v-if="camera.connection_type === 'onvif'"> · Profil perangkat</template><template v-else-if="!connectionUsesURL(camera.connection_type)"> · Channel {{ camera.channel }} · {{ camera.subtype === 0 ? 'Kualitas utama' : 'Hemat bandwidth' }}</template></p>
         <div class="mt-4 flex flex-wrap gap-2">
-          <AppButton size="sm" :disabled="!camera.is_active" @click="startLive(camera)">Tonton live</AppButton>
-          <AppButton size="sm" variant="secondary" :disabled="!camera.is_active || camera.supports_playback === false" :title="camera.supports_playback === false ? 'Tambahkan koneksi rekaman yang didukung perangkat' : 'Putar rekaman perangkat'" @click="choosePlayback(camera)">Putar ulang</AppButton>
-          <AppButton size="sm" variant="ghost" :disabled="!camera.is_active || (!monitorIds.includes(camera.id) && monitored.length >= 4)" @click="toggleMonitor(camera)">{{ monitorIds.includes(camera.id) ? 'Lepas monitor' : 'Tambah ke monitor' }}</AppButton>
+          <AppActionButton icon="play" label="Tonton live" :disabled="!camera.is_active" @click="startLive(camera)" />
+          <AppActionButton icon="history" :label="camera.supports_playback === false ? 'Tambahkan koneksi rekaman yang didukung perangkat' : 'Putar rekaman perangkat'" :disabled="!camera.is_active || camera.supports_playback === false" @click="choosePlayback(camera)" />
+          <AppActionButton :icon="monitorIds.includes(camera.id) ? 'unmonitor' : 'monitor'" :label="(monitorIds.includes(camera.id) ? 'Lepas monitor' : 'Tambah ke monitor')" :disabled="!camera.is_active || (!monitorIds.includes(camera.id) && monitored.length >= 4)" @click="toggleMonitor(camera)" />
         </div>
         <div class="mt-3 flex items-center gap-2 text-xs">
-          <button class="text-emerald-700 disabled:opacity-50" :disabled="!camera.is_active || checking === camera.id" @click="testConnection(camera)">{{ checking === camera.id ? 'Memeriksa…' : 'Tes koneksi' }}</button>
+          <AppActionButton icon="connection" :label="(checking === camera.id ? 'Memeriksa…' : 'Tes koneksi')" :disabled="!camera.is_active || checking === camera.id" @click="testConnection(camera)" />
           <span v-if="checks[camera.id]" :class="checks[camera.id].ok ? 'text-emerald-700' : 'text-red-600'">{{ checks[camera.id].message }}</span>
         </div>
         <div v-if="can('cameras.update') || can('cameras.delete')" class="mt-4 flex flex-wrap gap-3 border-t border-gray-100 pt-3 text-xs">
-          <button v-if="can('cameras.update')" class="font-medium text-emerald-700" @click="editCamera(camera)">Ubah</button>
-          <button v-if="can('cameras.update')" :disabled="busy === camera.id" class="text-gray-600 disabled:opacity-50" @click="toggleCamera(camera)">{{ camera.is_active ? 'Nonaktifkan' : 'Aktifkan' }}</button>
-          <button v-if="can('cameras.delete')" :disabled="busy === camera.id" class="text-red-600 disabled:opacity-50" @click="deleteCamera(camera)">Hapus</button>
+          <AppActionButton icon="edit" label="Ubah" v-if="can('cameras.update')" @click="editCamera(camera)" />
+          <AppActionButton :icon="camera.is_active ? 'disable' : 'enable'" :label="(camera.is_active ? 'Nonaktifkan' : 'Aktifkan')" v-if="can('cameras.update')" :disabled="busy === camera.id" @click="toggleCamera(camera)" />
+          <AppActionButton icon="delete" label="Hapus" v-if="can('cameras.delete')" :disabled="busy === camera.id" @click="deleteCamera(camera)" />
         </div>
       </article>
         </div>
@@ -82,27 +82,27 @@
         <AppAlert class="sm:col-span-2" type="error" :message="formError" />
         <AppAlert v-if="probeResult" class="sm:col-span-2" :type="probeResult.ok ? 'success' : 'error'" :message="probeResult.message" />
         <label class="field sm:col-span-2">Outlet
-          <select aria-label="Outlet" v-model="form.outlet_id" class="form-input" required :disabled="!!editing">
+          <SearchableSelect aria-label="Outlet" v-model="form.outlet_id" class="form-input" required :disabled="!!editing">
             <option disabled value="">Pilih outlet</option>
             <option v-for="outlet in outlets" :key="outlet.id" :value="outlet.id">{{ outlet.name }}</option>
-          </select>
+          </SearchableSelect>
         </label>
         <label class="field">Nama kamera<input v-model.trim="form.name" class="form-input" required maxlength="100" placeholder="Kasir depan" /></label>
-        <label class="field">Merek<select aria-label="Merek" v-model="form.brand" class="form-input" @change="changeBrand"><option v-for="brand in options.brands" :key="brand" :value="brand.toLowerCase()">{{ brand }}</option></select></label>
-        <label class="field sm:col-span-2">Jenis koneksi<select aria-label="Jenis koneksi" v-model="form.connection_type" class="form-input" @change="changeConnection"><option v-for="connection in options.connections" :key="connection.id" :value="connection.id">{{ connection.name }}</option></select><span class="text-xs font-normal text-gray-500">{{ selectedConnection?.help }}</span></label>
-        <label v-if="form.connection_type !== 'tuya'" class="field sm:col-span-2">Jalur ke outlet<select aria-label="Jalur ke outlet" v-model="form.access_mode" class="form-input"><option value="gateway">Penghubung outlet — tanpa VPN</option><option value="direct">Langsung — alamat dapat dijangkau server</option></select><span class="text-xs font-normal text-gray-500">{{ form.access_mode === 'gateway' ? 'Satu penghubung berjalan di jaringan outlet dan mengirim tayangan melalui HTTPS.' : 'Untuk alamat perangkat atau layanan vendor yang dapat dijangkau server.' }}</span></label>
+        <label class="field">Merek<SearchableSelect aria-label="Merek" v-model="form.brand" class="form-input" @change="changeBrand"><option v-for="brand in options.brands" :key="brand" :value="brand.toLowerCase()">{{ brand }}</option></SearchableSelect></label>
+        <label class="field sm:col-span-2">Jenis koneksi<SearchableSelect aria-label="Jenis koneksi" v-model="form.connection_type" class="form-input" @change="changeConnection"><option v-for="connection in options.connections" :key="connection.id" :value="connection.id">{{ connection.name }}</option></SearchableSelect><span class="text-xs font-normal text-gray-500">{{ selectedConnection?.help }}</span></label>
+        <label v-if="form.connection_type !== 'tuya'" class="field sm:col-span-2">Jalur ke outlet<SearchableSelect aria-label="Jalur ke outlet" v-model="form.access_mode" class="form-input"><option value="gateway">Penghubung outlet — tanpa VPN</option><option value="direct">Langsung — alamat dapat dijangkau server</option></SearchableSelect><span class="text-xs font-normal text-gray-500">{{ form.access_mode === 'gateway' ? 'Satu penghubung berjalan di jaringan outlet dan mengirim tayangan melalui HTTPS.' : 'Untuk alamat perangkat atau layanan vendor yang dapat dijangkau server.' }}</span></label>
         <AppAlert v-if="form.access_mode === 'gateway' && !gatewayFor(form.outlet_id)?.online" class="sm:col-span-2" type="info" message="Konfigurasi kamera dapat disimpan sekarang. Hubungkan outlet melalui tombol Koneksi outlet sebelum menonton." />
         <p v-if="brandHelp" class="text-xs text-amber-700 sm:col-span-2">{{ brandHelp }}</p>
         <p v-if="['v380','yoosee','hk'].includes(form.brand)" class="text-xs text-amber-700 sm:col-span-2">Dukungan tergantung model. Gunakan RTSP/ONVIF bila tersedia; UID aplikasi bawaan belum tentu dapat digunakan pada sistem lain.</p>
         <div v-if="form.connection_type === 'tuya'" class="sm:col-span-2 space-y-3 rounded-lg border border-gray-200 p-3">
           <p class="text-sm font-medium">Hubungkan Tuya Smart tanpa VPN</p>
           <p class="text-xs text-gray-500">Gunakan akun Tuya Smart. Akun Smart Life tidak didukung konektor ini. Dukungan kamera tetap mengikuti layanan vendor.</p>
-          <label class="field">Region<select aria-label="Region Tuya" v-model="cloud.region" class="form-input"><option v-for="region in options.tuya_regions" :key="region.id" :value="region.id">{{ region.name }}</option></select></label>
+          <label class="field">Region<SearchableSelect aria-label="Region Tuya" v-model="cloud.region" class="form-input"><option v-for="region in options.tuya_regions" :key="region.id" :value="region.id">{{ region.name }}</option></SearchableSelect></label>
           <label class="field">Email / nomor akun<input v-model="cloud.email" class="form-input" autocomplete="off" /></label>
           <label class="field">Password Tuya Smart<input v-model="cloud.password" type="password" class="form-input" autocomplete="new-password" /></label>
           <AppButton size="sm" variant="secondary" :loading="discovering" :disabled="!form.outlet_id" @click="discoverCloud">Cari kamera akun</AppButton>
           <AppAlert type="error" :message="cloudError" />
-          <label v-if="cloudDevices.length" class="field">Kamera cloud<select aria-label="Kamera cloud" v-model="form.source_ticket" class="form-input" @change="selectCloudDevice"><option value="">Pilih kamera</option><option v-for="device in cloudDevices" :key="device.id" :value="device.ticket">{{ device.name }}</option></select></label>
+          <label v-if="cloudDevices.length" class="field">Kamera cloud<SearchableSelect aria-label="Kamera cloud" v-model="form.source_ticket" class="form-input" @change="selectCloudDevice"><option value="">Pilih kamera</option><option v-for="device in cloudDevices" :key="device.id" :value="device.ticket">{{ device.name }}</option></SearchableSelect></label>
         </div>
         <label v-if="selectedConnection?.needs_url || form.connection_type === 'onvif'" class="field sm:col-span-2">{{ form.connection_type === 'onvif' ? 'URL ONVIF khusus (opsional)' : 'URL sumber' }}<input aria-label="URL sumber" v-model.trim="form.source_url" type="password" class="form-input" autocomplete="new-password" :disabled="clearSecrets.source" :required="selectedConnection?.needs_url && !form.source_ticket && !(editing && savedSecrets.source && editedConnection === form.connection_type)" :placeholder="editing ? 'Kosong = pertahankan sumber lama' : form.connection_type === 'rtsp' ? 'rtsp://user:password@alamat/path' : 'URL konektor sesuai dokumentasi perangkat'" /><span v-if="form.brand === 'ezviz' && form.connection_type === 'rtsp'" class="break-all text-xs font-normal text-gray-500">Contoh C6N/TY1/TY2: rtsp://admin:PASSWORD_LOKAL@IP_KAMERA:554/ch1/main. Gunakan password koneksi lokal; kode verifikasi pada label berlaku jika belum diganti. Model lain dapat memakai URL berbeda.</span><span v-if="form.source_ticket" class="text-xs text-emerald-700">{{ form.connection_type === 'onvif' ? 'Profil ONVIF telah dipilih.' : 'Kamera cloud telah dipilih.' }}</span></label>
         <label v-if="editing && savedSecrets.source && !selectedConnection?.needs_url" class="flex items-center gap-2 text-sm text-gray-600 sm:col-span-2"><input v-model="clearSecrets.source" type="checkbox" /> Hapus URL sumber khusus tersimpan dan gunakan alamat perangkat</label>
@@ -116,12 +116,12 @@
           <p class="text-xs text-gray-600">Cari profil pada alamat perangkat untuk memilih kamera/channel dan kualitas yang benar. Jika hanya ada satu profil, sistem dapat memilihnya otomatis.</p>
           <AppButton size="sm" variant="secondary" :loading="findingProfiles" :disabled="!form.outlet_id || saving || probing" @click="findONVIFProfiles">Cari profil ONVIF</AppButton>
           <AppAlert type="error" :message="profileError" />
-          <label v-if="onvifProfiles.length" class="field">Profil ONVIF<select aria-label="Profil ONVIF" v-model="form.source_ticket" class="form-input" :required="!savedSecrets.source || clearSecrets.source" @change="clearSecrets.source = false"><option value="">Pilih profil kamera/channel</option><option v-for="profile in onvifProfiles" :key="profile.id" :value="profile.ticket">{{ profile.name }}</option></select></label>
+          <label v-if="onvifProfiles.length" class="field">Profil ONVIF<SearchableSelect aria-label="Profil ONVIF" v-model="form.source_ticket" class="form-input" :required="!savedSecrets.source || clearSecrets.source" @change="clearSecrets.source = false"><option value="">Pilih profil kamera/channel</option><option v-for="profile in onvifProfiles" :key="profile.id" :value="profile.ticket">{{ profile.name }}</option></SearchableSelect></label>
         </div>
-        <label v-if="!selectedConnection?.needs_url && form.connection_type !== 'onvif'" class="field">Kualitas<select v-model.number="form.subtype" class="form-input"><option :value="1">Hemat bandwidth (sub-stream)</option><option :value="0">Kualitas utama (main-stream)</option></select></label>
+        <label v-if="!selectedConnection?.needs_url && form.connection_type !== 'onvif'" class="field">Kualitas<SearchableSelect v-model.number="form.subtype" class="form-input"><option :value="1">Hemat bandwidth (sub-stream)</option><option :value="0">Kualitas utama (main-stream)</option></SearchableSelect></label>
         <p v-else class="text-xs text-gray-500 sm:col-span-2">Channel dan kualitas mengikuti profil, URL sumber, atau kamera cloud yang dipilih.</p>
         <label class="field">Urutan<input v-model.number="form.sort_order" class="form-input" type="number" min="0" max="100000" /></label>
-        <label class="field">Zona waktu kamera<select v-model="form.timezone" class="form-input"><option value="Asia/Jakarta">WIB — Jakarta</option><option value="Asia/Makassar">WITA — Makassar</option><option value="Asia/Jayapura">WIT — Jayapura</option><option value="UTC">UTC</option><option v-if="!['Asia/Jakarta','Asia/Makassar','Asia/Jayapura','UTC'].includes(form.timezone)" :value="form.timezone">{{ form.timezone }}</option></select></label>
+        <label class="field">Zona waktu kamera<SearchableSelect v-model="form.timezone" class="form-input"><option value="Asia/Jakarta">WIB — Jakarta</option><option value="Asia/Makassar">WITA — Makassar</option><option value="Asia/Jayapura">WIT — Jayapura</option><option value="UTC">UTC</option><option v-if="!['Asia/Jakarta','Asia/Makassar','Asia/Jayapura','UTC'].includes(form.timezone)" :value="form.timezone">{{ form.timezone }}</option></SearchableSelect></label>
         <label class="field sm:col-span-2">URL rekaman RTSP (opsional)<input v-model.trim="form.playback_url" type="password" class="form-input" autocomplete="new-password" :disabled="clearSecrets.playback" :placeholder="editing ? 'Kosong = pertahankan URL rekaman lama' : 'URL playback dari dokumentasi perangkat'" /><span class="text-xs font-normal text-gray-500">Hikvision/Dahua memakai pola bawaan. Merek lain memerlukan URL rekaman; placeholder waktu: {start}, {end}, {start_iso}, {end_iso}, {start_unix}, {end_unix}.</span></label>
         <label v-if="editing && savedSecrets.playback" class="flex items-center gap-2 text-sm text-gray-600 sm:col-span-2"><input v-model="clearSecrets.playback" type="checkbox" /> Hapus URL rekaman tersimpan</label>
         <label class="flex items-center gap-2 text-sm text-gray-700"><input v-model="form.is_active" type="checkbox" class="accent-emerald-600" /> Kamera aktif</label>
@@ -136,7 +136,7 @@
     <AppModal v-model="gatewayOpen" title="Hubungkan outlet tanpa VPN" size="lg">
       <div class="space-y-4">
         <p class="text-sm text-gray-600">Pasang satu penghubung pada komputer yang selalu menyala di outlet. Penghubung mengakses kamera lokal dan membuat koneksi keluar ke Cloud POS melalui HTTPS.</p>
-        <label class="field">Outlet penghubung<select aria-label="Outlet penghubung" v-model="gatewayOutlet" class="form-input" :disabled="creatingGateway || revokingGateway" @change="gatewayToken = ''"><option value="">Pilih outlet</option><option v-for="outlet in outlets" :key="outlet.id" :value="outlet.id">{{ outlet.name }}</option></select></label>
+        <label class="field">Outlet penghubung<SearchableSelect aria-label="Outlet penghubung" v-model="gatewayOutlet" class="form-input" :disabled="creatingGateway || revokingGateway" @change="gatewayToken = ''"><option value="">Pilih outlet</option><option v-for="outlet in outlets" :key="outlet.id" :value="outlet.id">{{ outlet.name }}</option></SearchableSelect></label>
         <p v-if="gatewayFor(gatewayOutlet)" class="text-sm" :class="gatewayFor(gatewayOutlet).online ? 'text-emerald-700' : 'text-amber-700'">Status: {{ gatewayFor(gatewayOutlet).online ? 'Online' : 'Belum tersambung' }}</p>
         <p v-if="gatewayFor(gatewayOutlet)?.last_seen" class="text-xs text-gray-500">Terakhir terhubung: {{ formatSeen(gatewayFor(gatewayOutlet).last_seen) }}</p>
         <AppAlert type="error" :message="gatewayError" />
@@ -145,7 +145,7 @@
         <template v-if="gatewayToken">
           <p class="text-xs text-gray-500">Token hanya ditampilkan saat dibuat. Penggantian token memutus penghubung yang memakai token lama.</p>
           <label class="field">Alamat cloud HTTPS<input v-model.trim="gatewayCloudURL" class="form-input" type="url" placeholder="https://pos.example.com" /></label>
-          <AppButton variant="secondary" size="sm" @click="downloadGatewayConfig">Unduh .env penghubung</AppButton>
+          <AppActionButton icon="download" label="Unduh .env penghubung" @click="downloadGatewayConfig" />
           <p class="text-sm text-gray-600">Pada komputer outlet yang memiliki Docker dan salinan proyek ini, simpan berkas unduhan sebagai <code>cctv-gateway.env</code>, lalu jalankan:</p>
           <pre class="overflow-x-auto rounded-lg bg-gray-950 p-3 text-xs text-white">docker compose --env-file cctv-gateway.env -f docker-compose.cctv-gateway.yml up -d --build</pre>
         </template>
@@ -177,6 +177,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import CctvVideo from '@/components/cctv/CctvVideo.vue'
 import { useSettingsStore } from '@/stores/settings.js'

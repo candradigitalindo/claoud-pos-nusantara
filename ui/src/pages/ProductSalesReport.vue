@@ -21,19 +21,19 @@
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-sm font-medium text-gray-700">Urutkan</label>
-          <select v-model="sortBy" @change="applyFilter"
+          <SearchableSelect v-model="sortBy" @change="applyFilter"
             class="rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="revenue">Pendapatan</option>
             <option value="qty">Qty terjual</option>
-          </select>
+          </SearchableSelect>
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-sm font-medium text-gray-700">Arah</label>
-          <select v-model="sortDir" @change="applyFilter"
+          <SearchableSelect v-model="sortDir" @change="applyFilter"
             class="rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="desc">Tertinggi</option>
             <option value="asc">Terendah</option>
-          </select>
+          </SearchableSelect>
         </div>
         <button @click="applyFilter"
           class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
@@ -92,6 +92,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { salesApi }    from '@/api/sales.js'
 import { outletsApi }  from '@/api/outlets.js'

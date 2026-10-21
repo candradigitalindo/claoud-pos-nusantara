@@ -56,8 +56,8 @@
         </div>
 
         <div v-if="canManage && m.remaining > 0" class="mt-3 flex flex-wrap gap-2">
-          <button class="btn-mini bg-emerald-50 text-emerald-700" @click="openUsage(m)">Catat Pemakaian</button>
-          <button class="btn-mini bg-gray-100 text-gray-700" @click="openSettle(m)">Tentukan Sisa</button>
+          <AppActionButton icon="usage" label="Catat Pemakaian" @click="openUsage(m)" />
+          <AppActionButton icon="usage" label="Tentukan Sisa" @click="openSettle(m)" />
         </div>
       </li>
     </ul>
@@ -148,6 +148,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { projectMaterialsApi } from '@/api/projectMaterials.js'
 import { projectsApi } from '@/api/projects.js'

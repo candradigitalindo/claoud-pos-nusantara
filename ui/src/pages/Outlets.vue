@@ -84,9 +84,9 @@
             <span class="row-muted text-xs">{{ row.address || '—' }}<span v-if="row.phone"> · {{ row.phone }}</span></span>
           </div>
           <div class="mcard-acts">
-            <button class="btn-icon btn-icon--detail" title="Detail" @click="openDetail(row)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-            <button class="btn-icon btn-icon--edit" title="Edit" @click="openEdit(row)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-            <button class="btn-icon btn-icon--delete" title="Hapus" @click="confirmDelete(row)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+            <AppActionButton icon="view" label="Detail" @click="openDetail(row)" />
+            <AppActionButton icon="edit" label="Edit" @click="openEdit(row)" />
+            <AppActionButton icon="delete" label="Hapus" @click="confirmDelete(row)" />
           </div>
         </div>
       </div>
@@ -143,33 +143,12 @@
                   </span>
                 </td>
                 <td class="td-actions">
-                  <button class="btn-icon btn-icon--detail" title="Detail" @click="openDetail(row)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>
-                    </svg>
-                  </button>
-                  <button class="btn-icon btn-icon--edit" title="Edit" @click="openEdit(row)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  <button class="btn-icon btn-icon--delete" title="Hapus" :disabled="deletingId === row.id" @click="confirmDelete(row)">
-                    <span v-if="deletingId === row.id" class="btn-spinner" />
-                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                  </button>
-                  <button
-                    :class="['btn-icon', row.is_active ? 'btn-icon--off' : 'btn-icon--on']"
-                    :title="row.is_active ? 'Nonaktifkan' : 'Aktifkan'"
+                  <AppActionButton icon="view" label="Detail" @click="openDetail(row)" />
+                  <AppActionButton icon="edit" label="Edit" @click="openEdit(row)" />
+                  <AppActionButton icon="delete" label="Hapus" :disabled="deletingId === row.id" @click="confirmDelete(row)" />
+                  <AppActionButton :icon="row.is_active ? 'disable' : 'enable'" :label="row.is_active ? 'Nonaktifkan' : 'Aktifkan'"
                     :disabled="togglingId === row.id"
-                    @click="toggleOutlet(row)"
-                  >
-                    <span v-if="togglingId === row.id" class="btn-spinner" />
-                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
-                    </svg>
-                  </button>
+                    @click="toggleOutlet(row)" />
                 </td>
               </tr>
             </template>
@@ -225,10 +204,7 @@
                   <span class="status-dot" />{{ detailOutlet.is_active ? 'Aktif' : 'Nonaktif' }}
                 </span>
               </div>
-              <RouterLink :to="detailOutlet ? `/outlets/${detailOutlet.id}` : '#'" class="btn-manage" @click="closeDetail">
-                Kelola
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              </RouterLink>
+              <AppActionButton icon="access" label="Kelola" :to="detailOutlet ? `/outlets/${detailOutlet.id}` : '#'" @click="closeDetail" />
               <button class="modal-close" @click="closeDetail" aria-label="Tutup">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
@@ -278,21 +254,12 @@
                 <p class="apikey-hint">Gunakan key ini di aplikasi POS untuk koneksi ke outlet.</p>
                 <div class="apikey-bar">
                   <code class="apikey-val">{{ showApiKey ? detailOutlet.api_key : maskedKey }}</code>
-                  <button class="apikey-btn" @click="showApiKey = !showApiKey" :title="showApiKey ? 'Sembunyikan' : 'Tampilkan'">
-                    <svg v-if="!showApiKey" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                  </button>
-                  <button class="apikey-btn" @click="copyKey" :title="keyCopied ? 'Tersalin!' : 'Salin'">
-                    <svg v-if="!keyCopied" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  </button>
+                  <AppActionButton :icon="showApiKey ? 'hide' : 'view'" :label="showApiKey ? 'Sembunyikan' : 'Tampilkan'" @click="showApiKey = !showApiKey" />
+                  <AppActionButton :icon="keyCopied ? 'approve' : 'copy'" :label="keyCopied ? 'Tersalin!' : 'Salin'" @click="copyKey" />
                 </div>
 
                 <div v-if="!showRegen" class="regen-row">
-                  <button class="btn-regen" @click="showRegen = true">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    Regenerate API Key
-                  </button>
+                  <AppActionButton icon="password" label="Regenerate API Key" @click="showRegen = true" />
                 </div>
 
                 <div v-else class="regen-confirm">
@@ -504,6 +471,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { outletsApi }      from '@/api/outlets.js'

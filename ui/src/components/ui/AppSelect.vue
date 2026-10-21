@@ -1,5 +1,5 @@
 <!--
-  AppSelect.vue — Styled <select> dropdown with label and error support
+  AppSelect.vue — Searchable dropdown with label and error support
   ───────────────────────────────────────────────────────────────
   Props:
     modelValue  : string | number       — v-model binding
@@ -23,9 +23,9 @@
       {{ label }}
     </label>
 
-    <select
+    <SearchableSelect
       :id="uid"
-      :value="modelValue"
+      :model-value="modelValue"
       :disabled="disabled"
       :class="[
         'w-full rounded-lg border px-3 py-2 text-sm shadow-sm bg-white transition-colors',
@@ -36,27 +36,30 @@
         disabled ? 'opacity-60 cursor-not-allowed bg-gray-100' : '',
       ]"
       v-bind="$attrs"
-      @change="$emit('update:modelValue', $event.target.value)"
+      @update:model-value="$emit('update:modelValue', $event)"
     >
-      <option v-if="placeholder" value="" disabled :selected="!modelValue">
+      <option v-if="placeholder" value="" disabled>
         {{ placeholder }}
       </option>
       <option
         v-for="opt in options"
         :key="opt.value"
         :value="opt.value"
-        :selected="opt.value == modelValue"
+        :disabled="opt.disabled"
       >
         {{ opt.label }}
       </option>
-    </select>
+    </SearchableSelect>
 
     <p v-if="error" class="text-xs text-red-600">{{ error }}</p>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
+import { useId } from 'vue'
+
+defineOptions({ inheritAttrs: false })
 
 const props = defineProps({
   modelValue:  { type: [String, Number], default: '' },
@@ -69,5 +72,5 @@ const props = defineProps({
 
 defineEmits(['update:modelValue'])
 
-const uid = computed(() => `select-${Math.random().toString(36).slice(2, 9)}`)
+const uid = `select-${useId()}`
 </script>

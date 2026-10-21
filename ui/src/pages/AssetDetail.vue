@@ -16,11 +16,8 @@
         </div>
       </div>
       <div v-if="asset" class="flex flex-wrap gap-2">
-        <button class="btn-soft w-full sm:w-auto" @click="doPrint">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          Cetak Label
-        </button>
-        <AppButton v-if="canUpdate" class="w-full sm:w-auto" @click="goEdit">Edit</AppButton>
+        <AppActionButton icon="print" label="Cetak Label" @click="doPrint" />
+        <AppActionButton icon="edit" label="Edit" v-if="canUpdate" @click="goEdit" />
       </div>
     </div>
 
@@ -104,9 +101,9 @@
                 </div>
                 <div>
                   <label class="lbl">Jenis</label>
-                  <select v-model="mForm.type" class="form-input">
+                  <SearchableSelect v-model="mForm.type" class="form-input">
                     <option v-for="(lbl, key) in MTYPES" :key="key" :value="key">{{ lbl }}</option>
-                  </select>
+                  </SearchableSelect>
                 </div>
               </div>
               <div>
@@ -126,10 +123,10 @@
               <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label class="lbl">Kondisi Setelah</label>
-                  <select v-model="mForm.condition_after" class="form-input">
+                  <SearchableSelect v-model="mForm.condition_after" class="form-input">
                     <option value="">— tidak diubah —</option>
                     <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
-                  </select>
+                  </SearchableSelect>
                 </div>
                 <div>
                   <label class="lbl">Jadwal Berikutnya</label>
@@ -165,10 +162,7 @@
                     <span v-if="m.next_due_date">Berikutnya: {{ formatDateStr(m.next_due_date) }}</span>
                   </p>
                 </div>
-                <button v-if="canUpdate" @click="deleteMaintenance(m)" title="Hapus catatan"
-                  class="shrink-0 rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                </button>
+                <AppActionButton icon="delete" label="Hapus catatan" v-if="canUpdate" @click="deleteMaintenance(m)" />
               </div>
             </li>
           </ol>
@@ -210,6 +204,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { assetsApi } from '@/api/assets.js'

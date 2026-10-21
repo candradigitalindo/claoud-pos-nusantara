@@ -214,10 +214,7 @@
                            tampak karena tidak ada keadaan "disentuh" di sana. -->
                       <div v-if="bolehKelola"
                         class="ml-auto flex shrink-0 gap-0.5 transition-opacity sm:opacity-0 sm:group-hover/sel:opacity-100 sm:focus-within:opacity-100">
-                        <button v-for="t in aksi(c.akun)" :key="t.judul" @click="t.aksi" :disabled="t.mati"
-                          :title="t.judul" :aria-label="t.judul"
-                          class="rounded p-1 transition-colors disabled:opacity-30"
-                          :class="t.kelas" v-html="t.ikon" />
+                        <AppActionButton :icon="t.icon" :label="t.judul" v-for="t in aksi(c.akun)" :key="t.judul" @click="t.aksi" :disabled="t.mati" />
                       </div>
                     </div>
 
@@ -385,6 +382,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import VueApexCharts from 'vue3-apexcharts'
@@ -669,13 +667,13 @@ function kartuRingkas(platform) {
 // ── Aksi per akun ────────────────────────────────────────────
 function aksi(a) {
   return [
-    { ikon: IC_AKSI.tarik, judul: a.auto_fetch ? 'Tarik sekarang' : 'Coba tarik — akun ini tidak ikut jadwal harian',
+    { icon: 'refresh', judul: a.auto_fetch ? 'Tarik sekarang' : 'Coba tarik — akun ini tidak ikut jadwal harian',
       mati: busy.scrape, kelas: 'text-emerald-700 hover:bg-emerald-50', aksi: () => tarikSatu(a) },
-    { ikon: IC_AKSI.manual, judul: 'Isi angka manual per minggu',
+    { icon: 'usage', judul: 'Isi angka manual per minggu',
       mati: false, kelas: 'text-sky-700 hover:bg-sky-50', aksi: () => bukaManual(a) },
-    { ikon: IC_AKSI.ubah, judul: 'Ubah akun',
+    { icon: 'edit', judul: 'Ubah akun',
       mati: false, kelas: 'text-gray-600 hover:bg-gray-100', aksi: () => bukaUbah(a) },
-    { ikon: IC_AKSI.hapus, judul: 'Hapus akun',
+    { icon: 'delete', judul: 'Hapus akun',
       mati: false, kelas: 'text-red-600 hover:bg-red-50', aksi: () => konfirmasiHapus(a) },
   ]
 }

@@ -45,10 +45,10 @@
     <AppCard>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <SearchSelect v-model="filterOutlet" :options="outletOptions" placeholder="Semua outlet" @change="load" />
-        <select v-model="filterType" @change="load" class="form-input">
+        <SearchableSelect v-model="filterType" @change="load" class="form-input">
           <option value="">Semua jenis</option>
           <option v-for="(lbl, key) in MTYPES" :key="key" :value="key">{{ lbl }}</option>
-        </select>
+        </SearchableSelect>
         <input v-model="search" @input="debouncedLoad" type="search" placeholder="Cari aset / nomor WO…" class="form-input" />
       </div>
     </AppCard>
@@ -107,7 +107,7 @@
         <template #cell-status="{ row }"><span :class="woStatusCls(row.status)">{{ woStatusLabel(row.status) }}</span></template>
         <template #cell-cost="{ row }">{{ row.cost > 0 ? formatRupiah(row.cost) : '—' }}</template>
         <template #cell-actions="{ row }">
-          <button class="rounded px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50" @click="openDetail(row)">Buka</button>
+          <AppActionButton icon="view" label="Buka" @click="openDetail(row)" />
         </template>
       </AppTable>
     </AppCard>
@@ -156,10 +156,10 @@
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label class="lbl">Kondisi Setelah</label>
-              <select v-model="cForm.condition_after" class="form-input">
+              <SearchableSelect v-model="cForm.condition_after" class="form-input">
                 <option value="">— tidak diubah —</option>
                 <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
-              </select>
+              </SearchableSelect>
             </div>
             <div>
               <label class="lbl">Jadwal Berikutnya</label>
@@ -177,16 +177,15 @@
       <template #footer>
         <div v-if="detail" class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center">
           <div class="flex flex-wrap gap-2 sm:mr-auto">
-            <button v-if="canWrite && !detail.purchase_request_id && ['dijadwalkan','berjalan'].includes(detail.status)"
-              class="btn-soft" @click="runAction('pr')">Ajukan Pengadaan Jasa</button>
+            <AppActionButton icon="review" label="Ajukan Pengadaan Jasa" v-if="canWrite && !detail.purchase_request_id && ['dijadwalkan','berjalan'].includes(detail.status)" @click="runAction('pr')" />
           </div>
           <div class="flex flex-wrap gap-2">
             <button class="btn-ghost" @click="detailModal = false">Tutup</button>
             <template v-if="canWrite">
-              <AppButton v-if="['dijadwalkan','berjalan'].includes(detail.status)" variant="secondary"
-                :loading="acting === 'cancel'" @click="runAction('cancel')">Batalkan</AppButton>
-              <AppButton v-if="detail.status === 'dijadwalkan'" :loading="acting === 'start'" @click="runAction('start')">Mulai Kerjakan</AppButton>
-              <AppButton v-if="['dijadwalkan','berjalan'].includes(detail.status)" :loading="acting === 'complete'" @click="runAction('complete')">Selesai</AppButton>
+              <AppActionButton icon="cancel" label="Batalkan" v-if="['dijadwalkan','berjalan'].includes(detail.status)"
+                :loading="acting === 'cancel'" @click="runAction('cancel')" />
+              <AppActionButton icon="play" label="Mulai Kerjakan" v-if="detail.status === 'dijadwalkan'" :loading="acting === 'start'" @click="runAction('start')" />
+              <AppActionButton icon="approve" label="Selesai" v-if="['dijadwalkan','berjalan'].includes(detail.status)" :loading="acting === 'complete'" @click="runAction('complete')" />
             </template>
           </div>
         </div>
@@ -196,6 +195,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'
 import { assetMaintenanceApi } from '@/api/assetMaintenance.js'
 import { outletsApi } from '@/api/outlets.js'

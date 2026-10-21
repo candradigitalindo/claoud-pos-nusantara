@@ -11,11 +11,11 @@
         </div>
         <div class="flex flex-col gap-1 sm:min-w-50">
           <label class="text-sm font-medium text-gray-700">Akun</label>
-          <select v-model="selectedAccount"
+          <SearchableSelect v-model="selectedAccount"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="">Semua Akun</option>
             <option v-for="a in ACCOUNT_OPTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
-          </select>
+          </SearchableSelect>
         </div>
         <div class="flex flex-col gap-1 sm:min-w-45">
           <label class="text-sm font-medium text-gray-700">Outlet</label>
@@ -225,6 +225,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, shallowRef, reactive, onMounted, computed, watch } from 'vue'
 import { salesApi } from '@/api/sales.js'
 import { outletsApi } from '@/api/outlets.js'

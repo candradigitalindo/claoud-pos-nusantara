@@ -77,7 +77,7 @@
           </div>
         </template>
         <template #cell-actions="{ row }">
-          <button class="rounded px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50" @click="openDetail(row)">Buka</button>
+          <AppActionButton icon="view" label="Buka" @click="openDetail(row)" />
         </template>
       </AppTable>
     </AppCard>
@@ -98,9 +98,9 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label class="lbl">Alasan</label>
-            <select v-model="form.reason" class="form-input" @change="loadAvailable">
+            <SearchableSelect v-model="form.reason" class="form-input" @change="loadAvailable">
               <option v-for="(lbl, key) in TRANSFER_REASONS" :key="key" :value="key">{{ lbl }}</option>
-            </select>
+            </SearchableSelect>
           </div>
           <div v-if="form.reason === 'pinjam' || form.reason === 'perbaikan'">
             <label class="lbl">Rencana Kembali</label>
@@ -221,12 +221,12 @@
       <template #footer>
         <div v-if="detail" class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center">
           <div class="flex flex-wrap gap-2 sm:mr-auto">
-            <button v-if="detail.status === 'received'" class="btn-soft" @click="doPrint">Cetak Berita Acara</button>
+            <AppActionButton icon="print" label="Cetak Berita Acara" v-if="detail.status === 'received'" @click="doPrint" />
           </div>
           <div class="flex flex-wrap gap-2">
             <button class="btn-ghost" @click="detailModal = false">Tutup</button>
             <template v-for="a in actionsFor(detail)" :key="a.act">
-              <AppButton :variant="a.variant || 'primary'" :loading="acting === a.act" @click="runAction(a.act)">{{ a.label }}</AppButton>
+              <AppActionButton :icon="({ submit: 'send', reject: 'reject', approve: 'approve', send: 'send', receive: 'receive', cancel: 'cancel' })[a.act]" :label="(a.label)" :loading="acting === a.act" @click="runAction(a.act)" />
             </template>
           </div>
         </div>
@@ -236,6 +236,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'
 import { assetTransfersApi } from '@/api/assetTransfers.js'
 import { outletsApi } from '@/api/outlets.js'

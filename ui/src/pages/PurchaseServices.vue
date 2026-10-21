@@ -21,11 +21,11 @@
         </div>
         <div class="flex w-full flex-col gap-1 sm:w-auto">
           <label class="text-sm font-medium text-gray-700">Status</label>
-          <select v-model="filterStatus"
+          <SearchableSelect v-model="filterStatus"
             class="w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="">Semua Status</option>
             <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
-          </select>
+          </SearchableSelect>
         </div>
         <button @click="page = 1; fetchList()"
           class="w-full sm:w-auto px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
@@ -65,15 +65,9 @@
                 </p>
               </div>
               <div class="action-btns shrink-0">
-                <button class="act-view" @click="viewDetail(row)" title="Lihat">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-                <button v-if="row.status === 'pending' && authStore.hasPermission(perm('submit'))" class="act-edit" @click="viewDetail(row)" title="Edit">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </button>
-                <button v-if="canDelete(row) && authStore.hasPermission(perm('submit'))" class="act-del" @click="confirmDelete(row)" title="Hapus">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                </button>
+                <AppActionButton icon="view" label="Lihat" @click="viewDetail(row)" />
+                <AppActionButton icon="edit" label="Edit" v-if="row.status === 'pending' && authStore.hasPermission(perm('submit'))" @click="viewDetail(row)" />
+                <AppActionButton icon="delete" label="Hapus" v-if="canDelete(row) && authStore.hasPermission(perm('submit'))" @click="confirmDelete(row)" />
               </div>
             </div>
           </li>
@@ -103,15 +97,9 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="action-btns">
-            <button class="act-view" @click="viewDetail(row)" title="Lihat">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-            <button v-if="row.status === 'pending' && authStore.hasPermission(perm('submit'))" class="act-edit" @click="viewDetail(row)" title="Edit">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
-            <button v-if="canDelete(row) && authStore.hasPermission(perm('submit'))" class="act-del" @click="confirmDelete(row)" title="Hapus">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-            </button>
+            <AppActionButton icon="view" label="Lihat" @click="viewDetail(row)" />
+            <AppActionButton icon="edit" label="Edit" v-if="row.status === 'pending' && authStore.hasPermission(perm('submit'))" @click="viewDetail(row)" />
+            <AppActionButton icon="delete" label="Hapus" v-if="canDelete(row) && authStore.hasPermission(perm('submit'))" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -162,9 +150,7 @@
                 <div class="flex-1 space-y-3">
                   <div class="flex items-center gap-2">
                     <span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-semibold">Pengadaan #{{ i + 1 }}</span>
-                    <button type="button" @click="removeItem(i)" class="text-red-400 hover:text-red-600 ml-auto" :disabled="form.items.length <= 1">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
+                    <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeItem(i)" :disabled="form.items.length <= 1" class="ml-auto" />
                   </div>
                   <input v-model="item.name" placeholder="Nama Pengadaan Jasa" class="input-sm w-full" />
                   <!-- Sub-items -->
@@ -175,10 +161,10 @@
                       <div v-if="form.project_id && rabLines.length" class="col-span-2 sm:col-span-12">
                         <div class="flex items-center gap-1.5">
                           <span class="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">RAB</span>
-                          <select v-model="sub.rab_item_id" class="input-sm w-full" @change="applyRabLine(sub)">
+                          <SearchableSelect v-model="sub.rab_item_id" class="input-sm w-full" @change="applyRabLine(sub)">
                             <option value="">— Di luar RAB (tidak menyerap baris mana pun) —</option>
                             <option v-for="l in rabLines" :key="l.id" :value="l.id">{{ rabOptionLabel(l) }}</option>
-                          </select>
+                          </SearchableSelect>
                         </div>
                         <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600">{{ rabWarn(sub) }}</p>
                       </div>
@@ -187,9 +173,7 @@
                       <input v-model="sub.unit" placeholder="Satuan" class="input-sm sm:col-span-1" />
                       <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" class="col-span-2" />
                       <p class="col-span-1 self-center text-right text-xs text-gray-500 sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
-                      <button type="button" @click="removeSubItem(i, j)" class="col-span-1 justify-self-end self-center text-red-400 hover:text-red-600 sm:col-span-1 sm:justify-self-center" :disabled="item.items.length <= 1">
-                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                      </button>
+                      <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center" />
                       <!-- Sumber HPS diberi barisnya sendiri: tautan marketplace
                            panjang dan tidak muat di deret kolom angka. -->
                       <div class="col-span-2 sm:col-span-12">
@@ -412,7 +396,7 @@
               </div>
               <div class="flex justify-between items-end mt-auto">
                 <p class="text-xs font-bold text-emerald-700">{{ formatRupiah(child.total_final || child.total_amount) }}</p>
-                <button @click="viewChildDetail(child)" class="text-[10px] text-blue-600 hover:underline font-medium">Lihat Detail →</button>
+                <AppActionButton icon="view" label="Lihat Detail →" @click="viewChildDetail(child)" />
               </div>
             </div>
           </div>
@@ -438,9 +422,7 @@
                       <p class="break-words text-xs font-medium text-gray-800">{{ j + 1 }}. {{ sub.name }}</p>
                       <span v-if="sub.rab_item_id" class="rab-chip">RAB · {{ rabName(sub.rab_item_id) }}</span>
                     </div>
-                    <button v-if="canEditItems" class="act-del shrink-0" @click="removeDetailSubItem(i, j)" title="Hapus item">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                    </button>
+                    <AppActionButton icon="delete" label="Hapus baris" v-if="canEditItems" @click="removeDetailSubItem(i, j)" />
                   </div>
                   <dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
                     <dt class="text-gray-400">Qty</dt>
@@ -496,9 +478,7 @@
                   <tbody>
                     <tr v-for="(sub, j) in (item.items || [])" :key="j" class="border-b border-gray-100">
                       <td v-if="canEditItems" class="py-1.5 text-center">
-                        <button class="act-del" @click="removeDetailSubItem(i, j)" title="Hapus item">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                        </button>
+                        <AppActionButton icon="delete" label="Hapus baris" @click="removeDetailSubItem(i, j)" />
                       </td>
                       <td class="py-1.5 pr-2 text-gray-400">{{ j + 1 }}</td>
                       <td class="py-1.5 pr-2 text-gray-800">
@@ -578,17 +558,11 @@
                 </div>
               </div>
               <div class="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
-                <button @click="openEditFinal" class="w-full sm:w-auto shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm">
-                  Isi Harga Sekarang
-                </button>
+                <AppActionButton icon="cost" label="Isi Harga Sekarang" @click="openEditFinal" />
                 <!-- Pecahan diajukan bayar sendiri: pecahan yang belum berharga saat
                      induknya diajukan tidak ikut cascade dan tertahan di 'approved'.
                      Nonaktif selama masih ada item tanpa harga final (server menolak). -->
-                <button v-if="detail.parent_id" :disabled="!paymentReadiness.ok" @click="confirmDetailAction('request_payment')"
-                  :title="paymentReadiness.ok ? '' : 'Isi harga final semua item dulu'"
-                  class="w-full sm:w-auto shrink-0 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold hover:bg-orange-600 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-orange-500">
-                  Ajukan Pembayaran
-                </button>
+                <AppActionButton icon="pay" :label="paymentReadiness.ok ? '' : 'Isi harga final semua item dulu'" v-if="detail.parent_id" :disabled="!paymentReadiness.ok" @click="confirmDetailAction('request_payment')" />
               </div>
             </div>
 
@@ -681,16 +655,8 @@
             </div>
           </div>
           <div v-else class="flex flex-wrap items-center justify-end gap-2">
-            <button @click="detailRejectMode = true" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              Tolak Seluruh Pengajuan
-            </button>
-            <button @click="submitVerify" :disabled="actionLoading || !verifyRows.length"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50"
-              :class="verifyAllRejected ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              {{ verifyAllRejected ? 'Tolak Semua Item' : 'Verifikasi & Teruskan ke Persetujuan' }}
-            </button>
+            <AppActionButton icon="reject" label="Tolak Seluruh Pengajuan" @click="detailRejectMode = true" />
+            <AppActionButton :icon="verifyAllRejected ? 'reject' : 'review'" :label="(verifyAllRejected ? 'Tolak Semua Item' : 'Verifikasi &amp; Teruskan ke Persetujuan')" @click="submitVerify" :disabled="actionLoading || !verifyRows.length" />
           </div>
         </div>
 
@@ -720,26 +686,18 @@
           </div>
           <!-- Action buttons -->
           <div v-else class="flex flex-wrap items-center justify-end gap-2">
-            <button @click="detailRejectMode = true" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              Tolak
-            </button>
-            <button @click="submitDetailApprove" :disabled="actionLoading" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              Setujui
-            </button>
+            <AppActionButton icon="reject" label="Tolak" @click="detailRejectMode = true" />
+            <AppActionButton icon="approve" label="Setujui" @click="submitDetailApprove" :disabled="actionLoading" />
           </div>
         </div>
       </div>
       <template #footer>
         <div v-if="!parentDetailId" class="flex flex-wrap items-center gap-2 mr-auto">
           <!-- Nonaktif selama ada item tanpa harga final; alasannya tampil di atas. -->
-          <AppButton v-if="detail && detail.status === 'approved' && authStore.hasPermission(perm('purchasing')) && !detail.parent_id"
-            variant="primary" :disabled="!paymentReadiness.ok"
-            :title="paymentReadiness.ok ? '' : 'Belum bisa diajukan — lihat keterangan di atas'"
-            @click="confirmDetailAction('request_payment')">Ajukan Pembayaran</AppButton>
-          <AppButton v-if="detail && detail.status === 'paid' && authStore.hasPermission(perm('submit'))" variant="primary" @click="confirmDetailAction('receive')">Selesaikan Jasa</AppButton>
-          <AppButton v-if="canCancel" variant="danger" @click="confirmDetailAction('cancel')">Batalkan</AppButton>
+          <AppActionButton icon="pay" :label="paymentReadiness.ok ? '' : 'Belum bisa diajukan — lihat keterangan di atas'" v-if="detail && detail.status === 'approved' && authStore.hasPermission(perm('purchasing')) && !detail.parent_id" :disabled="!paymentReadiness.ok"
+            @click="confirmDetailAction('request_payment')" />
+          <AppActionButton icon="receive" label="Selesaikan Jasa" v-if="detail && detail.status === 'paid' && authStore.hasPermission(perm('submit'))" @click="confirmDetailAction('receive')" />
+          <AppActionButton icon="cancel" label="Batalkan" v-if="canCancel" @click="confirmDetailAction('cancel')" />
         </div>
         <AppButton variant="secondary" @click="parentDetailId ? backToParent() : (showDetail = false)">{{ parentDetailId ? '← Kembali' : 'Tutup' }}</AppButton>
       </template>
@@ -754,11 +712,11 @@
       </p>
       <div class="mb-4 bg-emerald-50 p-3 sm:p-4 rounded-xl border border-emerald-100">
         <label class="text-sm font-bold text-emerald-900 mb-1.5 block">Vendor / Supplier Utama</label>
-        <select v-model="editFinalVendorId"
+        <SearchableSelect v-model="editFinalVendorId"
           class="w-full rounded-lg border border-emerald-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
           <option value="">— Pilih Vendor —</option>
           <option v-for="v in vendorList" :key="v.id" :value="v.id">{{ v.name }}</option>
-        </select>
+        </SearchableSelect>
       </div>
       <div class="mb-4">
         <label class="text-sm font-medium text-gray-700 mb-1 block">No. Invoice Vendor</label>
@@ -823,11 +781,11 @@
         <div class="bg-gray-50 p-3 sm:p-4 rounded-xl border border-gray-200 space-y-3">
           <div>
             <label class="text-sm font-bold text-gray-700 mb-1.5 block">Vendor Tujuan</label>
-            <select v-model="splitVendorId"
+            <SearchableSelect v-model="splitVendorId"
               class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
               <option value="">— Pilih Vendor Baru —</option>
               <option v-for="v in vendorList" :key="v.id" :value="v.id">{{ v.name }}</option>
-            </select>
+            </SearchableSelect>
           </div>
           <div class="flex flex-wrap justify-between items-center gap-x-3 gap-y-1 pt-2 border-t border-gray-200">
             <p class="text-sm text-gray-600 font-medium">Total Harga Dipindah:</p>
@@ -908,6 +866,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'

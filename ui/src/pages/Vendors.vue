@@ -153,31 +153,12 @@
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
             </router-link>
-            <button
-              @click="openEdit(row)"
-              class="action-icon text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"
-              title="Edit vendor"
-              aria-label="Edit vendor"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-            </button>
-            <button
-              @click="toggleActive(row)"
-              class="action-icon"
-              :class="row.is_active ? 'text-amber-600 hover:bg-amber-50 hover:text-amber-800' : 'text-sky-600 hover:bg-sky-50 hover:text-sky-800'"
-              :title="row.is_active ? 'Nonaktifkan vendor' : 'Aktifkan vendor'"
-              :aria-label="row.is_active ? 'Nonaktifkan vendor' : 'Aktifkan vendor'"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10"/><path d="M6.2 6.2a9 9 0 1011.6 0"/></svg>
-            </button>
-            <button
-              @click="confirmDelete(row)"
-              class="action-icon text-rose-600 hover:bg-rose-50 hover:text-rose-800"
-              title="Hapus vendor"
-              aria-label="Hapus vendor"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-            </button>
+            <AppActionButton icon="edit" label="Edit vendor"
+              @click="openEdit(row)" />
+            <AppActionButton :icon="row.is_active ? 'disable' : 'enable'" :label="row.is_active ? 'Nonaktifkan vendor' : 'Aktifkan vendor'"
+              @click="toggleActive(row)" />
+            <AppActionButton icon="delete" label="Hapus vendor"
+              @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -247,6 +228,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { computed, ref, onMounted } from 'vue'
 import Swal from 'sweetalert2'
 import { vendorsApi } from '@/api/vendors.js'

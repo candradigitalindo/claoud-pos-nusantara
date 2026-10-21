@@ -77,7 +77,7 @@
           <span class="text-sm text-gray-500">{{ row.created_at.slice(0,10) }}</span>
         </template>
         <template #cell-actions="{ row }">
-          <button @click="openDetail(row.id)" class="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded hover:bg-emerald-50">Detail</button>
+          <AppActionButton icon="view" label="Detail" @click="openDetail(row.id)" />
         </template>
       </AppTable>
       <AppPagination v-model:page="page" :total-pages="totalPages" class="px-4 py-3 border-t border-gray-100" />
@@ -168,16 +168,16 @@
             </div>
             <div class="w-28">
               <label class="block text-xs text-gray-500 mb-1">Satuan</label>
-              <select v-model="it.unit_used" class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2">
+              <SearchableSelect v-model="it.unit_used" class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2">
                 <option v-for="unit in stockUnitOptions(stockItemMap[it.item_id])" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
-              </select>
+              </SearchableSelect>
             </div>
             <div class="flex-1 sm:flex-none sm:w-28 text-xs text-gray-400 pb-2">
               <span v-if="it.qty_dist && it.dist_ratio">
                 = {{ (it.qty_dist * stockUnitRatio(stockItemMap[it.item_id], it.unit_used)).toFixed(3) }} {{ it.base_unit }}
               </span>
             </div>
-            <button @click="removeItem(i)" class="pb-2 text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+            <AppActionButton icon="delete" label="Hapus baris" @click="removeItem(i)" />
           </div>
         </div>
       </div>
@@ -255,7 +255,7 @@
         <p v-if="detail.notes" class="text-sm text-gray-500">{{ detail.notes }}</p>
         <div v-if="isReceiving" class="space-y-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
           <p class="text-xs text-gray-600">Isi jumlah yang diterima dan ditolak pada pemeriksaan ini. Sisa yang belum datang tetap menunggu penerimaan berikutnya. Barang reject masuk karantina dan tidak menambah stok siap pakai.</p>
-          <button v-if="canReject" type="button" class="text-sm text-red-700 underline" @click="rejectRemaining">Reject seluruh sisa barang</button>
+          <AppActionButton icon="reject" label="Reject seluruh sisa barang" v-if="canReject" type="button" @click="rejectRemaining" />
           <textarea v-model="receiveNotes" rows="2" aria-label="Catatan penerimaan" placeholder="Catatan pemeriksaan / kedatangan sebagian" class="block w-full border rounded-lg p-2 text-sm"></textarea>
           <StockEvidenceCapture v-model="receiveEvidence" :warehouse-id="detail.to_warehouse_id" label="Foto barang saat diperiksa" />
         </div>
@@ -280,12 +280,11 @@
 
         <!-- Actions: tombol hanya muncul bila status DAN izin memungkinkan. -->
         <div v-if="nextAction" class="flex justify-end">
-          <AppButton :loading="saving" @click="doAction">{{ nextAction.label }}</AppButton>
+          <AppActionButton v-if="nextAction.status !== 'received'" :icon="nextAction.status === 'approved' ? 'approve' : 'send'" :label="nextAction.label" :loading="saving" @click="doAction" />
+          <AppButton v-else :loading="saving" @click="doAction">{{ nextAction.label }}</AppButton>
         </div>
         <div v-if="canCancelDetail">
-          <button @click="doCancel" :disabled="saving" class="text-xs text-red-500 hover:text-red-700">
-            {{ isOutletUser && isCentralRequest(detail) ? 'Batalkan Permintaan' : 'Batalkan Transfer' }}
-          </button>
+          <AppActionButton icon="cancel" :label="(isOutletUser &amp;&amp; isCentralRequest(detail) ? 'Batalkan Permintaan' : 'Batalkan Transfer')" @click="doCancel" :disabled="saving" />
         </div>
       </div>
       <div v-else class="py-8 text-center text-gray-400">Memuat...</div>
@@ -297,6 +296,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { stockUnitOptions, stockUnitRatio, preferredStockUnit } from '@/utils/stockUnits.js'
 import { ref, computed, watch, onMounted } from 'vue'
 import { warehousesApi, stockItemsApi, stockTransfersApi } from '@/api/warehouse.js'

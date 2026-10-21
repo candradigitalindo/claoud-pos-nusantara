@@ -62,7 +62,7 @@
               </td>
               <td class="text-right whitespace-nowrap">
                 <router-link v-if="r.bucket === 'expired'" class="act act-red" to="/stock-wastes">Buang</router-link>
-                <button v-if="canAck && !r.ack_at" class="act act-green" @click="openAck(r)">Tandai Ditindak</button>
+                <AppActionButton icon="approve" label="Tandai Ditindak" v-if="canAck && !r.ack_at" @click="openAck(r)" />
               </td>
             </tr>
           </tbody>
@@ -94,6 +94,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
 import { warehousesApi } from '@/api/warehouse'

@@ -60,7 +60,7 @@
         </details>
         <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <AppButton variant="secondary" :loading="savingCount" @click="saveCount">Simpan Hitungan</AppButton>
-          <AppButton v-if="canApprove" :loading="approving" @click="approve">Terapkan Selisih</AppButton>
+          <AppActionButton icon="approve" label="Terapkan Selisih" v-if="canApprove" :loading="approving" @click="approve" />
         </div>
         <p class="text-xs text-gray-500">
           Menerapkan selisih akan menyesuaikan jumlah aset, menjadikan temuan sebagai aset baru, dan
@@ -112,6 +112,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, onMounted } from 'vue'
 import { assetOpnamesApi } from '@/api/assetOps.js'
 import { outletsApi } from '@/api/outlets.js'

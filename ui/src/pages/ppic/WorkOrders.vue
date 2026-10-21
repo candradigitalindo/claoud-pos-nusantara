@@ -45,10 +45,10 @@
                 <div v-if="r.expiry_date" class="text-[10px] text-amber-600">exp {{ fmtDate(r.expiry_date) }}</div>
               </td>
               <td class="text-right pr-3 whitespace-nowrap">
-                <button v-if="canExecute && r.status === 'planned'" class="act act-blue" @click="doStart(r)">Mulai</button>
-                <button v-if="canExecute && (r.status === 'planned' || r.status === 'in_progress')" class="act act-green" @click="openFinish(r)">Selesaikan</button>
-                <button v-if="canCreate && (r.status === 'planned' || r.status === 'in_progress')" class="act act-red" @click="doCancel(r)">Batal</button>
-                <button v-if="r.status === 'done'" class="act act-gray" @click="openFinished(r)">Detail</button>
+                <AppActionButton icon="play" label="Mulai" v-if="canExecute && r.status === 'planned'" @click="doStart(r)" />
+                <AppActionButton icon="approve" label="Selesaikan" v-if="canExecute && (r.status === 'planned' || r.status === 'in_progress')" @click="openFinish(r)" />
+                <AppActionButton icon="cancel" label="Batal" v-if="canCreate && (r.status === 'planned' || r.status === 'in_progress')" @click="doCancel(r)" />
+                <AppActionButton icon="view" label="Detail" v-if="r.status === 'done'" @click="openFinished(r)" />
               </td>
             </tr>
           </tbody>
@@ -160,6 +160,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
 import { warehousesApi } from '@/api/warehouse'

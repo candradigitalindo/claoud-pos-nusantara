@@ -1,228 +1,166 @@
-<!--
-  SearchSelect.vue — Dropdown with inline search/filter
-  ───────────────────────────────────────────────────────────────
-  Props:
-    modelValue   : string              — v-model binding (selected value)
-    options      : Array<{ id, name }> — list of options
-    placeholder  : string              — placeholder when nothing selected
-    searchPlaceholder : string         — placeholder for search input
-    disabled     : boolean
-    labelKey     : string              — key for display text (default: 'name')
-    valueKey     : string              — key for value (default: 'id')
-
-  Emits: update:modelValue
-
-  Usage:
-    <SearchSelect
-      v-model="form.outlet_id"
-      :options="outlets"
-      placeholder="Pilih outlet…"
-      searchPlaceholder="Cari outlet…"
-    />
--->
 <template>
-  <div class="ss" ref="rootEl" :class="{ 'ss--disabled': disabled }">
-    <!-- Trigger button -->
-    <button
-      type="button"
-      class="ss-trigger"
-      :disabled="disabled"
-      @click.stop="toggle"
-    >
-      <span :class="selectedLabel ? 'ss-value' : 'ss-placeholder'">
-        {{ selectedLabel || placeholder }}
-      </span>
-      <svg class="ss-chevron" :class="{ 'ss-chevron--open': open }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="6 9 12 15 18 9"/>
-      </svg>
+  <div class="ss" :class="[{ 'ss--native': nativeTrigger }, !nativeTrigger && $attrs.class]" :style="!nativeTrigger && $attrs.style">
+    <button ref="triggerEl" v-bind="triggerAttrs()" type="button" role="combobox"
+      class="ss-trigger" :class="{ 'searchable-select-trigger': nativeTrigger }"
+      :disabled="disabled" :aria-expanded="open" :aria-controls="`${uid}-options`"
+      aria-haspopup="listbox" @click.stop="toggle" @keydown="onTriggerKeydown">
+      <span :class="selectedLabel ? 'ss-value' : 'ss-placeholder'">{{ selectedLabel || placeholder }}</span>
+      <svg class="ss-chevron" :class="{ 'ss-chevron--open': open }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
     </button>
-
-    <!-- Dropdown panel -->
     <Teleport to="body">
-      <div v-if="open" class="ss-backdrop" @click="close"></div>
-      <div v-if="open" ref="panelEl" class="ss-panel" :style="panelStyle">
+      <div v-if="open" class="ss-backdrop" @click="close(false)"></div>
+      <div v-if="open" ref="panelEl" class="ss-panel" :style="panelStyle" @keydown="onPanelKeydown">
         <div class="ss-search-box">
-          <svg class="ss-search-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            ref="searchInputEl"
-            v-model="query"
-            class="ss-search-input"
-            :placeholder="searchPlaceholder"
-            @keydown.escape="close"
-          />
+          <input ref="searchInputEl" v-model="query" type="search" class="ss-search-input"
+            :placeholder="searchPlaceholder" aria-label="Cari pilihan" autocomplete="off"
+            role="combobox" :aria-controls="`${uid}-options`" aria-expanded="true"
+            aria-autocomplete="list" :aria-activedescendant="activeIndex >= 0 ? `${uid}-option-${activeIndex}` : undefined" />
         </div>
-        <ul class="ss-options" v-if="filtered.length">
-          <li
-            v-for="opt in filtered"
-            :key="opt[valueKey]"
-            class="ss-option"
-            :class="{ 'ss-option--active': opt[valueKey] === modelValue }"
-            @click="select(opt)"
-          >
-            {{ opt[labelKey] }}
-            <svg v-if="opt[valueKey] === modelValue" class="ss-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
+        <ul :id="`${uid}-options`" class="ss-options" role="listbox" :aria-label="placeholder">
+          <li v-for="(opt, index) in filtered" :id="`${uid}-option-${index}`" :key="index"
+            class="ss-option" role="option" :aria-selected="sameValue(opt[valueKey], modelValue)" :aria-disabled="!!opt.disabled"
+            :class="{ 'ss-option--active': sameValue(opt[valueKey], modelValue), 'ss-option--focused': index === activeIndex, 'ss-option--disabled': opt.disabled }"
+            @pointermove="!opt.disabled && (activeIndex = index)" @click="select(opt)">
+            <span>{{ opt[labelKey] }}</span><span v-if="sameValue(opt[valueKey], modelValue)" aria-hidden="true">✓</span>
           </li>
         </ul>
-        <div v-else class="ss-empty">Tidak ditemukan</div>
+        <div v-if="!filtered.length" class="ss-empty" role="status">Tidak ditemukan</div>
       </div>
     </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, useAttrs, useId } from 'vue'
 
+defineOptions({ inheritAttrs: false })
 const props = defineProps({
-  modelValue:        { type: String, default: '' },
-  options:           { type: Array,  default: () => [] },
-  placeholder:       { type: String, default: 'Pilih…' },
+  modelValue: { type: [String, Number, Boolean, Object], default: '' },
+  options: { type: Array, default: () => [] },
+  placeholder: { type: String, default: 'Pilih…' },
   searchPlaceholder: { type: String, default: 'Cari…' },
-  disabled:          { type: Boolean, default: false },
-  labelKey:          { type: String, default: 'name' },
-  valueKey:          { type: String, default: 'id' },
+  disabled: { type: Boolean, default: false },
+  labelKey: { type: String, default: 'name' },
+  valueKey: { type: String, default: 'id' },
+  nativeTrigger: { type: Boolean, default: false },
 })
-
 const emit = defineEmits(['update:modelValue', 'change'])
-
-const rootEl       = ref(null)
-const panelEl      = ref(null)
+const attrs = useAttrs()
+const uid = `ss-${useId()}`
+const triggerEl = ref(null)
+const panelEl = ref(null)
 const searchInputEl = ref(null)
-const open         = ref(false)
-const query        = ref('')
-const panelStyle   = ref({})
-
-const selectedLabel = computed(() => {
-  const opt = props.options.find(o => o[props.valueKey] === props.modelValue)
-  return opt ? opt[props.labelKey] : ''
-})
-
-const filtered = computed(() => {
-  const q = query.value.toLowerCase().trim()
-  if (!q) return props.options
-  return props.options.filter(o =>
-    String(o[props.labelKey]).toLowerCase().includes(q)
-  )
-})
+const open = ref(false)
+const query = ref('')
+const activeIndex = ref(-1)
+const panelStyle = ref({})
+const triggerAttrs = () => Object.fromEntries(Object.entries(attrs).filter(([key]) => props.nativeTrigger || !['class', 'style'].includes(key)))
+const sameValue = (a, b) => Object.is(a, b)
+const selectedLabel = computed(() => props.options.find(o => sameValue(o[props.valueKey], props.modelValue))?.[props.labelKey] ?? '')
+const normalized = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim()
+const filtered = computed(() => props.options.filter(o => !o.hidden && normalized(o[props.labelKey]).includes(normalized(query.value))))
 
 function positionPanel() {
-  if (!rootEl.value) return
-  const rect = rootEl.value.getBoundingClientRect()
-  const spaceBelow = window.innerHeight - rect.bottom
-  const dropUp = spaceBelow < 220 && rect.top > 220
-
+  if (!open.value) return
+  const rect = triggerEl.value?.getBoundingClientRect()
+  if (!rect) return
+  const viewport = window.visualViewport
+  const viewportTop = viewport?.offsetTop || 0
+  const viewportLeft = viewport?.offsetLeft || 0
+  const height = viewport?.height || window.innerHeight
+  const width = viewport?.width || window.innerWidth
+  const below = viewportTop + height - rect.bottom - 8
+  const above = rect.top - viewportTop - 8
+  const dropUp = below < 220 && above > below
+  const panelWidth = Math.min(Math.max(rect.width, 220), width - 16)
   panelStyle.value = {
-    position: 'fixed',
-    left: rect.left + 'px',
-    width: rect.width + 'px',
-    zIndex: 9999,
-    ...(dropUp
-      ? { bottom: (window.innerHeight - rect.top + 4) + 'px' }
-      : { top: (rect.bottom + 4) + 'px' }
-    ),
+    width: `${panelWidth}px`,
+    left: `${Math.max(viewportLeft + 8, Math.min(rect.left, viewportLeft + width - panelWidth - 8))}px`,
+    maxHeight: `${Math.max(80, Math.min(300, dropUp ? above : below))}px`,
+    ...(dropUp ? { bottom: `${window.innerHeight - rect.top + 4}px` } : { top: `${rect.bottom + 4}px` }),
   }
 }
-
-function toggle() {
-  if (props.disabled) return
-  if (open.value) { close(); return }
+function resetActive() {
+  const selected = filtered.value.findIndex(o => !o.disabled && sameValue(o[props.valueKey], props.modelValue))
+  activeIndex.value = selected >= 0 ? selected : filtered.value.findIndex(o => !o.disabled)
+}
+async function show() {
+  if (props.disabled || triggerEl.value?.matches(':disabled')) return
   query.value = ''
   open.value = true
+  resetActive()
   positionPanel()
-  nextTick(() => {
-    positionPanel()
-    searchInputEl.value?.focus()
-  })
+  await nextTick()
+  searchInputEl.value?.focus({ preventScroll: true })
+  positionPanel()
 }
-
-function close() {
+function close(restoreFocus = false) {
   open.value = false
   query.value = ''
+  if (restoreFocus) triggerEl.value?.focus({ preventScroll: true })
 }
-
+function toggle() { open.value ? close(true) : show() }
 function select(opt) {
+  if (!opt || opt.disabled || props.disabled || triggerEl.value?.matches(':disabled')) return
   emit('update:modelValue', opt[props.valueKey])
   emit('change', opt[props.valueKey])
-  close()
+  close(true)
 }
-
-// Close on PAGE scroll/resize (panel is position:fixed and would detach from the
-// trigger). Ignore scrolls that originate inside the dropdown panel itself —
-// otherwise scrolling the options list would instantly close it.
-function onScrollOrResize(e) {
-  if (!open.value) return
-  if (e && e.target && panelEl.value && panelEl.value.contains(e.target)) return
-  close()
+function moveActive(direction) {
+  const enabled = filtered.value.map((o, i) => o.disabled ? -1 : i).filter(i => i >= 0)
+  if (!enabled.length) return
+  activeIndex.value = enabled[(enabled.indexOf(activeIndex.value) + direction + enabled.length) % enabled.length]
+  nextTick(() => document.getElementById(`${uid}-option-${activeIndex.value}`)?.scrollIntoView({ block: 'nearest' }))
 }
-
+function onTriggerKeydown(event) {
+  if (['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); show() }
+}
+function onPanelKeydown(event) {
+  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true) }
+  else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); moveActive(event.key === 'ArrowDown' ? 1 : -1) }
+  else if (event.key === 'Enter') { event.preventDefault(); select(filtered.value[activeIndex.value]) }
+  else if (event.key === 'Tab') close(true)
+}
+function onScroll(event) {
+  if (!open.value || panelEl.value?.contains(event.target)) return
+  close(false)
+}
+watch(filtered, resetActive)
+watch(() => props.disabled, value => { if (value) close(false) })
 onMounted(() => {
-  window.addEventListener('scroll', onScrollOrResize, true)
-  window.addEventListener('resize', onScrollOrResize)
+  window.addEventListener('scroll', onScroll, true)
+  window.addEventListener('resize', positionPanel)
+  window.visualViewport?.addEventListener('resize', positionPanel)
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', onScrollOrResize, true)
-  window.removeEventListener('resize', onScrollOrResize)
+  window.removeEventListener('scroll', onScroll, true)
+  window.removeEventListener('resize', positionPanel)
+  window.visualViewport?.removeEventListener('resize', positionPanel)
 })
+defineExpose({ show, focus: () => triggerEl.value?.focus() })
 </script>
 
 <style scoped>
-.ss { position: relative; width: 100%; }
-.ss--disabled { opacity: .55; pointer-events: none; }
-
-.ss-trigger {
-  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
-  width: 100%; padding: .45rem .75rem; border-radius: .65rem;
-  background: rgba(255,255,255,.85); border: 1px solid rgba(0,0,0,.12);
-  font-size: .82rem; color: #0f2d1d; cursor: pointer; text-align: left;
-  transition: border-color .15s, box-shadow .15s;
-}
-.ss-trigger:hover { border-color: rgba(0,0,0,.2); }
-.ss-trigger:focus { border-color: rgba(45,143,86,.4); box-shadow: 0 0 0 3px rgba(45,143,86,.1); outline: none; }
-.ss-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ss-placeholder { flex: 1; color: #8ca898; }
-.ss-chevron { flex-shrink: 0; color: #6c8a7a; transition: transform .15s; }
+.ss { position: relative; width: 100%; min-width: 0; }
+.ss--native { display: contents; }
+.ss-trigger { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; max-width: 100%; cursor: pointer; text-align: left; }
+.ss-trigger:not(.searchable-select-trigger) { width: 100%; padding: .45rem .75rem; border-radius: .65rem; background: rgba(255,255,255,.85); border: 1px solid rgba(0,0,0,.12); font-size: .82rem; color: #0f2d1d; }
+.searchable-select-trigger { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; }
+.ss-trigger:disabled { opacity: .55; cursor: not-allowed; }
+.ss-trigger:focus-visible { outline: 2px solid #5a9170; outline-offset: 2px; }
+.ss-value, .ss-placeholder { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-placeholder { color: #8ca898; }
+.ss-chevron { flex-shrink: 0; color: currentColor; opacity: .65; transition: transform .15s; }
 .ss-chevron--open { transform: rotate(180deg); }
-
 .ss-backdrop { position: fixed; inset: 0; z-index: 9998; }
-
-.ss-panel {
-  background: #fff; border-radius: .75rem;
-  border: 1px solid rgba(0,0,0,.1);
-  box-shadow: 0 8px 30px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
-  overflow: hidden;
-  max-height: 260px; display: flex; flex-direction: column;
-}
-
-.ss-search-box {
-  display: flex; align-items: center; gap: .4rem;
-  padding: .5rem .6rem; border-bottom: 1px solid rgba(0,0,0,.08);
-  background: #fafcfb;
-}
-.ss-search-ico { flex-shrink: 0; color: #8ca898; }
-.ss-search-input {
-  flex: 1; border: none; outline: none; background: transparent;
-  font-size: .78rem; color: #0f2d1d;
-}
-.ss-search-input::placeholder { color: #b0c4b8; }
-
-.ss-options {
-  list-style: none; margin: 0; padding: .3rem 0;
-  overflow-y: auto; flex: 1;
-}
-.ss-option {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .42rem .75rem; font-size: .8rem; color: #1a3d2a;
-  cursor: pointer; transition: background .1s;
-}
-.ss-option:hover { background: rgba(45,143,86,.07); }
-.ss-option--active { color: #1b7a42; font-weight: 600; background: rgba(45,143,86,.08); }
-.ss-check { flex-shrink: 0; color: #2d8f56; }
-
-.ss-empty {
-  padding: .75rem; text-align: center;
-  font-size: .78rem; color: #8ca898;
-}
+.ss-panel { position: fixed; z-index: 9999; background: #fff; border-radius: .75rem; border: 1px solid rgba(0,0,0,.1); box-shadow: 0 8px 30px rgba(0,0,0,.12); overflow: hidden; display: flex; flex-direction: column; }
+.ss-search-box { flex-shrink: 0; padding: .5rem .6rem; border-bottom: 1px solid rgba(0,0,0,.08); background: #fafcfb; }
+.ss-search-input { display: block; width: 100%; min-width: 0; border: none; outline: none; background: transparent; font-size: .85rem; color: #0f2d1d; }
+.ss-options { list-style: none; margin: 0; padding: .3rem 0; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
+.ss-option { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .5rem .75rem; font-size: .82rem; color: #1a3d2a; cursor: pointer; overflow-wrap: anywhere; }
+.ss-option--active { color: #1b7a42; font-weight: 600; }
+.ss-option--focused, .ss-option:not(.ss-option--disabled):hover { background: #edf6f0; }
+.ss-option--disabled { opacity: .45; cursor: not-allowed; }
+.ss-empty { padding: .75rem; text-align: center; font-size: .82rem; color: #6c8a7a; }
+@media (max-width: 640px) { .ss-search-input { font-size: 16px; } .ss-option { min-height: 44px; } }
 </style>

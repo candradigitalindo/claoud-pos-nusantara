@@ -93,9 +93,9 @@
             <div class="col-span-4 sm:col-span-2">
               <label class="lbl">Jumlah</label>
               <input v-model.number="ln.qty_dist" type="number" min="0" step="0.01" class="form-input" />
-              <select :value="ln.unit_used" @change="changeLineUnit(ln, $event.target.value)" class="form-input mt-1" aria-label="Satuan penerimaan">
+              <SearchableSelect :value="ln.unit_used" @change="changeLineUnit(ln, $event.target.value)" class="form-input mt-1" aria-label="Satuan penerimaan">
                 <option v-for="unit in stockUnitOptions(itemById(ln.item_id))" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
-              </select>
+              </SearchableSelect>
             </div>
             <div class="col-span-4 sm:col-span-3">
               <label class="lbl">Harga / {{ ln.unit_used || 'unit' }}</label>
@@ -107,7 +107,7 @@
             </div>
             <div class="col-span-12 sm:col-span-1 flex justify-between items-center">
               <span class="text-xs text-gray-400 sm:hidden">Subtotal {{ formatRupiah(lineSubtotal(ln)) }}</span>
-              <button class="text-red-500 text-lg leading-none px-1" title="Hapus baris" @click="form.items.splice(i, 1)">×</button>
+              <AppActionButton icon="delete" label="Hapus baris" @click="form.items.splice(i, 1)" />
             </div>
             <div class="col-span-12 hidden sm:block text-right text-xs text-gray-400 -mt-1">
               = {{ baseQty(ln) }} {{ baseUnitOf(ln.item_id) }} · Subtotal {{ formatRupiah(lineSubtotal(ln)) }}
@@ -155,6 +155,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { stockUnitOptions, stockUnitRatio, preferredStockUnit } from '@/utils/stockUnits.js'
 import { ref, computed, onMounted, watch } from 'vue'
 import { goodsReceiptsApi, warehousesApi, stockItemsApi } from '@/api/warehouse.js'

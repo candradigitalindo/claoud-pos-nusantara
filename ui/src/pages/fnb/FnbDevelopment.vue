@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap justify-between items-center gap-3"><div><h1 class="text-2xl font-bold text-gray-900">Pengembangan Produk</h1><p class="text-sm text-gray-500 mt-1">Dari konsep makanan/minuman sampai menu siap diluncurkan.</p></div><AppButton v-if="canCreate" @click="open()">+ Ide Produk</AppButton></div>
-    <AppCard><div class="flex flex-wrap items-end gap-3"><FnbOutletFilter v-model="outlet" /><div><label for="dev-kind" class="label">Kategori</label><select id="dev-kind" v-model="kind" class="field"><option value="">Makanan & minuman</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></select></div><div><label for="dev-stage" class="label">Tahap</label><select id="dev-stage" v-model="stage" class="field"><option value="">Semua tahap</option><option v-for="s in DEV_STAGES" :key="s.value" :value="s.value">{{ s.label }}</option></select></div><input v-model="search" class="field flex-1" placeholder="Cari ide / nama produk" aria-label="Cari pengembangan" /></div></AppCard>
+    <AppCard><div class="flex flex-wrap items-end gap-3"><FnbOutletFilter v-model="outlet" /><div><label for="dev-kind" class="label">Kategori</label><SearchableSelect id="dev-kind" v-model="kind" class="field"><option value="">Makanan & minuman</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></SearchableSelect></div><div><label for="dev-stage" class="label">Tahap</label><SearchableSelect id="dev-stage" v-model="stage" class="field"><option value="">Semua tahap</option><option v-for="s in DEV_STAGES" :key="s.value" :value="s.value">{{ s.label }}</option></SearchableSelect></div><input v-model="search" class="field flex-1" placeholder="Cari ide / nama produk" aria-label="Cari pengembangan" /></div></AppCard>
     <AppAlert type="error" :message="error" />
     <div class="flex gap-2 overflow-x-auto pb-1"><button v-for="s in DEV_STAGES" :key="s.value" @click="stage = stage === s.value ? '' : s.value" class="rounded-xl border px-4 py-3 text-left min-w-28" :class="stage === s.value ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 bg-white'"><span class="text-xs text-gray-500 block">{{ s.label }}</span><b class="text-xl">{{ rows.filter(r => r.status === s.value && (!kind || r.menu_kind === kind)).length }}</b></button></div>
     <p v-if="loading" class="text-sm text-gray-500 py-8">Memuat pengembangan…</p>
@@ -13,12 +13,12 @@
         <p class="text-sm text-gray-600 mt-3 line-clamp-3 whitespace-pre-line">{{ row.brief || 'Belum ada ringkasan konsep.' }}</p>
         <dl class="mt-4 text-xs space-y-2"><div class="flex justify-between"><dt class="text-gray-500">Harga target</dt><dd>{{ money(row.target_price) }}</dd></div><div class="flex justify-between"><dt class="text-gray-500">Target HPP</dt><dd>{{ row.target_cost_pct }}%</dd></div><div><dt class="text-gray-500">Resep</dt><dd>{{ row.recipe_name || 'Tanpa resep / belum ditautkan' }}</dd></div><div><dt class="text-gray-500">Produk POS</dt><dd>{{ row.product_name || 'Belum ditautkan' }}</dd></div></dl>
         <p v-if="row.approved_by" class="text-xs text-emerald-700 mt-3">Disetujui: {{ row.approved_by }}</p>
-        <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-100"><button @click="open(row)" class="text-xs text-emerald-700 font-semibold">Detail</button><button v-for="next in actions(row)" :key="next" :disabled="acting === row.id" @click="transition(row, next)" class="text-xs border border-gray-200 rounded-lg px-2 py-1 hover:bg-gray-50 disabled:opacity-50">{{ actionLabel(next) }}</button></div>
+        <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-100"><AppActionButton icon="view" label="Detail" @click="open(row)" /><AppActionButton :icon="({ trial: 'trial', review: 'review', approved: 'approve', launched: 'launch', archived: 'archive' })[next]" :label="(actionLabel(next))" v-for="next in actions(row)" :key="next" :disabled="acting === row.id" @click="transition(row, next)" :loading="acting === row.id" /></div>
       </AppCard>
     </div>
     <AppModal v-model="showForm" :title="editing ? 'Detail Pengembangan' : 'Ide Produk Baru'" size="lg">
       <fieldset :disabled="readOnly || saving" class="space-y-4 min-w-0">
-        <div class="grid sm:grid-cols-2 gap-3"><AppInput v-model="form.name" label="Nama produk / ide" placeholder="Contoh: Es Kopi Pandan" /><div><label for="dev-form-kind" class="label">Kategori *</label><select id="dev-form-kind" v-model="form.menu_kind" class="field w-full"><option value="">Pilih kategori</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></select></div></div>
+        <div class="grid sm:grid-cols-2 gap-3"><AppInput v-model="form.name" label="Nama produk / ide" placeholder="Contoh: Es Kopi Pandan" /><div><label for="dev-form-kind" class="label">Kategori *</label><SearchableSelect id="dev-form-kind" v-model="form.menu_kind" class="field w-full"><option value="">Pilih kategori</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></SearchableSelect></div></div>
         <div><label class="label">Outlet pengujian / peluncuran *</label><SearchSelect v-model="form.outlet_id" :options="outlets" :disabled="!!editing || readOnly" @change="changeOutlet" placeholder="Pilih outlet" /></div>
         <div><label for="dev-brief" class="label">Konsep & sasaran produk</label><textarea id="dev-brief" v-model="form.brief" rows="3" class="field w-full" placeholder="Konsep, target pelanggan, porsi, penyajian, dan pembeda produk"></textarea></div>
         <div class="grid sm:grid-cols-2 gap-3"><AppInput v-model.number="form.target_price" label="Harga jual target (Rp)" type="number" min="0" step="0.01" /><AppInput v-model.number="form.target_cost_pct" label="Target HPP (%)" type="number" min="0.01" max="100" step="0.01" /></div>
@@ -33,6 +33,8 @@
   </div>
 </template>
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { fnbApi } from '@/api/fnb'
 import { outletsApi } from '@/api/outlets'

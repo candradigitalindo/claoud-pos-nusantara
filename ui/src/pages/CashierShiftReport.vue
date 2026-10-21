@@ -34,11 +34,11 @@
     <AppCard>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <SearchSelect v-model="filterOutlet" :options="outletFilterOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" @change="load" />
-        <select v-model="filterStatus" @change="load" class="form-input">
+        <SearchableSelect v-model="filterStatus" @change="load" class="form-input">
           <option value="">Semua status</option>
           <option value="open">Berjalan</option>
           <option value="closed">Tutup</option>
-        </select>
+        </SearchableSelect>
         <DateRangePicker v-model="range" clearable />
       </div>
     </AppCard>
@@ -177,6 +177,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { cashierShiftsApi } from '@/api/cashierShifts.js'
 import { outletsApi } from '@/api/outlets.js'

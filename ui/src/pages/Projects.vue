@@ -20,11 +20,11 @@
         </div>
         <div class="flex w-full flex-col gap-1 sm:w-auto">
           <label class="text-sm font-medium text-gray-700">Status</label>
-          <select v-model="filterStatus"
+          <SearchableSelect v-model="filterStatus"
             class="w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="">Semua Status</option>
             <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
-          </select>
+          </SearchableSelect>
         </div>
         <button @click="fetchList"
           class="w-full sm:w-auto px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
@@ -74,9 +74,9 @@
                 </p>
               </div>
               <div class="action-btns shrink-0">
-                <button class="act-view" @click="goDetail(p)" title="Lihat"><IconEye /></button>
-                <button v-if="canManage" class="act-edit" @click="openEdit(p)" title="Ubah"><IconPencil /></button>
-                <button v-if="canManage" class="act-del" @click="confirmDelete(p)" title="Hapus"><IconTrash /></button>
+                <AppActionButton icon="view" label="Lihat" @click="goDetail(p)" />
+                <AppActionButton icon="edit" label="Ubah" v-if="canManage" @click="openEdit(p)" />
+                <AppActionButton icon="delete" label="Hapus" v-if="canManage" @click="confirmDelete(p)" />
               </div>
             </div>
           </li>
@@ -116,9 +116,9 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="action-btns justify-end">
-            <button class="act-view" @click="goDetail(row)" title="Lihat"><IconEye /></button>
-            <button v-if="canManage" class="act-edit" @click="openEdit(row)" title="Ubah"><IconPencil /></button>
-            <button v-if="canManage" class="act-del" @click="confirmDelete(row)" title="Hapus"><IconTrash /></button>
+            <AppActionButton icon="view" label="Lihat" @click="goDetail(row)" />
+            <AppActionButton icon="edit" label="Ubah" v-if="canManage" @click="openEdit(row)" />
+            <AppActionButton icon="delete" label="Hapus" v-if="canManage" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -163,9 +163,9 @@
           </div>
           <div class="flex flex-col gap-1">
             <label class="text-sm font-medium text-gray-700">Status</label>
-            <select v-model="form.status" class="input-form">
+            <SearchableSelect v-model="form.status" class="input-form">
               <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
-            </select>
+            </SearchableSelect>
           </div>
         </div>
 
@@ -194,6 +194,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { projectsApi } from '@/api/projects.js'

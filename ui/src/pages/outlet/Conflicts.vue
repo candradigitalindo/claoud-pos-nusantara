@@ -20,16 +20,11 @@
         <template #cell-created_at="{ row }">{{ formatDateTime(row.created_at) }}</template>
         <template #cell-actions="{ row }">
           <div v-if="row.status !== 'resolved'" class="flex items-center gap-2 flex-wrap">
-            <AppButton
+            <AppActionButton :icon="({ cloud_wins: 'cloud', local_wins: 'device', newest_wins: 'history' })[strategy.value]" :label="(strategy.label)"
               v-for="strategy in STRATEGIES"
               :key="strategy.value"
-              size="sm"
-              variant="secondary"
               :loading="resolvingId === `${row.id}-${strategy.value}`"
-              @click="resolve(row, strategy.value)"
-            >
-              {{ strategy.label }}
-            </AppButton>
+              @click="resolve(row, strategy.value)" />
           </div>
           <span v-else class="text-xs text-gray-400">Selesai</span>
         </template>
@@ -42,6 +37,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { outletsApi } from '@/api/outlets.js'

@@ -64,8 +64,8 @@
               <div><span class="text-gray-400 block">Selisih</span><b :class="s.diff>0?'text-red-600':(s.diff<0?'text-amber-600':'text-gray-500')">{{ formatRupiah(s.diff) }}</b></div>
             </div>
             <div v-if="isSuper" class="pt-1">
-              <button v-if="s.adjusted" class="rbtn rbtn-revert" @click="askRevert(s)">Batalkan penyesuaian</button>
-              <button v-else-if="s.status==='short'" class="rbtn rbtn-apply" @click="askApply(s)">Ikuti versi kasir (+{{ formatRupiah(s.diff) }})</button>
+              <AppActionButton icon="cancel" label="Batalkan penyesuaian" v-if="s.adjusted" @click="askRevert(s)" />
+              <AppActionButton icon="approve" :label="&quot;Ikuti versi kasir (+ &quot; + (formatRupiah(s.diff)) + &quot; )&quot;" v-else-if="s.status==='short'" @click="askApply(s)" />
             </div>
           </li>
         </ul>
@@ -95,8 +95,8 @@
                 <td class="py-2.5 px-3 text-right font-semibold" :class="s.diff>0?'text-red-600':(s.diff<0?'text-amber-600':'text-gray-400')">{{ formatRupiah(s.diff) }}</td>
                 <td class="py-2.5 px-3 text-center"><span class="rbadge" :class="stCls(s)">{{ stLabel(s) }}</span></td>
                 <td v-if="isSuper" class="py-2.5 px-3 text-right">
-                  <button v-if="s.adjusted" class="rbtn rbtn-revert" @click="askRevert(s)">Batalkan</button>
-                  <button v-else-if="s.status==='short'" class="rbtn rbtn-apply" @click="askApply(s)">Ikuti kasir</button>
+                  <AppActionButton icon="cancel" label="Batalkan" v-if="s.adjusted" @click="askRevert(s)" />
+                  <AppActionButton icon="approve" label="Ikuti kasir" v-else-if="s.status==='short'" @click="askApply(s)" />
                   <span v-else class="text-xs text-gray-300">—</span>
                 </td>
               </tr>
@@ -131,6 +131,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { reconciliationApi } from '@/api/reconciliation.js'
 import { outletsApi } from '@/api/outlets.js'

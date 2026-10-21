@@ -18,14 +18,14 @@
         </div>
         <div class="flex gap-2 flex-wrap">
           <template v-if="detail.status === 'counting'">
-            <AppButton v-if="canCreate" variant="secondary" :loading="acting" @click="cancelSession">Batalkan</AppButton>
+            <AppActionButton icon="cancel" label="Batalkan" v-if="canCreate" :loading="acting" @click="cancelSession" />
             <AppButton v-if="canCreate" variant="secondary" :disabled="!dirtyCount" :loading="savingCounts" @click="saveCounts">Simpan Hitungan ({{ dirtyCount }})</AppButton>
-            <AppButton v-if="canCreate" variant="primary" :loading="acting" @click="submitSession">Ajukan Review</AppButton>
+            <AppActionButton icon="review" label="Ajukan Review" v-if="canCreate" :loading="acting" @click="submitSession" />
           </template>
           <template v-else-if="detail.status === 'review'">
-            <AppButton v-if="canCreate" variant="secondary" :loading="acting" @click="cancelSession">Batalkan</AppButton>
+            <AppActionButton icon="cancel" label="Batalkan" v-if="canCreate" :loading="acting" @click="cancelSession" />
             <AppButton v-if="canCreate" variant="secondary" :disabled="!dirtyCount" :loading="savingCounts" @click="saveCounts">Simpan Koreksi ({{ dirtyCount }})</AppButton>
-            <AppButton v-if="canApprove" variant="primary" :loading="acting" @click="approveSession">Approve &amp; Posting Penyesuaian</AppButton>
+            <AppActionButton icon="approve" label="Approve &amp; Posting Penyesuaian" v-if="canApprove" :loading="acting" @click="approveSession" />
           </template>
         </div>
       </div>
@@ -171,6 +171,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
 import { warehousesApi, stockItemCategoriesApi } from '@/api/warehouse'

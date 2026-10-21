@@ -3,7 +3,7 @@
     <div><h1 class="text-2xl font-bold text-gray-900">HPP Menu</h1><p class="text-sm text-gray-500 mt-1">Biaya standar per porsi, harga jual, dan target makanan / minuman.</p></div>
     <AppCard><div class="flex flex-wrap items-end gap-3">
       <FnbOutletFilter v-model="outlet" />
-      <div><label for="fnb-cost-kind" class="block text-xs text-gray-500 mb-1">Kategori F&B</label><select id="fnb-cost-kind" v-model="kind" class="field"><option value="">Semua kategori</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option><option value="unclassified">Belum dikategorikan</option></select></div>
+      <div><label for="fnb-cost-kind" class="block text-xs text-gray-500 mb-1">Kategori F&B</label><SearchableSelect id="fnb-cost-kind" v-model="kind" class="field"><option value="">Semua kategori</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option><option value="unclassified">Belum dikategorikan</option></SearchableSelect></div>
       <div class="flex-1 min-w-40"><label for="fnb-cost-search" class="block text-xs text-gray-500 mb-1">Cari menu</label><input id="fnb-cost-search" v-model="search" class="field w-full" placeholder="Nama menu atau kategori POS" /></div>
     </div></AppCard>
     <AppAlert type="error" :message="error" />
@@ -25,7 +25,7 @@
               <td class="cell text-right whitespace-nowrap">{{ money(row.price) }}</td>
               <td class="cell text-right whitespace-nowrap" :class="row.is_over ? 'text-red-600 font-semibold' : ''">{{ row.cost_status === 'ready' && row.price > 0 ? row.cost_pct.toFixed(1) + '%' : '—' }}<span class="block text-xs text-gray-400">target {{ row.target_cost_pct }}%</span></td>
               <td class="cell text-right whitespace-nowrap">{{ row.cost_status === 'ready' && row.price > 0 ? money(row.margin) : '—' }}</td>
-              <td class="cell whitespace-nowrap"><button class="text-emerald-700 text-xs font-semibold mr-3" @click="expanded = expanded === row.product_id ? '' : row.product_id">Rincian</button><button v-if="canEdit" class="text-gray-600 text-xs" @click="edit(row)">Atur HPP</button></td>
+              <td class="cell whitespace-nowrap"><AppActionButton icon="view" label="Rincian" @click="expanded = expanded === row.product_id ? '' : row.product_id" class="mr-3" :aria-expanded="expanded === row.product_id" /><AppActionButton icon="cost" label="Atur HPP" v-if="canEdit" @click="edit(row)" /></td>
             </tr>
             <tr v-if="expanded === row.product_id"><td colspan="7" class="cell bg-gray-50">
               <div class="grid md:grid-cols-2 gap-5">
@@ -40,7 +40,7 @@
     </AppCard>
     <AppModal v-model="showEdit" title="Kategori & Target HPP" size="md">
       <div class="space-y-4"><p class="text-sm font-semibold">{{ target?.product_name }} · {{ target?.outlet_name }}</p>
-        <div><label for="fnb-profile-kind" class="block text-sm mb-1">Kategori F&B</label><select id="fnb-profile-kind" v-model="form.menu_kind" class="field w-full"><option value="">Belum dikategorikan</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></select></div>
+        <div><label for="fnb-profile-kind" class="block text-sm mb-1">Kategori F&B</label><SearchableSelect id="fnb-profile-kind" v-model="form.menu_kind" class="field w-full"><option value="">Belum dikategorikan</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></SearchableSelect></div>
         <AppInput v-model.number="form.target_cost_pct" label="Target HPP (%)" type="number" min="0.01" max="100" step="0.01" />
         <AppInput v-model.number="form.packaging_cost" label="Biaya kemasan per porsi (Rp)" type="number" min="0" step="0.01" />
         <AppInput v-model.number="form.overhead_cost" label="Overhead per porsi (Rp)" type="number" min="0" step="0.01" />
@@ -51,6 +51,8 @@
   </div>
 </template>
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fnbApi } from '@/api/fnb'

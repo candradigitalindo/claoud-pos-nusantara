@@ -40,8 +40,8 @@
               <dt class="text-gray-400">Alasan</dt><dd class="break-words text-gray-700">{{ d.reason }}</dd>
             </dl>
             <div v-if="canApprove && d.status === 'pending'" class="flex gap-2 pt-1">
-              <button class="act-btn bg-red-50 text-red-600" @click="decide(d, false)">Tolak</button>
-              <button class="act-btn bg-emerald-600 text-white" @click="decide(d, true)">Setujui</button>
+              <AppActionButton icon="reject" label="Tolak" @click="decide(d, false)" />
+              <AppActionButton icon="approve" label="Setujui" @click="decide(d, true)" />
             </div>
           </li>
         </ul>
@@ -64,8 +64,8 @@
         <template #cell-status="{ row }"><span :class="disposalStatusCls(row.status)">{{ DISPOSAL_STATUSES[row.status] || row.status }}</span></template>
         <template #cell-actions="{ row }">
           <div v-if="canApprove && row.status === 'pending'" class="flex justify-end gap-1">
-            <button class="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50" @click="decide(row, false)">Tolak</button>
-            <button class="rounded px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50" @click="decide(row, true)">Setujui</button>
+            <AppActionButton icon="reject" label="Tolak" @click="decide(row, false)" />
+            <AppActionButton icon="approve" label="Setujui" @click="decide(row, true)" />
           </div>
         </template>
       </AppTable>
@@ -85,9 +85,9 @@
           </div>
           <div>
             <label class="lbl">Cara</label>
-            <select v-model="form.method" class="form-input">
+            <SearchableSelect v-model="form.method" class="form-input">
               <option v-for="(lbl, key) in DISPOSAL_METHODS" :key="key" :value="key">{{ lbl }}</option>
-            </select>
+            </SearchableSelect>
           </div>
         </div>
         <div v-if="form.method === 'dijual' || form.method === 'tukar_tambah'">
@@ -112,6 +112,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'
 import { assetDisposalsApi } from '@/api/assetOps.js'
 import { assetsApi } from '@/api/assets.js'

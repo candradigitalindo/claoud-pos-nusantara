@@ -20,20 +20,20 @@
           </div>
           <div>
             <label class="lbl">Audiens</label>
-            <select v-model="form.audience" class="form-input">
+            <SearchableSelect v-model="form.audience" class="form-input">
               <option value="customers">Pelanggan (dari master pelanggan)</option>
               <option value="recipients">Penerima notifikasi internal</option>
               <option value="manual">Daftar nomor manual</option>
-            </select>
+            </SearchableSelect>
           </div>
 
           <div v-if="form.audience === 'customers'" class="grid gap-3 sm:grid-cols-2">
             <div>
               <label class="lbl">Outlet</label>
-              <select v-model="form.outlet_id" class="form-input">
+              <SearchableSelect v-model="form.outlet_id" class="form-input">
                 <option value="">Semua outlet</option>
                 <option v-for="o in outlets" :key="o.id" :value="o.id">{{ o.name }}</option>
-              </select>
+              </SearchableSelect>
             </div>
             <div>
               <label class="lbl">Minimal kunjungan</label>
@@ -115,8 +115,8 @@
             </div>
             <p class="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-gray-500">{{ b.body }}</p>
             <div class="mt-2 flex flex-wrap gap-3 text-xs">
-              <RouterLink :to="{ path: '/whatsapp/messages', query: { broadcast_id: b.id } }" class="font-semibold text-emerald-700 hover:underline">Lihat pesan</RouterLink>
-              <button v-if="b.status === 'queued' && b.pending > 0" class="font-semibold text-red-600 hover:underline" @click="cancel(b)">Batalkan sisa</button>
+              <AppActionButton icon="view" label="Lihat pesan" :to="{ path: '/whatsapp/messages', query: { broadcast_id: b.id } }" />
+              <AppActionButton icon="cancel" label="Batalkan sisa" v-if="b.status === 'queued' && b.pending > 0" @click="cancel(b)" />
             </div>
           </div>
           <AppPagination v-if="total > limit" v-model="page" :total="total" :perPage="limit" @change="load" />
@@ -127,6 +127,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'

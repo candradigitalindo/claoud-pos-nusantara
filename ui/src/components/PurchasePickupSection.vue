@@ -29,7 +29,7 @@
         <div class="flex shrink-0 items-center gap-2">
           <span v-if="p.received_at" class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Sudah diterima</span>
           <span v-else class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Dalam pengantaran</span>
-          <a v-if="safeUrl(p.photo_url)" :href="safeUrl(p.photo_url)" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">Foto</a>
+          <AppActionButton icon="photo" label="Foto" v-if="safeUrl(p.photo_url)" :href="safeUrl(p.photo_url)" target="_blank" rel="noopener noreferrer" />
         </div>
       </li>
     </ul>
@@ -49,6 +49,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed } from 'vue'
 import { purchaseApi } from '@/api/purchase.js'
 import { formatDateTime } from '@/utils/format.js'

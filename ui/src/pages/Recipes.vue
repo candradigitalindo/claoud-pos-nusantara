@@ -22,7 +22,7 @@
           </button>
         </div>
         <div class="flex flex-wrap items-center gap-3 flex-1 min-w-0 max-w-md">
-          <select v-model="filterKind" aria-label="Kategori resep" class="border border-gray-200 rounded-xl text-sm px-2 py-2 min-w-0"><option value="">Makanan & minuman</option><option value="food">Makanan</option><option value="beverage">Minuman</option><option value="unclassified">Belum dikategorikan</option></select>
+          <SearchableSelect v-model="filterKind" aria-label="Kategori resep" class="border border-gray-200 rounded-xl text-sm px-2 py-2 min-w-0"><option value="">Makanan & minuman</option><option value="food">Makanan</option><option value="beverage">Minuman</option><option value="unclassified">Belum dikategorikan</option></SearchableSelect>
           <div class="relative flex-1 min-w-40">
             <svg class="absolute left-3 top-2.5 w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
             <input v-model="search" placeholder="Cari nama resep..."
@@ -61,12 +61,8 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-2">
-            <button @click="openEdit(row)" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all" :title="canUpdate ? 'Edit Resep & SOP' : 'Lihat Resep & SOP'">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
-            <button v-if="canDelete" @click="confirmDelete(row)" class="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all" title="Hapus Resep">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-            </button>
+            <AppActionButton :icon="canUpdate ? 'edit' : 'view'" :label="canUpdate ? 'Edit Resep &amp; SOP' : 'Lihat Resep &amp; SOP'" @click="openEdit(row)" />
+            <AppActionButton icon="delete" label="Hapus Resep" v-if="canDelete" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -81,7 +77,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-4">
             <AppInput v-model="form.name" label="Nama Menu / Resep" placeholder="Contoh: Nasi Goreng Spesial" required />
-            <div><label for="recipe-menu-kind" class="block text-sm font-medium text-gray-700 mb-1">Kategori F&B</label><select id="recipe-menu-kind" v-model="form.menu_kind" class="w-full border border-gray-200 rounded-lg p-2 text-sm"><option value="">Belum dikategorikan</option><option value="food">Makanan</option><option value="beverage">Minuman</option></select></div>
+            <div><label for="recipe-menu-kind" class="block text-sm font-medium text-gray-700 mb-1">Kategori F&B</label><SearchableSelect id="recipe-menu-kind" v-model="form.menu_kind" class="w-full border border-gray-200 rounded-lg p-2 text-sm"><option value="">Belum dikategorikan</option><option value="food">Makanan</option><option value="beverage">Minuman</option></SearchableSelect></div>
             <AppInput v-model="form.description" label="Keterangan Singkat" placeholder="Catatan standar porsi, dll." />
           </div>
           <div class="space-y-4">
@@ -161,9 +157,7 @@
                   </td>
                   <td class="px-4 py-2 text-xs text-gray-500 font-bold uppercase tracking-tight">{{ it.unit || '—' }}</td>
                   <td class="px-4 py-2 text-center">
-                    <button v-if="!readOnly" @click="form.items.splice(idx, 1)" class="text-red-200 hover:text-red-500 transition-colors">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
+                    <AppActionButton icon="delete" label="Hapus bahan" v-if="!readOnly" @click="form.items.splice(idx, 1)" />
                   </td>
                 </tr>
               </tbody>
@@ -178,7 +172,7 @@
                 <div class="w-6 h-6 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">{{ idx + 1 }}</div>
                 <p v-if="readOnly" class="flex-1 text-sm whitespace-pre-line">{{ stepPlainText(step.text) }}</p>
                 <QuillEditor v-else v-model="step.text" class="flex-1 bg-white" placeholder="Instruksi..." />
-                <button v-if="!readOnly" @click="form.instruction_steps.splice(idx, 1)" class="text-red-300 hover:text-red-500"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+                <AppActionButton icon="delete" label="Hapus langkah" v-if="!readOnly" @click="form.instruction_steps.splice(idx, 1)" />
              </div>
              <div class="flex items-center gap-3 pl-10">
                 <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Durasi Langkah:</span>
@@ -210,6 +204,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, onMounted, computed } from 'vue'
 import { recipeMastersApi, stockItemsApi } from '@/api/warehouse.js'
 import { outletsApi } from '@/api/outlets.js'

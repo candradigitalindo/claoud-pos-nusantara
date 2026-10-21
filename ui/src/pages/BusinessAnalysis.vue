@@ -487,8 +487,7 @@
                   <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="WARNA_KAL[k.kind] ?? 'bg-gray-100 text-gray-600'">{{ k.kind_label }}</span>
                   <span v-if="k.jumlah > 1" class="text-xs text-gray-400">{{ k.jumlah }} hari</span>
                   <span v-if="k.source === 'seed'" class="text-[10px] text-gray-400">bawaan</span>
-                  <button v-if="bolehKelolaKalender && k.jumlah === 1" @click="hapusHari(k)" :disabled="busy.kalender"
-                    class="ml-auto shrink-0 rounded px-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50" title="Hapus tanda ini">hapus</button>
+                  <AppActionButton icon="delete" label="Hapus tanda ini" v-if="bolehKelolaKalender && k.jumlah === 1" @click="hapusHari(k)" :disabled="busy.kalender" class="ml-auto" />
                 </div>
                 <p class="mt-0.5 break-words leading-snug text-gray-800">{{ k.name }}</p>
               </li>
@@ -553,6 +552,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, onMounted, h } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { apiClient } from '@/api/client.js'

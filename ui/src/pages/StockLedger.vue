@@ -106,14 +106,8 @@
           <span class="font-medium">{{ formatRupiah(row.stock_value) }}</span>
         </template>
         <template #cell-actions="{ row }">
-          <button @click="openMovements(row)"
-            class="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded hover:bg-emerald-50">
-            Histori
-          </button>
-          <button @click="openAdjust(row)"
-            class="ml-1 text-xs text-gray-600 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-50">
-            Penyesuaian
-          </button>
+          <AppActionButton icon="history" label="Histori" @click="openMovements(row)" />
+          <AppActionButton icon="adjust" label="Penyesuaian" @click="openAdjust(row)" class="ml-1" />
         </template>
       </AppTable>
       <AppPagination v-model:page="page" :total-pages="totalPages" class="px-4 py-3 border-t border-gray-100" />
@@ -189,9 +183,9 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Satuan Input</label>
-          <select v-model="adjustUnit" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <SearchableSelect v-model="adjustUnit" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
             <option v-for="unit in stockUnitOptions(adjustTarget)" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
-          </select>
+          </SearchableSelect>
         </div>
         <AppInput v-model.number="adjustQty" :label="`Qty (${adjustUnit})`" type="number" step="0.0001" placeholder="0" />
         <AppInput v-if="adjForm.movement_type === 'purchase_in'" v-model.number="adjustCost"
@@ -409,6 +403,8 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { stockQtyText, stockUnitOptions, stockUnitRatio, stockUnitLabel, preferredStockUnit } from '@/utils/stockUnits.js'
 import { computed, ref, watch, onMounted } from 'vue'
 import { warehousesApi, stockLedgerApi, stockItemsApi, stockBreakdownsApi } from '@/api/warehouse.js'

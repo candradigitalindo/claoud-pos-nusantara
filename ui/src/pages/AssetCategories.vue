@@ -37,8 +37,8 @@
             <dt class="text-gray-400">Dipakai</dt><dd class="text-gray-700">{{ c.asset_count }} aset</dd>
           </dl>
           <div v-if="canManage" class="flex gap-2 pt-1">
-            <button class="act-btn bg-gray-100 text-gray-700" @click="openEdit(c)">Edit</button>
-            <button v-if="canDelete && !c.asset_count" class="act-btn bg-red-50 text-red-600" @click="remove(c)">Hapus</button>
+            <AppActionButton icon="edit" label="Edit" @click="openEdit(c)" />
+            <AppActionButton icon="delete" label="Hapus" v-if="canDelete && !c.asset_count" @click="remove(c)" />
           </div>
         </li>
       </ul>
@@ -68,8 +68,8 @@
               <td class="p-2"><span :class="c.is_active ? 'badge-ok' : 'badge-mute'">{{ c.is_active ? 'Aktif' : 'Nonaktif' }}</span></td>
               <td class="p-2">
                 <div v-if="canManage" class="flex justify-end gap-1">
-                  <button class="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100" @click="openEdit(c)">Edit</button>
-                  <button v-if="canDelete && !c.asset_count" class="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50" @click="remove(c)">Hapus</button>
+                  <AppActionButton icon="edit" label="Edit" @click="openEdit(c)" />
+                  <AppActionButton icon="delete" label="Hapus" v-if="canDelete && !c.asset_count" @click="remove(c)" />
                 </div>
               </td>
             </tr>
@@ -117,6 +117,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, onMounted } from 'vue'
 import { assetCategoriesApi } from '@/api/assetCategories.js'
 import { useToastStore } from '@/stores/toast.js'

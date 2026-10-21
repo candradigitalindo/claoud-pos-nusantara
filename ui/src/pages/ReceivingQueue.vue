@@ -30,7 +30,7 @@
               <dt class="text-gray-400">Nilai</dt><dd class="text-gray-700">{{ formatRupiah(r.value) }}</dd>
               <dt class="text-gray-400">Dibayar</dt><dd class="text-gray-700">{{ r.paid_at || '—' }}</dd>
             </dl>
-            <button class="act-btn bg-emerald-600 text-white" @click="open(r)">Terima Barang</button>
+            <AppActionButton icon="receive" label="Terima Barang" @click="open(r)" />
           </li>
         </ul>
 
@@ -49,9 +49,7 @@
           <template #cell-pay="{ row }"><span :class="payCls(row)">{{ payLabel(row) }}</span></template>
           <template #cell-value="{ row }">{{ formatRupiah(row.value) }}</template>
           <template #cell-actions="{ row }">
-            <button class="rounded px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50" @click="open(row)">
-              Terima Barang
-            </button>
+            <AppActionButton icon="receive" label="Terima Barang" @click="open(row)" />
           </template>
         </AppTable>
       </template>
@@ -62,6 +60,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { receivingApi } from '@/api/purchase.js'

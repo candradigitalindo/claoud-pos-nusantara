@@ -26,17 +26,10 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="inline-flex items-center gap-1 justify-end">
-            <button @click="openAssign(row)" class="text-emerald-600 hover:text-emerald-800 text-xs font-medium px-2 py-1 rounded hover:bg-emerald-50">
-              {{ row.admin_id ? 'Ubah User' : 'Tugaskan User' }}
-            </button>
-            <button
+            <AppActionButton icon="assign" :label="(row.admin_id ? 'Ubah User' : 'Tugaskan User')" @click="openAssign(row)" />
+            <AppActionButton icon="delete" label="Hapus unit kerja mandiri"
               v-if="!row.outlet_id && !row.outlet_name"
-              @click="confirmDelete(row)"
-              class="text-red-600 hover:text-red-800 text-xs font-medium px-2 py-1 rounded hover:bg-red-50"
-              title="Hapus unit kerja mandiri"
-            >
-              Hapus
-            </button>
+              @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -76,6 +69,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed, onMounted } from 'vue'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { adminsApi } from '@/api/admins.js'

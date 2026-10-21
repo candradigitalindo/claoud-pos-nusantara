@@ -23,7 +23,7 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <AppButton v-if="canManage && !rabSet && projectOpen" variant="secondary" @click="openRabEditor">{{ rabItems.length ? 'Ubah RAB' : 'Susun RAB' }}</AppButton>
+          <AppActionButton icon="cost" :label="(rabItems.length ? 'Ubah RAB' : 'Susun RAB')" v-if="canManage && !rabSet && projectOpen" @click="openRabEditor" />
           <AppButton v-if="canSubmit" :disabled="!rabSet || !projectOpen" :title="rabSet ? '' : 'Tetapkan RAB dulu sebelum membuat belanja tahap'" @click="showNewPurchase = true">+ Belanja Tahap Baru</AppButton>
         </div>
       </div>
@@ -59,10 +59,10 @@
           </div>
           <div v-if="canManage && projectOpen" class="flex flex-wrap gap-2">
             <template v-if="!rabSet">
-              <AppButton size="sm" variant="secondary" @click="openRabEditor">{{ rabItems.length ? 'Ubah RAB' : 'Susun RAB' }}</AppButton>
-              <AppButton size="sm" :disabled="!rabItems.length" :loading="rabBusy" @click="setRab">Tetapkan RAB</AppButton>
+              <AppActionButton icon="cost" :label="(rabItems.length ? 'Ubah RAB' : 'Susun RAB')" @click="openRabEditor" />
+              <AppActionButton icon="approve" label="Tetapkan RAB" :disabled="!rabItems.length" :loading="rabBusy" @click="setRab" />
             </template>
-            <AppButton v-else size="sm" variant="secondary" :loading="rabBusy" @click="reopenRab">Buka Revisi RAB</AppButton>
+            <AppActionButton icon="unlock" label="Buka Revisi RAB" v-else :loading="rabBusy" @click="reopenRab" />
           </div>
         </div>
 
@@ -297,6 +297,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { projectsApi } from '@/api/projects.js'

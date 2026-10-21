@@ -58,25 +58,11 @@
           </div>
 
           <div class="role-actions" @click.stop>
-            <button class="act-btn act-btn--edit" title="Edit Role" aria-label="Edit Role" @click.stop="openEditRole(role)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-            </button>
-            <button class="act-btn act-btn--copy" title="Duplikat Role" aria-label="Duplikat Role" @click.stop="openCopyRole(role)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            </button>
-            <button
-              class="act-btn"
-              :class="role.is_system ? 'act-btn--disabled' : 'act-btn--del'"
-              :title="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
-              :aria-label="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
-              @click.stop="!role.is_system && confirmDelete(role)"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-            </button>
-            <button class="act-expand" :class="{ 'act-expand--open': expandedRole === role.name }" @click="expandedRole = expandedRole === role.name ? '' : role.name">
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-              {{ expandedRole === role.name ? 'Tutup' : 'Kelola Akses' }}
-            </button>
+            <AppActionButton icon="edit" label="Edit Role" @click.stop="openEditRole(role)" />
+            <AppActionButton icon="copy" label="Duplikat Role" @click.stop="openCopyRole(role)" />
+            <AppActionButton icon="delete" :label="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
+              @click.stop="!role.is_system && confirmDelete(role)" :disabled="role.is_system" />
+            <AppActionButton icon="access" :label="(expandedRole === role.name ? 'Tutup' : 'Kelola Akses')" @click="expandedRole = expandedRole === role.name ? '' : role.name" :aria-expanded="expandedRole === role.name" />
           </div>
         </div>
 
@@ -126,7 +112,7 @@
                     {{ getWorkUnitName(wuId) }}
                   </span>
                   <span v-if="!(roleScopes[role.name]?.work_unit_ids?.length)" class="scope-tag-empty">Belum ada unit dipilih</span>
-                  <button class="scope-edit-btn" @click="showScopeModal(role.name)">Ubah Pilihan</button>
+                  <AppActionButton icon="adjust" label="Ubah Pilihan" @click="showScopeModal(role.name)" />
                 </div>
               </div>
             </div>
@@ -341,6 +327,7 @@
 </template>
 
 <script setup>
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, watch, computed } from 'vue'
 import { adminsApi }    from '@/api/admins.js'
 import { workUnitsApi } from '@/api/workUnits.js'
