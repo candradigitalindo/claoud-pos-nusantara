@@ -533,6 +533,11 @@ const routes = [
         meta: { title: 'Stok Rusak/Hilang — Cloud POS', requiresAuth: true, permission: 'stockwastes.view' },
       },
       {
+        path: 'stock-quality', name: 'StockQuality',
+        component: () => import('@/pages/StockQuality.vue'),
+        meta: { title: 'Reject, Retur & Kedaluwarsa — Cloud POS', requiresAuth: true, permission: 'stockquality.view' },
+      },
+      {
         path: 'stock-ledger',
         name: 'StockLedger',
         component: StockLedger,
@@ -636,7 +641,26 @@ const routes = [
         meta: { title: 'Tidak Ditemukan — Cloud POS', requiresAuth: true },
       },
       {
-        path: 'recipes',
+        path: 'fnb/dashboard',
+        name: 'FnbDashboard',
+        component: () => import('@/pages/fnb/FnbDashboard.vue'),
+        meta: { title: 'Dashboard F&B — Cloud POS', requiresAuth: true, permission: 'fnb.dashboard.view' },
+      },
+      {
+        path: 'fnb/development',
+        name: 'FnbDevelopment',
+        component: () => import('@/pages/fnb/FnbDevelopment.vue'),
+        meta: { title: 'Pengembangan Produk — Cloud POS', requiresAuth: true, permission: 'fnb.development.view' },
+      },
+      {
+        path: 'fnb/costing',
+        name: 'FnbCosting',
+        component: () => import('@/pages/fnb/FnbCosting.vue'),
+        meta: { title: 'HPP Menu — Cloud POS', requiresAuth: true, permission: 'fnb.costing.view' },
+      },
+      { path: 'recipes', redirect: '/fnb/recipes' },
+      {
+        path: 'fnb/recipes',
         name: 'Recipes',
         component: Recipes,
         meta: { title: 'Resep — Cloud POS', requiresAuth: true, permission: 'recipes.view' },

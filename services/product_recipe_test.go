@@ -30,10 +30,17 @@ func (f *productRecipeFixture) recipe(t *testing.T, visibility string, access bo
 	if access {
 		req.OutletIDs = []string{f.outlet}
 	}
-	if !empty {
-		req.Items = []models.RecipeItemReq{{ItemID: f.itemID, QtyBase: qty}}
-	}
+	// Build a valid recipe first; the invalid fixtures simulate historical rows.
+	req.Items = []models.RecipeItemReq{{ItemID: f.itemID, QtyBase: 1}}
 	id, err := SaveRecipeMaster("", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty {
+		_, err = database.DB.Exec(`DELETE FROM recipe_items WHERE recipe_master_id=$1`, id)
+	} else {
+		_, err = database.DB.Exec(`UPDATE recipe_items SET qty_base=$2 WHERE recipe_master_id=$1`, id, qty)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

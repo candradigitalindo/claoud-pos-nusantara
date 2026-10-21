@@ -744,9 +744,6 @@ const ADJ_TYPES = [
   { value: 'purchase_in', label: 'Pembelian Masuk' },
   { value: 'adjustment',  label: 'Koreksi Stok' },
   { value: 'return_in',   label: 'Retur Masuk' },
-  { value: 'waste',       label: 'Pemborosan' },
-  { value: 'spoiled',     label: 'Rusak (Spoiled)' },
-  { value: 'expired',     label: 'Kadaluarsa' },
 ]
 
 const warehouseMap = computed(() => Object.fromEntries(warehouseList.value.map(w => [w.id, w])))

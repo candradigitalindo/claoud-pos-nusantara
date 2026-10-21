@@ -449,8 +449,14 @@ const REDIRECT_GROUPS = [
     { value: '/goods-receipts',      label: 'Penerimaan Barang',    perm: 'stockledger.view' },
     { value: '/stock-transfers',     label: 'Transfer Stok',        perm: 'stocktransfers.view' },
     { value: '/stock-wastes',        label: 'Stok Rusak/Hilang',    perm: 'stockwastes.view' },
+    { value: '/stock-quality', label: 'Reject, Retur & Kedaluwarsa', perm: 'stockquality.view' },
     { value: '/stock-ledger',        label: 'Buku Stok',            perm: 'stockledger.view' },
-    { value: '/recipes',             label: 'Resep',                perm: 'recipes.view' },
+  ]},
+  { category: 'F & B', options: [
+    { value: '/fnb/dashboard', label: 'Dashboard F&B', perm: 'fnb.dashboard.view' },
+    { value: '/fnb/development', label: 'Pengembangan Produk', perm: 'fnb.development.view' },
+    { value: '/fnb/costing', label: 'HPP Menu', perm: 'fnb.costing.view' },
+    { value: '/fnb/recipes', label: 'Resep & SOP', perm: 'recipes.view' },
   ]},
   { category: 'WhatsApp', options: [
     { value: '/whatsapp',           label: 'Koneksi & Notifikasi', perm: 'whatsapp.view' },

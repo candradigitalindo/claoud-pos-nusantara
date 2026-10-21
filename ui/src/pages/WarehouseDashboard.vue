@@ -313,8 +313,8 @@ const STATUS_CLASS = { draft: 'st-gray', approved: 'st-blue', sent: 'st-amber', 
 const statusLabel = transferStatusLabel
 function statusClass(s) { return STATUS_CLASS[s] ?? 'st-gray' }
 
-const MOV_IN  = new Set(['purchase_in','return_in','transfer_in','production_in','breakdown_in','adjustment'])
-const MOV_OUT = new Set(['sale','waste','spoiled','expired','transfer_out','production_out','breakdown_out'])
+const MOV_IN  = new Set(['purchase_in','return_in','transfer_in','production_in','breakdown_in','adjustment','quality_release','supplier_replacement'])
+const MOV_OUT = new Set(['sale','waste','spoiled','expired','transfer_out','production_out','breakdown_out','quality_hold'])
 const movLabel = movementLabel
 function movClass(t) {
   if (MOV_IN.has(t))  return 'mov-in'

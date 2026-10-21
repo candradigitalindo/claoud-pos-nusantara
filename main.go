@@ -38,6 +38,12 @@ func main() {
 	if err := database.RunAuthMigrations(); err != nil {
 		log.Fatalf("Migration failed: %v", err)
 	}
+	if err := database.RunFnbMigrations(); err != nil {
+		log.Printf("F&B migration failed: %v", err)
+	}
+	if err := database.RunStockQualityMigrations(); err != nil {
+		log.Fatalf("Stock quality migration failed: %v", err)
+	}
 
 	// Pemotongan bahan (satu bahan → beberapa hasil): template + dokumen.
 	// Tidak fatal: kegagalannya hanya mematikan fitur pemotongan, sedangkan

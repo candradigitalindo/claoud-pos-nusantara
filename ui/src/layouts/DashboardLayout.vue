@@ -434,6 +434,16 @@ const NAV_ITEMS_DATA = [
     ],
   },
   {
+    label: 'F & B',
+    icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 3v6a3 3 0 006 0V3M7 3v18M17 3v18M17 3c4 2 4 8 0 9"/></svg>`,
+    children: [
+      { to: '/fnb/dashboard', label: 'Dashboard', permission: 'fnb.dashboard.view' },
+      { to: '/fnb/development', label: 'Pengembangan Produk', permission: 'fnb.development.view' },
+      { to: '/fnb/costing', label: 'HPP Menu', permission: 'fnb.costing.view' },
+      { to: '/fnb/recipes', label: 'Resep & SOP', permission: 'recipes.view' },
+    ],
+  },
+  {
     label: 'PPIC',
     icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -478,9 +488,9 @@ const NAV_ITEMS_DATA = [
       { to: '/goods-receipts',  label: 'Penerimaan Barang', permission: 'stockledger.view' },
       { to: '/gudang/penerimaan-pengadaan', label: 'Penerimaan dari Pengadaan', permission: 'stockledger.adjust' },
       { to: '/stock-transfers', label: 'Transfer Stok', permission: 'stocktransfers.view' },
+      { to: '/stock-quality', label: 'Reject, Retur & Kedaluwarsa', permission: 'stockquality.view' },
       { to: '/stock-wastes',    label: 'Stok Rusak/Hilang', permission: 'stockwastes.view' },
       { to: '/stock-ledger',    label: 'Buku Stok', permission: 'stockledger.view' },
-      { to: '/recipes',         label: 'Resep', permission: 'recipes.view' },
     ],
   },
   {

@@ -235,6 +235,16 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Put("/social-accounts/:id/manual", middleware.RequirePermission("social.manage"), handlers.UpsertSocialManualWeek)
 	admin.Delete("/social-accounts/:id", middleware.RequirePermission("social.manage"), handlers.DeleteSocialAccount)
 
+	// F&B: menu development and standard cost; warehouse mutations keep their own permissions.
+	admin.Get("/fnb/dashboard", middleware.RequirePermission("fnb.dashboard.view"), handlers.FnbOverview)
+	admin.Get("/fnb/costing", middleware.RequirePermission("fnb.costing.view"), handlers.FnbCosting)
+	admin.Put("/fnb/products/:id/profile", middleware.RequirePermission("fnb.costing.update"), handlers.SaveFnbProfile)
+	admin.Get("/fnb/development-options", middleware.RequirePermission("fnb.development.view"), handlers.FnbDevelopmentOptions)
+	admin.Get("/fnb/developments", middleware.RequirePermission("fnb.development.view"), handlers.ListFnbDevelopments)
+	admin.Post("/fnb/developments", middleware.RequirePermission("fnb.development.create"), handlers.SaveFnbDevelopment)
+	admin.Put("/fnb/developments/:id", middleware.RequirePermission("fnb.development.update"), handlers.SaveFnbDevelopment)
+	admin.Put("/fnb/developments/:id/status", middleware.RequireAnyPermission("fnb.development.update", "fnb.development.approve"), handlers.TransitionFnbDevelopment)
+
 	// Products & Categories — CRUD granular
 	admin.Get("/products", middleware.RequirePermission("products.view"), handlers.AdminGetProducts)
 	admin.Get("/products/recipe-options", middleware.RequireAnyPermission("products.create", "products.update"), handlers.AdminProductRecipeOptions)
@@ -457,7 +467,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Warehouse / Inventory — CRUD granular
 	// Shared Gudang read lookups (warehouse selector, item picker, ledger) are
 	// cross-loaded by every Gudang page, so any warehouse-module viewer may read them.
-	whView := []string{"warehouse_dashboard.view", "warehouses.view", "stockitems.view", "stocktransfers.view", "stockwastes.view", "stockledger.view", "recipes.view"}
+	whView := []string{"warehouse_dashboard.view", "warehouses.view", "stockitems.view", "stocktransfers.view", "stockwastes.view", "stockledger.view", "recipes.view", "stockquality.view"}
 	admin.Get("/warehouse-dashboard", middleware.RequirePermission("warehouse_dashboard.view"), handlers.GetWarehouseDashboard)
 	admin.Get("/warehouses", middleware.RequireAnyPermission(whView...), handlers.ListWarehouses)
 	admin.Get("/warehouses/:id", middleware.RequireAnyPermission(whView...), handlers.GetWarehouse)
@@ -487,6 +497,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Stock Transfers
 	admin.Get("/stock-transfers", middleware.RequirePermission("stocktransfers.view"), handlers.ListStockTransfers)
 	admin.Get("/stock-transfers/:id", middleware.RequirePermission("stocktransfers.view"), handlers.GetStockTransfer)
+	admin.Post("/stock-transfers/:id/receive", middleware.RequireAnyPermission("stocktransfers.receive", "stockquality.central.receive", "stockquality.outlet.receive"), handlers.ReceiveStockTransfer)
 	admin.Post("/stock-transfers", middleware.RequirePermission("stocktransfers.create"), handlers.CreateStockTransfer)
 	// Tahap transfer punya izin masing-masing (setujui / kirim / terima);
 	// pemeriksaannya per status ada di dalam handler.
@@ -515,7 +526,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Stock Wastes
 	admin.Get("/stock-wastes", middleware.RequirePermission("stockwastes.view"), handlers.ListStockWastes)
-	admin.Post("/stock-wastes", middleware.RequirePermission("stockwastes.create"), handlers.CreateStockWaste)
+	admin.Post("/stock-wastes", middleware.RequirePermission("stockwastes.create"), handlers.LegacyStockWasteDisabled)
+
+	admin.Post("/stock-evidence", middleware.RequireAnyPermission("stockquality.central.report", "stockquality.central.approve", "stockquality.central.execute", "stockquality.central.receive", "stockquality.refund", "stockquality.outlet.report", "stockquality.outlet.approve", "stockquality.outlet.execute", "stockquality.outlet.receive", "stocktransfers.receive"), handlers.UploadStockEvidence)
+	admin.Get("/stock-quality/lookups", middleware.RequirePermission("stockquality.view"), handlers.StockQualityLookups)
+	admin.Get("/stock-quality/batches", middleware.RequireAnyPermission("stockquality.central.report", "stockquality.outlet.report"), handlers.StockQualityBatches)
+	admin.Get("/stock-quality", middleware.RequirePermission("stockquality.view"), handlers.ListStockQuality)
+	admin.Get("/stock-quality/:id", middleware.RequirePermission("stockquality.view"), handlers.GetStockQuality)
+	admin.Post("/stock-quality", middleware.RequireAnyPermission("stockquality.central.report", "stockquality.outlet.report"), handlers.CreateStockQuality)
+	admin.Post("/stock-quality/:id/actions", middleware.RequireAnyPermission("stockquality.central.approve", "stockquality.central.execute", "stockquality.central.receive", "stockquality.refund", "stockquality.outlet.approve", "stockquality.outlet.execute"), handlers.ActStockQuality)
 
 	// Penerimaan Barang (Goods Receipt / GRN) — stok masuk ke gudang.
 	// Baca: siapa pun pemirsa modul gudang; tulis: pemegang stockledger.adjust.

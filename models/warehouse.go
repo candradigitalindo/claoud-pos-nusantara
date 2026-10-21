@@ -168,6 +168,8 @@ type StockBatch struct {
 // ── Stock Transfer ────────────────────────────────────────────
 
 type StockTransfer struct {
+	ReceiptVersion int `json:"receipt_version"`
+	Receipts []StockTransferReceipt `json:"receipts"`
 	ID              string              `json:"id"`
 	TransferNumber  string              `json:"transfer_number"`
 	FromWarehouseID string              `json:"from_warehouse_id"`
@@ -195,6 +197,8 @@ type StockTransfer struct {
 }
 
 type StockTransferItem struct {
+	AcceptedQtyBase float64 `json:"accepted_qty_base"`
+	RejectedQtyBase float64 `json:"rejected_qty_base"`
 	ID              string   `json:"id"`
 	TransferID      string   `json:"transfer_id"`
 	ItemID          string   `json:"item_id"`
@@ -293,6 +297,7 @@ type ProduceRequest struct {
 // ── Master Recipe System ──────────────────────────────────────
 
 type RecipeMaster struct {
+	MenuKind string `json:"menu_kind"`
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
@@ -316,6 +321,7 @@ type RecipeItem struct {
 }
 
 type RecipeMasterRequest struct {
+	MenuKind *string `json:"menu_kind"`
 	Name         string            `json:"name"`
 	Description  string            `json:"description"`
 	Visibility   string            `json:"visibility"`

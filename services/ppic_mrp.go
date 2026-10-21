@@ -388,10 +388,10 @@ func mrpAvailability(itemIDs []string, warehouseID, whType string, whOutletID sq
 
 	// In-transit: transfer berstatus 'sent' menuju gudang ini.
 	tRows, err := database.DB.Query(`
-		SELECT sti.item_id, COALESCE(SUM(sti.qty_base), 0)
+		SELECT sti.item_id, COALESCE(SUM(sti.qty_base-sti.accepted_qty_base-sti.rejected_qty_base), 0)
 		FROM stock_transfer_items sti
 		JOIN stock_transfers st ON st.id = sti.transfer_id
-		WHERE st.status = 'sent' AND st.to_warehouse_id = $2 AND sti.item_id = ANY($1)
+		WHERE st.status IN ('sent','partial_received') AND st.to_warehouse_id = $2 AND sti.item_id = ANY($1)
 		GROUP BY sti.item_id`, pq.Array(itemIDs), warehouseID)
 	if err != nil {
 		return nil, err

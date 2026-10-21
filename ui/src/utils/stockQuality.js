@@ -1,0 +1,4 @@
+export const QUALITY_REASONS = { reject: 'Reject / tidak sesuai', expired: 'Expired / kedaluwarsa', spoiled: 'Spoil / basi atau busuk', damaged: 'Rusak / pecah', return: 'Retur ke supplier' }
+export const QUALITY_STATUSES = { pending: 'Karantina · menunggu keputusan', approved: 'Disetujui · menunggu pelaksanaan', in_transit: 'Dikirim · menunggu penyelesaian', disposed: 'Dimusnahkan', released: 'Dilepas ke stok', returned: 'Diterima gudang induk', settled: 'Retur selesai' }
+export const QUALITY_ACTIONS = { reported: 'Laporan & karantina', approve: 'Setujui tindak lanjut', release: 'Lepas karantina', execute: 'Laksanakan', receive_return: 'Terima retur di induk', replacement: 'Terima barang pengganti', refund: 'Catat dana refund diterima' }
+export const QUALITY_DISPOSITIONS = { dispose: 'Pemusnahan', return_supplier: 'Retur supplier', return_warehouse: 'Retur ke gudang induk' }

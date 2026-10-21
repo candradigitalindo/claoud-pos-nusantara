@@ -9,6 +9,7 @@ require (
 	github.com/lib/pq v1.11.2
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/xuri/excelize/v2 v2.10.0
+	golang.org/x/image v0.25.0
 )
 
 require (

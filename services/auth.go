@@ -101,7 +101,12 @@ var AllPermissions = []string{
 	"stocktransfers.approve", "stocktransfers.receive",
 	"stockwastes.view", "stockwastes.create",
 	"stockledger.view", "stockledger.adjust",
+	"stockquality.view", "stockquality.central.report", "stockquality.central.approve", "stockquality.central.execute",
+	"stockquality.central.receive", "stockquality.refund", "stockquality.outlet.receive", "stockquality.outlet.report", "stockquality.outlet.approve", "stockquality.outlet.execute",
+	"stocktransfers.reject",
 	"recipes.view", "recipes.create", "recipes.update", "recipes.delete",
+	"fnb.dashboard.view", "fnb.development.view", "fnb.development.create", "fnb.development.update", "fnb.development.approve",
+	"fnb.costing.view", "fnb.costing.update",
 
 	// PPIC — Fase 1: pengendalian (dashboard, par level/ROP, kedaluwarsa, opname)
 	"ppic.dashboard.view",

@@ -76,6 +76,7 @@ export const stockBreakdownsApi = {
 export const stockTransfersApi = {
   list: (params = {}) => api.get('/admin/stock-transfers', { params }),
   get: (id) => api.get(`/admin/stock-transfers/${id}`),
+  receive: (id, data) => api.post(`/admin/stock-transfers/${id}/receive`, data),
   create: (data) => api.post('/admin/stock-transfers', data),
   // photoUrl wajib saat status 'sent' (bukti barang berangkat dari gudang asal).
   updateStatus: (id, status, photoUrl = '') => api.put(`/admin/stock-transfers/${id}/status`, { status, photo_url: photoUrl }),

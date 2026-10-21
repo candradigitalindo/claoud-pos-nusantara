@@ -325,6 +325,9 @@ func CreateAdjustment(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
 	}
+	if req.MovType == "waste" || req.MovType == "spoiled" || req.MovType == "expired" {
+		return c.Status(400).JSON(models.APIResponse{Error: "Barang rusak/expired/spoil wajib melalui laporan karantina dengan bukti foto dan persetujuan"})
+	}
 	if !services.WarehouseMutableInScope(req.WarehouseID, getOutletScope(c)) {
 		return c.Status(403).JSON(models.APIResponse{Error: "Akses gudang tidak diizinkan"})
 	}
@@ -477,6 +480,9 @@ func UpdateTransferStatus(c *fiber.Ctx) error {
 	if msg := centralTransferStageDenied(c, t, body.Status); msg != "" {
 		return c.Status(403).JSON(models.APIResponse{Error: msg})
 	}
+	if body.Status == "received" {
+		return c.Status(400).JSON(models.APIResponse{Error: "Gunakan pemeriksaan penerimaan dengan foto bertimestamp, jumlah diterima, dan jumlah reject"})
+	}
 	// Outlet membatalkan permintaannya ke Gudang Induk hanya selagi draft;
 	// syarat itu diperiksa ulang di bawah kunci baris oleh service.
 	fromStatus := ""
@@ -591,7 +597,10 @@ func ProduceStockItem(c *fiber.Ctx) error {
 func ListRecipeMasters(c *fiber.Ctx) error {
 	outletID := c.Query("outlet_id")
 	search := c.Query("search")
-	rms, err := services.ListRecipeMasters(outletID, search)
+	if outletID != "" && !validateOutletAccess(c, outletID) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Outlet di luar akses Anda"})
+	}
+	rms, err := services.ListRecipeMastersScoped(outletID, search, getOutletScope(c))
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -599,6 +608,9 @@ func ListRecipeMasters(c *fiber.Ctx) error {
 }
 
 func GetRecipeMaster(c *fiber.Ctx) error {
+	if !services.RecipeMasterInScope(c.Params("id"), getOutletScope(c)) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Akses resep tidak diizinkan"})
+	}
 	rm, err := services.GetRecipeMaster(c.Params("id"))
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Error: err.Error()})
@@ -607,6 +619,9 @@ func GetRecipeMaster(c *fiber.Ctx) error {
 }
 
 func CreateRecipeMaster(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Master resep bersama dikelola F&B dengan cakupan semua outlet"})
+	}
 	var req models.RecipeMasterRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
@@ -619,6 +634,9 @@ func CreateRecipeMaster(c *fiber.Ctx) error {
 }
 
 func UpdateRecipeMaster(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Master resep bersama dikelola F&B dengan cakupan semua outlet"})
+	}
 	var req models.RecipeMasterRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
@@ -631,6 +649,9 @@ func UpdateRecipeMaster(c *fiber.Ctx) error {
 }
 
 func DeleteRecipeMaster(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Master resep bersama dikelola F&B dengan cakupan semua outlet"})
+	}
 	if err := services.DeleteRecipeMaster(c.Params("id")); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -674,7 +695,6 @@ func CreateStockWaste(c *fiber.Ctx) error {
 	}
 	return c.JSON(models.APIResponse{Success: true, Message: "pembuangan stok berhasil dicatat"})
 }
-
 
 func GetWarehouseDashboard(c *fiber.Ctx) error {
 	scopeIDs := getOutletScope(c)

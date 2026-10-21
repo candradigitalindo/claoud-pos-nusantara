@@ -10,6 +10,7 @@ export const MOVEMENT_LABELS = {
   sale: 'Penjualan', production_in: 'Hasil Produksi', production_out: 'Bahan Produksi',
   // Pemotongan: satu bahan (mis. ayam utuh) → beberapa hasil (paha, dada, …).
   breakdown_out: 'Pemotongan (bahan)', breakdown_in: 'Pemotongan (hasil)',
+  quality_hold: 'Masuk Karantina', quality_release: 'Lepas Karantina', supplier_replacement: 'Pengganti Supplier',
 }
 
 export function movementLabel(type) {
@@ -39,6 +40,7 @@ export function movementClass(type) {
 export const TRANSFER_STATUS_LABELS = {
   draft: 'Draft', approved: 'Disetujui', sent: 'Dikirim',
   received: 'Diterima', cancelled: 'Dibatalkan',
+  partial_received: 'Diterima Sebagian · Belum Lengkap', received_rejected: 'Pemeriksaan Selesai · Ada Reject',
 }
 
 export function transferStatusLabel(status) {
@@ -64,6 +66,8 @@ export function transferStatusClass(status) {
     approved: 'bg-blue-100 text-blue-700',
     sent: 'bg-amber-100 text-amber-700',
     received: 'bg-emerald-100 text-emerald-700',
+    partial_received: 'bg-amber-100 text-amber-700',
+    received_rejected: 'bg-orange-100 text-orange-700',
     cancelled: 'bg-red-100 text-red-600',
   }
   return map[status] || 'bg-gray-100 text-gray-600'

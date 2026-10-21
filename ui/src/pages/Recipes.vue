@@ -1,11 +1,11 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap gap-3 items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900 font-display tracking-tight">Master Resep F & B</h1>
+        <h1 class="text-2xl font-bold text-gray-900 font-display tracking-tight">Resep & SOP F & B</h1>
         <p class="text-sm text-gray-500">Pusat standarisasi resep dan SOP Dapur untuk seluruh outlet</p>
       </div>
-      <AppButton @click="openCreate" class="shadow-lg shadow-emerald-100">+ Buat Resep Baru</AppButton>
+      <AppButton v-if="canCreate" @click="openCreate" class="shadow-lg shadow-emerald-100">+ Buat Resep Baru</AppButton>
     </div>
 
     <!-- Filters -->
@@ -21,8 +21,9 @@
             {{ v.label }}
           </button>
         </div>
-        <div class="flex items-center gap-3 flex-1 max-w-md">
-          <div class="relative flex-1">
+        <div class="flex flex-wrap items-center gap-3 flex-1 min-w-0 max-w-md">
+          <select v-model="filterKind" aria-label="Kategori resep" class="border border-gray-200 rounded-xl text-sm px-2 py-2 min-w-0"><option value="">Makanan & minuman</option><option value="food">Makanan</option><option value="beverage">Minuman</option><option value="unclassified">Belum dikategorikan</option></select>
+          <div class="relative flex-1 min-w-40">
             <svg class="absolute left-3 top-2.5 w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
             <input v-model="search" placeholder="Cari nama resep..."
               class="w-full text-sm border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" />
@@ -40,6 +41,7 @@
             <div class="text-xs text-gray-400 truncate max-w-xs">{{ row.description || 'SOP & Resep standar' }}</div>
           </div>
         </template>
+        <template #cell-menu_kind="{ row }"><span class="text-xs">{{ kindLabel(row.menu_kind) }}</span></template>
         <template #cell-visibility="{ row }">
           <span :class="row.visibility === 'public' ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-100' : 'bg-amber-50 text-amber-600 ring-1 ring-amber-100'" 
             class="text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider flex items-center w-fit gap-1">
@@ -59,10 +61,10 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-2">
-            <button @click="openEdit(row)" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all" title="Edit Resep & SOP">
+            <button @click="openEdit(row)" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all" :title="canUpdate ? 'Edit Resep & SOP' : 'Lihat Resep & SOP'">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
-            <button @click="confirmDelete(row)" class="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all" title="Hapus Resep">
+            <button v-if="canDelete" @click="confirmDelete(row)" class="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all" title="Hapus Resep">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
             </button>
           </div>
@@ -71,13 +73,15 @@
     </AppCard>
 
     <!-- Recipe Modal (SOP Dapur) -->
-    <AppModal v-model="showModal" :title="editingId ? 'Edit SOP & Resep Master' : 'Buat SOP & Resep Baru'" size="2xl">
+    <AppModal v-model="showModal" :title="readOnly ? 'Detail Resep & SOP' : editingId ? 'Edit SOP & Resep Master' : 'Buat SOP & Resep Baru'" size="2xl">
       <div class="space-y-6">
         
+        <fieldset :disabled="readOnly" class="space-y-4 min-w-0">
         <!-- Header Info -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-4">
             <AppInput v-model="form.name" label="Nama Menu / Resep" placeholder="Contoh: Nasi Goreng Spesial" required />
+            <div><label for="recipe-menu-kind" class="block text-sm font-medium text-gray-700 mb-1">Kategori F&B</label><select id="recipe-menu-kind" v-model="form.menu_kind" class="w-full border border-gray-200 rounded-lg p-2 text-sm"><option value="">Belum dikategorikan</option><option value="food">Makanan</option><option value="beverage">Minuman</option></select></div>
             <AppInput v-model="form.description" label="Keterangan Singkat" placeholder="Catatan standar porsi, dll." />
           </div>
           <div class="space-y-4">
@@ -116,8 +120,10 @@
           <label class="text-xs font-bold text-amber-800 uppercase tracking-widest flex items-center gap-2">
              Akses Khusus Outlet
           </label>
-          <MultiSearchSelect v-model="form.outlet_ids" :options="outlets" placeholder="Pilih outlet..." />
+          <MultiSearchSelect v-if="!readOnly" v-model="form.outlet_ids" :options="outlets" placeholder="Pilih outlet..." />
+          <p v-else class="text-xs">Resep tersedia untuk outlet yang diberi akses.</p>
         </div>
+        </fieldset>
 
         <!-- Tabs -->
         <div class="flex gap-4 border-b border-gray-100">
@@ -146,15 +152,16 @@
                       label-key="label"
                       value-key="value"
                       placeholder="Pilih bahan..." 
+                      :disabled="readOnly"
                       @change="onItemChange(idx)" 
                     />
                   </td>
                   <td class="px-4 py-2">
-                    <input v-model.number="it.qty_base" type="number" step="0.001" class="w-full text-sm border-gray-100 focus:ring-emerald-400 rounded-lg py-1.5" placeholder="0" />
+                    <input v-model.number="it.qty_base" :disabled="readOnly" type="number" min="0.0001" step="0.0001" class="w-full text-sm border-gray-100 focus:ring-emerald-400 rounded-lg py-1.5" placeholder="0" />
                   </td>
                   <td class="px-4 py-2 text-xs text-gray-500 font-bold uppercase tracking-tight">{{ it.unit || '—' }}</td>
                   <td class="px-4 py-2 text-center">
-                    <button @click="form.items.splice(idx, 1)" class="text-red-200 hover:text-red-500 transition-colors">
+                    <button v-if="!readOnly" @click="form.items.splice(idx, 1)" class="text-red-200 hover:text-red-500 transition-colors">
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                   </td>
@@ -162,31 +169,32 @@
               </tbody>
             </table>
           </div>
-          <button @click="addItem" class="text-xs font-bold text-emerald-600">+ Tambah Bahan</button>
+          <button v-if="!readOnly" @click="addItem" class="text-xs font-bold text-emerald-600">+ Tambah Bahan</button>
         </div>
 
         <div v-if="activeTab === 'steps'" class="space-y-4 min-h-[300px]">
           <div v-for="(step, idx) in form.instruction_steps" :key="idx" class="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
              <div class="flex items-start gap-4">
                 <div class="w-6 h-6 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">{{ idx + 1 }}</div>
-                <QuillEditor v-model="step.text" class="flex-1 bg-white" placeholder="Instruksi..." />
-                <button @click="form.instruction_steps.splice(idx, 1)" class="text-red-300 hover:text-red-500"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
+                <p v-if="readOnly" class="flex-1 text-sm whitespace-pre-line">{{ stepPlainText(step.text) }}</p>
+                <QuillEditor v-else v-model="step.text" class="flex-1 bg-white" placeholder="Instruksi..." />
+                <button v-if="!readOnly" @click="form.instruction_steps.splice(idx, 1)" class="text-red-300 hover:text-red-500"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12"/></svg></button>
              </div>
              <div class="flex items-center gap-3 pl-10">
                 <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Durasi Langkah:</span>
                 <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2 py-1 shadow-sm focus-within:ring-2 focus-within:ring-emerald-400 transition-all">
-                  <input v-model.number="step.duration" type="number" min="0" class="w-12 text-sm font-bold text-emerald-700 bg-transparent border-none p-0 focus:ring-0 text-center" />
+                  <input v-model.number="step.duration" :disabled="readOnly" type="number" min="0" class="w-12 text-sm font-bold text-emerald-700 bg-transparent border-none p-0 focus:ring-0 text-center" />
                   <span class="text-[10px] text-gray-400 font-bold uppercase">Menit</span>
                 </div>
              </div>
           </div>
-          <button @click="addStep" class="text-xs font-bold text-emerald-600">+ Tambah Langkah</button>
+          <button v-if="!readOnly" @click="addStep" class="text-xs font-bold text-emerald-600">+ Tambah Langkah</button>
         </div>
 
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="showModal = false">Batal</AppButton>
-        <AppButton :loading="saving" @click="save">Simpan Resep & SOP</AppButton>
+        <AppButton v-if="!readOnly" :loading="saving" @click="save">Simpan Resep & SOP</AppButton>
       </template>
     </AppModal>
 
@@ -207,6 +215,8 @@ import { recipeMastersApi, stockItemsApi } from '@/api/warehouse.js'
 import { outletsApi } from '@/api/outlets.js'
 import { formatDateTime } from '@/utils/format.js'
 import { useToastStore } from '@/stores/toast.js'
+import { useAuthStore } from '@/stores/auth'
+import { kindLabel } from '@/utils/fnb'
 import AppCard    from '@/components/ui/AppCard.vue'
 import AppButton  from '@/components/ui/AppButton.vue'
 import AppTable   from '@/components/ui/AppTable.vue'
@@ -217,6 +227,13 @@ import MultiSearchSelect from '@/components/ui/MultiSearchSelect.vue'
 import QuillEditor from '@/components/ui/QuillEditor.vue'
 
 const toast = useToastStore()
+const auth = useAuthStore()
+const canCreate = computed(() => auth.scopeType !== 'specific' && auth.hasPermission('recipes.create'))
+const canUpdate = computed(() => auth.scopeType !== 'specific' && auth.hasPermission('recipes.update'))
+const canDelete = computed(() => auth.scopeType !== 'specific' && auth.hasPermission('recipes.delete'))
+const readOnly = computed(() => editingId.value ? !canUpdate.value : !canCreate.value)
+const filterKind = ref('')
+function stepPlainText(html) { return new DOMParser().parseFromString(html || '', 'text/html').body.textContent || '' }
 const VISIBILITIES = [
   { label: 'Semua Resep', value: '' },
   { label: 'Public', value: 'public' },
@@ -225,6 +242,7 @@ const VISIBILITIES = [
 
 const COLUMNS = [
   { key: 'name',       label: 'Resep & Menu' },
+  { key: 'menu_kind', label: 'Kategori' },
   { key: 'total_time', label: 'Timeline' },
   { key: 'visibility', label: 'Akses' },
   { key: 'created_at', label: 'Dibuat' },
@@ -248,7 +266,8 @@ const filteredRecipes = computed(() => {
   return recipes.value.filter(r => {
     const mName = !search.value || r.name.toLowerCase().includes(search.value.toLowerCase())
     const mVis = !filterVisibility.value || r.visibility === filterVisibility.value
-    return mName && mVis
+    const mKind = !filterKind.value || r.menu_kind === filterKind.value || (filterKind.value === 'unclassified' && !r.menu_kind)
+    return mName && mVis && mKind
   })
 })
 
@@ -287,7 +306,7 @@ function openCreate() {
   editingId.value = null
   activeTab.value = 'items'
   form.value = { 
-    name: '', description: '', visibility: 'public', 
+    name: '', description: '', visibility: 'public', menu_kind: '',
     items: [{ item_id: '', qty_base: 1, unit: '' }], 
     outlet_ids: [], total_time: 0, instruction_steps: [{ text: '', duration: 0 }] 
   }
@@ -307,6 +326,7 @@ async function openEdit(row) {
 
     form.value = {
       name: data.name,
+      menu_kind: data.menu_kind || '',
       description: data.description,
       visibility: data.visibility,
       total_time: data.total_time,
@@ -336,8 +356,9 @@ function onItemChange(idx) {
 
 async function save() {
   if (!form.value.name) return toast.error('Nama resep wajib diisi')
-  const validItems = form.value.items.filter(it => it.item_id && it.qty_base > 0)
-  if (validItems.length === 0) return toast.error('Komposisi resep minimal 1 bahan baku')
+  const validItems = form.value.items
+  if (!validItems.length || validItems.some(it => !it.item_id || !Number.isFinite(Number(it.qty_base)) || !(it.qty_base > 0))) return toast.error('Isi bahan dan takaran positif pada setiap baris')
+  if (new Set(validItems.map(it => it.item_id)).size !== validItems.length) return toast.error('Bahan yang sama cukup ditulis satu kali')
 
   saving.value = true
   try {

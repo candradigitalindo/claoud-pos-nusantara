@@ -1363,6 +1363,9 @@ func GetStockTransfer(id string) (*models.StockTransfer, error) {
 		}
 		t.Items = append(t.Items, item)
 	}
+	if err := rows.Err(); err != nil { return nil, err }
+	rows.Close()
+	if err := loadStockTransferReceipts(&t); err != nil { return nil, err }
 	return &t, nil
 }
 
@@ -1393,7 +1396,10 @@ func CreateStockTransfer(req models.StockTransferRequest, createdBy string) (*mo
 		return nil, err
 	}
 
+	seenItems := map[string]bool{}
 	for index, it := range req.Items {
+		if seenItems[it.ItemID] { return nil, Invalid("barang transfer tidak boleh berulang; gabungkan jumlahnya") }
+		seenItems[it.ItemID] = true
 		if strings.TrimSpace(it.ItemID) == "" {
 			return nil, fmt.Errorf("item transfer baris %d wajib dipilih", index+1)
 		}
@@ -1560,10 +1566,14 @@ func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.Stoc
 			if availableQty < it.QtyBase {
 				return nil, fmt.Errorf("stok %s di gudang asal tidak mencukupi", it.ItemName)
 			}
-			if err := applyMovement(tx, it.ItemID, transfer.FromWarehouseID, "transfer_out",
+			out, err := applyMovementValued(tx, it.ItemID, transfer.FromWarehouseID, "transfer_out",
 				it.UnitUsed, id, "stock_transfer", transfer.TransferNumber, "",
-				actor, -it.QtyBase, -it.QtyDist, 0, ""); err != nil {
+				actor, -it.QtyBase, -it.QtyDist, 0, "")
+			if err != nil {
 				return nil, fmt.Errorf("gagal kurangi stok %s: %w", it.ItemName, err)
+			}
+			if out.earliestExpiry != "" {
+				if _, err := tx.Exec(`UPDATE stock_movements SET expiry_date=$1 WHERE ref_id=$2 AND ref_type='stock_transfer' AND item_id=$3 AND movement_type='transfer_out'`, out.earliestExpiry, id, it.ItemID); err != nil { return nil, err }
 			}
 		}
 		_, err = tx.Exec(`UPDATE stock_transfers SET status='sent', sent_by=$1, sent_at=$2, updated_at=NOW() WHERE id=$3`, actor, now, id)
@@ -1713,8 +1723,16 @@ func SaveProductRecipes(req models.ProductRecipeRequest) error {
 // ── Master Recipe System ─────────────────────────────────────
 
 func ListRecipeMasters(outletID string, search string) ([]models.RecipeMaster, error) {
-	conds := []string{"(r.visibility = 'public' OR r.id IN (SELECT recipe_master_id FROM recipe_outlet_access WHERE outlet_id = $1))"}
-	args := []interface{}{outletID}
+	return ListRecipeMastersScoped(outletID, search, nil)
+}
+
+func ListRecipeMastersScoped(outletID, search string, scope []string) ([]models.RecipeMaster, error) {
+	filter, err := fnbScope(outletID, scope)
+	if err != nil {
+		return nil, err
+	}
+	conds := []string{"($1 OR r.visibility = 'public' OR EXISTS(SELECT 1 FROM recipe_outlet_access a WHERE a.recipe_master_id=r.id AND a.outlet_id=ANY($2)))"}
+	args := []interface{}{filter == nil, pq.Array(filter)}
 	
 	if search != "" {
 		conds = append(conds, fmt.Sprintf("r.name ILIKE $%d", len(args)+1))
@@ -1722,7 +1740,7 @@ func ListRecipeMasters(outletID string, search string) ([]models.RecipeMaster, e
 	}
 
 	query := fmt.Sprintf(`
-		SELECT r.id, r.name, r.description, r.visibility, r.instructions, r.total_time, r.created_at, r.updated_at
+		SELECT r.id, r.name, r.description, r.visibility, r.instructions, r.total_time, r.created_at, r.updated_at, r.menu_kind
 		FROM recipe_masters r
 		WHERE %s ORDER BY r.name ASC`, strings.Join(conds, " AND "))
 
@@ -1735,7 +1753,7 @@ func ListRecipeMasters(outletID string, search string) ([]models.RecipeMaster, e
 	result := []models.RecipeMaster{}
 	for rows.Next() {
 		var rm models.RecipeMaster
-		if err := rows.Scan(&rm.ID, &rm.Name, &rm.Description, &rm.Visibility, &rm.Instructions, &rm.TotalTime, &rm.CreatedAt, &rm.UpdatedAt); err != nil {
+		if err := rows.Scan(&rm.ID, &rm.Name, &rm.Description, &rm.Visibility, &rm.Instructions, &rm.TotalTime, &rm.CreatedAt, &rm.UpdatedAt, &rm.MenuKind); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -1746,8 +1764,8 @@ func ListRecipeMasters(outletID string, search string) ([]models.RecipeMaster, e
 
 func GetRecipeMaster(id string) (models.RecipeMaster, error) {
 	var rm models.RecipeMaster
-	err := database.DB.QueryRow(`SELECT id, name, description, visibility, instructions, total_time, created_at, updated_at FROM recipe_masters WHERE id=$1`, id).Scan(
-		&rm.ID, &rm.Name, &rm.Description, &rm.Visibility, &rm.Instructions, &rm.TotalTime, &rm.CreatedAt, &rm.UpdatedAt)
+	err := database.DB.QueryRow(`SELECT id, name, description, visibility, instructions, total_time, created_at, updated_at, menu_kind FROM recipe_masters WHERE id=$1`, id).Scan(
+		&rm.ID, &rm.Name, &rm.Description, &rm.Visibility, &rm.Instructions, &rm.TotalTime, &rm.CreatedAt, &rm.UpdatedAt, &rm.MenuKind)
 	if err != nil {
 		return rm, err
 	}
@@ -1787,6 +1805,22 @@ func GetRecipeMaster(id string) (models.RecipeMaster, error) {
 }
 
 func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error) {
+	if strings.TrimSpace(req.Name) == "" || (req.Visibility != "public" && req.Visibility != "secret") || req.TotalTime < 0 {
+		return "", Invalid("nama, visibilitas, dan durasi resep harus valid")
+	}
+	if req.MenuKind != nil && !validMenuKind(*req.MenuKind, true) {
+		return "", Invalid("kategori resep tidak valid")
+	}
+	if len(req.Items) == 0 {
+		return "", Invalid("resep harus memiliki minimal satu bahan")
+	}
+	seen := map[string]bool{}
+	for _, it := range req.Items {
+		if it.ItemID == "" || it.QtyBase <= 0 || !fnbFinite(it.QtyBase) || seen[it.ItemID] {
+			return "", Invalid("bahan harus unik dan kuantitas lebih dari nol")
+		}
+		seen[it.ItemID] = true
+	}
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return "", err
@@ -1795,11 +1829,17 @@ func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error)
 
 	if id == "" {
 		id = NewULID()
-		_, err = tx.Exec(`INSERT INTO recipe_masters (id, name, description, visibility, instructions, total_time) VALUES ($1,$2,$3,$4,$5,$6)`,
-			id, req.Name, req.Description, req.Visibility, req.Instructions, req.TotalTime)
+		_, err = tx.Exec(`INSERT INTO recipe_masters (id, name, description, visibility, instructions, total_time, menu_kind) VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,''))`,
+			id, req.Name, req.Description, req.Visibility, req.Instructions, req.TotalTime, req.MenuKind)
 	} else {
-		_, err = tx.Exec(`UPDATE recipe_masters SET name=$1, description=$2, visibility=$3, instructions=$4, total_time=$5, updated_at=NOW() WHERE id=$6`,
-			req.Name, req.Description, req.Visibility, req.Instructions, req.TotalTime, id)
+		var res sql.Result
+		res, err = tx.Exec(`UPDATE recipe_masters SET name=$1, description=$2, visibility=$3, instructions=$4, total_time=$5, menu_kind=COALESCE($7,menu_kind), updated_at=NOW() WHERE id=$6`,
+			req.Name, req.Description, req.Visibility, req.Instructions, req.TotalTime, id, req.MenuKind)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n == 0 {
+				return "", sql.ErrNoRows
+			}
+		}
 	}
 	if err != nil {
 		return "", err
@@ -2161,7 +2201,7 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 	// ── 4. Transfer pending ──────────────────────────────────
 	run(fmt.Sprintf(`
 		SELECT COUNT(*) FROM stock_transfers st
-		WHERE st.status NOT IN ('received','cancelled')
+		WHERE st.status NOT IN ('received','received_rejected','cancelled')
 		AND (st.from_warehouse_id IN (SELECT id FROM warehouses WHERE is_active=true%s)
 		  OR st.to_warehouse_id   IN (SELECT id FROM warehouses WHERE is_active=true%s))`,
 		oFilter, oFilter), wArgs, &stats.PendingTransfers)
@@ -2330,7 +2370,7 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 		FROM stock_transfers st
 		JOIN warehouses fw ON fw.id = st.from_warehouse_id
 		JOIN warehouses tw ON tw.id = st.to_warehouse_id
-		WHERE st.status NOT IN ('received','cancelled')`+ptScope+`
+		WHERE st.status NOT IN ('received','received_rejected','cancelled')`+ptScope+`
 		ORDER BY st.created_at DESC LIMIT 5`, ptArgs...)
 	if ptErr == nil {
 		defer ptRows.Close()

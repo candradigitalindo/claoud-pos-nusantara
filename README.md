@@ -117,6 +117,115 @@ satuan dasar. Transfer menyimpan hasil konversi saat dibuat sehingga perubahan
 isi kemasan tidak menghitung ulang dokumen yang sudah ada. Pengaturan ini
 menggunakan master barang yang sudah tersedia dan tidak mengubah saldo lama.
 
+## Reject, retur supplier, dan barang kedaluwarsa
+
+Menu **Gudang → Reject, Retur & Kedaluwarsa** memisahkan stok siap pakai dari
+karantina. Laporkan reject, expired, spoil/basi, rusak, atau retur supplier
+dengan memilih **batch barang**, jumlah dan satuannya, alasan, serta foto.
+Konversi dus/botol mengikuti pengaturan barang. Batch yang dipilih menentukan
+biaya dan tanggal kedaluwarsa; jumlahnya langsung dikeluarkan dari stok siap
+pakai satu kali dan ditelusuri dalam dokumen karantina.
+
+Alur: laporan → keputusan supervisor → pelaksanaan → penyelesaian.
+Pelapor tidak bisa menyetujui laporannya sendiri. Supervisor dapat memilih
+pemusnahan, retur ke supplier (induk), atau retur ke induk (outlet). Pelepasan
+karantina memerlukan pemeriksaan/foto baru; batch yang sudah kedaluwarsa tidak
+bisa dilepas. Pemusnahan masuk riwayat waste tanpa pemotongan stok kedua.
+Retur outlet yang tiba di induk menjadi karantina baru, bukan otomatis stok
+layak pakai. Tautan antar dokumen, petugas, waktu, dan foto tersimpan di riwayat.
+
+Retur supplier membutuhkan supplier aktif, referensi invoice/surat jalan, dan
+pilihan penyelesaian **barang pengganti** atau **refund**. Penerimaan pengganti
+menambah stok barang yang sama sesuai jumlah aktual dan biaya barang retur;
+tanggal kedaluwarsa baru dicatat. Finance mencatat jumlah barang yang
+diselesaikan, nominal dana yang benar-benar diterima, referensi transaksi,
+dan foto bukti. Keduanya bisa dicatat bertahap; dokumen selesai setelah seluruh
+jumlah retur diselesaikan. Catatan refund ini adalah register penyelesaian
+retur, belum membuat jurnal kas/bank otomatis pada laporan keuangan.
+
+**Penerimaan transfer** kini mengisi jumlah diterima dan reject per barang
+dalam satu pemeriksaan berfoto. Sisa yang belum datang tetap dalam perjalanan
+dan dapat diterima berikutnya. Reject masuk karantina dengan nilai biaya
+pengiriman; tidak otomatis dicatat sebagai kehilangan. Versi dokumen dan
+kunci transaksi mencegah penerimaan atau penyelesaian ganda. Perencanaan MRP
+menghitung hanya sisa transfer yang masih dalam perjalanan.
+
+Foto melalui `/admin/stock-evidence` divalidasi sebagai JPG/PNG/WebP (maksimal
+5 MB/25 megapiksel), diberi cap **waktu pencatatan server UTC** dan pengunggah,
+serta disimpan dengan hash SHA-256. Timestamp tidak mengklaim waktu pengambilan
+dari EXIF/kamera. Bukti terikat gudang dan akun pengunggah, berlaku 24 jam
+untuk satu pengajuan/tindakan, dan tidak bisa dipakai ulang untuk dokumen lain.
+Keputusan administratif memakai foto laporan awal; tindakan fisik dan
+pencatatan refund memerlukan foto baru. Endpoint waste lama dan penyesuaian
+langsung bertipe waste/expired/spoiled diarahkan ke alur karantina ini.
+
+Migrasi membuat role berikut **sekali**, tanpa mengganti role akun yang ada:
+
+| Role | Cakupan dan tahap |
+|---|---|
+| `gudang_induk_qc` | Induk: laporan karantina; menerima transfer, retur outlet, dan barang pengganti |
+| `gudang_induk_supervisor` | Induk: keputusan karantina/retur/pemusnahan; persetujuan transfer |
+| `gudang_induk_retur` | Induk: pelaksanaan retur/pemusnahan; pengiriman transfer |
+| `finance_refund_supplier` | Mencatat refund supplier yang diterima, tanpa mutasi stok |
+| `gudang_outlet_penerima` | Outlet: penerimaan penuh/sebagian, reject, dan laporan karantina |
+| `gudang_outlet_supervisor` | Outlet: keputusan retur/pemusnahan/pelepasan |
+| `gudang_outlet_pelaksana` | Outlet: mengirim retur dan melaksanakan pemusnahan |
+
+Role outlet dibuat dengan cakupan **unit kerja tertentu yang masih kosong**;
+pemilik harus menentukan outlet/unit kerjanya lewat menu Role sebelum role
+tersebut digunakan. Role induk dan finance memakai cakupan semua outlet untuk
+akses pusat, tetapi hak mutasinya dibatasi tahap masing-masing. Permission
+`stockquality.*` dan `stocktransfers.reject` tersedia di matriks Role. Data
+karantina baru tidak mengubah catatan waste/transfer historis. Laporan stok
+siap pakai mengecualikan barang karantina; nilai kasus terlihat pada detailnya.
+
+## Divisi F & B
+
+Sidebar **F & B** mengelompokkan Dashboard, Pengembangan Produk, HPP Menu,
+dan Resep & SOP. Resep yang sebelumnya berada di Gudang memakai data yang
+sama; `/recipes` diarahkan ke `/fnb/recipes`.
+
+| Tanggung jawab | Dukungan aplikasi |
+|---|---|
+| Pengembangan menu | Ide → uji coba → review → disetujui → diluncurkan; konsep, hasil uji, harga target, referensi resep dan produk POS |
+| Standarisasi | Resep makanan/minuman, takaran bahan, langkah SOP, durasi, akses resep rahasia per outlet |
+| Pengendalian biaya | HPP bahan + kemasan + overhead per porsi; target HPP yang dapat diatur, estimasi margin kontribusi dan harga minimum |
+| Evaluasi rutin | Jumlah menu makanan/minuman, kelengkapan biaya, menu melewati target, serta tahap pengembangan |
+
+Dasar pemetaan jobdesk: [Food & Beverage Director — Marriott Careers](https://careers.marriott.com/food-beverage-director/job/P1-7121094-0)
+menjelaskan koordinasi operasi, kualitas layanan, anggaran dan kinerja divisi;
+[Food & Beverage Cost Controller — Accor](https://careers.accor.com/job/food-and-beverage-cost-controller-in-ibis-new-delhi-aerocity-new-delhi-india-jid-109148)
+mencakup standard recipe costing, analisis penjualan, laporan biaya dan kontrol persediaan.
+Pemetaan menu di atas disesuaikan untuk aplikasi ini. Penilaian sensori dan SOP
+dicatat sebagai hasil uji; modul ini tidak menggantikan pelatihan atau audit mutu lapangan.
+
+Kategori F&B disimpan terpisah dari kategori POS sehingga sinkronisasi tidak
+menimpanya. Produk mengikuti kategori resep bila belum memiliki pengaturan
+F&B sendiri; data lama lainnya ditampilkan sebagai **Belum dikategorikan**.
+Produk tetap boleh berdiri sendiri tanpa resep. Tautan resep/produk dalam
+pengembangan hanya referensi; tidak otomatis menerbitkan produk atau mengganti
+harga/resep POS. Setelah disetujui, isi pengembangan terkunci; kembalikan ke uji
+coba untuk revisi. Perubahan bersamaan diperiksa melalui versi dokumen.
+
+HPP adalah biaya standar **terkini**, bukan HPP penjualan historis atau laba
+bersih. Biaya bahan mengikuti valuasi gudang outlet; gudang induk menjadi
+fallback. Bahan setengah jadi tanpa valuasi dihitung dari komposisinya.
+Harga bahan nol/tidak tersedia ditandai **Harga bahan belum lengkap**, bukan
+ditampilkan sebagai margin 100%. Target awal 35% dapat diubah per menu dan
+bukan standar wajib industri. Overhead/kemasan diisi per porsi oleh pengelola.
+
+Saat server mulai, `RunFnbMigrations` menambahkan tabel pengembangan/profil HPP
+dan kategori resep tanpa menghapus data lama. Role awal `fnb` dibuat sekali
+dengan cakupan semua outlet dan halaman awal `/fnb/dashboard`; tidak ada akun
+yang otomatis dipindahkan ke role ini. Izin baru `fnb.dashboard.view`,
+`fnb.development.view/create/update/approve`, `fnb.costing.view/update` tersedia
+di menu Role. Izin `recipes.*` tetap digunakan. Pengguna bercakupan outlet hanya
+melihat resep publik/yang dibagikan dan data outletnya; pengubahan master resep
+bersama dilakukan oleh pengelola dengan cakupan semua outlet. Role `fnb` tidak
+mendapat izin penyesuaian stok, transfer stok, pembayaran, atau pengelolaan pengguna.
+Izin `recipes.create` juga mengikuti akses produksi bahan setengah jadi yang
+sudah ada pada sistem.
+
 ## CCTV outlet
 
 Halaman **Pengaturan → CCTV** mengelompokkan kamera menurut nama outlet,

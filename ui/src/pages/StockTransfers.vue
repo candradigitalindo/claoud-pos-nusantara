@@ -222,7 +222,9 @@
             <tr>
               <th class="px-3 py-2 text-left">Bahan Baku</th>
               <th class="px-3 py-2 text-right">Dikirim</th>
-              <th v-if="isReceiving" class="px-3 py-2 text-right">Diterima (input)</th>
+              <th class="px-3 py-2 text-right">Sudah diperiksa</th>
+              <th v-if="isReceiving" class="px-3 py-2 text-right">Terima sekarang</th>
+              <th v-if="isReceiving && canReject" class="px-3 py-2 text-right">Reject sekarang</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
@@ -232,14 +234,18 @@
                 {{ it.qty_dist }} {{ it.unit_used }}
                 <span class="text-gray-400">({{ it.qty_base.toFixed(3) }} {{ it.base_unit }})</span>
               </td>
+              <td class="px-3 py-2 text-right text-xs"><p>{{ acceptedTotal(it) }} {{ it.base_unit }} diterima</p><p class="text-red-600">{{ it.rejected_qty_base || 0 }} {{ it.base_unit }} reject</p><p class="text-gray-500">{{ remaining(it) }} {{ it.base_unit }} belum diperiksa</p></td>
               <td v-if="isReceiving" class="px-3 py-2 text-right">
                 <input v-model.number="it._received_qty" type="number" step="0.001"
                   min="0"
-                  :max="it.qty_base"
-                  :placeholder="it.qty_base.toFixed(3)"
-                  @blur="saveReceivedQty(it)"
+                  :max="remaining(it)"
+                  :aria-label="`Terima ${it.item_name}`"
                   class="w-24 text-sm border border-gray-200 rounded px-2 py-1 text-right focus:outline-none focus:ring-1 focus:ring-emerald-400" />
                 <span class="ml-1 text-xs text-gray-500">{{ it.base_unit }}</span>
+              </td>
+              <td v-if="isReceiving && canReject" class="px-3 py-2 text-right min-w-40">
+                <input v-model.number="it._rejected_qty" type="number" min="0" step="0.0001" :max="remaining(it)" :aria-label="`Reject ${it.item_name}`" class="w-24 border rounded px-2 py-1 text-right" /><span class="ml-1 text-xs">{{ it.base_unit }}</span>
+                <input v-if="it._rejected_qty > 0" v-model="it._reject_reason" :aria-label="`Alasan reject ${it.item_name}`" placeholder="Alasan reject wajib" class="block w-full mt-2 border rounded px-2 py-1 text-xs" />
               </td>
             </tr>
           </tbody>
@@ -247,6 +253,18 @@
         </div>
 
         <p v-if="detail.notes" class="text-sm text-gray-500">{{ detail.notes }}</p>
+        <div v-if="isReceiving" class="space-y-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+          <p class="text-xs text-gray-600">Isi jumlah yang diterima dan ditolak pada pemeriksaan ini. Sisa yang belum datang tetap menunggu penerimaan berikutnya. Barang reject masuk karantina dan tidak menambah stok siap pakai.</p>
+          <button v-if="canReject" type="button" class="text-sm text-red-700 underline" @click="rejectRemaining">Reject seluruh sisa barang</button>
+          <textarea v-model="receiveNotes" rows="2" aria-label="Catatan penerimaan" placeholder="Catatan pemeriksaan / kedatangan sebagian" class="block w-full border rounded-lg p-2 text-sm"></textarea>
+          <StockEvidenceCapture v-model="receiveEvidence" :warehouse-id="detail.to_warehouse_id" label="Foto barang saat diperiksa" />
+        </div>
+        <div v-for="receipt in detail.receipts || []" :key="receipt.id" class="border-t pt-3 text-sm">
+          <p class="font-semibold">Pemeriksaan {{ new Date(receipt.created_at).toLocaleString('id-ID') }} · {{ receipt.actor_name }}</p><p class="text-gray-500">{{ receipt.notes }}</p>
+          <p v-for="item in receipt.items" :key="item.item_id" class="text-xs text-gray-600">{{ detail.items.find(i => i.item_id === item.item_id)?.item_name }}: terima {{ item.accepted_qty_base }}, reject {{ item.rejected_qty_base }} {{ detail.items.find(i => i.item_id === item.item_id)?.base_unit }} <span v-if="item.reason">· {{ item.reason }}</span></p>
+          <a :href="safeUrl(receipt.evidence.url)" target="_blank" rel="noopener noreferrer"><img :src="safeUrl(receipt.evidence.url)" alt="Bukti pemeriksaan bertimestamp" class="mt-2 w-44 rounded-lg border" /></a>
+          <p class="text-xs text-gray-500">Dicatat server: {{ new Date(receipt.evidence.recorded_at).toLocaleString('id-ID') }}</p>
+        </div>
 
         <!-- Bukti barang berangkat dari gudang asal. Server menolak status 'sent'
              tanpa foto — sebelumnya tombol ini tidak pernah mengirimkannya. -->
@@ -285,6 +303,7 @@ import { warehousesApi, stockItemsApi, stockTransfersApi } from '@/api/warehouse
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import PhotoCapture  from '@/components/PhotoCapture.vue'
+import StockEvidenceCapture from '@/components/StockEvidenceCapture.vue'
 import { safeUrl } from '@/utils/safeUrl.js'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
@@ -302,7 +321,9 @@ const auth = useAuthStore()
 // dengan mutasi aset. Tombol yang izinnya tidak ada tidak ditampilkan.
 const canApprove = auth.hasPermission('stocktransfers.approve')
 const canSend    = auth.hasPermission('stocktransfers.update')
-const canReceive = auth.hasPermission('stocktransfers.receive')
+const canReceive = auth.hasPermission('stocktransfers.receive') || auth.hasPermission('stockquality.central.receive') || auth.hasPermission('stockquality.outlet.receive')
+const canReject = auth.hasPermission('stocktransfers.reject')
+const receiveEvidence = ref(null), receiveNotes = ref('')
 // Role per outlet boleh MEMINTA stok ke Gudang Induk (asal = Gudang Induk),
 // tetapi menyetujui, mengirim, dan menerima di Gudang Induk adalah tahap milik
 // role semua outlet — server menolaknya walau izinnya ada, jadi tombolnya
@@ -329,15 +350,15 @@ const showCreate = ref(false)
 const showDetail = ref(false)
 const detail = ref(null)
 
-const STATUSES = ['draft', 'approved', 'sent', 'received', 'cancelled']
+const STATUSES = ['draft', 'approved', 'sent', 'partial_received', 'received', 'received_rejected', 'cancelled']
   .map(v => ({ value: v, label: TRANSFER_STATUS_LABELS[v] }))
 const statusOptions = [
   { value: '', label: 'Semua Status' },
   ...STATUSES,
 ]
 
-const NEXT_STATUS = { draft: 'approved', approved: 'sent', sent: 'received' }
-const NEXT_LABELS = { draft: 'Setujui Transfer', approved: 'Tandai Sudah Dikirim', sent: 'Konfirmasi Penerimaan' }
+const NEXT_STATUS = { draft: 'approved', approved: 'sent', sent: 'received', partial_received: 'received' }
+const NEXT_LABELS = { draft: 'Setujui Transfer', approved: 'Tandai Sudah Dikirim', sent: 'Simpan Pemeriksaan Penerimaan', partial_received: 'Simpan Pemeriksaan Berikutnya' }
 
 const COLUMNS = [
   { key: 'transfer_number', label: 'No. Transfer', sortable: false },
@@ -353,6 +374,7 @@ const statusCls = transferStatusClass
 const NEXT_PERM = { approved: canApprove, sent: canSend, received: canReceive }
 // Tahap atas nama Gudang Induk (cermin centralTransferStageDenied di server).
 function centralStageBlocked(t, stage) {
+  if (stage === 'received' && t && !auth.hasPermission('stocktransfers.receive') && !auth.hasPermission(`stockquality.${t.to_warehouse_type}.receive`)) return true
   if (!isOutletUser || !t) return false
   if (stage === 'approved' || stage === 'sent') return isCentralRequest(t)
   if (stage === 'received') return t.to_warehouse_type === 'central'
@@ -365,7 +387,7 @@ const nextAction = computed(() => {
   return { status: ns, label: NEXT_LABELS[detail.value.status] }
 })
 const isSending = computed(() => detail.value?.status === 'approved' && canSend && !centralStageBlocked(detail.value, 'sent'))
-const isReceiving = computed(() => detail.value?.status === 'sent' && canReceive && !centralStageBlocked(detail.value, 'received'))
+const isReceiving = computed(() => ['sent', 'partial_received'].includes(detail.value?.status) && canReceive && !centralStageBlocked(detail.value, 'received'))
 // Batal: draft/disetujui. Permintaan ke Gudang Induk hanya bisa ditarik outlet
 // selagi draft; setelah disetujui pembatalan menjadi wewenang Gudang Induk.
 const canCancelDetail = computed(() => {
@@ -553,43 +575,23 @@ async function openDetail(id) {
   try {
     const data = await stockTransfersApi.get(id)
     detail.value = data
-    detail.value.items.forEach(it => {
-      it._received_qty = (it.received_qty_base !== null && it.received_qty_base !== undefined)
-        ? it.received_qty_base
-        : it.qty_base
-    })
+    initReceiptInputs()
   } catch (e) {
     toast.error(e?.message || 'Gagal memuat detail')
     showDetail.value = false
   }
 }
 
-async function saveReceivedQty(it) {
-  if (it._received_qty === undefined || it._received_qty === null || !detail.value || detail.value.status !== 'sent') return
-  const previousQty = it.received_qty_base ?? it.qty_base
-  const nextQty = Number(it._received_qty)
-  if (Number.isNaN(nextQty)) {
-    it._received_qty = previousQty
-    return
-  }
-  if (nextQty < 0) {
-    toast.error('Qty diterima tidak boleh negatif')
-    it._received_qty = previousQty
-    return
-  }
-  if (nextQty > it.qty_base) {
-    toast.error('Qty diterima tidak boleh melebihi qty dikirim')
-    it._received_qty = previousQty
-    return
-  }
-  try {
-    await stockTransfersApi.updateReceivedQty(detail.value.id, it.item_id, nextQty)
-    it.received_qty_base = nextQty
-  } catch (e) {
-    it._received_qty = previousQty
-    toast.error(e?.message || 'Gagal menyimpan qty diterima')
-  }
+function acceptedTotal(it) {
+  if (detail.value?.receipt_version > 0) return it.accepted_qty_base || 0
+  return detail.value?.status === 'received' ? (it.received_qty_base ?? it.qty_base) : 0
 }
+function remaining(it) { return Math.max(0, Number((it.qty_base - acceptedTotal(it) - (it.rejected_qty_base || 0)).toFixed(4))) }
+function initReceiptInputs() {
+  receiveEvidence.value = null; receiveNotes.value = ''
+  detail.value.items.forEach(it => { it._received_qty = remaining(it); it._rejected_qty = 0; it._reject_reason = '' })
+}
+function rejectRemaining() { detail.value.items.forEach(it => { it._received_qty = 0; it._rejected_qty = remaining(it) }) }
 
 async function doAction() {
   if (!nextAction.value) return
@@ -597,11 +599,18 @@ async function doAction() {
     toast.error('Foto barang saat dikirim wajib diunggah')
     return
   }
+  if (nextAction.value.status === 'received' && !receiveEvidence.value?.id) return toast.error('Foto pemeriksaan bertimestamp wajib diunggah')
   saving.value = true
   try {
-    const data = await stockTransfersApi.updateStatus(detail.value.id, nextAction.value.status, sendPhoto.value)
+    const data = nextAction.value.status === 'received'
+      ? await stockTransfersApi.receive(detail.value.id, {
+        version: detail.value.receipt_version || 0, evidence_id: receiveEvidence.value.id, notes: receiveNotes.value,
+        items: detail.value.items.map(it => ({ item_id: it.item_id, accepted_qty_base: Number(it._received_qty || 0), rejected_qty_base: Number(it._rejected_qty || 0), reason: it._reject_reason || '' })),
+      })
+      : await stockTransfersApi.updateStatus(detail.value.id, nextAction.value.status, sendPhoto.value)
     detail.value = data
     sendPhoto.value = ''
+    initReceiptInputs()
     toast.success('Status transfer diperbarui')
     load()
   } catch (e) {

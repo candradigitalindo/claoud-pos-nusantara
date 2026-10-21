@@ -36,6 +36,9 @@ func newStockFlowFixture(t *testing.T) *stockFlowFixture {
 	t.Cleanup(func() {
 		for _, w := range whs {
 			tr := `(SELECT id FROM stock_transfers WHERE from_warehouse_id = $1 OR to_warehouse_id = $1)`
+			database.DB.Exec(`DELETE FROM stock_quality_cases WHERE warehouse_id=$1 OR return_warehouse_id=$1`, w)
+			database.DB.Exec(`DELETE FROM stock_transfer_receipts WHERE transfer_id IN `+tr, w)
+			database.DB.Exec(`DELETE FROM stock_evidence WHERE warehouse_id=$1`, w)
 			database.DB.Exec(`DELETE FROM handover_photos WHERE ref_type = 'stock_transfer' AND ref_id IN `+tr, w)
 			database.DB.Exec(`DELETE FROM stock_transfer_items WHERE transfer_id IN `+tr, w)
 			database.DB.Exec(`DELETE FROM stock_transfers WHERE from_warehouse_id = $1 OR to_warehouse_id = $1`, w)
@@ -94,6 +97,8 @@ func stockFlowTestApp(locals map[string]interface{}) *fiber.App {
 	a.Get("/warehouses", ListWarehouses)
 	a.Post("/stock-transfers", CreateStockTransfer)
 	a.Put("/stock-transfers/:id/status", UpdateTransferStatus)
+	a.Post("/stock-transfers/:id/receive", ReceiveStockTransfer)
+	a.Post("/stock-evidence", UploadStockEvidence)
 	a.Put("/stock-transfers/:id/items/:itemId/received", UpdateReceivedQty)
 	a.Put("/stock-items/:id/breakdown", SaveStockItemBreakdown)
 	a.Post("/stock-breakdowns", CreateStockBreakdown)
@@ -249,7 +254,10 @@ func TestOutletRequestsStockFromCentral(t *testing.T) {
 	if code != fiber.StatusOK {
 		t.Errorf("outlet mengisi jumlah diterima: %d %q", code, res.Error)
 	}
-	if code, msg := setTransferStatus(t, outlet, tr.ID, "received", ""); code != fiber.StatusOK {
+	if code, _ := setTransferStatus(t, outlet, tr.ID, "received", ""); code != fiber.StatusBadRequest {
+		t.Errorf("penerimaan lama tanpa bukti foto masih diterima: %d", code)
+	}
+	if code, msg := receiveTransferWithPhoto(t, outlet, tr.ID); code != fiber.StatusOK {
 		t.Fatalf("outlet menerima: %d %q", code, msg)
 	}
 	if got := ledgerQty(f.item, f.whA); got != 2000 {
@@ -301,7 +309,7 @@ func TestReceivingIntoCentralRequiresAllOutletRole(t *testing.T) {
 	if code, _ := setTransferStatus(t, outlet, tr.ID, "received", ""); code != fiber.StatusForbidden {
 		t.Errorf("outlet menerima atas nama Gudang Induk: %d, mau 403", code)
 	}
-	if code, msg := setTransferStatus(t, central, tr.ID, "received", ""); code != fiber.StatusOK {
+	if code, msg := receiveTransferWithPhoto(t, central, tr.ID); code != fiber.StatusOK {
 		t.Errorf("Gudang Induk menerima: %d %q", code, msg)
 	}
 	if got := ledgerQty(f.item, f.whC); got != 11000 {

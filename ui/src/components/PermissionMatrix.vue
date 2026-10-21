@@ -378,6 +378,22 @@ const CATEGORIES = [
     ],
   },
   {
+    label: 'F & B', icon: IC.recipe,
+    items: [
+      { type: 'single', key: 'fnb.dashboard.view', label: 'Dashboard F&B', icon: IC.gauge },
+      { type: 'toggles', label: 'Pengembangan Produk', icon: IC.recipe, toggles: [
+        { key: 'fnb.development.view', label: 'Lihat' },
+        { key: 'fnb.development.create', label: 'Buat' },
+        { key: 'fnb.development.update', label: 'Ubah & Proses' },
+        { key: 'fnb.development.approve', label: 'Setujui' },
+      ] },
+      { type: 'toggles', label: 'HPP Menu', icon: IC.ledger, toggles: [
+        { key: 'fnb.costing.view', label: 'Lihat' }, { key: 'fnb.costing.update', label: 'Atur Kategori & Biaya' },
+      ] },
+      { type: 'crud', module: 'recipes', label: 'Resep & SOP', icon: IC.recipe },
+    ],
+  },
+  {
     label: 'Gudang', icon: IC.warehouse,
     items: [
       { type: 'single', key: 'warehouse_dashboard.view', label: 'Dashboard Gudang', icon: IC.gauge },
@@ -391,9 +407,24 @@ const CATEGORIES = [
           { key: 'stocktransfers.update',  label: 'Kirim & Batalkan' },
           { key: 'stocktransfers.approve', label: 'Setujui' },
           { key: 'stocktransfers.receive', label: 'Terima' },
+          { key: 'stocktransfers.reject', label: 'Reject Barang' },
         ],
       },
-      { type: 'crud', module: 'stockwastes', label: 'Stok Rusak/Hilang', icon: IC.waste, ops: ['view', 'create'] },
+      { type: 'single', key: 'stockwastes.view', label: 'Riwayat Pembuangan Stok', icon: IC.waste },
+      { type: 'single', key: 'stockquality.view', label: 'Lihat Reject, Retur & Kedaluwarsa', icon: IC.waste },
+      { type: 'toggles', label: 'Mutu Stok Gudang Induk', icon: IC.warehouse, toggles: [
+        { key: 'stockquality.central.report', label: 'Lapor & Karantina' },
+        { key: 'stockquality.central.approve', label: 'Keputusan Supervisor' },
+        { key: 'stockquality.central.execute', label: 'Kirim Retur / Musnahkan' },
+        { key: 'stockquality.central.receive', label: 'Terima Transfer / Retur / Pengganti' },
+      ] },
+      { type: 'toggles', label: 'Mutu Stok Gudang Outlet', icon: IC.warehouse, toggles: [
+        { key: 'stockquality.outlet.receive', label: 'Terima Transfer Penuh / Sebagian' },
+        { key: 'stockquality.outlet.report', label: 'Lapor & Karantina' },
+        { key: 'stockquality.outlet.approve', label: 'Keputusan Supervisor' },
+        { key: 'stockquality.outlet.execute', label: 'Kirim Retur / Musnahkan' },
+      ] },
+      { type: 'single', key: 'stockquality.refund', label: 'Finance: Catat Refund Supplier Diterima', icon: IC.wallet },
       {
         type: 'toggles', label: 'Buku Stok', icon: IC.ledger,
         toggles: [
@@ -401,7 +432,6 @@ const CATEGORIES = [
           { key: 'stockledger.adjust', label: 'Penyesuaian' },
         ],
       },
-      { type: 'crud', module: 'recipes', label: 'Resep', icon: IC.recipe },
     ],
   },
   {
