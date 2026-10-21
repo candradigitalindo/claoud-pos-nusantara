@@ -61,6 +61,7 @@ var AllPermissions = []string{
 	// Rekonsiliasi shift dipisah dari laporan shift kasir.
 	"shift_reconciliation.view",
 	"finance.payments.view",
+	"finance.entries.view", "finance.entries.create", "finance.entries.post", "finance.entries.void",
 	// Mencairkan uang dipisah dari sekadar melihat halaman Pembayaran.
 	"finance.payments.pay",
 	"finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete",

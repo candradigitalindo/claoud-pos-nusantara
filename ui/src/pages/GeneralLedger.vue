@@ -135,7 +135,7 @@
                       {{ entry.debit > 0 ? 'D' : 'K' }} {{ formatRupiah(entry.debit > 0 ? entry.debit : entry.credit) }}
                     </span>
                   </div>
-                  <p class="mt-0.5 text-sm text-gray-800 break-words">{{ entry.description }}</p>
+                  <p class="mt-0.5 text-sm text-gray-800 break-words">{{ entry.description }}</p><p class="text-xs text-gray-500">{{ entry.outlet_name }} · {{ entry.reference }}</p><p v-if="entry.notes" class="mt-1 whitespace-pre-wrap text-xs text-gray-600">{{ entry.notes }}</p><AppActionButton v-if="safeUrl(entry.proof_url)" icon="photo" label="Lihat bukti transaksi" :href="safeUrl(entry.proof_url)" target="_blank" rel="noopener" />
                   <div class="mt-1 flex items-baseline justify-between gap-2 text-xs">
                     <span class="text-gray-400">Saldo</span>
                     <span class="font-semibold" :class="balanceClass(entry.balance)">{{ formatRupiah(entry.balance) }}</span>
@@ -173,7 +173,7 @@
                   <tbody>
                     <tr v-for="(entry, i) in paginatedEntries(account)" :key="pageStart(account) + i" class="border-b border-gray-50 hover:bg-gray-50/50">
                       <td class="py-2 px-4 text-gray-600 whitespace-nowrap">{{ formatDateStr(entry.date) }}</td>
-                      <td class="py-2 px-4 text-gray-800 min-w-[14rem]">{{ entry.description }}</td>
+                      <td class="py-2 px-4 text-gray-800 min-w-[14rem]">{{ entry.description }}<p class="text-xs text-gray-500">{{ entry.outlet_name }} · {{ entry.reference }}</p><p v-if="entry.notes" class="mt-1 whitespace-pre-wrap text-xs text-gray-600">{{ entry.notes }}</p><AppActionButton v-if="safeUrl(entry.proof_url)" icon="photo" label="Lihat bukti transaksi" :href="safeUrl(entry.proof_url)" target="_blank" rel="noopener" /></td>
                       <td class="py-2 px-4 text-right font-medium whitespace-nowrap" :class="entry.debit > 0 ? 'text-blue-700' : 'text-gray-300'">{{ entry.debit > 0 ? formatRupiah(entry.debit) : '-' }}</td>
                       <td class="py-2 px-4 text-right font-medium whitespace-nowrap" :class="entry.credit > 0 ? 'text-rose-600' : 'text-gray-300'">{{ entry.credit > 0 ? formatRupiah(entry.credit) : '-' }}</td>
                       <td class="py-2 px-4 text-right font-semibold whitespace-nowrap" :class="balanceClass(entry.balance)">{{ formatRupiah(entry.balance) }}</td>
@@ -225,8 +225,11 @@
 </template>
 
 <script setup>
+import { safeUrl } from '@/utils/safeUrl'
+import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, shallowRef, reactive, onMounted, computed, watch } from 'vue'
+import { financeApi } from '@/api/finance'
 import { salesApi } from '@/api/sales.js'
 import { outletsApi } from '@/api/outlets.js'
 import { formatRupiah, formatDateStr, todayDateString } from '@/utils/format.js'
@@ -261,22 +264,7 @@ const report = shallowRef(null)
 const expandedAccounts = reactive({})
 const accountPages     = reactive({})
 
-const ACCOUNT_OPTIONS = [
-  { value: '1-100', label: '1-100 Kas & Setara Kas' },
-  { value: '1-200', label: '1-200 Piutang Usaha' },
-  { value: '1-400', label: '1-400 Aset Tetap (Peralatan)' },
-  { value: '1-450', label: '1-450 Projek Berjalan' },
-  { value: '2-100', label: '2-100 Hutang Usaha' },
-  { value: '2-200', label: '2-200 Hutang Pajak Restoran' },
-  { value: '2-300', label: '2-300 Uang Muka Pelanggan' },
-  { value: '4-100', label: '4-100 Pendapatan Penjualan' },
-  { value: '4-200', label: '4-200 Pendapatan Lainnya' },
-  { value: '5-100', label: '5-100 HPP - Bahan Baku' },
-  { value: '5-200', label: '5-200 Beban Jasa & Layanan' },
-  { value: '5-300', label: '5-300 Beban Operasional' },
-  { value: '5-400', label: '5-400 Beban Penyusutan Aset' },
-  { value: '6-100', label: '6-100 Beban Pajak Restoran' },
-]
+const ACCOUNT_OPTIONS = ref([])
 
 const GROUP_MAP = {
   aset:       { label: 'Aset',       cls: 'bg-blue-100 text-blue-700' },
@@ -334,6 +322,7 @@ function paginatedEntries(account) {
 }
 
 onMounted(async () => {
+  try { ACCOUNT_OPTIONS.value = (await financeApi.accounts()).map(a => ({ value: a.code, label: a.code + ' ' + a.name })) } catch (e) { errorMsg.value = e.message }
   try {
     const data = await outletsApi.myOutlets()
     const list = data?.outlets ?? data ?? []

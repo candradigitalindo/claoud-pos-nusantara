@@ -275,6 +275,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Purchase requests — granular: submit, approve, purchasing (isi harga), finance (bayar)
 	admin.Get("/procurement-dashboard", middleware.RequirePermission("procurement.dashboard.view"), handlers.GetProcurementDashboardGlobal)
 	admin.Get("/payment-stats", middleware.RequirePermission("finance.payments.view"), handlers.GetPaymentStats)
+	admin.Get("/finance/accounts", middleware.RequireAnyPermission("finance.entries.view", "reports.ledger.view", "reports.pnl.view", "reports.balance.view"), handlers.FinanceAccounts)
+	admin.Get("/finance/lookups", middleware.RequirePermission("finance.entries.view"), handlers.FinanceLookups)
+	admin.Get("/finance/operations", middleware.RequirePermission("finance.entries.view"), handlers.ListFinanceOperations)
+	admin.Put("/finance/cash-movements/:id/account", middleware.RequirePermission("finance.entries.post"), handlers.ClassifyFinanceCash)
+	admin.Get("/finance/entries", middleware.RequirePermission("finance.entries.view"), handlers.ListFinanceEntries)
+	admin.Get("/finance/entries/:id", middleware.RequirePermission("finance.entries.view"), handlers.GetFinanceEntry)
+	admin.Post("/finance/entries", middleware.RequirePermission("finance.entries.create"), handlers.SaveFinanceEntry)
+	admin.Put("/finance/entries/:id", middleware.RequirePermission("finance.entries.create"), handlers.SaveFinanceEntry)
+	admin.Post("/finance/entries/:id/actions", middleware.RequireAnyPermission("finance.entries.post", "finance.entries.void"), handlers.ActFinanceEntry)
 	// Export Excel memakai permission & scope yang sama dengan halaman Pembayaran.
 	admin.Get("/procurement-payments/export", middleware.RequirePermission("finance.payments.view"), handlers.ExportProcurementPayments)
 	// Projek (pembangunan/renovasi) — payung RAB di atas pengadaan.
@@ -332,7 +341,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// File upload — dipakai untuk bukti pembayaran pengadaan
 	// stockledger.adjust: petugas gudang mengunggah foto serah terima barang dapur.
-	admin.Post("/upload", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.view", "procurement.rawmaterials.view", "assets.create", "assets.update", "reservations.update", "stockledger.adjust"), handlers.UploadFile)
+	admin.Post("/upload", middleware.RequireAnyPermission("finance.entries.create", "finance.payments.view", "procurement.requests.view", "procurement.rawmaterials.view", "assets.create", "assets.update", "reservations.update", "stockledger.adjust"), handlers.UploadFile)
 
 	// Bank Accounts
 	// finance.payments.pay ikut boleh membaca daftar: form bayar di halaman

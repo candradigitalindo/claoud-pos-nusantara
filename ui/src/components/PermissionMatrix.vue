@@ -262,6 +262,15 @@ const CATEGORIES = [
           { key: 'finance.payments.pay',  label: 'Bayar' },
         ],
       },
+      {
+        type: 'toggles', label: 'Operasional Keuangan', icon: IC.wallet,
+        toggles: [
+          { key: 'finance.entries.view', label: 'Lihat rincian' },
+          { key: 'finance.entries.create', label: 'Buat / ubah draf' },
+          { key: 'finance.entries.post', label: 'Bukukan' },
+          { key: 'finance.entries.void', label: 'Batalkan / balik' },
+        ],
+      },
       { type: 'crud', module: 'finance.bank', label: 'Data Rekening', icon: IC.bank },
     ],
   },

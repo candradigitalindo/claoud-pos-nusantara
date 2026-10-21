@@ -396,6 +396,7 @@ const REDIRECT_GROUPS = [
     { value: '/cashier-shifts',        label: 'Shift Kasir',              perm: 'cashier_shifts.view' },
     { value: '/shift-reconciliation',  label: 'Rekonsiliasi Shift',       perm: 'shift_reconciliation.view' },
     { value: '/procurement-payments',  label: 'Pembayaran',               perm: 'finance.payments.view' },
+    { value: '/finance-operations', label: 'Operasional Keuangan', perm: 'finance.entries.view' },
     { value: '/product-sales-report',  label: 'Penjualan Produk',         perm: 'reports.product_sales.view' },
     { value: '/general-ledger',        label: 'Buku Besar',               perm: 'reports.ledger.view' },
     { value: '/cash-flow-report',      label: 'Pemasukan & Pengeluaran',  perm: 'reports.cashflow.view' },

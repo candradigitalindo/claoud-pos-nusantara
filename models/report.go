@@ -132,6 +132,9 @@ type TaxReportResponse struct {
 }
 
 type CashFlowSummary struct {
+	SupplierRefunds   float64 `json:"supplier_refunds"`
+	FinancingReceipts float64 `json:"financing_receipts"`
+	FinancingPayments float64 `json:"financing_payments"`
 	// Penerimaan Operasi. SalesReceipts sudah dikurangi bagian transaksi yang
 	// dibayar dari uang muka reservasi (uangnya masuk saat DP, lihat
 	// DepositReceipts) supaya kas tidak dihitung dua kali.
@@ -154,17 +157,20 @@ type CashFlowSummary struct {
 }
 
 type CashFlowRow struct {
-	Date            string  `json:"date"`
-	SalesReceipts   float64 `json:"sales_receipts"`
-	OtherReceipts   float64 `json:"other_receipts"`
-	COGSPayments    float64 `json:"cogs_payments"`
-	ServicePayments float64 `json:"service_payments"`
-	OpexPayments    float64 `json:"opex_payments"`
-	CapexPayments   float64 `json:"capex_payments"`
-	ProjectPayments float64 `json:"project_payments"`
-	DepositReceipts float64 `json:"deposit_receipts"`
-	DepositRefunds  float64 `json:"deposit_refunds"`
-	NetCashFlow     float64 `json:"net_cash_flow"`
+	SupplierRefunds   float64 `json:"supplier_refunds"`
+	FinancingReceipts float64 `json:"financing_receipts"`
+	FinancingPayments float64 `json:"financing_payments"`
+	Date              string  `json:"date"`
+	SalesReceipts     float64 `json:"sales_receipts"`
+	OtherReceipts     float64 `json:"other_receipts"`
+	COGSPayments      float64 `json:"cogs_payments"`
+	ServicePayments   float64 `json:"service_payments"`
+	OpexPayments      float64 `json:"opex_payments"`
+	CapexPayments     float64 `json:"capex_payments"`
+	ProjectPayments   float64 `json:"project_payments"`
+	DepositReceipts   float64 `json:"deposit_receipts"`
+	DepositRefunds    float64 `json:"deposit_refunds"`
+	NetCashFlow       float64 `json:"net_cash_flow"`
 }
 
 type CashFlowResponse struct {
@@ -173,8 +179,9 @@ type CashFlowResponse struct {
 }
 
 type BalanceOutletRow struct {
-	OutletID   string `json:"outlet_id"`
-	OutletName string `json:"outlet_name"`
+	FinancingLiabilities float64 `json:"financing_liabilities"`
+	OutletID             string  `json:"outlet_id"`
+	OutletName           string  `json:"outlet_name"`
 	// Aset
 	CashAndEquivalents float64 `json:"cash_and_equivalents"`
 	Receivables        float64 `json:"receivables"`
@@ -200,8 +207,10 @@ type BalanceOutletRow struct {
 }
 
 type BalanceResponse struct {
-	DateFrom string `json:"date_from"`
-	DateTo   string `json:"date_to"`
+	FinancingLiabilities float64               `json:"financing_liabilities"`
+	Accounts             []FinanceAccountTotal `json:"accounts"`
+	DateFrom             string                `json:"date_from"`
+	DateTo               string                `json:"date_to"`
 	// Aset
 	CashAndEquivalents float64 `json:"cash_and_equivalents"`
 	Receivables        float64 `json:"receivables"`
@@ -243,8 +252,8 @@ type ProfitLossSummary struct {
 	// DepreciationExpense: penyusutan garis lurus seluruh aset aktif untuk
 	// periode ini — inilah cara belanja modal masuk ke Laba/Rugi.
 	DepreciationExpense float64 `json:"depreciation_expense"`
-	TotalOpex        float64 `json:"total_opex"`
-	OperatingProfit  float64 `json:"operating_profit"`
+	TotalOpex           float64 `json:"total_opex"`
+	OperatingProfit     float64 `json:"operating_profit"`
 	// Kas keluar yang TIDAK dibebankan (ditampilkan sebagai keterangan):
 	// belanja modal menjadi aset tetap, belanja projek menjadi projek berjalan.
 	CapexPayments   float64 `json:"capex_payments"`
@@ -276,9 +285,12 @@ type ProfitLossOutletRow struct {
 }
 
 type ProfitLossResponse struct {
-	Summary  ProfitLossSummary     `json:"summary"`
-	Daily    []ProfitLossRow       `json:"daily"`
-	ByOutlet []ProfitLossOutletRow `json:"by_outlet"`
+	ReviewCount   int                   `json:"review_count"`
+	UncostedSales int                   `json:"uncosted_sales"`
+	Accounts      []FinanceAccountTotal `json:"accounts"`
+	Summary       ProfitLossSummary     `json:"summary"`
+	Daily         []ProfitLossRow       `json:"daily"`
+	ByOutlet      []ProfitLossOutletRow `json:"by_outlet"`
 }
 
 // ── Buku Besar (General Ledger) ─────────────────────────────
@@ -294,6 +306,12 @@ type GeneralLedgerAccount struct {
 }
 
 type GeneralLedgerEntry struct {
+	Source      string  `json:"source"`
+	SourceID    string  `json:"source_id"`
+	Reference   string  `json:"reference"`
+	OutletName  string  `json:"outlet_name"`
+	Notes       string  `json:"notes"`
+	ProofURL    string  `json:"proof_url"`
 	Date        string  `json:"date"`
 	Description string  `json:"description"`
 	Debit       float64 `json:"debit"`

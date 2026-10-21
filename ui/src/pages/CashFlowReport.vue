@@ -45,7 +45,7 @@
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <!-- Penerimaan -->
         <AppCard>
-          <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Penerimaan Operasi</h4>
+          <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Penerimaan Kas</h4>
           <div class="space-y-2 text-sm">
             <div class="flex justify-between">
               <span class="text-gray-600">Penjualan</span>
@@ -62,6 +62,8 @@
               <span class="text-gray-600">Uang Muka Reservasi <span class="text-[11px] text-gray-400">(DP/pelunasan)</span></span>
               <span class="font-medium text-gray-800">{{ formatRupiah(report.summary.deposit_receipts) }}</span>
             </div>
+            <div class="flex justify-between"><span class="text-gray-600">Refund Supplier</span><span>{{ formatRupiah(report.summary.supplier_refunds) }}</span></div>
+            <div class="flex justify-between"><span class="text-gray-600">Modal / Pinjaman Masuk</span><span>{{ formatRupiah(report.summary.financing_receipts) }}</span></div>
             <div class="flex justify-between pt-2 border-t border-emerald-200 font-semibold">
               <span class="text-emerald-700">Total Penerimaan</span>
               <span class="text-emerald-700">{{ formatRupiah(report.summary.total_receipts) }}</span>
@@ -71,7 +73,7 @@
 
         <!-- Pengeluaran -->
         <AppCard>
-          <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Pengeluaran Operasi</h4>
+          <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Pengeluaran Kas</h4>
           <div class="space-y-2 text-sm">
             <div class="flex justify-between">
               <span class="text-gray-600">Pembelian Bahan Baku</span>
@@ -99,6 +101,7 @@
               <span class="text-gray-600">Refund Uang Muka Reservasi</span>
               <span class="font-medium text-red-600">{{ formatRupiah(report.summary.deposit_refunds) }}</span>
             </div>
+            <div class="flex justify-between"><span class="text-gray-600">Pengembalian Modal / Pinjaman</span><span class="text-red-600">{{ formatRupiah(report.summary.financing_payments) }}</span></div>
             <div class="flex justify-between pt-2 border-t border-red-200 font-semibold">
               <span class="text-red-600">Total Pengeluaran</span>
               <span class="text-red-600">{{ formatRupiah(report.summary.total_payments) }}</span>
@@ -142,6 +145,10 @@
           <template #cell-project_payments="{ row }">
             <span class="text-red-600">{{ formatRupiah(row.project_payments) }}</span>
           </template>
+          <template #cell-supplier_refunds="{ row }">{{ formatRupiah(row.supplier_refunds) }}</template>
+          <template #cell-financing_receipts="{ row }">{{ formatRupiah(row.financing_receipts) }}</template>
+          <template #cell-financing_payments="{ row }">{{ formatRupiah(row.financing_payments) }}</template>
+          <template #cell-deposit_refunds="{ row }">{{ formatRupiah(row.deposit_refunds) }}</template>
           <template #cell-net_cash_flow="{ row }">
             <span :class="row.net_cash_flow >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold'">
               {{ formatRupiah(row.net_cash_flow) }}
@@ -186,6 +193,10 @@ const DAILY_COLS = [
   { key: 'opex_payments',    label: 'Opex', align: 'right' },
   { key: 'capex_payments',   label: 'Modal', align: 'right' },
   { key: 'project_payments', label: 'Projek', align: 'right' },
+  { key: 'supplier_refunds', label: 'Refund Supplier', align: 'right' },
+  { key: 'financing_receipts', label: 'Modal / Pinjaman Masuk', align: 'right' },
+  { key: 'financing_payments', label: 'Pelunasan Modal / Pinjaman', align: 'right' },
+  { key: 'deposit_refunds', label: 'Refund DP', align: 'right' },
   { key: 'net_cash_flow',    label: 'Arus Bersih', align: 'right' },
 ]
 

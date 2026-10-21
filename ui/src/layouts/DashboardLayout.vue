@@ -395,6 +395,19 @@ const NAV_ITEMS_DATA = [
     ],
   },
   {
+    label: 'Keuangan',
+    icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M3 5h18v14H3V5ZM3 9h18M6 15h4"/></svg>`,
+    children: [
+      { to: '/finance-operations', label: 'Operasional Keuangan', permission: 'finance.entries.view' },
+      { to: '/procurement-payments',  label: 'Pembayaran', permission: 'finance.payments.view' },
+      { to: '/general-ledger',       label: 'Buku Besar', permission: 'reports.ledger.view' },
+      { to: '/cash-flow-report',     label: 'Pemasukan & Pengeluaran', permission: 'reports.cashflow.view' },
+      { to: '/profit-loss-report',   label: 'Profit & Loss', permission: 'reports.pnl.view' },
+      { to: '/balance-report',       label: 'Laporan Neraca', permission: 'reports.balance.view' },
+      { to: '/bank-accounts',         label: 'Data Rekening', permission: 'finance.bank.view' },
+    ],
+  },
+  {
     label: 'Laporan',
     icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"
@@ -404,18 +417,12 @@ const NAV_ITEMS_DATA = [
       { to: '/sales-report',         label: 'Pendapatan', permission: 'reports.sales.view' },
       { to: '/cashier-shifts',       label: 'Shift Kasir', permission: 'cashier_shifts.view' },
       { to: '/shift-reconciliation', label: 'Rekonsiliasi Shift', permission: 'shift_reconciliation.view' },
-      { to: '/procurement-payments',  label: 'Pembayaran', permission: 'finance.payments.view' },
       { to: '/product-sales-report', label: 'Penjualan Produk', permission: 'reports.product_sales.view' },
-      { to: '/general-ledger',       label: 'Buku Besar', permission: 'reports.ledger.view' },
-      { to: '/cash-flow-report',     label: 'Pemasukan & Pengeluaran', permission: 'reports.cashflow.view' },
-      { to: '/profit-loss-report',   label: 'Profit & Loss', permission: 'reports.pnl.view' },
-      { to: '/balance-report',       label: 'Laporan Neraca', permission: 'reports.balance.view' },
       { to: '/tax-report',           label: 'Laporan Pajak', permission: 'reports.tax.view' },
       { to: '/void-report',          label: 'Void & Titipan', permission: ['reports.void.view', 'reports.titipan.view'] },
       { to: '/discount-report',      label: 'Diskon & Komplimen', permission: 'reports.discount.view' },
       { to: '/business-analysis',    label: 'Analisa Bisnis', permission: 'reports.business_analysis.view' },
       { to: '/social-performance',   label: 'Kinerja Markom', permission: 'social.view' },
-      { to: '/bank-accounts',         label: 'Data Rekening', permission: 'finance.bank.view' },
     ],
   },
   {

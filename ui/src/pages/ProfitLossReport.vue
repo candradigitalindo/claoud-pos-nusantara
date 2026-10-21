@@ -41,6 +41,11 @@
     </div>
 
     <template v-if="!loading && report">
+      <AppAlert v-if="report.review_count" type="warning">
+        {{ report.review_count }} pencatatan perlu ditinjau di Operasional Keuangan.
+        <span v-if="report.uncosted_sales">{{ report.uncosted_sales }} penjualan belum memiliki pemakaian stok tertaut; HPP dan laba belum lengkap. Lengkapi pemetaan produk, resep, dan nilai persediaan.</span>
+      </AppAlert>
+      <FinanceAccountTotals :accounts="report.accounts" />
       <!-- F&B Profit & Loss Statement -->
       <AppCard>
         <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wide mb-4">Laporan Laba Rugi F&B</h3>
@@ -62,7 +67,7 @@
 
           <!-- HPP -->
           <div class="flex justify-between py-1.5 mt-2">
-            <span class="text-gray-600 pl-4">Harga Pokok Penjualan (Bahan Baku)</span>
+            <span class="text-gray-600 pl-4">HPP Bahan / Produk Terjual</span>
             <span class="font-medium text-red-600">{{ formatRupiah(report.summary.cogs) }}</span>
           </div>
           <div class="flex justify-between py-2 border-t border-gray-200 font-semibold">
@@ -121,7 +126,8 @@
              "hilang" dari pandangan pembaca. -->
         <div v-if="(report.summary.capex_payments || 0) + (report.summary.project_payments || 0) > 0"
           class="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-          <p class="font-semibold text-gray-700">Tidak dibebankan pada periode ini (menjadi aset, lihat Neraca)</p>
+          <p class="font-semibold text-gray-700">Pembayaran pengadaan modal / projek</p>
+          <p>Pengaruhnya ke beban mengikuti penerimaan habis pakai, pelepasan, atau penyusutan aset.</p>
           <div class="mt-1 flex justify-between"><span>Belanja Modal (peralatan → aset tetap)</span><span>{{ formatRupiah(report.summary.capex_payments) }}</span></div>
           <div class="flex justify-between"><span>Belanja Projek (→ projek berjalan)</span><span>{{ formatRupiah(report.summary.project_payments) }}</span></div>
         </div>
@@ -180,6 +186,7 @@
 </template>
 
 <script setup>
+import FinanceAccountTotals from '@/components/FinanceAccountTotals.vue'
 import { ref, onMounted, watch } from 'vue'
 import { salesApi }    from '@/api/sales.js'
 import { outletsApi }  from '@/api/outlets.js'

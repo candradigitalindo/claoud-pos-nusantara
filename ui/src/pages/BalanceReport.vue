@@ -30,6 +30,8 @@
     </div>
 
     <template v-if="!loading && report">
+      <p class="text-sm text-gray-500">Saldo kumulatif sampai tanggal akhir periode, termasuk saldo dari periode sebelumnya.</p>
+      <FinanceAccountTotals :accounts="report.accounts" />
       <!-- Neraca: Aset = Kewajiban + Ekuitas -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -61,7 +63,7 @@
             <div class="flex justify-between items-center py-2 border-b border-gray-100">
               <div>
                 <p class="text-sm font-medium text-gray-700">Persediaan</p>
-                <p class="text-xs text-gray-400">Nilai buku stok gudang saat ini (qty × rata-rata biaya)</p>
+                <p class="text-xs text-gray-400">Nilai buku persediaan, karantina, dan pengiriman (qty × rata-rata biaya)</p>
               </div>
               <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.inventory) }}</span>
             </div>
@@ -100,7 +102,7 @@
               <div class="flex justify-between items-center py-2 border-b border-gray-100">
                 <div>
                   <p class="text-sm font-medium text-gray-700">Hutang Usaha</p>
-                  <p class="text-xs text-gray-400">Pengadaan disetujui belum dibayar</p>
+                  <p class="text-xs text-gray-400">Hutang pengadaan dan operasional yang belum dilunasi</p>
                 </div>
                 <span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.accounts_payable) }}</span>
               </div>
@@ -114,11 +116,12 @@
               <div class="flex justify-between items-center py-2 border-b border-gray-100">
                 <div>
                   <p class="text-sm font-medium text-gray-700">Hutang Pajak Restoran</p>
-                  <p class="text-xs text-gray-400">PB1 10% inklusif dari pendapatan</p>
+                  <p class="text-xs text-gray-400">Pajak transaksi yang belum disetorkan</p>
                 </div>
                 <span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.tax_payable) }}</span>
               </div>
             </div>
+            <div class="flex justify-between items-center py-2"><span class="text-sm text-gray-700">Pinjaman</span><span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.financing_liabilities) }}</span></div>
             <div class="flex justify-between items-center pt-4 mt-2 border-t-2 border-red-200">
               <span class="text-sm font-bold text-red-600">Total Kewajiban</span>
               <span class="text-base font-bold text-red-600">{{ formatRupiah(report.total_liabilities) }}</span>
@@ -134,7 +137,7 @@
               Ekuitas
             </h3>
             <div class="flex justify-between items-center pt-2">
-              <span class="text-sm font-medium text-gray-700">Modal Pemilik (Aset − Kewajiban)</span>
+              <span class="text-sm font-medium text-gray-700">Ekuitas termasuk hasil usaha (Aset − Kewajiban)</span>
               <span class="text-sm font-semibold" :class="report.total_equity >= 0 ? 'text-blue-700' : 'text-red-600'">
                 {{ formatRupiah(report.total_equity) }}
               </span>
@@ -172,11 +175,11 @@
             <p class="font-semibold text-gray-800">{{ formatRupiah(report.total_revenue) }}</p>
           </div>
           <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Pemasukan Kas</p>
+            <p class="text-xs text-gray-500 mb-1">Pendapatan Lainnya</p>
             <p class="font-semibold text-gray-800">{{ formatRupiah(report.total_cash_in) }}</p>
           </div>
           <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Pengeluaran Kas</p>
+            <p class="text-xs text-gray-500 mb-1">Beban</p>
             <p class="font-semibold text-red-600">{{ formatRupiah(report.total_expense) }}</p>
           </div>
           <div class="p-3 bg-gray-50 rounded-lg">
@@ -222,6 +225,7 @@
 </template>
 
 <script setup>
+import FinanceAccountTotals from '@/components/FinanceAccountTotals.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { salesApi }    from '@/api/sales.js'
 import { formatRupiah, todayDateString } from '@/utils/format.js'

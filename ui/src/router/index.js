@@ -60,6 +60,7 @@ const CashFlowReport      = () => import('@/pages/CashFlowReport.vue')
 const BalanceReport       = () => import('@/pages/BalanceReport.vue')
 const ProfitLossReport    = () => import('@/pages/ProfitLossReport.vue')
 const GeneralLedger       = () => import('@/pages/GeneralLedger.vue')
+const FinanceOperations   = () => import('@/pages/FinanceOperations.vue')
 const VoidReport          = () => import('@/pages/VoidReport.vue')
 const DiscountReport      = () => import('@/pages/DiscountReport.vue')
 const BusinessAnalysis    = () => import('@/pages/BusinessAnalysis.vue')
@@ -269,6 +270,12 @@ const routes = [
         name: 'TaxReport',
         component: TaxReport,
         meta: { title: 'Laporan Pajak — Cloud POS', requiresAuth: true, permission: 'reports.tax.view' },
+      },
+      {
+        path: 'finance-operations',
+        name: 'FinanceOperations',
+        component: FinanceOperations,
+        meta: { title: 'Operasional Keuangan — Cloud POS', requiresAuth: true, permission: 'finance.entries.view' },
       },
       {
         path: 'cash-flow-report',

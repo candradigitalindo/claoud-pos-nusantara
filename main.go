@@ -44,6 +44,9 @@ func main() {
 	if err := database.RunStockQualityMigrations(); err != nil {
 		log.Fatalf("Stock quality migration failed: %v", err)
 	}
+	if err := database.RunFinanceMigrations(); err != nil {
+		log.Fatalf("Finance migration failed: %v", err)
+	}
 
 	// Pemotongan bahan (satu bahan → beberapa hasil): template + dokumen.
 	// Tidak fatal: kegagalannya hanya mematikan fitur pemotongan, sedangkan
