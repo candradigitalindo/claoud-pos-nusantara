@@ -219,9 +219,10 @@ type StockTransferRequest struct {
 }
 
 type StockTransferItemReq struct {
-	ItemID  string  `json:"item_id"`
-	QtyDist float64 `json:"qty_dist"`
-	Notes   string  `json:"notes"`
+	ItemID   string  `json:"item_id"`
+	QtyDist  float64 `json:"qty_dist"`  // jumlah dalam unit_used
+	UnitUsed string  `json:"unit_used"` // kosong = satuan distribusi (klien lama)
+	Notes    string  `json:"notes"`
 }
 
 // ── Product Recipe ────────────────────────────────────────────

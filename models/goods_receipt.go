@@ -4,10 +4,12 @@ package models
 
 // GoodsReceiptItemReq — satu baris pada form penerimaan.
 type GoodsReceiptItemReq struct {
-	ItemID      string  `json:"item_id"`
-	QtyDist     float64 `json:"qty_dist"`      // jumlah dalam satuan beli/distribusi
-	CostPerBase float64 `json:"cost_per_base"` // harga per satuan dasar
-	ExpiryDate  string  `json:"expiry_date"`   // opsional, YYYY-MM-DD
+	ItemID      string   `json:"item_id"`
+	QtyDist     float64  `json:"qty_dist"`      // jumlah dalam unit_used
+	UnitUsed    string   `json:"unit_used"`     // kosong = satuan distribusi (klien lama)
+	CostPerBase float64  `json:"cost_per_base"` // harga per satuan dasar
+	CostPerUnit *float64 `json:"cost_per_unit"` // opsional: harga per satuan yang dipilih
+	ExpiryDate  string   `json:"expiry_date"`   // opsional, YYYY-MM-DD
 	// PRItemKey menautkan baris ini ke sub-item pengajuan asalnya, supaya
 	// rekonsiliasi "sudah dicatat berapa" tidak perlu menebak lewat nama.
 	PRItemKey string `json:"pr_item_key,omitempty"`

@@ -109,7 +109,7 @@
             <p v-if="selectedItem" class="text-[11px] text-gray-500 mt-1">
               Konversi ke Satuan Dasar: 
               <span class="font-mono font-bold text-emerald-600">
-                {{ (form.qty_dist * (form.unit_used === selectedItem.dist_unit ? selectedItem.dist_ratio : 1)).toFixed(3) }} {{ selectedItem.base_unit }}
+                {{ (form.qty_dist * stockUnitRatio(selectedItem, form.unit_used)).toFixed(4) }} {{ selectedItem.base_unit }}
               </span>
             </p>
           </div>
@@ -158,6 +158,7 @@ import AppPagination from '@/components/ui/AppPagination.vue'
 import AppTable      from '@/components/ui/AppTable.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import DateRangePicker from '@/components/ui/DateRangePicker.vue'
+import { preferredStockUnit, stockUnitRatio } from '@/utils/stockUnits'
 
 
 const toast = useToastStore()
@@ -256,7 +257,7 @@ const fetchMetadata = async () => {
     const whList = Array.isArray(whRes) ? whRes : (whRes?.data || [])
     warehouseOptions.value = [
       { id: '', name: 'Semua Gudang' },
-      ...whList.map(w => ({ id: w.id, name: `${w.name} (${w.code})` }))
+      ...whList.map(w => ({ id: w.id, name: `${w.name} (${w.code})`, type: w.type }))
     ]
 
     const itemList = Array.isArray(itemRes) ? itemRes : (itemRes?.data || [])
@@ -292,7 +293,7 @@ const onItemChange = (val) => {
 
   selectedItem.value = item
   if (item) {
-    form.unit_used = item.dist_unit || item.base_unit
+    form.unit_used = preferredStockUnit(item, warehouseOptions.value.find(w => w.id === form.warehouse_id)?.type)
   }
 }
 

@@ -91,16 +91,16 @@
         <template #cell-qty_base="{ row }">
           <div>
             <div :class="['font-semibold', row.is_low ? 'text-red-600' : 'text-gray-900']">
-              {{ row.qty_base.toFixed(3) }} {{ row.base_unit }}
+              {{ stockQtyText(row, row.qty_base, row.warehouse_type) }}
               <span v-if="row.is_low" class="ml-1 text-xs text-red-400">(Rendah!)</span>
             </div>
             <div v-if="row.dist_unit !== row.base_unit" class="text-xs text-gray-400">
-              ≈ {{ row.qty_dist.toFixed(2) }} {{ row.dist_unit_label || row.dist_unit }}
+              = {{ stockQtyText(row, row.qty_base, row.warehouse_type === 'central' ? 'outlet' : 'central') }}
             </div>
           </div>
         </template>
         <template #cell-avg_cost="{ row }">
-          {{ formatRupiah(row.avg_cost) }}/{{ row.base_unit }}
+          {{ formatRupiah(row.avg_cost * stockUnitRatio(row, preferredStockUnit(row, row.warehouse_type))) }}/{{ stockUnitLabel(row, preferredStockUnit(row, row.warehouse_type)) }}
         </template>
         <template #cell-stock_value="{ row }">
           <span class="font-medium">{{ formatRupiah(row.stock_value) }}</span>
@@ -151,7 +151,10 @@
                 </span>
               </td>
               <td :class="['px-3 py-2 text-right font-mono font-medium', m.qty_base >= 0 ? 'text-emerald-700' : 'text-red-600']">
-                {{ m.qty_base >= 0 ? '+' : '' }}{{ m.qty_base.toFixed(3) }} {{ m.unit_used }}
+                {{ m.qty_base >= 0 ? '+' : '' }}{{ m.qty_base.toFixed(3) }} {{ movTarget?.base_unit }}
+                <div v-if="m.unit_used && m.unit_used !== movTarget?.base_unit" class="text-xs text-gray-400">
+                  {{ m.qty_dist }} {{ m.unit_used }}
+                </div>
               </td>
               <td class="px-3 py-2 text-right font-mono text-gray-700">{{ m.balance_after.toFixed(3) }}</td>
               <td class="px-3 py-2 text-gray-500 text-xs">{{ m.ref_number || '—' }}</td>
@@ -184,9 +187,15 @@
             </label>
           </div>
         </div>
-        <AppInput v-model.number="adjForm.qty_base" :label="`Qty (${adjustTarget?.base_unit})`" type="number" step="0.001" placeholder="0" />
-        <AppInput v-if="adjForm.movement_type === 'purchase_in'" v-model.number="adjForm.cost_per_base"
-          :label="`HPP per ${adjustTarget?.base_unit}`" type="number" step="1" placeholder="0" />
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Satuan Input</label>
+          <select v-model="adjustUnit" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <option v-for="unit in stockUnitOptions(adjustTarget)" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
+          </select>
+        </div>
+        <AppInput v-model.number="adjustQty" :label="`Qty (${adjustUnit})`" type="number" step="0.0001" placeholder="0" />
+        <AppInput v-if="adjForm.movement_type === 'purchase_in'" v-model.number="adjustCost"
+          :label="`HPP per ${adjustUnit}`" type="number" step="0.01" placeholder="0" />
         <AppInput v-if="['purchase_in', 'adjustment', 'return_in'].includes(adjForm.movement_type)" 
           v-model="adjForm.expiry_date" label="Tanggal Kadaluarsa" type="date" />
         <AppInput v-model="adjForm.notes" label="Keterangan" placeholder="Opsional" />
@@ -400,6 +409,7 @@
 </template>
 
 <script setup>
+import { stockQtyText, stockUnitOptions, stockUnitRatio, stockUnitLabel, preferredStockUnit } from '@/utils/stockUnits.js'
 import { computed, ref, watch, onMounted } from 'vue'
 import { warehousesApi, stockLedgerApi, stockItemsApi, stockBreakdownsApi } from '@/api/warehouse.js'
 import { useToastStore } from '@/stores/toast.js'
@@ -449,6 +459,16 @@ const movDateTo = ref('')
 const showAdjust = ref(false)
 const adjustTarget = ref(null)
 const adjForm = ref({ movement_type: 'purchase_in', qty_base: 0, cost_per_base: 0, notes: '' })
+const adjustUnit = ref('')
+const adjustRatio = computed(() => stockUnitRatio(adjustTarget.value, adjustUnit.value))
+const adjustQty = computed({
+  get: () => Number((adjForm.value.qty_base / adjustRatio.value).toFixed(4)),
+  set: value => { adjForm.value.qty_base = Number(value) * adjustRatio.value },
+})
+const adjustCost = computed({
+  get: () => Number((adjForm.value.cost_per_base * adjustRatio.value).toFixed(4)),
+  set: value => { adjForm.value.cost_per_base = Number(value) / adjustRatio.value },
+})
 
 // Produce
 const showProduce = ref(false)
@@ -815,6 +835,7 @@ async function loadMovements() {
 
 function openAdjust(row) {
   adjustTarget.value = row
+  adjustUnit.value = preferredStockUnit(row, row.warehouse_type)
   adjForm.value = { movement_type: 'purchase_in', qty_base: 0, cost_per_base: 0, expiry_date: '', notes: '' }
   showAdjust.value = true
 }

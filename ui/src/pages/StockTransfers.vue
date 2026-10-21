@@ -162,13 +162,19 @@
               />
             </div>
             <div class="w-28">
-              <label class="block text-xs text-gray-500 mb-1">Qty ({{ it.unit_label || 'unit' }})</label>
+              <label class="block text-xs text-gray-500 mb-1">Jumlah</label>
               <input v-model.number="it.qty_dist" type="number" step="0.01" min="0"
                 class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
             </div>
+            <div class="w-28">
+              <label class="block text-xs text-gray-500 mb-1">Satuan</label>
+              <select v-model="it.unit_used" class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2">
+                <option v-for="unit in stockUnitOptions(stockItemMap[it.item_id])" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
+              </select>
+            </div>
             <div class="flex-1 sm:flex-none sm:w-28 text-xs text-gray-400 pb-2">
               <span v-if="it.qty_dist && it.dist_ratio">
-                = {{ (it.qty_dist * it.dist_ratio).toFixed(3) }} {{ it.base_unit }}
+                = {{ (it.qty_dist * stockUnitRatio(stockItemMap[it.item_id], it.unit_used)).toFixed(3) }} {{ it.base_unit }}
               </span>
             </div>
             <button @click="removeItem(i)" class="pb-2 text-red-400 hover:text-red-600 text-lg leading-none">×</button>
@@ -223,7 +229,7 @@
             <tr v-for="it in detail.items" :key="it.id" class="hover:bg-gray-50">
               <td class="px-3 py-2 font-medium">{{ it.item_name }}</td>
               <td class="px-3 py-2 text-right">
-                {{ it.qty_dist }} {{ it.dist_unit_label || it.dist_unit }}
+                {{ it.qty_dist }} {{ it.unit_used }}
                 <span class="text-gray-400">({{ it.qty_base.toFixed(3) }} {{ it.base_unit }})</span>
               </td>
               <td v-if="isReceiving" class="px-3 py-2 text-right">
@@ -233,6 +239,7 @@
                   :placeholder="it.qty_base.toFixed(3)"
                   @blur="saveReceivedQty(it)"
                   class="w-24 text-sm border border-gray-200 rounded px-2 py-1 text-right focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                <span class="ml-1 text-xs text-gray-500">{{ it.base_unit }}</span>
               </td>
             </tr>
           </tbody>
@@ -272,6 +279,7 @@
 </template>
 
 <script setup>
+import { stockUnitOptions, stockUnitRatio, preferredStockUnit } from '@/utils/stockUnits.js'
 import { ref, computed, watch, onMounted } from 'vue'
 import { warehousesApi, stockItemsApi, stockTransfersApi } from '@/api/warehouse.js'
 import { useToastStore } from '@/stores/toast.js'
@@ -479,7 +487,7 @@ watch(() => form.value.to_warehouse_id, (nextValue) => {
 onMounted(() => { load(); loadWarehouses(); loadFormWarehouses(); loadStockItems() })
 
 function addItem() {
-  form.value.items.push({ item_id: '', qty_dist: 0, notes: '', dist_ratio: 1, base_unit: '', unit_label: '' })
+  form.value.items.push({ item_id: '', qty_dist: 0, unit_used: '', notes: '', dist_ratio: 1, base_unit: '', unit_label: '' })
 }
 function removeItem(i) {
   form.value.items.splice(i, 1)
@@ -490,6 +498,7 @@ function onItemSelect(it) {
     it.dist_ratio = s.dist_ratio
     it.base_unit = s.base_unit
     it.unit_label = s.dist_unit_label || s.dist_unit
+    it.unit_used = preferredStockUnit(s, selectedFromWarehouse.value?.type)
   }
 }
 

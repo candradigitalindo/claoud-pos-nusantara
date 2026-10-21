@@ -73,6 +73,7 @@
           </div>
           <div class="mcard-body">
             <p class="row-name">{{ p.name }}</p>
+            <p class="row-desc">{{ productRecipeLabel(p) }}</p>
             <p class="mcard-meta">
               <span v-if="p.code" class="row-code">{{ p.code }}</span>
               <span v-if="p.category_name" class="tag-category">{{ p.category_name }}</span>
@@ -124,6 +125,7 @@
                 </td>
                 <td>
                   <span class="row-name">{{ p.name }}</span>
+                  <span class="row-desc">{{ productRecipeLabel(p) }}</span>
                   <span v-if="p.description" class="row-desc">{{ p.description }}</span>
                 </td>
                 <td>
@@ -314,6 +316,27 @@
               </div>
             </div>
             <div class="form-group">
+              <label>Resep (opsional)</label>
+              <SearchSelect
+                v-model="formProd.recipe_master_id"
+                :options="recipeModalOptions"
+                :disabled="!formProdOutletId || loadingRecipes"
+                :placeholder="loadingRecipes ? 'Memuat resep…' : 'Tanpa resep'"
+                searchPlaceholder="Cari resep…"
+                @change="recipeSelectionChanged = true"
+              />
+              <span v-if="!formProdOutletId" class="form-hint">Pilih outlet untuk melihat resep yang tersedia.</span>
+              <span v-else-if="recipeLoadError" class="form-hint text-red-600" role="alert">
+                {{ recipeLoadError }}
+                <button type="button" class="underline" @click="fetchRecipeOptions(formProdOutletId)">Coba lagi</button>
+              </span>
+              <span v-else-if="currentRecipeUnavailable" class="form-hint">Resep tertaut tidak tersedia dalam pilihan outlet. Anda dapat mempertahankan atau melepas tautannya.</span>
+              <span v-else-if="formProd.recipe_master_id" class="form-hint">Bahan dipotong sesuai resep saat penjualan tersinkron. Takaran resep berlaku untuk 1 produk terjual.</span>
+              <span v-else-if="!recipeSelectionChanged && editingProd?.stock_type === 'single'" class="form-hint">Produk ini memakai stok langsung. Memilih resep akan mengganti pengaturan tersebut.</span>
+              <span v-else-if="!recipeSelectionChanged && editingProd?.stock_type === 'recipe'" class="form-hint">Produk ini memakai resep khusus. Pilih master resep untuk menggantinya, atau pilih Tanpa resep untuk melepasnya.</span>
+              <span v-else class="form-hint">Produk bisa dijual tanpa resep. Tidak ada pemotongan bahan berdasarkan resep.</span>
+            </div>
+            <div class="form-group">
               <label>Foto Produk</label>
               <div class="photo-row">
                 <div class="photo-thumb">
@@ -448,7 +471,12 @@ function onPriceInput(e) {
 const showProdModal = ref(false)
 const editingProd   = ref(null)
 const savingProd    = ref(false)
-const formProd      = ref({ outlet_id: '', name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '' })
+const formProd      = ref({ outlet_id: '', name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '' })
+const recipeOptions = ref([])
+const loadingRecipes = ref(false)
+const recipeLoadError = ref('')
+const recipeSelectionChanged = ref(false)
+let recipeRequest = 0
 const photoFile     = ref(null)
 const photoPreview  = ref('')
 const photoRemoved  = ref(false)
@@ -459,6 +487,24 @@ const formProdOutletId = computed(() => editingProd.value ? editingProd.value.ou
 // Options for SearchSelect components
 const outletFilterOptions = computed(() => [{ id: '', name: 'Semua Outlet' }, ...outlets.value])
 const categoryModalOptions = computed(() => [{ id: '', name: 'Tanpa Kategori' }, ...outletCategories.value])
+const recipeModalOptions = computed(() => {
+  const options = [{ id: '', name: 'Tanpa resep' }, ...recipeOptions.value]
+  const current = editingProd.value
+  if (current?.recipe_master_id && !options.some(r => r.id === current.recipe_master_id)) {
+    options.push({ id: current.recipe_master_id, name: current.recipe_master_name || 'Resep tertaut' })
+  }
+  return options
+})
+const currentRecipeUnavailable = computed(() => !loadingRecipes.value && !recipeLoadError.value &&
+  formProd.value.recipe_master_id && formProd.value.recipe_master_id === editingProd.value?.recipe_master_id &&
+  !recipeOptions.value.some(r => r.id === formProd.value.recipe_master_id))
+
+function productRecipeLabel(product) {
+  if (product.recipe_master_id) return `Resep: ${product.recipe_master_name || 'Resep tertaut'}`
+  if (product.stock_type === 'single') return 'Stok langsung'
+  if (product.stock_type === 'recipe') return 'Resep khusus produk'
+  return 'Tanpa resep'
+}
 
 // ── CRUD — Category ───────────────────────────────────────
 const showCatModal = ref(false)
@@ -554,14 +600,33 @@ async function fetchOutletCategories(outletId) {
   } catch { outletCategories.value = [] }
 }
 
+async function fetchRecipeOptions(outletId) {
+  const request = ++recipeRequest
+  recipeOptions.value = []
+  recipeLoadError.value = ''
+  loadingRecipes.value = !!outletId
+  if (!outletId) return
+  try {
+    const result = await productsApi.recipeOptions(outletId)
+    if (request === recipeRequest) recipeOptions.value = result || []
+  } catch (e) {
+    if (request === recipeRequest) recipeLoadError.value = e?.message || 'Gagal memuat pilihan resep.'
+  } finally {
+    if (request === recipeRequest) loadingRecipes.value = false
+  }
+}
+
 // When outlet changes in the product form, re-fetch categories
 watch(formProdOutletId, (newId) => {
   fetchOutletCategories(newId)
+  fetchRecipeOptions(newId)
   // Reset category when outlet changes (only for new products)
   if (!editingProd.value) {
     formProd.value.category_id = ''
     formProd.value.category_name = ''
     formProd.value.code = ''
+    formProd.value.recipe_master_id = ''
+    recipeSelectionChanged.value = false
   }
 })
 
@@ -595,18 +660,22 @@ function clearPhoto() {
 
 function openCreateProd() {
   editingProd.value = null
-  formProd.value = { outlet_id: selectedOutlet.value, name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '' }
+  formProd.value = { outlet_id: selectedOutlet.value, name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '' }
+  recipeSelectionChanged.value = false
   priceDisplay.value = ''
   resetPhoto()
   fetchOutletCategories(selectedOutlet.value)
+  fetchRecipeOptions(selectedOutlet.value)
   showProdModal.value = true
 }
 function openEditProd(p) {
   editingProd.value = p
-  formProd.value = { outlet_id: p.outlet_id, name: p.name, code: p.code ?? '', description: p.description ?? '', category_id: p.category_id ?? '', category_name: p.category_name ?? '', price: p.price, photo_url: p.photo_url ?? '' }
+  formProd.value = { outlet_id: p.outlet_id, name: p.name, code: p.code ?? '', description: p.description ?? '', category_id: p.category_id ?? '', category_name: p.category_name ?? '', price: p.price, photo_url: p.photo_url ?? '', recipe_master_id: p.recipe_master_id || '' }
+  recipeSelectionChanged.value = false
   priceDisplay.value = p.price ? fmtRupiahInput(p.price) : ''
   resetPhoto()
   fetchOutletCategories(p.outlet_id)
+  fetchRecipeOptions(p.outlet_id)
   showProdModal.value = true
 }
 async function saveProd() {
@@ -618,6 +687,7 @@ async function saveProd() {
         name: formProd.value.name, code: formProd.value.code, description: formProd.value.description,
         category_id: formProd.value.category_id, category_name: formProd.value.category_name,
         price: formProd.value.price,
+        ...(recipeSelectionChanged.value ? { recipe_master_id: formProd.value.recipe_master_id } : {}),
       })
     } else {
       const created = await productsApi.createProduct({ ...formProd.value })
@@ -632,7 +702,7 @@ async function saveProd() {
     showProdModal.value = false
     await fetchProducts()
   } catch (e) {
-    alert(e?.response?.data?.error || 'Gagal menyimpan produk')
+    alert(e?.message || e?.response?.data?.error || 'Gagal menyimpan produk')
   } finally {
     savingProd.value = false
   }

@@ -6,6 +6,7 @@ import { apiClient } from './client.js'
 export const productsApi = {
   // ── Products ──────────────────────────────────────────────
   listProducts:   (params = {})      => apiClient.get('/admin/products', { params }),
+  recipeOptions: (outletId)         => apiClient.get('/admin/products/recipe-options', { params: { outlet_id: outletId } }),
   createProduct:  (data)             => apiClient.post('/admin/products', data),
   updateProduct:  (id, data)         => apiClient.put(`/admin/products/${id}`, data),
   deleteProduct:  (id)               => apiClient.delete(`/admin/products/${id}`),

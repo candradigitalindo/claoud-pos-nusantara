@@ -91,12 +91,15 @@
               <SearchSelect v-model="ln.item_id" :options="itemOptions" placeholder="Pilih item" searchPlaceholder="Cari item…" valueKey="value" labelKey="label" @change="onItemPick(ln)" />
             </div>
             <div class="col-span-4 sm:col-span-2">
-              <label class="lbl">Qty ({{ unitOf(ln.item_id) }})</label>
+              <label class="lbl">Jumlah</label>
               <input v-model.number="ln.qty_dist" type="number" min="0" step="0.01" class="form-input" />
+              <select :value="ln.unit_used" @change="changeLineUnit(ln, $event.target.value)" class="form-input mt-1" aria-label="Satuan penerimaan">
+                <option v-for="unit in stockUnitOptions(itemById(ln.item_id))" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
+              </select>
             </div>
             <div class="col-span-4 sm:col-span-3">
-              <label class="lbl">Harga / {{ baseUnitOf(ln.item_id) }}</label>
-              <input v-model.number="ln.cost_per_base" type="number" min="0" step="1" class="form-input" />
+              <label class="lbl">Harga / {{ ln.unit_used || 'unit' }}</label>
+              <input v-model.number="ln.cost_per_unit" type="number" min="0" step="0.01" class="form-input" />
             </div>
             <div class="col-span-4 sm:col-span-2">
               <label class="lbl">Kadaluarsa</label>
@@ -152,6 +155,7 @@
 </template>
 
 <script setup>
+import { stockUnitOptions, stockUnitRatio, preferredStockUnit } from '@/utils/stockUnits.js'
 import { ref, computed, onMounted, watch } from 'vue'
 import { goodsReceiptsApi, warehousesApi, stockItemsApi } from '@/api/warehouse.js'
 import { formatRupiah } from '@/utils/format.js'
@@ -188,21 +192,29 @@ const warehouseFilterOptions = computed(() => [{ value: '', label: 'Semua gudang
 const itemOptions = computed(() => items.value.map(it => ({ value: it.id, label: `${it.name} (${it.base_unit})` })))
 
 function itemById(id) { return items.value.find(x => x.id === id) }
-function unitOf(id) { const it = itemById(id); return it ? (it.dist_unit || it.base_unit) : 'unit' }
 function baseUnitOf(id) { const it = itemById(id); return it ? it.base_unit : 'unit' }
-function ratioOf(id) { const it = itemById(id); return it && it.dist_ratio > 0 ? it.dist_ratio : 1 }
-function baseQty(ln) { return (Number(ln.qty_dist) || 0) * ratioOf(ln.item_id) }
-function lineSubtotal(ln) { return baseQty(ln) * (Number(ln.cost_per_base) || 0) }
+function baseQty(ln) { return (Number(ln.qty_dist) || 0) * stockUnitRatio(itemById(ln.item_id), ln.unit_used) }
+function lineSubtotal(ln) { return (Number(ln.qty_dist) || 0) * (Number(ln.cost_per_unit) || 0) }
+function changeLineUnit(ln, unit) {
+  const item = itemById(ln.item_id)
+  const before = stockUnitRatio(item, ln.unit_used)
+  const after = stockUnitRatio(item, unit)
+  // Keep precision until submission: rounding 1/24 dus here would change 1 botol.
+  if (ln.qty_dist != null) ln.qty_dist = ln.qty_dist * before / after
+  if (ln.cost_per_unit != null) ln.cost_per_unit = ln.cost_per_unit * after / before
+  ln.unit_used = unit
+}
 const formTotal = computed(() => form.value.items.reduce((s, ln) => s + lineSubtotal(ln), 0))
 const canSubmit = computed(() => form.value.warehouse_id && form.value.items.length > 0 &&
   form.value.items.every(ln => ln.item_id && Number(ln.qty_dist) > 0))
 
 function onItemPick(ln) {
-  // Prefill harga dari avg_cost item bila ada & belum diisi.
+  // Sesuaikan satuan dan harga saat memilih barang baru.
   const it = itemById(ln.item_id)
-  if (it && !ln.cost_per_base && it.avg_cost > 0) ln.cost_per_base = it.avg_cost
+  ln.unit_used = preferredStockUnit(it, warehouses.value.find(w => w.id === form.value.warehouse_id)?.type)
+  ln.cost_per_unit = it ? (Number(it.avg_cost) || 0) * stockUnitRatio(it, ln.unit_used) : null
 }
-function addLine() { form.value.items.push({ item_id: '', qty_dist: null, cost_per_base: null, expiry_date: '' }) }
+function addLine() { form.value.items.push({ item_id: '', qty_dist: null, unit_used: '', cost_per_unit: null, expiry_date: '' }) }
 function openForm() {
   form.value = { warehouse_id: filterWarehouse.value || '', vendor_name: '', po_ref: '', notes: '', items: [] }
   addLine()
@@ -224,7 +236,8 @@ async function submit() {
       items: form.value.items.map(ln => ({
         item_id: ln.item_id,
         qty_dist: Number(ln.qty_dist) || 0,
-        cost_per_base: Number(ln.cost_per_base) || 0,
+        unit_used: ln.unit_used,
+        cost_per_unit: Number(ln.cost_per_unit) || 0,
         expiry_date: ln.expiry_date || '',
       })),
     }

@@ -108,6 +108,21 @@ func AdminGetCategories(c *fiber.Ctx) error {
 	})
 }
 
+func AdminProductRecipeOptions(c *fiber.Ctx) error {
+	outletID := strings.TrimSpace(c.Query("outlet_id"))
+	if outletID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Error: "Pilih outlet terlebih dahulu"})
+	}
+	if !validateOutletAccess(c, outletID) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Error: "Outlet di luar akses Anda"})
+	}
+	options, err := services.ListProductRecipeOptions(outletID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Error: "Gagal memuat pilihan resep"})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: options})
+}
+
 func AdminCreateProduct(c *fiber.Ctx) error {
 	var req models.AdminCreateProductRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -121,6 +136,9 @@ func AdminCreateProduct(c *fiber.Ctx) error {
 	}
 	p, err := services.AdminCreateProduct(req)
 	if err != nil {
+		if errors.Is(err, services.ErrProductRecipe) {
+			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Error: err.Error()})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: err.Error()})
 	}
 	return c.Status(fiber.StatusCreated).JSON(models.APIResponse{Success: true, Data: p})
@@ -139,6 +157,9 @@ func AdminUpdateProduct(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Outlet di luar akses Anda"})
 	}
 	if err := services.AdminUpdateProduct(id, req); err != nil {
+		if errors.Is(err, services.ErrProductRecipe) {
+			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Error: err.Error()})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: err.Error()})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"id": id}})

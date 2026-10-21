@@ -83,7 +83,7 @@
             </div>
             <div class="mt-2 flex items-center gap-4 text-xs">
               <span class="text-gray-500">Stok gudang:
-                <b v-if="row.in_warehouse" :class="row.warehouse_qty < row.warehouse_min_stock && row.warehouse_min_stock > 0 ? 'text-red-600' : 'text-gray-800'">{{ row.warehouse_qty.toFixed(2) }} {{ row.base_unit }}</b>
+                <b v-if="row.in_warehouse" :class="row.warehouse_qty < row.warehouse_min_stock && row.warehouse_min_stock > 0 ? 'text-red-600' : 'text-gray-800'">{{ stockQtyText(row, row.warehouse_qty, selectedWarehouse?.type) }}</b>
                 <span v-else class="text-gray-300 italic">belum ada</span>
               </span>
               <span class="text-gray-400">Global: {{ row.total_stock.toFixed(2) }} {{ row.base_unit }}</span>
@@ -104,25 +104,22 @@
         </template>
         <template #cell-unit="{ row }">
           <div class="text-xs leading-tight">
-            <span class="font-medium">{{ row.base_unit }}</span>
-            <span v-if="row.dist_unit !== row.base_unit" class="text-gray-400">
-              → {{ row.dist_unit_label || row.dist_unit }}
-              <span class="text-gray-300">(×{{ row.dist_ratio }})</span>
-            </span>
+            <span v-if="row.dist_unit !== row.base_unit" class="font-medium">1 {{ row.dist_unit_label || row.dist_unit }} = {{ row.dist_ratio }} {{ row.base_unit }}</span>
+            <span v-else class="font-medium">{{ row.base_unit }}</span>
           </div>
         </template>
         <template #cell-warehouse_qty="{ row }">
           <span v-if="row.in_warehouse" :class="['font-semibold', row.warehouse_qty < row.warehouse_min_stock && row.warehouse_min_stock > 0 ? 'text-red-600' : 'text-gray-800']">
-            {{ row.warehouse_qty.toFixed(2) }}
+            {{ stockQtyText(row, row.warehouse_qty, selectedWarehouse?.type) }}
           </span>
           <span v-else class="text-gray-300 italic text-sm">belum ada</span>
-          <span v-if="row.in_warehouse" class="text-[10px] text-gray-400 ml-1">{{ row.base_unit }}</span>
+          <div v-if="row.in_warehouse && row.dist_unit !== row.base_unit" class="text-[10px] text-gray-400">= {{ stockQtyText(row, row.warehouse_qty, isCentral ? 'outlet' : 'central') }}</div>
         </template>
         <template #cell-warehouse_min_stock="{ row }">
-          {{ row.warehouse_min_stock > 0 ? `${row.warehouse_min_stock} ${row.base_unit}` : '—' }}
+          {{ row.warehouse_min_stock > 0 ? stockQtyText(row, row.warehouse_min_stock, selectedWarehouse?.type) : '—' }}
         </template>
         <template #cell-warehouse_avg_cost="{ row }">
-          <span class="text-sm">{{ row.warehouse_avg_cost > 0 ? `${formatRupiah(row.warehouse_avg_cost)}/${row.base_unit}` : '—' }}</span>
+          <span class="text-sm">{{ row.warehouse_avg_cost > 0 ? `${formatRupiah(row.warehouse_avg_cost * stockUnitRatio(row, preferredStockUnit(row, selectedWarehouse?.type)))}/${stockUnitLabel(row, preferredStockUnit(row, selectedWarehouse?.type))}` : '—' }}</span>
         </template>
         <template #cell-total_stock="{ row }">
           <span class="text-sm text-gray-500">{{ row.total_stock.toFixed(2) }}</span>
@@ -234,10 +231,11 @@
                 :disabled="!catalogEditable"
               />
             </div>
-            <AppInput v-model="form.base_unit" label="Satuan Dasar (Beli)" placeholder="kg / liter / pcs" :disabled="!catalogEditable" />
-            <AppInput v-model="form.dist_unit" label="Satuan Distribusi (Kirim)" placeholder="kemasan / bungkus" :disabled="!catalogEditable" />
-            <AppInput v-model.number="form.dist_ratio" label="Isi per Kemasan" type="number" step="0.0001" placeholder="1" :disabled="!catalogEditable" />
-            <AppInput v-model="form.dist_unit_label" label="Label Kemasan" placeholder="Kemasan 500gr" :disabled="!catalogEditable" />
+            <AppInput v-model="form.base_unit" label="Satuan Dasar / Pemakaian Outlet" placeholder="botol / gram / kg / pcs" :disabled="!catalogEditable" />
+            <AppInput v-model="form.dist_unit" label="Satuan Kemasan / Gudang Induk" placeholder="dus / pak / karung" :disabled="!catalogEditable" />
+            <AppInput v-model.number="form.dist_ratio" :label="`Isi 1 ${form.dist_unit || 'kemasan'} dalam ${form.base_unit || 'satuan dasar'}`" type="number" min="0.0001" step="0.0001" placeholder="Contoh: 24" :disabled="!catalogEditable" />
+            <AppInput v-model="form.dist_unit_label" label="Label Kemasan (opsional)" placeholder="Dus 24 botol" :disabled="!catalogEditable" />
+            <p class="col-span-2 text-xs text-gray-500">Contoh: satuan dasar botol, kemasan dus, isi 24 berarti 1 dus = 24 botol. Satuan dan isi dapat berbeda untuk setiap barang.</p>
             <AppInput v-model="form.notes" label="Keterangan" placeholder="Catatan opsional…" :disabled="!catalogEditable" class="col-span-2" />
           </div>
         </div>
@@ -251,28 +249,34 @@
             <p class="text-sm font-semibold text-gray-700">{{ selectedWarehouse?.name }}</p>
           </div>
           <div class="grid grid-cols-2 gap-x-5 gap-y-4">
-            <AppInput v-model.number="form.warehouse_min_stock" label="Stok Minimal (gudang ini)" type="number" step="0.001" placeholder="0" />
+            <div class="col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Satuan Input Stok</label>
+              <select v-model="stockEntryUnit" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
+                <option v-for="unit in stockUnitOptions(form)" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
+              </select>
+            </div>
+            <AppInput v-model.number="entryMinStock" :label="`Stok Minimal (${stockEntryUnit || 'unit'})`" type="number" step="0.001" placeholder="0" />
 
             <!-- Create: opening stock -->
-            <AppInput v-if="!editTarget" v-model.number="form.opening_stock" label="Stok Awal (opsional)" type="number" step="0.001" placeholder="0" />
+            <AppInput v-if="!editTarget" v-model.number="entryOpeningStock" :label="`Stok Awal (${stockEntryUnit || 'unit'}, opsional)`" type="number" step="0.001" placeholder="0" />
             <!-- Edit: set/adjust stock to target -->
             <div v-else>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Sesuaikan Stok ke</label>
-              <input v-model="form.set_stock" type="number" step="0.001"
-                :placeholder="`Saat ini: ${Number(form.warehouse_qty || 0).toFixed(2)} ${form.base_unit}`"
+              <label class="block text-sm font-medium text-gray-700 mb-1">Sesuaikan Stok ke ({{ stockEntryUnit }})</label>
+              <input v-model="entrySetStock" type="number" step="0.001"
+                :placeholder="`Saat ini: ${(Number(form.warehouse_qty || 0) / stockEntryRatio).toFixed(4)} ${stockEntryUnit}`"
                 class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
               <p class="text-[11px] text-gray-400 mt-1">Kosongkan jika tidak mengubah stok.</p>
             </div>
 
             <!-- Cost (relevant when adding stock) -->
             <AppInput v-if="!editTarget ? form.opening_stock > 0 : (form.set_stock !== '' && form.set_stock != null)"
-              v-model.number="form.opening_cost" label="HPP per Satuan Dasar" type="number" step="0.01" placeholder="0" />
+              v-model.number="entryCost" :label="`HPP per ${stockEntryUnit || 'unit'}`" type="number" step="0.01" placeholder="0" />
 
             <!-- Current avg cost display -->
             <div v-if="editTarget" class="flex flex-col">
               <label class="block text-sm font-medium text-gray-700 mb-1">HPP Rata-rata (gudang ini)</label>
               <div class="text-sm font-semibold text-gray-800 px-3 py-2 bg-white rounded-lg ring-1 ring-gray-100">
-                {{ form.warehouse_avg_cost > 0 ? `${formatRupiah(form.warehouse_avg_cost)}/${form.base_unit}` : '—' }}
+                {{ form.warehouse_avg_cost > 0 ? `${formatRupiah(form.warehouse_avg_cost * stockEntryRatio)}/${stockEntryUnit}` : '—' }}
               </div>
             </div>
           </div>
@@ -451,7 +455,7 @@
                     {{ b.warehouse_type === 'central' ? 'Induk' : 'Outlet' }}
                   </span>
                 </td>
-                <td class="px-3 py-2 text-right font-mono font-bold">{{ b.qty_base.toFixed(2) }}</td>
+                <td class="px-3 py-2 text-right font-mono font-bold">{{ stockQtyText(b, b.qty_base, b.warehouse_type) }}</td>
               </tr>
             </tbody>
           </table>
@@ -645,6 +649,7 @@
 </template>
 
 <script setup>
+import { stockQtyText, stockUnitOptions, stockUnitRatio, stockUnitLabel, preferredStockUnit } from '@/utils/stockUnits.js'
 import { computed, ref, watch, onMounted } from 'vue'
 import { stockItemsApi, stockLedgerApi, warehousesApi, stockItemCategoriesApi, stockItemRecipesApi, stockBreakdownsApi } from '@/api/warehouse.js'
 import { useToastStore } from '@/stores/toast.js'
@@ -940,6 +945,27 @@ const centralWarehouses = computed(() => warehouseList.value.filter(w => w.type 
 const outletWarehouses  = computed(() => warehouseList.value.filter(w => w.type === 'outlet'))
 const selectedWarehouse = computed(() => warehouseMap.value[selectedWarehouseId.value] || null)
 const isCentral = computed(() => selectedWarehouse.value?.type === 'central')
+const stockInputUnit = ref('')
+const stockEntryUnit = computed({
+  get: () => stockUnitOptions(form.value).some(u => u.value === stockInputUnit.value)
+    ? stockInputUnit.value : preferredStockUnit(form.value, selectedWarehouse.value?.type),
+  set: unit => { stockInputUnit.value = unit },
+})
+const stockEntryRatio = computed(() => stockUnitRatio(form.value, stockEntryUnit.value))
+function quantityInEntryUnit(field) {
+  return computed({
+    get: () => form.value[field] === '' || form.value[field] == null ? form.value[field]
+      : Number((Number(form.value[field]) / stockEntryRatio.value).toFixed(4)),
+    set: value => { form.value[field] = value === '' || value == null ? value : Number(value) * stockEntryRatio.value },
+  })
+}
+const entryMinStock = quantityInEntryUnit('warehouse_min_stock')
+const entryOpeningStock = quantityInEntryUnit('opening_stock')
+const entrySetStock = quantityInEntryUnit('set_stock')
+const entryCost = computed({
+  get: () => Number((Number(form.value.opening_cost || 0) * stockEntryRatio.value).toFixed(4)),
+  set: value => { form.value.opening_cost = Number(value) / stockEntryRatio.value },
+})
 
 // ── Katalog stok global (T-20) ─────────────────────────────────
 // Definisi item (tambah, nama/satuan/kategori/distribusi, aktif-nonaktif,
@@ -1047,12 +1073,14 @@ async function openStockDetail(row) {
 
 function openCreate() {
   editTarget.value = null
+  stockInputUnit.value = ''
   form.value = EMPTY_FORM()
   showForm.value = true
   if (categories.value.length === 0) loadCategories()
 }
 function openEdit(row) {
   editTarget.value = row
+  stockInputUnit.value = ''
   form.value = {
     code: row.code, name: row.name, category: row.category,
     base_unit: row.base_unit, dist_unit: row.dist_unit,

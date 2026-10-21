@@ -237,6 +237,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Products & Categories — CRUD granular
 	admin.Get("/products", middleware.RequirePermission("products.view"), handlers.AdminGetProducts)
+	admin.Get("/products/recipe-options", middleware.RequireAnyPermission("products.create", "products.update"), handlers.AdminProductRecipeOptions)
 	admin.Get("/categories", middleware.RequirePermission("products.view"), handlers.AdminGetCategories)
 	admin.Post("/products", middleware.RequirePermission("products.create"), handlers.AdminCreateProduct)
 	admin.Put("/products/:id", middleware.RequirePermission("products.update"), handlers.AdminUpdateProduct)

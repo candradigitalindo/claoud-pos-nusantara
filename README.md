@@ -77,6 +77,46 @@ POS Outlet (pos-app.exe)
     └─ Pull: GET /updates?since=... ←── Cloud API ←── PostgreSQL
 ```
 
+## Resep produk (opsional)
+
+Di **Produk & Kategori → Tambah/Edit Produk**, pilih **Resep (opsional)**.
+Pilihan **Tanpa resep** tetap memungkinkan produk dijual. Master resep yang
+dipilih berlaku untuk satu produk terjual; bahan dipotong melalui sinkronisasi
+penjualan ketika transaksi membawa `product_id` dan outlet memiliki gudang aktif.
+Resep bisa diganti atau dilepas dari formulir yang sama.
+
+API `POST /admin/products` dan `PUT /admin/products/:id` menerima
+`recipe_master_id`. Pada PUT, field yang tidak dikirim atau bernilai `null`
+mempertahankan pengaturan stok; string kosong melepasnya. Sinkronisasi produk
+dari POS juga mempertahankan tautan yang diatur di cloud.
+
+`GET /admin/products/recipe-options?outlet_id=...` menyediakan ID dan nama resep
+untuk pemegang izin membuat/mengubah produk. Pilihan dibatasi ke resep publik
+atau resep rahasia yang diizinkan untuk outlet tujuan, dengan komposisi valid.
+Penautan diperiksa kembali di backend saat disimpan.
+
+## Dua satuan stok per barang
+
+Atur di **Item Stok → pilih Gudang Induk → Tambah/Edit Bahan**:
+`Satuan Dasar / Pemakaian Outlet`, `Satuan Kemasan / Gudang Induk`, dan isi
+kemasan. Contoh Cleo: dasar `botol`, kemasan `dus`, isi `24`. Setiap barang
+memiliki konversinya sendiri, termasuk rasio pecahan (misalnya botol ke liter).
+
+Saldo disimpan dalam satuan dasar. Daftar item dan buku stok menampilkan satuan
+kemasan di gudang induk, satuan dasar di outlet, serta jumlah ekuivalennya.
+Input saldo/minimum/HPP, penyesuaian, penerimaan, transfer, dan pembuangan bisa
+memakai salah satu satuan. Transfer 2 dus menjadi 48 botol di outlet;
+pembuangan 1 botol hanya mengurangi 1 botol. Penerimaan seharga Rp48.000/dus
+menyimpan HPP Rp2.000/botol. Resep tetap memakai satuan dasar bahan.
+
+API transfer, GRN, dan waste menerima `unit_used` bersama `qty_dist` (jumlah
+dalam satuan terpilih). Tanpa `unit_used`, input mengikuti satuan distribusi
+seperti klien lama. GRN menerima `cost_per_unit`; jika tidak dikirim, tetap
+memakai `cost_per_base`. API saldo dan penyesuaian tetap memakai jumlah/HPP
+satuan dasar. Transfer menyimpan hasil konversi saat dibuat sehingga perubahan
+isi kemasan tidak menghitung ulang dokumen yang sudah ada. Pengaturan ini
+menggunakan master barang yang sudah tersedia dan tidak mengubah saldo lama.
+
 ## CCTV outlet
 
 Halaman **Pengaturan → CCTV** mengelompokkan kamera menurut nama outlet,

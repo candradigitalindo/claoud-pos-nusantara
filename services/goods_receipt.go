@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -137,15 +138,26 @@ func CreateGoodsReceiptTx(tx *sql.Tx, req models.GoodsReceiptRequest, actor stri
 		).Scan(&name, &baseUnit, &distUnit, &distRatio); err != nil {
 			return "", fmt.Errorf("item stok tidak ditemukan: %w", err)
 		}
-		if distRatio <= 0 {
-			distRatio = 1
+		baseUnit = strings.TrimSpace(baseUnit)
+		qtyBase, unit, err := stockQuantityToBase(line.QtyDist, line.UnitUsed, baseUnit, distUnit, distRatio)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", name, err)
 		}
-		qtyBase := line.QtyDist * distRatio
-		subtotal := round2(qtyBase * line.CostPerBase)
+		costPerBase := line.CostPerBase
+		if line.CostPerUnit != nil {
+			costPerBase = *line.CostPerUnit
+			if unit != baseUnit {
+				costPerBase /= distRatio
+			}
+		}
+		if costPerBase < 0 || math.IsNaN(costPerBase) || math.IsInf(costPerBase, 0) {
+			return "", fmt.Errorf("harga %s tidak valid", name)
+		}
+		subtotal := round2(qtyBase * costPerBase)
 
-		if err := applyMovement(tx, line.ItemID, req.WarehouseID, "purchase_in", distUnit,
+		if err := applyMovement(tx, line.ItemID, req.WarehouseID, "purchase_in", unit,
 			grnID, "goods_receipt", grnNumber, req.Notes, actor,
-			qtyBase, line.QtyDist, line.CostPerBase, line.ExpiryDate); err != nil {
+			qtyBase, line.QtyDist, costPerBase, line.ExpiryDate); err != nil {
 			return "", fmt.Errorf("gagal posting stok %s: %w", name, err)
 		}
 
@@ -156,7 +168,7 @@ func CreateGoodsReceiptTx(tx *sql.Tx, req models.GoodsReceiptRequest, actor stri
 		if _, err := tx.Exec(`
 			INSERT INTO goods_receipt_items (id, receipt_id, item_id, item_name, qty_base, qty_dist, unit_used, cost_per_base, subtotal, expiry_date, pr_item_key)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-			NewULID(), grnID, line.ItemID, name, qtyBase, line.QtyDist, distUnit, line.CostPerBase, subtotal, expiry, line.PRItemKey,
+			NewULID(), grnID, line.ItemID, name, qtyBase, line.QtyDist, unit, costPerBase, subtotal, expiry, line.PRItemKey,
 		); err != nil {
 			return "", fmt.Errorf("gagal simpan baris GRN: %w", err)
 		}

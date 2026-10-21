@@ -3,6 +3,8 @@ package services
 import (
 	"cloud-pos/database"
 	"cloud-pos/models"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -52,6 +54,8 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 		`SELECT id, local_id, outlet_id, name, COALESCE(code,''), COALESCE(description,''),
 			COALESCE(category_id,''),
 			COALESCE(category_name,''), price, COALESCE(destination,''),
+			stock_type, COALESCE(recipe_master_id,''),
+			COALESCE((SELECT r.name FROM recipe_masters r WHERE r.id = cloud_products.recipe_master_id),''),
 			is_deleted, version, created_at, updated_at, synced_at
 		FROM cloud_products WHERE outlet_id = $1 AND is_deleted = false
 		ORDER BY name ASC LIMIT $2 OFFSET $3`,
@@ -67,6 +71,7 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 		var p models.CloudProduct
 		if err := rows.Scan(&p.ID, &p.LocalID, &p.OutletID, &p.Name, &p.Code, &p.Description,
 			&p.CategoryID, &p.CategoryName, &p.Price, &p.Destination,
+			&p.StockType, &p.RecipeMasterID, &p.RecipeMasterName,
 			&p.IsDeleted, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.SyncedAt); err != nil {
 			return nil, 0, err
 		}
@@ -117,9 +122,11 @@ func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int)
 			cp.name, COALESCE(cp.code,''), COALESCE(cp.description,''),
 			COALESCE(cp.category_id,''), COALESCE(cp.category_name,''),
 			cp.price, COALESCE(cp.destination,''), COALESCE(cp.photo_url,''),
+			cp.stock_type, COALESCE(cp.recipe_master_id,''), COALESCE(rm.name,''),
 			cp.is_deleted, cp.version, cp.created_at, cp.updated_at, cp.synced_at
 		FROM cloud_products cp
 		LEFT JOIN outlets o ON o.id = cp.outlet_id
+		LEFT JOIN recipe_masters rm ON rm.id = cp.recipe_master_id
 		%s ORDER BY o.name ASC, cp.name ASC LIMIT $%d OFFSET $%d`,
 		whereSQL, idx, idx+1,
 	)
@@ -134,6 +141,7 @@ func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int)
 		var p models.CloudProduct
 		if err := rows.Scan(&p.ID, &p.LocalID, &p.OutletID, &p.OutletName,
 			&p.Name, &p.Code, &p.Description, &p.CategoryID, &p.CategoryName, &p.Price, &p.Destination, &p.PhotoURL,
+			&p.StockType, &p.RecipeMasterID, &p.RecipeMasterName,
 			&p.IsDeleted, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.SyncedAt); err != nil {
 			return nil, 0, err
 		}
@@ -204,6 +212,45 @@ func GetAllCategories(outletID, search string, scopeIDs []string, page, limit in
 	return cats, total, rows.Err()
 }
 
+var ErrProductRecipe = errors.New("resep tidak tersedia untuk outlet produk atau komposisinya belum valid")
+
+// A recipe is optional, but a selected recipe must be available to the target
+// outlet and contain usable quantities before it can drive stock deductions.
+const productRecipeAvailable = `(r.visibility = 'public' OR (r.visibility = 'secret' AND EXISTS (
+	SELECT 1 FROM recipe_outlet_access a WHERE a.recipe_master_id = r.id AND a.outlet_id = $1)))
+	AND EXISTS (SELECT 1 FROM recipe_items i WHERE i.recipe_master_id = r.id)
+	AND NOT EXISTS (SELECT 1 FROM recipe_items i WHERE i.recipe_master_id = r.id
+		AND (i.qty_base <= 0 OR i.qty_base::text IN ('NaN', 'Infinity', '-Infinity')))`
+
+func ListProductRecipeOptions(outletID string) ([]models.ProductRecipeOption, error) {
+	rows, err := database.DB.Query(`SELECT r.id, r.name FROM recipe_masters r WHERE `+productRecipeAvailable+` ORDER BY r.name, r.id`, outletID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []models.ProductRecipeOption{}
+	for rows.Next() {
+		var r models.ProductRecipeOption
+		if err := rows.Scan(&r.ID, &r.Name); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+func validateProductRecipe(tx *sql.Tx, outletID, recipeID string) (string, error) {
+	if recipeID == "" {
+		return "", nil
+	}
+	var name string
+	err := tx.QueryRow(`SELECT r.name FROM recipe_masters r WHERE `+productRecipeAvailable+` AND r.id = $2 FOR SHARE OF r`, outletID, recipeID).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrProductRecipe
+	}
+	return name, err
+}
+
 func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProduct, error) {
 	if req.OutletID == "" || req.Name == "" {
 		return models.CloudProduct{}, fmt.Errorf("outlet_id and name are required")
@@ -228,15 +275,32 @@ func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProdu
 		req.Code = generateProductCode(req.OutletID, req.Name)
 	}
 
-	_, err := database.DB.Exec(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return models.CloudProduct{}, err
+	}
+	defer tx.Rollback()
+	recipeID := strings.TrimSpace(req.RecipeMasterID)
+	recipeName, err := validateProductRecipe(tx, req.OutletID, recipeID)
+	if err != nil {
+		return models.CloudProduct{}, err
+	}
+	stockType := "none"
+	if recipeID != "" {
+		stockType = "recipe"
+	}
+	_, err = tx.Exec(
 		`INSERT INTO cloud_products
 			(id, local_id, outlet_id, name, code, description, category_id, category_name,
-			 price, destination, version, created_at, updated_at, synced_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11,$12,$13)`,
+			 price, destination, version, created_at, updated_at, synced_at, stock_type, recipe_master_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11,$12,$13,$14,$15)`,
 		id, id, req.OutletID, req.Name, nullStr(req.Code), req.Description, req.CategoryID, req.CategoryName,
-		req.Price, req.Destination, now, now, now,
+		req.Price, req.Destination, now, now, now, stockType, nullStr(recipeID),
 	)
 	if err != nil {
+		return models.CloudProduct{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return models.CloudProduct{}, err
 	}
 	return models.CloudProduct{
@@ -244,6 +308,7 @@ func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProdu
 		Name: req.Name, Code: req.Code, Description: req.Description,
 		CategoryID: req.CategoryID, CategoryName: req.CategoryName,
 		Price: req.Price, Destination: req.Destination,
+		StockType: stockType, RecipeMasterID: recipeID, RecipeMasterName: recipeName,
 		Version: 1, CreatedAt: now, UpdatedAt: now, SyncedAt: now,
 	}, nil
 }
@@ -270,14 +335,36 @@ func AdminUpdateProduct(id string, req models.AdminUpdateProductRequest) error {
 		}
 	}
 
-	result, err := database.DB.Exec(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var outletID string
+	if err := tx.QueryRow(`SELECT outlet_id FROM cloud_products WHERE id = $1 AND is_deleted = false FOR UPDATE`, id).Scan(&outletID); err != nil {
+		return err
+	}
+	recipeID, stockType := "", "none"
+	if req.RecipeMasterID != nil {
+		recipeID = strings.TrimSpace(*req.RecipeMasterID)
+		if _, err := validateProductRecipe(tx, outletID, recipeID); err != nil {
+			return err
+		}
+		if recipeID != "" {
+			stockType = "recipe"
+		}
+	}
+	result, err := tx.Exec(
 		`UPDATE cloud_products
 		SET name=$1, code=$2, description=$3, category_id=$4, category_name=$5,
 		    price=$6, destination=$7,
+		    recipe_master_id=CASE WHEN $9 THEN $10::char(26) ELSE recipe_master_id END,
+		    stock_type=CASE WHEN $9 THEN $11 ELSE stock_type END,
+		    linked_stock_item_id=CASE WHEN $9 THEN NULL ELSE linked_stock_item_id END,
 		    updated_at=NOW(), version=version+1
 		WHERE id=$8 AND is_deleted=false`,
 		req.Name, nullStr(req.Code), req.Description, req.CategoryID, req.CategoryName,
-		req.Price, req.Destination, id,
+		req.Price, req.Destination, id, req.RecipeMasterID != nil, nullStr(recipeID), stockType,
 	)
 	if err != nil {
 		return err
@@ -286,7 +373,7 @@ func AdminUpdateProduct(id string, req models.AdminUpdateProductRequest) error {
 	if n == 0 {
 		return fmt.Errorf("product not found")
 	}
-	return nil
+	return tx.Commit()
 }
 
 func AdminDeleteProduct(id string) error {

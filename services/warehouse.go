@@ -1404,12 +1404,15 @@ func CreateStockTransfer(req models.StockTransferRequest, createdBy string) (*mo
 		if err != nil {
 			return nil, fmt.Errorf("bahan baku %s tidak ditemukan", it.ItemID)
 		}
-		qtyBase := it.QtyDist * item.DistRatio
+		qtyBase, unit, err := stockQuantityToBase(it.QtyDist, it.UnitUsed, item.BaseUnit, item.DistUnit, item.DistRatio)
+		if err != nil {
+			return nil, fmt.Errorf("baris %d: %w", index+1, err)
+		}
 		tiID := NewULID()
 		_, err = tx.Exec(`
 			INSERT INTO stock_transfer_items (id, transfer_id, item_id, qty_dist, qty_base, unit_used, notes)
 			VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-			tiID, id, it.ItemID, it.QtyDist, qtyBase, item.DistUnit, it.Notes)
+			tiID, id, it.ItemID, it.QtyDist, qtyBase, unit, it.Notes)
 		if err != nil {
 			return nil, err
 		}
@@ -1558,7 +1561,7 @@ func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.Stoc
 				return nil, fmt.Errorf("stok %s di gudang asal tidak mencukupi", it.ItemName)
 			}
 			if err := applyMovement(tx, it.ItemID, transfer.FromWarehouseID, "transfer_out",
-				it.DistUnit, id, "stock_transfer", transfer.TransferNumber, "",
+				it.UnitUsed, id, "stock_transfer", transfer.TransferNumber, "",
 				actor, -it.QtyBase, -it.QtyDist, 0, ""); err != nil {
 				return nil, fmt.Errorf("gagal kurangi stok %s: %w", it.ItemName, err)
 			}
@@ -1602,11 +1605,13 @@ func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.Stoc
 			// "sent", jadi kekurangannya dicatat sebagai waste 'lost' (dokumen, tanpa
 			// movement tambahan) supaya penyusutan terlihat di laporan — sebelumnya
 			// selisih ini hilang tanpa jejak.
+			// Gunakan konversi saat dokumen dibuat, termasuk jika input botol
+			// atau rasio kemasan katalog berubah setelah barang dikirim.
+			ratio := 1.0
+			if it.QtyBase > 0 && it.QtyDist > 0 {
+				ratio = it.QtyBase / it.QtyDist
+			}
 			if shortfall := it.QtyBase - recvQty; shortfall > 0.0001 {
-				ratio := it.DistRatio
-				if ratio <= 0 {
-					ratio = 1
-				}
 				wasteNum, werr := generateWasteNumber(tx)
 				if werr != nil {
 					return nil, werr
@@ -1616,7 +1621,7 @@ func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.Stoc
 						unit_used, cost_per_base, total_cost, reason, notes, created_by)
 					VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'lost',$10,$11)`,
 					NewULID(), wasteNum, transfer.FromWarehouseID, it.ItemID, shortfall, shortfall/ratio,
-					it.DistUnit, avgCost, avgCost*shortfall,
+					it.UnitUsed, avgCost, avgCost*shortfall,
 					fmt.Sprintf("Selisih transfer %s: dikirim %.2f, diterima %.2f", transfer.TransferNumber, it.QtyBase, recvQty),
 					actor); werr != nil {
 					return nil, fmt.Errorf("gagal catat selisih %s: %w", it.ItemName, werr)
@@ -1626,9 +1631,9 @@ func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.Stoc
 			if recvQty == 0 {
 				continue
 			}
-			recvDist := recvQty / it.DistRatio
+			recvDist := recvQty / ratio
 			if err := applyMovement(tx, it.ItemID, transfer.ToWarehouseID, "transfer_in",
-				it.DistUnit, id, "stock_transfer", transfer.TransferNumber, "",
+				it.UnitUsed, id, "stock_transfer", transfer.TransferNumber, "",
 				actor, recvQty, recvDist, avgCost, ""); err != nil {
 				return nil, fmt.Errorf("gagal tambah stok %s: %w", it.ItemName, err)
 			}
@@ -2051,7 +2056,11 @@ func CreateStockWaste(req models.StockWasteRequest, actor string) error {
 	}
 	defer tx.Rollback()
 
-	qtyBase := req.QtyDist * item.DistRatio
+	qtyBase, unit, err := stockQuantityToBase(req.QtyDist, req.UnitUsed, item.BaseUnit, item.DistUnit, item.DistRatio)
+	if err != nil {
+		return err
+	}
+	req.UnitUsed = unit
 	wasteID := NewULID()
 	wasteNum, err := generateWasteNumber(tx)
 	if err != nil {
