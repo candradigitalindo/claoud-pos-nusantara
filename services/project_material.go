@@ -3,7 +3,8 @@ package services
 import (
 	"database/sql"
 	"fmt"
-	"strings"
+	"math"
+	"sort"
 
 	"cloud-pos/database"
 	"cloud-pos/models"
@@ -88,7 +89,7 @@ func GetProjectMaterialSummary(projectID string) (*models.ProjectMaterialSummary
 func ListProjectMaterialLogs(materialID string) ([]models.ProjectMaterialLog, error) {
 	rows, err := database.DB.Query(`
 		SELECT id, material_id, type, qty, COALESCE(ref_type, ''), COALESCE(ref_number, ''),
-		       COALESCE(notes, ''), COALESCE(actor, ''), TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI')
+		       COALESCE(notes, ''), COALESCE(actor, ''), TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI'), COALESCE(evidence_url,'')
 		FROM project_material_logs WHERE material_id = $1
 		ORDER BY created_at DESC, id DESC`, materialID)
 	if err != nil {
@@ -99,7 +100,7 @@ func ListProjectMaterialLogs(materialID string) ([]models.ProjectMaterialLog, er
 	for rows.Next() {
 		var l models.ProjectMaterialLog
 		if err := rows.Scan(&l.ID, &l.MaterialID, &l.Type, &l.Qty, &l.RefType, &l.RefNumber,
-			&l.Notes, &l.Actor, &l.CreatedAt); err != nil {
+			&l.Notes, &l.Actor, &l.CreatedAt, &l.EvidenceURL); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -107,11 +108,16 @@ func ListProjectMaterialLogs(materialID string) ([]models.ProjectMaterialLog, er
 	return out, rows.Err()
 }
 
-func writeMaterialLog(ex assetExecer, materialID, logType string, qty float64, refType, refID, refNumber, notes, actor string) {
-	ex.Exec(`
-		INSERT INTO project_material_logs (id, material_id, type, qty, ref_type, ref_id, ref_number, notes, actor, created_at)
-		VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8,$9,(now() AT TIME ZONE 'UTC'))`,
-		NewULID(), materialID, logType, qty, refType, refID, refNumber, notes, actor)
+func writeMaterialLog(ex assetExecer, materialID, logType string, qty float64, refType, refID, refNumber, notes, actor string, evidence ...string) error {
+	photo := ""
+	if len(evidence) > 0 {
+		photo = evidence[0]
+	}
+	_, err := ex.Exec(`
+		INSERT INTO project_material_logs (id, material_id, type, qty, ref_type, ref_id, ref_number, notes, actor, evidence_url, created_at)
+		VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8,$9,$10,(now() AT TIME ZONE 'UTC'))`,
+		NewULID(), materialID, logType, qty, refType, refID, refNumber, notes, actor, photo)
+	return err
 }
 
 // upsertProjectMaterialTx mencatat penerimaan material. Penerimaan BERTAHAP
@@ -144,40 +150,16 @@ func upsertProjectMaterialTx(tx *sql.Tx, projectID, prID, prItemKey, name, unit 
 			return "", err
 		}
 	}
-	writeMaterialLog(tx, id, "penerimaan", qty, "purchase_request", prID, "", "Diterima di lokasi projek", actor)
+	if err := writeMaterialLog(tx, id, "penerimaan", qty, "purchase_request", prID, "", "Diterima di lokasi projek", actor); err != nil {
+		return "", err
+	}
 	return id, nil
 }
 
-// RecordMaterialUsage mencatat pemakaian di lokasi.
-//
-// Pemakaian melebihi barang yang datang berarti ada penerimaan yang belum
-// dicatat — ditolak, bukan diam-diam membuat saldo negatif.
+// RecordMaterialUsage retains a clear error for older clients. Every new
+// consumption must have a usage report and independent verification.
 func RecordMaterialUsage(id string, req models.ProjectMaterialUsageRequest, actor string) (*models.ProjectMaterial, error) {
-	m, err := GetProjectMaterial(id)
-	if err != nil {
-		return nil, fmt.Errorf("material tidak ditemukan")
-	}
-	if req.Qty <= 0 {
-		return nil, Invalid("jumlah pemakaian harus lebih dari 0")
-	}
-	if req.Qty > m.Remaining {
-		return nil, Invalid("%s: pemakaian %.2f melebihi sisa %.2f %s — periksa apakah ada penerimaan yang belum dicatat",
-			m.Name, req.Qty, m.Remaining, m.Unit)
-	}
-	tx, err := database.DB.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE project_materials SET qty_used = qty_used + $1,
-		updated_at = (now() AT TIME ZONE 'UTC') WHERE id = $2`, req.Qty, id); err != nil {
-		return nil, err
-	}
-	writeMaterialLog(tx, id, "pemakaian", req.Qty, "", "", "", req.Notes, actor)
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return GetProjectMaterial(id)
+	return nil, Invalid("catat pemakaian melalui Perlengkapan → Penggunaan Barang Projek, lengkap dengan bukti dan verifikasi")
 }
 
 // SettleMaterialRemainder menentukan nasib sisa material.
@@ -191,31 +173,55 @@ func RecordMaterialUsage(id string, req models.ProjectMaterialUsageRequest, acto
 //	susut  → hanya untuk yang benar-benar rusak/habis, wajib beralasan
 //	pindah → dipakai projek lain yang sedang berjalan
 func SettleMaterialRemainder(id string, req models.ProjectMaterialSettleRequest, actor string, canStock bool, outletScope []string) (*models.ProjectMaterial, error) {
-	m, err := GetProjectMaterial(id)
-	if err != nil {
-		return nil, fmt.Errorf("material tidak ditemukan")
+	if req.Action == "susut" {
+		return nil, Invalid("catat susut melalui laporan Penggunaan Barang Projek agar bukti dan verifikasinya lengkap")
 	}
-	qty := req.Qty
-	if qty <= 0 {
-		qty = m.Remaining
+	if photo, err := validateMaterialEvidence(req.PhotoURL); err != nil {
+		return nil, err
+	} else if !photo {
+		return nil, Invalid("bukti penyelesaian sisa harus berupa foto")
 	}
-	if qty > m.Remaining {
-		return nil, Invalid("%s: jumlah (%.2f) melebihi sisa (%.2f %s)", m.Name, qty, m.Remaining, m.Unit)
-	}
-	if qty <= 0 {
-		return nil, Invalid("%s: tidak ada sisa yang perlu ditentukan", m.Name)
-	}
-
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-
+	var projectID string
+	if err = tx.QueryRow(`SELECT project_id FROM project_materials WHERE id=$1`, id).Scan(&projectID); err != nil {
+		return nil, err
+	}
+	// Transfers lock both projects in deterministic order.
+	ids := []string{projectID}
+	if req.Action == "pindah" && req.TargetProjectID != "" && req.TargetProjectID != projectID {
+		ids = append(ids, req.TargetProjectID)
+	}
+	sort.Strings(ids)
+	for _, pid := range ids {
+		if err = lockMaterialProject(tx, pid); err != nil {
+			return nil, err
+		}
+	}
+	m, err := scanProjectMaterial(tx.QueryRow(fmt.Sprintf(`SELECT %s FROM project_materials m %s WHERE m.id=$1 FOR UPDATE OF m`, projectMaterialCols, projectMaterialJoins), id))
+	if err != nil {
+		return nil, err
+	}
+	qty := req.Qty
+	if !validMaterialQty(qty) {
+		return nil, Invalid("jumlah harus positif dan maksimal 4 angka desimal")
+	}
+	if qty > m.Remaining {
+		return nil, Invalid("%s: jumlah melebihi sisa %.4f %s", m.Name, m.Remaining, m.Unit)
+	}
+	if req.Action == "aset" && math.Trunc(qty) != qty {
+		return nil, Invalid("jumlah aset harus bulat; sisa pecahan dapat dikembalikan ke gudang atau dipindah projek")
+	}
 	switch req.Action {
 	case "gudang":
 		if !canStock {
 			return nil, Invalid("Anda tidak berhak menambah stok gudang — mintakan ke tim gudang")
+		}
+		if !WarehouseMutableInScope(req.WarehouseID, outletScope) {
+			return nil, Invalid("gudang di luar akses Anda")
 		}
 		if req.StockItemID == "" || req.WarehouseID == "" {
 			return nil, Invalid("item stok dan gudang wajib dipilih")
@@ -243,8 +249,10 @@ func SettleMaterialRemainder(id string, req models.ProjectMaterialSettleRequest,
 			updated_at = (now() AT TIME ZONE 'UTC') WHERE id = $2`, qty, id); err != nil {
 			return nil, err
 		}
-		writeMaterialLog(tx, id, "pengembalian", qty, "goods_receipt", grnID, grnNumber,
-			"Dikembalikan ke gudang", actor)
+		if err := writeMaterialLog(tx, id, "pengembalian", qty, "goods_receipt", grnID, grnNumber,
+			"Dikembalikan ke gudang. "+req.Notes, actor, req.PhotoURL); err != nil {
+			return nil, err
+		}
 
 	case "aset":
 		outletID := req.OutletID
@@ -276,18 +284,10 @@ func SettleMaterialRemainder(id string, req models.ProjectMaterialSettleRequest,
 			updated_at = (now() AT TIME ZONE 'UTC') WHERE id = $2`, qty, id); err != nil {
 			return nil, err
 		}
-		writeMaterialLog(tx, id, "pengembalian", qty, "asset", assetID, "",
-			"Sisa dicatat sebagai aset", actor)
-
-	case "susut":
-		if strings.TrimSpace(req.Notes) == "" {
-			return nil, Invalid("susut wajib diberi alasan — tanpa itu selisih material tidak bisa ditelusuri")
-		}
-		if _, err := tx.Exec(`UPDATE project_materials SET qty_wasted = qty_wasted + $1,
-			updated_at = (now() AT TIME ZONE 'UTC') WHERE id = $2`, qty, id); err != nil {
+		if err := writeMaterialLog(tx, id, "pengembalian", qty, "asset", assetID, "",
+			"Sisa dicatat sebagai aset. "+req.Notes, actor, req.PhotoURL); err != nil {
 			return nil, err
 		}
-		writeMaterialLog(tx, id, "susut", qty, "", "", "", req.Notes, actor)
 
 	case "pindah":
 		if req.TargetProjectID == "" || req.TargetProjectID == m.ProjectID {
@@ -309,14 +309,18 @@ func SettleMaterialRemainder(id string, req models.ProjectMaterialSettleRequest,
 			"Pindahan sisa dari projek "+m.ProjectName); err != nil {
 			return nil, err
 		}
-		writeMaterialLog(tx, newID, "penerimaan", qty, "project", m.ProjectID, "",
-			"Pindahan dari projek "+m.ProjectName, actor)
+		if err := writeMaterialLog(tx, newID, "penerimaan", qty, "project", m.ProjectID, "",
+			"Pindahan dari projek "+m.ProjectName, actor, req.PhotoURL); err != nil {
+			return nil, err
+		}
 		if _, err := tx.Exec(`UPDATE project_materials SET qty_returned = qty_returned + $1,
 			updated_at = (now() AT TIME ZONE 'UTC') WHERE id = $2`, qty, id); err != nil {
 			return nil, err
 		}
-		writeMaterialLog(tx, id, "pengembalian", qty, "project", req.TargetProjectID, "",
-			"Dipindahkan ke projek "+targetName, actor)
+		if err := writeMaterialLog(tx, id, "pengembalian", qty, "project", req.TargetProjectID, "",
+			"Dipindahkan ke projek "+targetName+". "+req.Notes, actor, req.PhotoURL); err != nil {
+			return nil, err
+		}
 
 	case "":
 		return nil, Invalid("nasib sisa wajib dipilih — bawaannya dicatat sebagai aset")
@@ -344,9 +348,8 @@ type UnsettledProjectRow struct {
 
 // ListUnsettledProjectMaterials — laporan "Material Projek Belum Tuntas".
 //
-// Penutupan projek sengaja TIDAK diblokir saat masih ada sisa: blokir keras
-// hanya membuat orang berhenti mencatat material sama sekali. Laporan inilah
-// yang menagih.
+// Daftar ini tetap tersedia untuk rekonsiliasi data lama. Penutupan projek
+// sekarang memeriksa saldo material dan laporan yang belum diverifikasi.
 //
 // outletIDs/wuIDs = scope role (nil = semua): projek di luar cakupan tidak
 // ikut tampil, sama dengan daftar projek (T-49).

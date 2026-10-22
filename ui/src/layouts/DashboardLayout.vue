@@ -518,6 +518,7 @@ const NAV_ITEMS_DATA = [
       { to: '/perlengkapan/dashboard', label: 'Dashboard Aset',    permission: 'assets.dashboard.view' },
       { to: '/perlengkapan',        label: 'Daftar Aset',         permission: 'assets.view' },
       { to: '/perlengkapan/penerimaan', label: 'Penerimaan Peralatan', permission: 'assets.create' },
+      { to: '/perlengkapan/penggunaan-projek', label: 'Penggunaan Barang Projek', permission: 'assets.usage.view' },
       { to: '/perlengkapan/distribusi', label: 'Distribusi ke PIC', permission: 'assets.view' },
       { to: '/perlengkapan/mutasi', label: 'Mutasi Antar Outlet', permission: 'assets.transfer.view' },
       { to: '/perlengkapan/perawatan', label: 'Perawatan', permission: 'assets.maintenance.view' },

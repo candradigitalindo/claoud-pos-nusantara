@@ -20,26 +20,27 @@ type ProjectMaterial struct {
 	QtyReturned       float64 `json:"qty_returned"`
 	QtyWasted         float64 `json:"qty_wasted"`
 	// Remaining dihitung, tidak disimpan — supaya tidak pernah basi.
-	Remaining     float64 `json:"remaining"`
-	UnitCost      float64 `json:"unit_cost"`
-	ValueReceived float64 `json:"value_received"`
+	Remaining      float64 `json:"remaining"`
+	UnitCost       float64 `json:"unit_cost"`
+	ValueReceived  float64 `json:"value_received"`
 	ValueRemaining float64 `json:"value_remaining"`
-	Location      string  `json:"location"`
-	ReceivedAt    string  `json:"received_at"`
-	ReceivedBy    string  `json:"received_by"`
-	Notes         string  `json:"notes"`
+	Location       string  `json:"location"`
+	ReceivedAt     string  `json:"received_at"`
+	ReceivedBy     string  `json:"received_by"`
+	Notes          string  `json:"notes"`
 }
 
 type ProjectMaterialLog struct {
-	ID         string  `json:"id"`
-	MaterialID string  `json:"material_id"`
-	Type       string  `json:"type"` // penerimaan|pemakaian|pengembalian|susut|koreksi
-	Qty        float64 `json:"qty"`
-	RefType    string  `json:"ref_type"`
-	RefNumber  string  `json:"ref_number"`
-	Notes      string  `json:"notes"`
-	Actor      string  `json:"actor"`
-	CreatedAt  string  `json:"created_at"`
+	EvidenceURL string  `json:"evidence_url"`
+	ID          string  `json:"id"`
+	MaterialID  string  `json:"material_id"`
+	Type        string  `json:"type"` // penerimaan|pemakaian|pengembalian|susut|koreksi
+	Qty         float64 `json:"qty"`
+	RefType     string  `json:"ref_type"`
+	RefNumber   string  `json:"ref_number"`
+	Notes       string  `json:"notes"`
+	Actor       string  `json:"actor"`
+	CreatedAt   string  `json:"created_at"`
 }
 
 // ProjectMaterialUsageRequest — pencatatan pemakaian di lokasi.
@@ -50,6 +51,7 @@ type ProjectMaterialUsageRequest struct {
 
 // ProjectMaterialSettleRequest — menentukan nasib sisa material.
 type ProjectMaterialSettleRequest struct {
+	PhotoURL string `json:"photo_url"`
 	// Action: gudang | aset | susut | pindah
 	Action string  `json:"action"`
 	Qty    float64 `json:"qty"`

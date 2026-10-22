@@ -230,7 +230,7 @@
       <!-- Wujud barang dari belanja projek: yang habis dikonsumsi (material)
            dan yang bertahan (aset). Sebelumnya projek hanya memegang angka. -->
       <AppCard>
-        <ProjectMaterialPanel :project-id="project.id" />
+        <ProjectMaterialPanel :project-id="project.id" :closed="['selesai', 'batal'].includes(project.status)" />
       </AppCard>
 
       <AppCard>

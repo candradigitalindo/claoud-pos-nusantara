@@ -68,8 +68,9 @@ dokumen resmi beserta nilai bukunya, sehingga nilai aset perusahaan tidak menyus
 yang bisa dijelaskan.
 
 ### 2.8 Material projek
-Memastikan material renovasi yang dibeli punya catatan penerimaan, pemakaian, dan sisa; serta
-sisanya didata menjadi aset saat projek ditutup.
+Memastikan material renovasi yang dibeli punya catatan penerimaan, laporan pemakaian/susut
+beserta foto dan konfirmasi PIC, serta penyelesaian sisa. Laporan diajukan oleh petugas
+Perlengkapan dan diperiksa akun atasan yang berbeda sebelum projek ditutup.
 
 ### 2.9 Kualitas data dan pelaporan
 Memastikan tidak ada barang yang sudah dibayar tapi tidak jelas keberadaannya, seluruh bukti

@@ -558,6 +558,12 @@ const routes = [
         meta: { title: 'Buku Stok — Cloud POS', requiresAuth: true, permission: 'stockledger.view' },
       },
       {
+        path: 'perlengkapan/penggunaan-projek',
+        name: 'ProjectUsage',
+        component: () => import('@/pages/ProjectUsage.vue'),
+        meta: { title: 'Penggunaan Barang Projek — Cloud POS', requiresAuth: true, permission: 'assets.usage.view' },
+      },
+      {
         path: 'perlengkapan',
         name: 'Assets',
         component: Assets,

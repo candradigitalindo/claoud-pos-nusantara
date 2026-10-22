@@ -376,6 +376,7 @@ const REDIRECT_GROUPS = [
     { value: '/perlengkapan/dashboard', label: 'Dashboard Aset',   perm: 'assets.dashboard.view' },
     { value: '/perlengkapan',        label: 'Daftar Aset',         perm: 'assets.view' },
     { value: '/perlengkapan/penerimaan', label: 'Penerimaan Peralatan', perm: 'assets.create' },
+    { value: '/perlengkapan/penggunaan-projek', label: 'Penggunaan Barang Projek', perm: 'assets.usage.view' },
     { value: '/perlengkapan/distribusi', label: 'Distribusi Aset ke PIC', perm: 'assets.view' },
     { value: '/perlengkapan/mutasi', label: 'Mutasi Antar Outlet', perm: 'assets.transfer.view' },
     { value: '/perlengkapan/perawatan', label: 'Perawatan Aset', perm: 'assets.maintenance.view' },

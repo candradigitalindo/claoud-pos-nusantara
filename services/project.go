@@ -331,8 +331,22 @@ func UpdateProject(id string, req models.UpdateProjectRequest) (*models.Project,
 	if err != nil {
 		return nil, err
 	}
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var current string
+	if err = tx.QueryRow(`SELECT status FROM projects WHERE id=$1 FOR UPDATE`, id).Scan(&current); err != nil {
+		return nil, err
+	}
+	if status == "selesai" || status == "batal" {
+		if err = checkProjectMaterialClosureTx(tx, id); err != nil {
+			return nil, err
+		}
+	}
 	// budget sengaja tidak ikut: total RAB hanya berubah lewat barisnya.
-	res, err := database.DB.Exec(`
+	res, err := tx.Exec(`
 		UPDATE projects SET name=$1, outlet_id=$2, work_unit_id=$3, pic=$4,
 		       start_date=$5, target_date=$6, status=$7, notes=$8, updated_at=$9
 		WHERE id=$10
@@ -344,6 +358,9 @@ func UpdateProject(id string, req models.UpdateProjectRequest) (*models.Project,
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil, fmt.Errorf("projek tidak ditemukan")
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
 	}
 	return GetProject(id)
 }

@@ -423,6 +423,9 @@ func (a ReceiveAccess) deny(line models.ReceivingLine) error {
 //     terikat projek). Peralatan tidak pernah masuk buku stok — dulu mesin
 //     kopi yang ditandai stok berpindah ke antrean dapur.
 func validateReceivingDestination(line models.ReceivingLine, requestType, projectID, dest string) error {
+	if projectID != "" && dest == "habis" {
+		return Invalid("barang projek harus dicatat sebagai material atau aset; pemakaian dilaporkan beserta buktinya")
+	}
 	switch {
 	case requestType == RequestTypeBahan:
 		// Bahan baku seluruhnya masuk buku stok Gudang Induk (kelas HPP):
@@ -646,6 +649,15 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 	// sisa per baris dihitung — di dalam transaksi yang sama. Dulu sisa dibaca
 	// di luar transaksi tanpa kunci: dua penerimaan bersamaan sama-sama
 	// membaca sisa 3 dan stok tercatat dua kali (T-28).
+	var materialProjectID string
+	if err := tx.QueryRow(`SELECT COALESCE(project_id,'') FROM purchase_requests WHERE id=$1`, prID).Scan(&materialProjectID); err != nil {
+		return nil, err
+	}
+	if materialProjectID != "" {
+		if err := lockMaterialProject(tx, materialProjectID); err != nil {
+			return nil, err
+		}
+	}
 	rootID, err := lockPurchaseFamilyTx(tx, prID)
 	if err != nil {
 		return nil, err
@@ -1012,13 +1024,13 @@ func insertReceivedAsset(tx *sql.Tx, a receivedAsset, actor string) (string, err
 		INSERT INTO assets (id, asset_no, outlet_id, code, name, category, quantity, unit,
 			tracking_mode, serial_number, brand, model, condition, status, location,
 			acquisition_src, purchase_request_id, pr_item_key, purchase_date, purchase_price,
-			useful_life_months, residual_value, notes, is_deleted, created_at, updated_at)
+			useful_life_months, residual_value, notes, project_id, is_deleted, created_at, updated_at)
 		VALUES ($1,$2,$3,'',$4,$5,$6,$7,$8,$9,$10,$11,'baik','aktif',$12,'pengadaan',$13,$14,
 			(now() AT TIME ZONE '`+GetTimezoneLocation().String()+`')::date,
-			$15,$16,$17,$18,false,(now() AT TIME ZONE 'UTC'),(now() AT TIME ZONE 'UTC'))`,
+			$15,$16,$17,$18,$19,false,(now() AT TIME ZONE 'UTC'),(now() AT TIME ZONE 'UTC'))`,
 		id, assetNo, a.OutletID, a.Name, a.Category, a.Qty, a.Unit,
 		a.TrackingMode, a.Serial, a.Brand, a.Model, a.Location,
-		a.SourcePRID, a.PRItemKey, a.Price, a.UsefulLife, a.Residual, strings.Join(notes, " · "))
+		a.SourcePRID, a.PRItemKey, a.Price, a.UsefulLife, a.Residual, strings.Join(notes, " · "), nilIfEmpty(a.ProjectID))
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") ||
 			strings.Contains(strings.ToLower(err.Error()), "unique") {

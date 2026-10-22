@@ -312,12 +312,22 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/projects/:id/rab/set", middleware.RequirePermission("procurement.projects.manage"), handlers.SetProjectRab)
 	admin.Post("/projects/:id/rab/reopen", middleware.RequirePermission("procurement.projects.manage"), handlers.ReopenProjectRab)
 
+	// Perlengkapan: laporan penggunaan dengan bukti dan pemeriksa terpisah.
+	admin.Get("/project-usage-export", middleware.RequirePermission("assets.usage.view"), handlers.ExportProjectUsage)
+	admin.Get("/project-usage/projects", middleware.RequirePermission("assets.usage.view"), handlers.ListUsageProjects)
+	admin.Get("/project-usage/projects/:id", middleware.RequirePermission("assets.usage.view"), handlers.ProjectUsageOverview)
+	admin.Get("/project-usage", middleware.RequirePermission("assets.usage.view"), handlers.ListProjectUsage)
+	admin.Get("/project-usage/:id", middleware.RequirePermission("assets.usage.view"), handlers.GetProjectUsage)
+	admin.Post("/project-usage", middleware.RequirePermission("assets.usage.create"), handlers.SaveProjectUsage)
+	admin.Put("/project-usage/:id", middleware.RequirePermission("assets.usage.create"), handlers.SaveProjectUsage)
+	admin.Post("/project-usage/:id/actions", middleware.RequirePermission("assets.usage.view"), handlers.ActProjectUsage)
+
 	// Material projek — barang habis pakai milik projek (docs §8.8–8.9).
 	// Izinnya memakai kunci Projek yang sudah ada (keputusan B, docs §15.1).
-	admin.Get("/projects/:id/materials", middleware.RequirePermission("procurement.projects.view"), handlers.ListProjectMaterials)
-	admin.Get("/projects/:id/materials/:mid/logs", middleware.RequirePermission("procurement.projects.view"), handlers.ListProjectMaterialLogs)
-	admin.Post("/projects/:id/materials/:mid/usage", middleware.RequirePermission("procurement.projects.manage"), handlers.RecordProjectMaterialUsage)
-	admin.Post("/projects/:id/materials/:mid/settle", middleware.RequirePermission("procurement.projects.manage"), handlers.SettleProjectMaterial)
+	admin.Get("/projects/:id/materials", middleware.RequireAnyPermission("procurement.projects.view", "assets.usage.view"), handlers.ListProjectMaterials)
+	admin.Get("/projects/:id/materials/:mid/logs", middleware.RequireAnyPermission("procurement.projects.view", "assets.usage.view"), handlers.ListProjectMaterialLogs)
+	admin.Post("/projects/:id/materials/:mid/usage", middleware.RequirePermission("assets.usage.create"), handlers.RecordProjectMaterialUsage)
+	admin.Post("/projects/:id/materials/:mid/settle", middleware.RequirePermission("assets.usage.create"), handlers.SettleProjectMaterial)
 	admin.Get("/project-materials/unsettled", middleware.RequirePermission("procurement.projects.view"), handlers.ListUnsettledProjectMaterials)
 
 	// Halaman Pembayaran (finance.payments.view) memuat daftar & detail lewat
@@ -350,7 +360,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// File upload — dipakai untuk bukti pembayaran pengadaan
 	// stockledger.adjust: petugas gudang mengunggah foto serah terima barang dapur.
-	admin.Post("/upload", middleware.RequireAnyPermission("finance.entries.create", "finance.payments.view", "procurement.requests.view", "procurement.rawmaterials.view", "assets.create", "assets.update", "reservations.update", "stockledger.adjust"), handlers.UploadFile)
+	admin.Post("/upload", middleware.RequireAnyPermission("finance.entries.create", "finance.payments.view", "procurement.requests.view", "procurement.rawmaterials.view", "assets.create", "assets.update", "assets.usage.create", "reservations.update", "stockledger.adjust"), handlers.UploadFile)
 
 	// Bank Accounts
 	// finance.payments.pay ikut boleh membaca daftar: form bayar di halaman

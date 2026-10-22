@@ -32,6 +32,7 @@ var AllPermissions = []string{
 	"assets.disposal.view", "assets.disposal.create", "assets.disposal.approve",
 	"assets.opname.view", "assets.opname.create", "assets.opname.approve",
 	"assets.report.view",
+	"assets.usage.view", "assets.usage.create", "assets.usage.verify",
 
 	// Produk
 	"products.view", "products.create", "products.update", "products.delete",

@@ -121,7 +121,7 @@
           <label class="lbl">Titik simpan di lokasi</label>
           <input v-model="form[line.pr_item_key].location" class="form-input" placeholder="mis. gudang sementara lokasi" />
           <p class="mt-1 text-[11px] text-gray-500">
-            Masuk buku material projek. Pemakaian dan sisanya dicatat di halaman Projek sampai projek ditutup.
+            Masuk buku material projek. Pemakaian dan buktinya dicatat di Perlengkapan → Penggunaan Barang Projek.
           </p>
         </div>
 
@@ -240,7 +240,7 @@ const notReceivableMsg = computed(() => {
 // (+ material projek bila pengajuannya terikat projek); bahan baku → stok saja.
 function lineDests(line) {
   if (isBahan.value || line.kind === 'dapur') return ALL_DESTS.filter(d => d.key === 'stok')
-  return ALL_DESTS.filter(d => d.key !== 'stok' && (!d.projectOnly || draft.value?.project_id))
+  return ALL_DESTS.filter(d => d.key !== 'stok' && !(draft.value?.project_id && d.key === 'habis') && (!d.projectOnly || draft.value?.project_id))
 }
 
 // Siapa boleh mencatat baris apa (server memeriksa hal yang sama): pemegang

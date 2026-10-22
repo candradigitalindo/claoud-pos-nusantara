@@ -204,7 +204,12 @@ const CATEGORIES = [
           { key: 'assets.disposal.approve', label: 'Setujui' },
         ],
       },
-      { type: 'single', key: 'assets.report.view', label: 'Laporan Aset', icon: IC.report },
+      { type: 'toggles', label: 'Penggunaan Barang Projek', icon: IC.report, toggles: [
+        { key: 'assets.usage.view', label: 'Lihat' },
+        { key: 'assets.usage.create', label: 'Catat & Ajukan' },
+        { key: 'assets.usage.verify', label: 'Verifikasi' },
+      ] },
+      { type: 'single', key: 'assets.report.view' , label: 'Laporan Aset', icon: IC.report },
       {
         type: 'toggles', label: 'Perawatan', icon: IC.settings,
         toggles: [

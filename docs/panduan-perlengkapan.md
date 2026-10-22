@@ -18,6 +18,7 @@ Seluruh pekerjaan ada di grup **Perlengkapan** di sisi kiri:
 | **Dashboard Aset** | Melihat nilai aset dan daftar pekerjaan yang menunggu |
 | **Daftar Aset** | Mencari, melengkapi data, mencetak label, dan **impor massal lewat Excel** |
 | **Penerimaan Peralatan** | Menerima barang dari tim purchasing |
+| **Penggunaan Barang Projek** | Laporan pemakaian/susut, bukti, verifikasi, saldo material, dan peralatan projek |
 | **Distribusi ke PIC** | Menyerahkan aset ke orang yang mengajukan pembeliannya |
 | **Mutasi Antar Outlet** | Memindahkan aset ke outlet lain |
 | **Perawatan** | Jadwal dan riwayat perawatan seluruh aset |
@@ -251,17 +252,39 @@ penyusutan terus berjalan.
 
 ---
 
-## 9. Material Projek
+## 9. Penggunaan Barang Projek
 
-1. Material diterima lewat **Penerimaan Peralatan** seperti biasa, dengan tujuan **Material
-   projek**.
-2. Pemakaian dan sisanya dikelola di halaman **Projek → detail projek → panel Material Projek**.
-3. Mencatat pemakaian: klik **Catat Pemakaian**, isi jumlah yang dipakai.
-4. Saat projek ditutup, sisa material **didata menjadi aset**: klik **Catat semua sisa sebagai
-   aset**, atau tentukan satu per satu lewat **Tentukan Sisa**.
+1. Terima material melalui **Penerimaan Peralatan → Material projek**, lengkap dengan foto.
+   Barang projek tidak bisa langsung ditandai habis pakai saat penerimaan.
+2. Buka **Perlengkapan → Penggunaan Barang Projek**, pilih projek, lalu **Buat laporan**.
+3. Pilih pemakaian atau susut/rusak. Isi tanggal, lokasi, pekerjaan/alasan, pelaksana, PIC yang
+   mengonfirmasi, serta jumlah tiap barang. Unggah foto pekerjaan/kondisi barang; PDF dapat
+   menjadi lampiran tambahan. Maksimal 10 bukti, masing-masing 5 MB.
+4. **Simpan draft**, periksa kembali, lalu **Ajukan laporan**. Draft belum mengurangi saldo;
+   pengajuan mencatat pemakaian atau susut satu kali.
+5. Akun pemeriksa yang berbeda membuka laporan dan memilih **Verifikasi laporan** atau
+   **Minta perbaikan** dengan catatan. Pembuat/pengaju tidak bisa memverifikasi sendiri,
+   termasuk bila akunnya admin atau superadmin.
+6. Laporan yang perlu diperbaiki tetap mempertahankan jumlah pengajuan terakhir. Edit dan
+   ajukan ulang untuk menerapkan selisihnya. Pembatalan draft/perbaikan wajib beralasan dan
+   membalik jumlah yang sudah tercatat. Laporan terverifikasi tidak dapat diubah/dibatalkan.
+7. Buka **Saldo material** untuk melihat penerimaan = pemakaian + pengembalian + susut + sisa.
+   Tentukan sisa satu per satu: menjadi aset, kembali ke gudang (perlu izin stok), atau pindah
+   ke projek yang belum ditutup. Wajib foto; jumlah aset harus bulat. Susut menggunakan laporan
+   tersendiri agar mendapat bukti dan verifikasi.
+8. Buka **Peralatan & PIC** untuk melihat aset hasil pengadaan/penyelesaian sisa beserta lokasi,
+   penanggung jawab, dan bukti distribusinya. Pemakaian material tidak mengurangi jumlah aset.
+9. Gunakan filter projek, tanggal, status, dan **Unduh Excel** untuk laporan. Riwayat setiap
+   laporan menyimpan isi dan bukti pada setiap penyimpanan/pengajuan/pemeriksaan.
 
-Pilihan lain (kembali ke gudang, susut, pindah projek) adalah pengecualian — susut wajib
-beralasan.
+Projek belum dapat ditutup bila masih ada sisa material, laporan belum diverifikasi,
+barang pengadaan belum lengkap diterima, atau aset tanpa PIC. Buka kembali projek yang
+sudah ditutup sebelum melakukan pencatatan tambahan.
+
+Hak akses: `assets.usage.view` (lihat/ekspor), `assets.usage.create` (catat/ajukan/selesaikan sisa),
+`assets.usage.verify` (periksa). Role **perlengkapan** mendapat lihat dan catat; admin/superadmin
+mendapat seluruh izin. Hak ini terpisah dari izin mengubah RAB. PIC pada laporan adalah nama
+konfirmasi yang dicatat petugas; verifikasi sistem dilakukan oleh akun pemeriksa.
 
 ---
 

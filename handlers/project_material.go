@@ -85,6 +85,9 @@ func SettleProjectMaterial(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Format data tidak valid"})
 	}
+	if req.Action == "pindah" && !validateProjectScope(c, req.TargetProjectID) {
+		return projectForbidden(c)
+	}
 	// Mengembalikan sisa ke gudang berarti menambah stok sungguhan — izinnya
 	// terpisah dari izin kelola projek (keputusan B, docs §15.1).
 	canStock := roleHasPermission(c, "stockledger.adjust")

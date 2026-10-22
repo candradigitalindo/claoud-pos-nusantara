@@ -258,7 +258,7 @@ Barang tidak berhenti di meja penerimaan.
 |---|---|---|
 | **Barang dapur** | Gudang outlet | Gudang → Transfer Stok, kirim ke gudang outlet (**wajib berfoto**) |
 | **Peralatan/aset** | **PIC yang mengajukan pembelian** | Perlengkapan → Distribusi ke PIC (**wajib berfoto**) |
-| **Material projek** | Dipakai di lokasi projek | Dicatat pemakaiannya di halaman Projek |
+| **Material projek** | Dipakai di lokasi projek | Perlengkapan → Penggunaan Barang Projek: catat jumlah dan foto, lalu diperiksa akun berbeda |
 
 Serah terima aset memindahkan **penanggung jawab** barang ke penerimanya. Sejak saat itu, PIC
 tersebut yang bertanggung jawab atas fisiknya.

@@ -779,7 +779,17 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 	}
 	now := time.Now().UTC()
 	err = insertWithRequestNumber(now, func(reqNumber string) error {
-		_, err := database.DB.Exec(`
+		tx, err := database.DB.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if input.ProjectID != "" {
+			if err = lockMaterialProject(tx, input.ProjectID); err != nil {
+				return err
+			}
+		}
+		_, err = tx.Exec(`
 			INSERT INTO purchase_requests (id, request_number, outlet_id, work_unit_id, request_type, requested_by, requested_by_id, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, project_id, goods_kind, created_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $18, $10, $11, $12, $13, $14, $15, $16, $17, $17)
 		`, id, reqNumber, nilIfEmpty(outletID), nilIfEmpty(workUnitID), input.RequestType, input.RequestedBy,
@@ -787,7 +797,10 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 			nilIfEmpty(input.VendorID), input.VendorName, itemsJSON,
 			amountOf(totalHps, totalFinal), totalHps, totalFinal, input.Notes, nilIfEmpty(input.ProjectID), goodsKind, now,
 			initialStatus)
-		return err
+		if err != nil {
+			return err
+		}
+		return tx.Commit()
 	})
 	if err != nil {
 		return nil, err

@@ -11,15 +11,10 @@
       </span>
     </div>
 
-    <div v-if="canManage && summary.unsettled_lines" class="rounded-lg border border-amber-200 bg-amber-50 p-3">
-      <p class="text-xs text-amber-800">
-        <strong>{{ summary.unsettled_lines }} jenis material masih bersisa</strong>
-        senilai {{ formatRupiah(summary.value_remaining) }}. Sisa projek harus didata sebagai aset
-        sebelum projek dianggap tuntas.
-      </p>
-      <button class="btn-mini mt-2 bg-emerald-600 text-white" :disabled="bulking" @click="settleAllAsAssets">
-        {{ bulking ? 'Memproses…' : 'Catat semua sisa sebagai aset' }}
-      </button>
+    <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <p>Material yang dipakai atau rusak wajib dilaporkan beserta bukti dan diverifikasi. Sisa ditentukan satu per satu sesuai kondisi fisiknya sebelum projek ditutup.</p>
+      <button v-if="canManage && reportMode" class="mt-2 font-semibold underline" @click="$emit('usage')">Buat laporan pemakaian / susut</button>
+      <RouterLink v-else-if="canViewUsage" :to="{ path: '/perlengkapan/penggunaan-projek', query: { project_id: projectId } }" class="mt-2 inline-block font-semibold underline">Buka laporan penggunaan &amp; bukti</RouterLink>
     </div>
 
     <p v-if="loading" class="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-400">Memuat…</p>
@@ -55,34 +50,16 @@
           <div class="h-full bg-emerald-500" :style="{ width: pct(m) + '%' }"></div>
         </div>
 
+        <div v-if="canViewUsage" class="mt-2"><button class="text-xs text-emerald-700 underline" @click="showLogs(m)">Riwayat material</button></div>
         <div v-if="canManage && m.remaining > 0" class="mt-3 flex flex-wrap gap-2">
-          <AppActionButton icon="usage" label="Catat Pemakaian" @click="openUsage(m)" />
           <AppActionButton icon="usage" label="Tentukan Sisa" @click="openSettle(m)" />
         </div>
       </li>
     </ul>
 
-    <!-- Pemakaian -->
-    <AppModal v-model="usageModal" :title="`Pemakaian — ${active?.name || ''}`" size="md">
-      <form class="space-y-3" @submit.prevent="saveUsage">
-        <p class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-          Sisa saat ini <strong>{{ fmtQty(active?.remaining) }} {{ active?.unit }}</strong>.
-          Pemakaian melebihi sisa ditolak — itu tanda ada penerimaan yang belum dicatat.
-        </p>
-        <div>
-          <label class="lbl">Jumlah Dipakai <span class="text-red-500">*</span></label>
-          <input v-model.number="usageForm.qty" type="number" inputmode="decimal" min="0" step="0.01"
-            :max="active?.remaining" class="form-input" />
-        </div>
-        <div>
-          <label class="lbl">Keterangan</label>
-          <input v-model="usageForm.notes" class="form-input" placeholder="mis. pengecoran lantai 1" />
-        </div>
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="usageModal = false">Batal</button>
-          <AppButton type="submit" :loading="saving">Simpan</AppButton>
-        </div>
-      </form>
+    <AppModal v-model="logsModal" title="Riwayat material" size="lg">
+      <p v-if="logsLoading" class="text-sm">Memuat riwayat…</p>
+      <ul v-else class="space-y-3"><li v-for="log in logs" :key="log.id" class="border-b pb-3 text-sm"><p class="font-semibold">{{ log.type }} · {{ fmtQty(log.qty) }}</p><p>{{ log.notes }}</p><p class="text-xs text-gray-500">{{ log.created_at }} UTC · {{ log.actor }} · {{ log.ref_number }}</p><a v-if="log.evidence_url" :href="safeUrl(log.evidence_url)" target="_blank" rel="noopener noreferrer" class="text-emerald-700 underline">Lihat bukti</a></li></ul>
     </AppModal>
 
     <!-- Nasib sisa -->
@@ -99,7 +76,7 @@
 
         <div>
           <label class="lbl">Jumlah</label>
-          <input v-model.number="settleForm.qty" type="number" inputmode="decimal" min="0" step="0.01"
+          <input v-model.number="settleForm.qty" type="number" inputmode="decimal" min="0.0001" step="0.0001"
             :max="active?.remaining" class="form-input" />
         </div>
 
@@ -138,9 +115,10 @@
             :placeholder="settleForm.action === 'susut' ? 'mis. mengeras kena hujan' : 'opsional'" />
         </div>
 
+        <MaterialEvidence v-model="settleEvidence" :max-files="1" photo-only label="Bukti penyelesaian sisa" @busy="evidenceBusy = $event" />
         <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
           <button type="button" class="btn-ghost" @click="settleModal = false">Batal</button>
-          <AppButton type="submit" :loading="saving">Simpan</AppButton>
+          <AppButton type="submit" :loading="saving" :disabled="evidenceBusy">Simpan</AppButton>
         </div>
       </form>
     </AppModal>
@@ -151,7 +129,9 @@
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { projectMaterialsApi } from '@/api/projectMaterials.js'
-import { projectsApi } from '@/api/projects.js'
+import { projectUsageApi } from '@/api/projectUsage.js'
+import MaterialEvidence from '@/components/MaterialEvidence.vue'
+import { safeUrl } from '@/utils/safeUrl.js'
 import { outletsApi } from '@/api/outlets.js'
 import { warehousesApi, stockItemsApi } from '@/api/warehouse.js'
 import { assetCategoriesApi } from '@/api/assetCategories.js'
@@ -162,18 +142,19 @@ import AppModal from '@/components/ui/AppModal.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
 
-const props = defineProps({ projectId: { type: String, required: true } })
+const props = defineProps({ projectId: { type: String, required: true }, reportMode: Boolean, closed: Boolean })
+const emit = defineEmits(['changed', 'usage'])
 
 const toast = useToastStore()
 const auth = useAuthStore()
-const canManage = auth.hasPermission('procurement.projects.manage')
+const canManage = computed(() => auth.hasPermission('assets.usage.create') && !props.closed)
+const canViewUsage = auth.hasPermission('assets.usage.view')
 
 // Jadi Aset adalah jalur baku: sisa projek harus didata, bukan lenyap dari
 // catatan hanya karena projeknya selesai. Tiga sisanya pengecualian.
 const SETTLE_ACTIONS = [
   { key: 'aset', label: 'Jadi Aset' },
-  { key: 'gudang', label: 'Kembali ke Gudang' },
-  { key: 'susut', label: 'Susut / Terbuang' },
+  ...(auth.hasPermission('stockledger.adjust') ? [{ key: 'gudang', label: 'Kembali ke Gudang' }] : []),
   { key: 'pindah', label: 'Pindah Projek' },
 ]
 const HINTS = {
@@ -194,42 +175,27 @@ const projects = ref([])
 const categories = ref([])
 const categoryOptions = computed(() => categories.value.map(c => ({ id: c.name, name: c.name })))
 
-const bulking = ref(false)
-
-// Jalur cepat penutupan projek: seluruh sisa dicatat sebagai aset sekaligus.
-// Baris yang gagal dilaporkan namanya, bukan ditelan diam-diam.
-async function settleAllAsAssets() {
-  const sisa = materials.value.filter(m => m.remaining > 0)
-  if (!sisa.length) return
-  if (!window.confirm(`Catat sisa ${sisa.length} jenis material sebagai aset outlet projek ini?`)) return
-  bulking.value = true
-  const gagal = []
-  for (const m of sisa) {
-    try {
-      await projectMaterialsApi.settle(props.projectId, m.id, { action: 'aset', qty: m.remaining })
-    } catch (e) { gagal.push(`${m.name}: ${e?.message || 'gagal'}`) }
-  }
-  bulking.value = false
-  await load()
-  if (gagal.length) toast.error(`${gagal.length} gagal — ${gagal[0]}`)
-  else toast.success('Seluruh sisa material dicatat sebagai aset')
+const settleEvidence = ref([]), evidenceBusy = ref(false)
+const logsModal = ref(false), logsLoading = ref(false), logs = ref([])
+async function showLogs(m) {
+  logs.value = []; logsModal.value = true; logsLoading.value = true
+  try { logs.value = await projectMaterialsApi.logs(props.projectId, m.id) }
+  catch(e) { toast.error(e.message) }
+  finally { logsLoading.value = false }
 }
-
-const usageModal = ref(false)
 const settleModal = ref(false)
 const active = ref(null)
-const usageForm = ref({ qty: 0, notes: '' })
 const settleForm = ref({ action: 'gudang', qty: 0, notes: '', stock_item_id: '', warehouse_id: '', outlet_id: '', category: '', target_project_id: '' })
 
 function asArray(d) { return Array.isArray(d) ? d : (d?.data || d?.items || []) }
 function asObject(d) { return d?.data ?? d ?? null }
-function fmtQty(v) { return Number(v || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 }) }
+function fmtQty(v) { return Number(v || 0).toLocaleString('id-ID', { maximumFractionDigits: 4 }) }
 function pct(m) {
   if (!m.qty_received) return 0
   return Math.min(100, Math.round(((m.qty_used + m.qty_returned + m.qty_wasted) / m.qty_received) * 100))
 }
 const actionHint = computed(() => HINTS[settleForm.value.action] || '')
-const otherProjects = computed(() => projects.value.filter(p => p.id !== props.projectId))
+const otherProjects = computed(() => projects.value.filter(p => p.id !== props.projectId && !['selesai','batal'].includes(p.status)))
 
 async function load() {
   loading.value = true
@@ -241,37 +207,31 @@ async function load() {
 }
 
 async function loadRefs() {
+  if (!canManage.value) return
   try { outlets.value = asArray((await outletsApi.myOutlets())?.outlets ?? await outletsApi.myOutlets()) } catch { outlets.value = [] }
+  if (auth.hasPermission('stockledger.adjust')) {
   try { warehouses.value = asArray(await warehousesApi.list()) } catch { warehouses.value = [] }
   try { stockItems.value = asArray(await stockItemsApi.list({ limit: 500 })) } catch { stockItems.value = [] }
-  try { projects.value = asArray(await projectsApi.list()) } catch { projects.value = [] }
+  }
+  try { projects.value = asArray(await projectUsageApi.projects()) } catch { projects.value = [] }
   try { categories.value = asArray(await assetCategoriesApi.list()) } catch { categories.value = [] }
 }
 
-function openUsage(m) { active.value = m; usageForm.value = { qty: m.remaining, notes: '' }; usageModal.value = true }
 function openSettle(m) {
+  settleEvidence.value = []
   active.value = m
-  settleForm.value = { action: 'aset', qty: m.remaining, notes: '', stock_item_id: '', warehouse_id: warehouses.value[0]?.id || '', outlet_id: outlets.value[0]?.id || '', category: '', target_project_id: '' }
+  settleForm.value = { action: 'aset', qty: m.remaining, notes: '', stock_item_id: '', warehouse_id: warehouses.value[0]?.id || '', outlet_id: '', category: '', target_project_id: '' }
   settleModal.value = true
 }
 
-async function saveUsage() {
-  if (!(usageForm.value.qty > 0)) { toast.error('Jumlah pemakaian wajib diisi'); return }
-  saving.value = true
-  try {
-    await projectMaterialsApi.usage(props.projectId, active.value.id, usageForm.value)
-    toast.success('Pemakaian tercatat')
-    usageModal.value = false
-    await load()
-  } catch (e) { toast.error(e?.message || 'Gagal mencatat pemakaian') } finally { saving.value = false }
-}
-
 async function saveSettle() {
+  if (evidenceBusy.value) return
+  if (!settleEvidence.value.length) { toast.error("Unggah bukti penyelesaian sisa"); return }
   if (!(settleForm.value.qty > 0)) { toast.error('Jumlah wajib diisi'); return }
   saving.value = true
   try {
-    await projectMaterialsApi.settle(props.projectId, active.value.id, settleForm.value)
-    toast.success('Sisa material ditentukan')
+    await projectMaterialsApi.settle(props.projectId, active.value.id, { ...settleForm.value, photo_url: settleEvidence.value[0] })
+    toast.success('Sisa material ditentukan'); emit('changed')
     settleModal.value = false
     await load()
   } catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { saving.value = false }
