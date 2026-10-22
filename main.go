@@ -47,6 +47,9 @@ func main() {
 	if err := database.RunPOSVoidMigrations(); err != nil {
 		log.Fatalf("POS void stock migration failed: %v", err)
 	}
+	if err := database.RunDocumentMigrations(); err != nil {
+		log.Fatalf("Document migration failed: %v", err)
+	}
 	if err := database.RunFinanceMigrations(); err != nil {
 		log.Fatalf("Finance migration failed: %v", err)
 	}

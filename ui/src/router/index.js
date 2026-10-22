@@ -77,6 +77,7 @@ const ProjectDetail       = () => import('@/pages/ProjectDetail.vue')
 const Admins              = () => import('@/pages/Admins.vue')
 const Roles          = () => import('@/pages/Roles.vue')
 const AppPos         = () => import('@/pages/AppPos.vue')
+const Documents      = () => import('@/pages/Documents.vue')
 const AccessLogs     = () => import('@/pages/AccessLogs.vue')
 const BankAccounts    = () => import('@/pages/BankAccounts.vue')
 const ManagerDashboard = () => import('@/pages/ManagerDashboard.vue')
@@ -142,6 +143,12 @@ const routes = [
       },
       // Alias lama → arahkan ke dashboard utama
       { path: 'manager-dashboard', redirect: '/' },
+      {
+        path: 'documents',
+        name: 'Documents',
+        component: Documents,
+        meta: { title: 'Dokumen — Cloud POS', requiresAuth: true, permission: 'documents.view' },
+      },
       {
         path: 'outlets',
         name: 'Outlets',

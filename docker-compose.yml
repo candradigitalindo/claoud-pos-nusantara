@@ -54,6 +54,7 @@ services:
       WA_GATEWAY_TOKEN: ${WA_GATEWAY_TOKEN:-wa-gateway-secret}
     volumes:
       - uploads_data:/app/uploads
+      - documents_data:/app/private/documents
       # Kredensial Google Drive milik host, read-only. Remote "gdrive:" inilah
       # yang juga dipakai cron backup database harian.
       - ${HOME}/.config/rclone/rclone.conf:/etc/rclone/rclone.conf:ro
@@ -121,3 +122,4 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  documents_data:

@@ -176,6 +176,14 @@ const CATEGORIES = [
     ],
   },
   {
+    label: 'Dokumen', icon: IC.report,
+    items: [{ type: 'toggles', label: 'Pustaka Dokumen', icon: IC.report, toggles: [
+      { key: 'documents.view', label: 'Lihat' },
+      { key: 'documents.create', label: 'Unggah' },
+      { key: 'documents.download', label: 'Unduh' },
+    ] }],
+  },
+  {
     label: 'Perlengkapan', icon: IC.warehouse,
     items: [
       { type: 'single', key: 'assets.dashboard.view', label: 'Dashboard Aset', icon: IC.dashboard },

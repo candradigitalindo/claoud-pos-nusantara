@@ -17,6 +17,7 @@ cctv-gateway.env
 
 # ── Runtime data ───────────────────────────────
 uploads/
+private/
 
 # ── Data exports / logs ────────────────────────
 *.xlsx

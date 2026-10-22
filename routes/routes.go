@@ -110,6 +110,12 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Admin API (authenticated by admin token or JWT)
 	admin := api.Group("/admin", middleware.AdminAuth(cfg))
 
+	documents := admin.Group("/documents", middleware.RequirePermission("documents.view"))
+	documents.Get("/", handlers.ListDocuments)
+	documents.Post("/", middleware.RequirePermission("documents.create"), handlers.UploadDocument)
+	// POST avoids counting browser prefetches and HEAD requests as downloads.
+	documents.Post("/:id/download", middleware.RequirePermission("documents.download"), handlers.DownloadDocument)
+
 	// Work Units (Move to top to avoid 404/conflicts)
 	admin.Get("/work-units/me", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.GetMyWorkUnit)
 	admin.Get("/my-work-units", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.GetMyWorkUnits)

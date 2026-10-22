@@ -375,6 +375,12 @@ const NAV_ITEMS_DATA = [
     ],
   },
   {
+    to: '/documents',
+    label: 'Dokumen',
+    permission: 'documents.view',
+    icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9l-6-6zM14 3v6h6M8 13h8M8 17h5"/></svg>`,
+  },
+  {
     to: '/products',
     label: 'Produk',
     permission: 'products.view',

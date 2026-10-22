@@ -19,6 +19,7 @@ import (
 // dashboard and reports are view-only; procurement and settings have custom granularity.
 var AllPermissions = []string{
 	"dashboard",
+	"documents.view", "documents.create", "documents.download",
 
 	// Master Data
 	"outlets.view", "outlets.create", "outlets.update", "outlets.delete",

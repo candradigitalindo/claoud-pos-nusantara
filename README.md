@@ -95,6 +95,25 @@ untuk pemegang izin membuat/mengubah produk. Pilihan dibatasi ke resep publik
 atau resep rahasia yang diizinkan untuk outlet tujuan, dengan komposisi valid.
 Penautan diperiksa kembali di backend saat disimpan.
 
+## Dokumen
+
+Menu **Dokumen** menyediakan pustaka bersama untuk akun dengan izin
+`documents.view`. Unggah memerlukan `documents.create`, dan unduh memerlukan
+`documents.download`; ketiganya dapat diatur pada Role. Admin dan superadmin
+mendapat izin awal. Nomor dokumen wajib unik (tanpa membedakan huruf besar/kecil),
+disertai kolom Tentang. Waktu unggah berasal dari server dan ditampilkan mengikuti
+zona waktu aplikasi.
+
+Berkas maksimal 20 MB: PDF, Word, Excel, PowerPoint, TXT, CSV, JPG, atau PNG.
+Berkas disimpan di `private/documents`, di luar direktori publik, dan dipertahankan
+oleh volume Compose `documents_data`. Cadangkan volume ini bersama tabel
+`documents`; deployment tanpa Compose juga harus mempertahankan direktori ini.
+
+Jumlah unduhan bertambah secara atomik saat permintaan unduh berizin berhasil
+membuka berkas untuk dikirim. Melihat daftar, permintaan HEAD, dan berkas yang
+hilang tidak dihitung. Putus jaringan setelah pengiriman dimulai tetap dihitung;
+angka ini bukan jumlah pengguna unik atau konfirmasi berkas disimpan di perangkat.
+
 ## Void dan waste akibat pembatalan
 
 Void transaksi maupun void item dari POS mencatat pemakaian bahan sebagai

@@ -1,6 +1,7 @@
 cloud-api
 cloud-api-linux
 uploads/
+private/
 ui/node_modules/
 ui/dist/
 .env
