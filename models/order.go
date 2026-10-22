@@ -3,6 +3,8 @@ package models
 import "time"
 
 type OrderItem struct {
+	ID          string  `json:"id,omitempty"`
+	ProductID   string  `json:"product_id,omitempty"`
 	ProductName string  `json:"product_name"`
 	Category    string  `json:"category"`
 	Qty         int     `json:"qty"`
@@ -130,6 +132,7 @@ type TitipanReport struct {
 // PushOrderItemVoidRequest = payload entityType "order_item_void" dari app POS:
 // audit penghapusan satu item dari order yang belum dibayar (di-gate PIN Manager/SVP).
 type PushOrderItemVoidRequest struct {
+	ProductID   string  `json:"product_id,omitempty"`
 	LocalID     string  `json:"local_id"` // id item yang dihapus
 	OrderID     string  `json:"order_id"`
 	TableNumber string  `json:"table_number"`

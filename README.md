@@ -95,6 +95,32 @@ untuk pemegang izin membuat/mengubah produk. Pilihan dibatasi ke resep publik
 atau resep rahasia yang diizinkan untuk outlet tujuan, dengan komposisi valid.
 Penautan diperiksa kembali di backend saat disimpan.
 
+## Void dan waste akibat pembatalan
+
+Void transaksi maupun void item dari POS mencatat pemakaian bahan sebagai
+**Waste akibat pembatalan** pada Pembuangan Stok. Bahan yang belum dipotong
+diambil dari resep/tautan stok produk dan gudang outlet. Bila pembayaran sudah
+memotong bahan, mutasi pemakaian tersebut dialihkan menjadi waste memakai
+jumlah dan biaya asal; saldo dan batch tidak dipotong lagi.
+
+Catatan waste menyimpan order, alasan, petugas, waktu void, dan mutasi sumber.
+Sinkron berulang tidak menggandakan waste. Void parsial berulang pada item
+yang sama dibedakan melalui `local_id` dan `voided_at`; retry harus mengirim
+waktu kejadian yang sama. Antrean pemotongan pembayaran dihentikan saat void,
+dan kiriman pembayaran/status lama tidak mengaktifkan kembali order void.
+
+`items[].product_id` pada order dan `product_id` pada `order_item_void` menerima
+ID lokal produk outlet. Klien lama tanpa ID memakai nama yang cocok tepat dan unik
+di outlet tersebut. Produk ambigu/tidak ditemukan, resep tidak lengkap,
+gudang belum aktif, atau stok tidak cukup mengembalikan kegagalan sinkron
+untuk diperbaiki dan dikirim ulang; pencatatan void dan waste bersifat atomik.
+Produk tanpa pengelolaan stok tidak menghasilkan pemakaian bahan.
+
+Migrasi `RunPOSVoidMigrations` wajib berjalan sebelum menerima sinkronisasi.
+Migrasi tidak memproses ulang void historis secara massal. Mutasi pembayaran
+lama yang belum memiliki rincian per produk dipakai sebagai sumber pemakaian;
+hanya pemotongan yang tercatat gagal yang dicoba sebagai waste tambahan.
+
 ## Dua satuan stok per barang
 
 Atur di **Item Stok → pilih Gudang Induk → Tambah/Edit Bahan**:

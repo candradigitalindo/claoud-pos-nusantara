@@ -160,6 +160,7 @@ const fetchMetadata = async () => {
 
 const getReasonLabel = (reason) => {
   const labels = {
+    void: 'Waste akibat pembatalan',
     reject: 'Reject',
     return: 'Retur',
     damaged: 'Rusak',
@@ -173,6 +174,7 @@ const getReasonLabel = (reason) => {
 
 const getReasonVariant = (reason) => {
   const variants = {
+    void: 'warning',
     damaged: 'danger',
     expired: 'danger',
     spoiled: 'danger',

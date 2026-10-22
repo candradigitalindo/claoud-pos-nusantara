@@ -3,10 +3,12 @@ package services
 import (
 	"cloud-pos/database"
 	"cloud-pos/models"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -14,7 +16,7 @@ import (
 // resolveTxnCreatedAt memilih created_at terbaik untuk transaksi: created_at dari
 // payload bila valid; jika kosong/tak valid (umum pada transaksi sync tertunda),
 // pakai created_at order tertaut agar tidak ter-stempel waktu sync; fallback ke waktu kini.
-func resolveTxnCreatedAt(outletID string, req models.PushTransactionRequest) interface{} {
+func resolveTxnCreatedAt(tx *sql.Tx, outletID string, req models.PushTransactionRequest) interface{} {
 	// Prioritas: transaction_date (waktu transaksi asli, penting utk transaksi offline/tertunda).
 	if t, ok := parseTimeStrict(req.TransactionDate); ok {
 		return t
@@ -24,7 +26,7 @@ func resolveTxnCreatedAt(outletID string, req models.PushTransactionRequest) int
 	}
 	if req.OrderID != "" {
 		var oc time.Time
-		if err := database.DB.QueryRow(
+		if err := tx.QueryRow(
 			`SELECT created_at FROM cloud_orders WHERE id = $1 AND outlet_id = $2`,
 			req.OrderID, outletID).Scan(&oc); err == nil {
 			return oc
@@ -34,6 +36,9 @@ func resolveTxnCreatedAt(outletID string, req models.PushTransactionRequest) int
 }
 
 func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
+	if strings.TrimSpace(req.PaymentInfo.VoidedAt) != "" && strings.TrimSpace(req.LocalID) == "" {
+		return "", fmt.Errorf("ID order void wajib diisi")
+	}
 	itemsJSON, _ := json.Marshal(req.Items)
 	paymentJSON, _ := json.Marshal(req.PaymentInfo)
 
@@ -41,7 +46,33 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 	if cloudID == "" {
 		cloudID = NewULID()
 	}
-	err := database.DB.QueryRow(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err = lockPOSStock(tx, outletID); err != nil {
+		return "", err
+	}
+	var previousVoid string
+	err = tx.QueryRow(`SELECT COALESCE(payment_info->>'voided_at','') FROM cloud_orders WHERE outlet_id=$1 AND local_id=$2`, outletID, cloudID).Scan(&previousVoid)
+	if err != nil && err != sql.ErrNoRows {
+		return "", err
+	}
+	// A delayed unpaid/paid snapshot must never resurrect a completed void.
+	if previousVoid != "" && strings.TrimSpace(req.PaymentInfo.VoidedAt) == "" {
+		return cloudID, nil
+	}
+	if previousVoid != "" {
+		var completed bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM pos_void_stock_events WHERE outlet_id=$1 AND order_id=$2 AND source_type='order')`, outletID, cloudID).Scan(&completed); err != nil {
+			return "", err
+		}
+		if completed {
+			return cloudID, nil
+		}
+	}
+	err = tx.QueryRow(
 		`INSERT INTO cloud_orders (id, local_id, outlet_id, outlet_code, table_number,
 			customer_name, customer_phone, orderer_name, created_by, pax, total_amount, status, items, payment_info, version,
 			created_at, updated_at, is_holding, synced_at)
@@ -73,12 +104,13 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 		return "", err
 	}
 
-	// Bila order di-void, transaksinya (bila ada) bukan penjualan sah → hapus dari
-	// cloud_transactions + transaction_payments agar tidak terhitung di laporan/dashboard.
 	if strings.TrimSpace(req.PaymentInfo.VoidedAt) != "" {
-		oid := strings.TrimSpace(cloudID) // RETURNING id bisa ter-padding (CHAR 26); order_id varchar tak padded
-		database.DB.Exec(`DELETE FROM transaction_payments WHERE transaction_id IN (SELECT id FROM cloud_transactions WHERE TRIM(order_id) = $1)`, oid)
-		database.DB.Exec(`DELETE FROM cloud_transactions WHERE TRIM(order_id) = $1`, oid)
+		if err = applyOrderVoidStock(tx, outletID, strings.TrimSpace(cloudID), req); err != nil {
+			return "", fmt.Errorf("waste pembatalan: %w", err)
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return "", err
 	}
 
 	// Master pelanggan: cocokkan/daftarkan pelanggan dari nama & no. HP order
@@ -133,11 +165,20 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		cloudID = NewULID()
 	}
 
-	// Bila order tertaut sudah di-void, jangan catat transaksinya (bukan penjualan sah).
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err = lockPOSStock(tx, outletID); err != nil {
+		return "", err
+	}
 	if req.OrderID != "" {
-		var voidedAt string
-		database.DB.QueryRow(`SELECT COALESCE(payment_info->>'voided_at','') FROM cloud_orders WHERE id = $1`, req.OrderID).Scan(&voidedAt)
-		if strings.TrimSpace(voidedAt) != "" {
+		var voided bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cloud_orders WHERE outlet_id=$1 AND local_id=$2 AND NULLIF(payment_info->>'voided_at','') IS NOT NULL)`, outletID, req.OrderID).Scan(&voided); err != nil {
+			return "", err
+		}
+		if voided {
 			return cloudID, nil
 		}
 	}
@@ -145,7 +186,7 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	// Waktu transaksi: pakai created_at payload bila valid; bila kosong/tak valid
 	// (umum pada transaksi sync tertunda) pakai created_at order tertaut agar
 	// tidak salah tanggal (ter-stempel waktu sync). Fallback terakhir: waktu sekarang.
-	createdAt := resolveTxnCreatedAt(outletID, req)
+	createdAt := resolveTxnCreatedAt(tx, outletID, req)
 
 	itemsJSON := "[]"
 	if len(req.Items) > 0 {
@@ -176,7 +217,7 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		req.TaxAmount = 0
 	}
 
-	err := database.DB.QueryRow(
+	err = tx.QueryRow(
 		`INSERT INTO cloud_transactions (id, local_id, outlet_id, outlet_code, order_id,
 			subtotal, total_amount, tax_amount, other_charges_total, charges,
 			payment_method, cash_amount, change_amount, cashier_name, orderer_name,
@@ -216,7 +257,7 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	// bila dilapor sukses, device tidak akan retry dan rekap per-metode kurang selamanya.
 	// Upsert header + delete/insert di sini idempotent, jadi retry aman.
 	txCreatedAt := createdAt
-	if _, derr := database.DB.Exec(`DELETE FROM transaction_payments WHERE transaction_id = $1`, cloudID); derr != nil {
+	if _, derr := tx.Exec(`DELETE FROM transaction_payments WHERE transaction_id = $1`, cloudID); derr != nil {
 		log.Printf("clear transaction_payments (tx=%s): %v", cloudID, derr)
 		return "", fmt.Errorf("gagal menulis rincian pembayaran: %w", derr)
 	}
@@ -259,7 +300,7 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		if p.PaymentNote != nil {
 			note = *p.PaymentNote
 		}
-		if _, derr := database.DB.Exec(
+		if _, derr := tx.Exec(
 			`INSERT INTO transaction_payments (transaction_id, outlet_id, payment_method, amount, payment_note, created_at)
 			 VALUES ($1, $2, $3, $4, $5, $6)`,
 			cloudID, outletID, method, p.Amount, note, txCreatedAt,
@@ -269,54 +310,49 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		}
 	}
 
+	// Each product is atomic and has its own receipt. One failed ingredient
+	// rolls back that product, while the payment and other products can sync.
+	quantities := map[string]float64{}
+	for _, item := range req.Items {
+		if item.ProductID != "" && item.Quantity > 0 {
+			quantities[item.ProductID] += float64(item.Quantity)
+		}
+	}
+	products := make([]string, 0, len(quantities))
+	for product := range quantities {
+		products = append(products, product)
+	}
+	sort.Strings(products)
+	for _, product := range products {
+		if _, err = tx.Exec(`SAVEPOINT pos_product_stock`); err != nil {
+			return "", err
+		}
+		if derr := deductPOSProduct(tx, outletID, product, quantities[product], cloudID, req.LocalID); derr != nil {
+			if _, err = tx.Exec(`ROLLBACK TO SAVEPOINT pos_product_stock`); err != nil {
+				return "", err
+			}
+			if _, err = tx.Exec(`INSERT INTO stock_deduction_failures(id,outlet_id,transaction_id,product_local_id,qty,last_error)
+				VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(transaction_id,product_local_id)
+				DO UPDATE SET last_error=EXCLUDED.last_error,qty=EXCLUDED.qty,status='pending'`, NewULID(), outletID, cloudID, product, quantities[product], derr.Error()); err != nil {
+				return "", err
+			}
+		} else {
+			if _, err = tx.Exec(`UPDATE stock_deduction_failures SET status='resolved' WHERE outlet_id=$1 AND transaction_id=$2 AND product_local_id=$3 AND status='pending'`, outletID, cloudID, product); err != nil {
+				return "", err
+			}
+		}
+		if _, err = tx.Exec(`RELEASE SAVEPOINT pos_product_stock`); err != nil {
+			return "", err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return "", err
+	}
 	go logSync(outletID, "push_transaction", "transaction", 1, "success", "")
 	BroadcastSync("transaction", outletID)
-
-	// Transaksi yang menutup reservasi: tandai selesai + tautkan. Non-fatal —
-	// transaksinya sah walau tautannya gagal, dan admin masih bisa menutup manual.
 	if strings.TrimSpace(req.ReservationID) != "" {
 		if serr := SettleReservation(outletID, req.ReservationID, cloudID, cashierName); serr != nil {
 			log.Printf("settle reservasi %s dari tx %s: %v", req.ReservationID, cloudID, serr)
-		}
-	}
-
-	// Auto-deduct stok bahan baku via resep produk (lenient: gagal dicatat,
-	// transaksi tetap commit — selisih stok lebih baik daripada transaksi gagal sync).
-	// Catatan: saat ini akan no-op untuk item tanpa product_id (app outlet belum
-	// mengirim local_id produk di payload transaksi — lihat memory project_cloud_pos_overview).
-	//
-	// Idempotensi: upsert di atas berarti push ulang (retry outbox / respons hilang)
-	// tetap sampai ke sini untuk transaksi yang sama. Tanpa guard ini stok resep
-	// terpotong dobel setiap re-sync.
-	var stockAlreadyDeducted bool
-	if err := database.DB.QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM stock_movements WHERE ref_type='transaction' AND ref_id=$1)`,
-		cloudID,
-	).Scan(&stockAlreadyDeducted); err != nil {
-		// Gagal cek = jangan deduct (lebih aman kurang potong sekali daripada dobel).
-		log.Printf("cek idempotensi deduksi stok (tx=%s): %v", cloudID, err)
-		stockAlreadyDeducted = true
-	}
-	if stockAlreadyDeducted {
-		return cloudID, nil
-	}
-	for _, item := range req.Items {
-		if item.ProductID == "" || item.Quantity <= 0 {
-			continue
-		}
-		if derr := DeductStockByRecipe(outletID, item.ProductID, float64(item.Quantity), cloudID, req.LocalID); derr != nil {
-			log.Printf("DeductStockByRecipe gagal (outlet=%s produk=%s transaksi=%s): %v", outletID, item.ProductID, cloudID, derr)
-			go logSync(outletID, "deduct_stock", "stock_movement", 1, "failed", derr.Error())
-			// Catat ke antrian retry agar selisih stok tidak menumpuk diam-diam;
-			// scheduler mencoba ulang berkala (RetryFailedStockDeductions).
-			if _, ierr := database.DB.Exec(`
-				INSERT INTO stock_deduction_failures (id, outlet_id, transaction_id, product_local_id, qty, last_error)
-				VALUES ($1,$2,$3,$4,$5,$6)
-				ON CONFLICT (transaction_id, product_local_id)
-				DO UPDATE SET last_error = EXCLUDED.last_error, qty = EXCLUDED.qty`,
-				NewULID(), outletID, cloudID, item.ProductID, float64(item.Quantity), derr.Error()); ierr != nil {
-				log.Printf("catat stock_deduction_failure (tx=%s): %v", cloudID, ierr)
-			}
 		}
 	}
 

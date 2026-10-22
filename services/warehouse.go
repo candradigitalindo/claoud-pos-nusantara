@@ -853,6 +853,7 @@ func applyMovement(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, refID, re
 
 // movementOutcome: hasil applyMovementValued.
 type movementOutcome struct {
+	id string
 	// value: stok keluar → total biaya FIFO yang benar-benar terpotong (tepat,
 	// sebelum dibulatkan ke kolom cost_per_base 2 desimal); stok masuk → qty ×
 	// biaya per satuan.
@@ -987,10 +988,11 @@ func applyMovementValued(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, ref
 		expDateArg = expiryDate
 	}
 
+	out.id = NewULID()
 	_, err = tx.Exec(`
 		INSERT INTO stock_movements (id, item_id, warehouse_id, movement_type, qty_base, qty_dist, unit_used, cost_per_base, balance_after, ref_id, ref_type, ref_number, notes, created_by, expiry_date)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-		NewULID(), itemID, warehouseID, movType, qtyBase, qtyDist, unitUsed, actualCostPerBase, newQty, refIDArg, refType, refNumber, notes, createdBy, expDateArg)
+		out.id, itemID, warehouseID, movType, qtyBase, qtyDist, unitUsed, actualCostPerBase, newQty, refIDArg, refType, refNumber, notes, createdBy, expDateArg)
 	if err != nil {
 		return movementOutcome{}, err
 	}
@@ -1039,104 +1041,17 @@ func CreateAdjustment(req models.AdjustmentRequest, createdBy string) error {
 
 // DeductStockByRecipe deducts raw materials from a warehouse based on the products sold in a transaction.
 func DeductStockByRecipe(outletID string, productLocalID string, qtySold float64, refID, refNumber string) error {
-	// 1. Find the warehouse for this outlet
-	var warehouseID string
-	err := database.DB.QueryRow(`SELECT id FROM warehouses WHERE outlet_id = $1 AND type = 'outlet' AND is_active = true`, outletID).Scan(&warehouseID)
-	if err == sql.ErrNoRows {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	// 2. Get product info (type and link)
-	var stockType string
-	var linkedItemID sql.NullString
-	var recipeMasterID sql.NullString
-	var productCloudID string
-	var productName string
-	err = database.DB.QueryRow(`SELECT id, name, stock_type, linked_stock_item_id, recipe_master_id FROM cloud_products WHERE outlet_id = $1 AND local_id = $2`, outletID, productLocalID).Scan(&productCloudID, &productName, &stockType, &linkedItemID, &recipeMasterID)
-	if err != nil {
-		return nil // Skip if product not found
-	}
-
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
-	if stockType == "single" && linkedItemID.Valid {
-		// ... existing code for single ...
-		var itemID = linkedItemID.String
-		var baseUnit string
-		if err := tx.QueryRow(`SELECT base_unit FROM stock_items WHERE id = $1`, itemID).Scan(&baseUnit); err != nil {
-			return fmt.Errorf("bahan baku %s tidak ditemukan: %w", itemID, err)
-		}
-		
-		if err := applyMovement(tx, itemID, warehouseID, "sale", baseUnit,
-			refID, "transaction", refNumber, "Sale of single product", "system", -qtySold, -qtySold, 0, ""); err != nil {
-			return fmt.Errorf("failed to deduct direct stock for %s: %w", productName, err)
-		}
-	} else if stockType == "recipe" {
-		// --- CASE B: RECIPE PRODUCT ---
-		var rows *sql.Rows
-		var err error
-
-		if recipeMasterID.Valid && recipeMasterID.String != "" {
-			// USE MASTER RECIPE
-			rows, err = tx.Query(`
-				SELECT ri.item_id, ri.qty_base, si.name, si.base_unit, si.dist_ratio
-				FROM recipe_items ri
-				JOIN stock_items si ON si.id = ri.item_id
-				WHERE ri.recipe_master_id = $1`, recipeMasterID.String)
-		} else {
-			// USE CUSTOM PRODUCT RECIPE (legacy/fallback)
-			rows, err = tx.Query(`
-				SELECT pr.item_id, pr.qty_base, si.name, si.base_unit, si.dist_ratio
-				FROM product_recipes pr
-				JOIN stock_items si ON si.id = pr.item_id
-				WHERE pr.product_id = $1`, productCloudID)
-		}
-
-		if err != nil {
-			return err
-		}
-
-		// Baca semua bahan resep ke slice DULU sebelum memanggil applyMovement.
-		// lib/pq tidak mengizinkan query lain pada tx selama result set `rows`
-		// masih terbuka di koneksi yang sama.
-		type recipeRow struct {
-			id, name, unit  string
-			qtyBase, ratio  float64
-		}
-		var recipeRows []recipeRow
-		for rows.Next() {
-			var rr recipeRow
-			if err := rows.Scan(&rr.id, &rr.qtyBase, &rr.name, &rr.unit, &rr.ratio); err != nil {
-				rows.Close()
-				return fmt.Errorf("gagal scan bahan resep: %w", err)
-			}
-			recipeRows = append(recipeRows, rr)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
-		}
-
-		for _, rr := range recipeRows {
-			totalQty := rr.qtyBase * qtySold
-			distQty := totalQty
-			if rr.ratio > 0 {
-				distQty = totalQty / rr.ratio
-			}
-			if err := applyMovement(tx, rr.id, warehouseID, "sale", rr.unit,
-				refID, "transaction", refNumber, "Recipe deduction from sale", "system", -totalQty, -distQty, 0, ""); err != nil {
-				return fmt.Errorf("failed recipe deduction for %s: %w", rr.name, err)
-			}
-		}
+	if err = lockPOSStock(tx, outletID); err != nil {
+		return err
 	}
-
+	if err = deductPOSProduct(tx, outletID, productLocalID, qtySold, refID, refNumber); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -1168,16 +1083,12 @@ func RetryFailedStockDeductions() {
 
 	resolved := 0
 	for _, f := range fails {
-		if derr := DeductStockByRecipe(f.outletID, f.productID, f.qty, f.txID, f.txID); derr != nil {
+		if derr := retryPOSStockDeduction(f.id, f.outletID, f.txID, f.productID, f.qty); derr != nil {
 			database.DB.Exec(`
 				UPDATE stock_deduction_failures
 				SET attempts = attempts + 1, last_error = $2, last_attempt_at = NOW() AT TIME ZONE 'UTC'
-				WHERE id = $1`, f.id, derr.Error())
+				WHERE id = $1 AND status = 'pending'`, f.id, derr.Error())
 		} else {
-			database.DB.Exec(`
-				UPDATE stock_deduction_failures
-				SET status = 'resolved', attempts = attempts + 1, last_attempt_at = NOW() AT TIME ZONE 'UTC'
-				WHERE id = $1`, f.id)
 			resolved++
 		}
 	}

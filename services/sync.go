@@ -140,28 +140,32 @@ func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (stri
 }
 
 // SaveOrderItemVoid menyimpan audit void item (hapus item dari order belum bayar).
-// Idempotent: retry outbox app dengan local_id sama hanya meng-update baris yang ada.
+// Idempotent per local_id + voided_at; void parsial berikutnya punya waktu berbeda.
 func SaveOrderItemVoid(outletID string, req models.PushOrderItemVoidRequest) (string, error) {
 	cloudID := NewULID()
+	at, valid := parseTimeStrict(req.VoidedAt)
+	if !valid {
+		return "", fmt.Errorf("waktu void item tidak valid")
+	}
+	req.VoidedAt = at.UTC().Format(time.RFC3339Nano)
 
-	err := database.DB.QueryRow(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err = lockPOSStock(tx, outletID); err != nil {
+		return "", err
+	}
+	if err = applyItemVoidStock(tx, outletID, req); err != nil {
+		return "", fmt.Errorf("waste pembatalan item: %w", err)
+	}
+	err = tx.QueryRow(
 		`INSERT INTO order_item_voids (id, local_id, outlet_id, order_id, table_number,
 			product_name, category_id, qty, price, subtotal, waiter_name,
 			voided_by, void_reason, voided_at, created_at, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
-		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			order_id = EXCLUDED.order_id,
-			table_number = EXCLUDED.table_number,
-			product_name = EXCLUDED.product_name,
-			category_id = EXCLUDED.category_id,
-			qty = EXCLUDED.qty,
-			price = EXCLUDED.price,
-			subtotal = EXCLUDED.subtotal,
-			waiter_name = EXCLUDED.waiter_name,
-			voided_by = EXCLUDED.voided_by,
-			void_reason = EXCLUDED.void_reason,
-			voided_at = EXCLUDED.voided_at,
-			synced_at = NOW()
+		ON CONFLICT (outlet_id, local_id, voided_at) DO UPDATE SET synced_at = NOW()
 		RETURNING id`,
 		cloudID, req.LocalID, outletID, req.OrderID, req.TableNumber,
 		req.ProductName, req.CategoryID, req.Qty, req.Price, req.Subtotal,
@@ -172,6 +176,9 @@ func SaveOrderItemVoid(outletID string, req models.PushOrderItemVoidRequest) (st
 		return "", err
 	}
 
+	if err = tx.Commit(); err != nil {
+		return "", err
+	}
 	go logSync(outletID, "push_order_item_void", "order_item_void", 1, "success", "")
 	BroadcastSync("order_item_void", outletID)
 	return cloudID, nil
