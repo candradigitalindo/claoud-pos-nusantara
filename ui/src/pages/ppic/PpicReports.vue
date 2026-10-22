@@ -49,11 +49,6 @@
           <input v-model="soldSearch" placeholder="Nama produk atau kategori..."
             class="block w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
         </div>
-        <div v-if="tab === 'hpp'">
-          <label class="text-xs font-semibold text-gray-600">Ambang Ideal HPP %</label>
-          <input type="number" min="1" max="100" v-model.number="idealPct"
-            class="block w-28 text-sm border border-gray-200 rounded-lg px-3 py-2" />
-        </div>
         <div v-if="tab === 'hpp'" class="flex-1 min-w-[180px]">
           <label class="text-xs font-semibold text-gray-600">Cari Menu</label>
           <input v-model="hppSearch" placeholder="Nama menu..."
@@ -96,7 +91,7 @@
                 </td>
                 <td>
                   <span v-if="r.has_recipe" class="pill-ok"><svg class="inline-block align-[-2px]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-                  <router-link v-else to="/recipes" class="pill-no" title="Produk belum punya resep — klik untuk melengkapi">belum</router-link>
+                  <router-link v-else to="/fnb/recipes" class="pill-no" title="Produk belum punya resep — klik untuk melengkapi">belum</router-link>
                 </td>
               </tr>
             </tbody>
@@ -109,25 +104,25 @@
     <template v-else-if="tab === 'hpp' && rep">
       <div class="stat-grid">
         <div class="stat"><div class="stat-l">Menu</div><div class="stat-v">{{ rep.product_count }}</div><div class="stat-s">{{ rep.with_recipe }} ber-resep</div></div>
-        <div class="stat" :class="rep.avg_hpp_pct <= rep.ideal_pct ? 'stat--ok' : 'stat--red'">
-          <div class="stat-l">Rata-rata HPP</div><div class="stat-v">{{ rep.avg_hpp_pct.toFixed(1) }}%</div><div class="stat-s">ambang ideal {{ rep.ideal_pct.toFixed(0) }}%</div>
+        <div class="stat">
+          <div class="stat-l">Rata-rata HPP</div><div class="stat-v">{{ rep.avg_hpp_pct.toFixed(1) }}%</div><div class="stat-s">batas mengikuti outlet / menu</div>
         </div>
         <div class="stat" :class="rep.over_count ? 'stat--red' : 'stat--ok'">
-          <div class="stat-l">Di Atas Ambang</div><div class="stat-v">{{ rep.over_count }}</div><div class="stat-s">menu perlu ditinjau (harga/porsi/resep)</div>
+          <div class="stat-l">Mencapai Batas</div><div class="stat-v">{{ rep.over_count }}</div><div class="stat-s">menu perlu ditinjau (harga/porsi/resep)</div>
         </div>
-        <div class="stat"><div class="stat-l">Basis Biaya</div><div class="stat-s" style="margin-top:.35rem">Avg cost gudang (FIFO); komponen WIP memakai HPP produksi aktual atau teoretis dari resep.</div></div>
+        <div class="stat"><div class="stat-l">Basis Biaya</div><div class="stat-s" style="margin-top:.35rem">Sama dengan F&B: biaya stok outlet + kemasan + overhead. Proyeksi induk untuk perencanaan; keuangan memakai pemakaian batch aktual.</div></div>
       </div>
 
       <div v-if="rep.no_recipe_sample" class="warn-note">
         <svg class="inline-block align-[-2px] mr-0.5" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
         Menu tanpa resep (HPP tidak bisa dihitung): {{ rep.no_recipe_sample }}<span v-if="rep.product_count - rep.with_recipe > 10">, …</span>
-        — total {{ rep.product_count - rep.with_recipe }} menu. Lengkapi di halaman <router-link to="/recipes" class="underline font-semibold">Resep</router-link>.
+        — total {{ rep.product_count - rep.with_recipe }} menu. Lengkapi di halaman <router-link to="/fnb/recipes" class="underline font-semibold">Resep</router-link>.
       </div>
 
       <AppCard :padding="false">
         <div class="overflow-x-auto">
           <table class="rp-table">
-            <thead><tr><th></th><th>Menu</th><th>Outlet</th><th>Kategori</th><th class="th-r">HPP</th><th class="th-r">Harga Jual</th><th class="th-r">HPP %</th><th class="th-r">Margin</th><th class="th-r">Ideal ({{ rep.ideal_pct.toFixed(0) }}%)</th></tr></thead>
+            <thead><tr><th></th><th>Menu</th><th>Outlet</th><th>Kategori</th><th class="th-r">HPP</th><th class="th-r">Harga Jual</th><th class="th-r">HPP %</th><th class="th-r">Margin</th><th class="th-r">Batas biaya / menu</th></tr></thead>
             <tbody>
               <tr v-if="!hppRows.length"><td colspan="9" class="p-8 text-center text-sm text-gray-400">Tidak ada menu.</td></tr>
               <template v-for="(r, i) in hppRows" :key="r.product_id">
@@ -136,17 +131,18 @@
                   <td class="text-sm font-medium text-gray-900">{{ r.product_name }}</td>
                   <td class="text-xs text-gray-500">{{ r.outlet_name }}</td>
                   <td class="text-xs text-gray-500">{{ r.category || '—' }}</td>
-                  <td class="td-num">{{ r.has_recipe ? fmtRpFull(r.hpp) : '—' }}</td>
+                  <td class="td-num">{{ r.cost_status === 'ready' ? fmtRpFull(r.hpp) : '—' }}<span class="block text-xs text-gray-400">{{ r.cost_status === 'ready' ? (r.cost_basis === 'estimate' ? 'Acuan / estimasi' : 'Stok outlet') : 'Biaya belum lengkap / dibatasi' }}</span><span v-if="r.projected_hpp != null" class="block text-xs" :class="r.projected_is_over ? 'text-amber-700' : 'text-gray-400'">Proyeksi {{ fmtRpFull(r.projected_hpp) }}</span></td>
                   <td class="td-num">{{ fmtRpFull(r.price) }}</td>
                   <td class="td-num font-bold" :class="!r.has_recipe ? 'text-gray-300' : (r.is_over ? 'text-red-600' : 'text-emerald-700')">
-                    {{ r.has_recipe && r.price > 0 ? r.hpp_pct.toFixed(1) + '%' : '—' }}
+                    {{ r.cost_status === 'ready' && r.price > 0 ? r.hpp_pct.toFixed(1) + '%' : '—' }}
                   </td>
-                  <td class="td-num">{{ r.has_recipe && r.price > 0 ? fmtRpFull(r.margin) : '—' }}</td>
-                  <td class="td-num text-gray-500">{{ r.price > 0 ? fmtRpFull(r.ideal_cost) : '—' }}</td>
+                  <td class="td-num">{{ r.cost_status === 'ready' && r.price > 0 ? fmtRpFull(r.margin) : '—' }}</td>
+                  <td class="td-num text-gray-500">{{ r.price > 0 ? fmtRpFull(r.ideal_cost) : '—' }}<span class="block text-xs">{{ r.target_cost_pct }}%</span></td>
                 </tr>
                 <tr v-if="hppOpen[r.product_id] && r.ingredients?.length">
                   <td></td>
                   <td colspan="8" class="!p-0">
+                    <div class="p-3 text-xs text-gray-500">Kemasan {{ fmtRpFull(r.packaging_cost) }} + overhead {{ fmtRpFull(r.overhead_cost) }} / menu.<span v-if="r.projected_cost_pct != null"> Proyeksi {{ r.projected_cost_pct.toFixed(1) }}% dari harga jual.</span></div>
                     <table class="ing-table">
                       <thead><tr><th>Bahan / Komponen</th><th class="th-r">Qty</th><th>Satuan</th><th class="th-r">Harga/Satuan</th><th class="th-r">Cost</th></tr></thead>
                       <tbody>
@@ -173,6 +169,7 @@
 
     <!-- ══ VARIANCE ══ -->
     <template v-else-if="tab === 'variance' && rep">
+      <p class="text-xs text-gray-500 mb-3">Pemakaian aktual memakai mutasi pada periode laporan. Kebutuhan teoretis adalah simulasi berdasarkan resep yang berlaku saat laporan dibuka; perubahan resep dapat mengubah simulasi, tanpa mengubah pemakaian aktual.</p>
       <div v-if="!rep.representative && rep.qty_sold > 0" class="warn-note">
         <svg class="inline-block align-[-2px] mr-0.5" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
         Coverage resep baru <b>{{ rep.recipe_coverage_pct.toFixed(1) }}%</b> dari qty terjual — angka variance <b>belum representatif</b>.
@@ -184,8 +181,8 @@
         <div class="stat" :class="Math.abs(rep.variance_pct) > 5 ? 'stat--red' : 'stat--ok'">
           <div class="stat-l">Variance</div><div class="stat-v">{{ rep.variance_pct > 0 ? '+' : '' }}{{ rep.variance_pct.toFixed(1) }}%</div><div class="stat-s">target &lt; ±5%</div>
         </div>
-        <div class="stat" :class="rep.food_cost_pct > 35 ? 'stat--red' : (rep.food_cost_pct > 0 ? 'stat--ok' : '')">
-          <div class="stat-l">Food Cost Aktual</div><div class="stat-v">{{ rep.food_cost_pct.toFixed(1) }}%</div><div class="stat-s">dari omzet {{ fmtRp(rep.revenue) }} · patokan F&amp;B 25–35%</div>
+        <div class="stat">
+          <div class="stat-l">Food Cost Aktual</div><div class="stat-v">{{ rep.food_cost_pct.toFixed(1) }}%</div><div class="stat-s">dari omzet {{ fmtRp(rep.revenue) }} · biaya aktual periode laporan</div>
         </div>
       </div>
       <AppCard :padding="false">
@@ -414,7 +411,6 @@ const loading = ref(false)
 const exporting = ref(false)
 const warehouseId = ref('')
 const outletId = ref('')
-const idealPct = ref(35)
 const hppSearch = ref('')
 const hppOpen = reactive({})
 const soldSearch = ref('')
@@ -458,7 +454,6 @@ function params() {
   return {
     date_from: dateFrom.value, date_to: dateTo.value,
     warehouse_id: warehouseId.value, outlet_id: outletId.value,
-    ideal_pct: idealPct.value,
     search: tab.value === 'hpp' ? hppSearch.value
       : tab.value === 'distribution' ? distSearch.value
       : soldSearch.value,

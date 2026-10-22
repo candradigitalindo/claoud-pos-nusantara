@@ -555,20 +555,28 @@ type PpicHppIngredient struct {
 }
 
 type PpicHppRow struct {
-	ProductID   string              `json:"product_id"`
-	OutletID    string              `json:"outlet_id"`
-	OutletName  string              `json:"outlet_name"`
-	ProductName string              `json:"product_name"`
-	Category    string              `json:"category"`
-	Price       float64             `json:"price"`
-	Hpp         float64             `json:"hpp"`
-	HppPct      float64             `json:"hpp_pct"`    // HPP / harga jual × 100
-	Margin      float64             `json:"margin"`     // harga − HPP
-	MarginPct   float64             `json:"margin_pct"` // margin / harga × 100
-	IdealCost   float64             `json:"ideal_cost"` // harga × ambang ideal
-	IsOver      bool                `json:"is_over"`    // HPP% di atas ambang
-	HasRecipe   bool                `json:"has_recipe"`
-	Ingredients []PpicHppIngredient `json:"ingredients,omitempty"`
+	TargetCostPct    float64             `json:"target_cost_pct"`
+	CostStatus       string              `json:"cost_status"`
+	CostBasis        string              `json:"cost_basis"`
+	PackagingCost    float64             `json:"packaging_cost"`
+	OverheadCost     float64             `json:"overhead_cost"`
+	ProjectedHpp     *float64            `json:"projected_hpp"`
+	ProjectedCostPct *float64            `json:"projected_cost_pct"`
+	ProjectedIsOver  bool                `json:"projected_is_over"`
+	ProductID        string              `json:"product_id"`
+	OutletID         string              `json:"outlet_id"`
+	OutletName       string              `json:"outlet_name"`
+	ProductName      string              `json:"product_name"`
+	Category         string              `json:"category"`
+	Price            float64             `json:"price"`
+	Hpp              float64             `json:"hpp"`
+	HppPct           float64             `json:"hpp_pct"`    // HPP / harga jual × 100
+	Margin           float64             `json:"margin"`     // harga − HPP
+	MarginPct        float64             `json:"margin_pct"` // margin / harga × 100
+	IdealCost        float64             `json:"ideal_cost"` // harga × ambang ideal
+	IsOver           bool                `json:"is_over"`    // HPP% di atas ambang
+	HasRecipe        bool                `json:"has_recipe"`
+	Ingredients      []PpicHppIngredient `json:"ingredients,omitempty"`
 }
 
 type PpicHppReport struct {

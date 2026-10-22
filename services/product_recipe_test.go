@@ -182,3 +182,66 @@ func TestProductRecipeAvailability(t *testing.T) {
 		t.Fatalf("penolakan harus atomik: %q %q %v", name, recipeID, err)
 	}
 }
+
+func TestProductRecipeDetailCompositionAndScope(t *testing.T) {
+	f := newProductRecipeFixture(t)
+	public := f.recipe(t, "public", false, 12.5, false)
+	secret := f.recipe(t, "secret", true, 2, false)
+	denied := f.recipe(t, "secret", false, 1, false)
+	empty := f.recipe(t, "public", false, 0, true)
+	invalid := f.recipe(t, "public", false, -1, false)
+	instructions := `[{"text":"<p>Campurkan bahan</p>","duration":3}]`
+	if _, err := database.DB.Exec(`UPDATE recipe_masters SET description='Satu porsi', menu_kind='food', total_time=3, instructions=$2 WHERE id=$1`, public, instructions); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE recipe_items SET notes='Timbang sebelum dimasak' WHERE recipe_master_id=$1`, public); err != nil {
+		t.Fatal(err)
+	}
+	options, err := ListProductRecipeOptions(f.outlet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var option models.ProductRecipeOption
+	for _, r := range options {
+		if r.ID == public {
+			option = r
+		}
+	}
+	if option.ItemCount != 1 || option.MenuKind != "food" || option.Description != "Satu porsi" || option.TotalTime != 3 {
+		t.Fatalf("ringkasan resep: %+v", option)
+	}
+	detail, err := GetProductRecipeDetail(f.outlet, public)
+	if err != nil || detail.ID != public || detail.Instructions != instructions || detail.ItemCount != 1 || len(detail.Items) != 1 {
+		t.Fatalf("detail resep: %+v, %v", detail, err)
+	}
+	item := detail.Items[0]
+	if item.ItemID != f.itemID || item.ItemName == "" || item.Unit != "g" || item.QtyBase != 12.5 || item.Notes != "Timbang sebelum dimasak" {
+		t.Fatalf("bahan & takaran: %+v", item)
+	}
+	if _, err := GetProductRecipeDetail(f.outlet, secret); err != nil {
+		t.Fatalf("resep dengan akses outlet: %v", err)
+	}
+	for _, id := range []string{denied, empty, invalid, NewULID()} {
+		if detail, err := GetProductRecipeDetail(f.outlet, id); !errors.Is(err, ErrProductRecipe) || detail.ID != "" || len(detail.Items) != 0 {
+			t.Fatalf("detail tidak boleh membuka resep terlarang/tidak valid: %+v, %v", detail, err)
+		}
+	}
+	if _, err := GetProductRecipeDetail(NewULID(), secret); !errors.Is(err, ErrProductRecipe) {
+		t.Fatalf("resep rahasia lintas outlet: %v", err)
+	}
+	if _, err := database.DB.Exec(`DELETE FROM recipe_outlet_access WHERE recipe_master_id=$1`, secret); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetProductRecipeDetail(f.outlet, secret); !errors.Is(err, ErrProductRecipe) {
+		t.Fatalf("akses dicabut setelah daftar dimuat: %v", err)
+	}
+	if _, err := database.DB.Exec(`UPDATE recipe_masters SET description=NULL, total_time=NULL, instructions=NULL WHERE id=$1`, public); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ListProductRecipeOptions(f.outlet); err != nil {
+		t.Fatalf("metadata resep lama yang kosong tidak boleh menggagalkan daftar: %v", err)
+	}
+	if detail, err := GetProductRecipeDetail(f.outlet, public); err != nil || detail.TotalTime != 0 || detail.Instructions != "" || detail.Description != "" {
+		t.Fatalf("metadata resep lama: %+v, %v", detail, err)
+	}
+}

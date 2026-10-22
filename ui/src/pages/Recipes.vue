@@ -1,5 +1,7 @@
 <template>
   <div class="space-y-6">
+        <RecipeCostSummary v-if="editingId && savedCost" :cost="savedCost" current-source="Harga terkini: rata-rata stok gudang induk, untuk komposisi yang sudah disimpan" />
+        <p v-else class="text-xs text-gray-500">Harga bahan gudang induk dan komposisi awal direkam saat resep dibuat. Tautkan satu atau beberapa resep melalui Produk untuk menghitung HPP menu.</p>
     <div class="flex flex-wrap gap-3 items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold text-gray-900 font-display tracking-tight">Resep & SOP F & B</h1>
@@ -204,6 +206,7 @@
 </template>
 
 <script setup>
+import RecipeCostSummary from '@/components/RecipeCostSummary.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, onMounted, computed } from 'vue'
@@ -293,6 +296,7 @@ async function fetchAll() {
 // Modal & Form
 const showModal = ref(false)
 const editingId = ref(null)
+const savedCost = ref(null)
 const form = ref({ 
   name: '', description: '', visibility: 'public', 
   items: [], outlet_ids: [], total_time: 0, instruction_steps: [] 
@@ -300,6 +304,7 @@ const form = ref({
 
 function openCreate() {
   editingId.value = null
+  savedCost.value = null
   activeTab.value = 'items'
   form.value = { 
     name: '', description: '', visibility: 'public', menu_kind: '',
@@ -316,6 +321,7 @@ async function openEdit(row) {
     // apiClient sudah meng-unwrap envelope → res adalah objek resepnya.
     const data = res?.data ?? res
     editingId.value = data.id
+    savedCost.value = data
     
     let steps = []
     try { steps = JSON.parse(data.instructions) } catch { steps = [] }

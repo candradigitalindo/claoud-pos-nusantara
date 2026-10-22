@@ -8,6 +8,20 @@ type FnbProfile struct {
 }
 
 type FnbCostRow struct {
+	OutletTargetCostPct        *float64             `json:"outlet_target_cost_pct"`
+	TargetSource               string               `json:"target_source"`
+	CostBasis                  string               `json:"cost_basis"`
+	ProjectedMaterialCost      *float64             `json:"projected_material_cost"`
+	ProjectedTotalCost         *float64             `json:"projected_total_cost"`
+	ProjectedCostPct           *float64             `json:"projected_cost_pct"`
+	ProjectedSuggestedPrice    *float64             `json:"projected_suggested_price"`
+	ProjectedIsOver            bool                 `json:"projected_is_over"`
+	MaxMaterialCost            float64              `json:"max_material_cost"`
+	MaterialReduction          float64              `json:"material_reduction"`
+	ProjectedMaterialReduction *float64             `json:"projected_material_reduction"`
+	PriceComparisons           []FnbPriceComparison `json:"price_comparisons,omitempty"`
+	Recipes                    []FnbRecipeCost      `json:"recipes,omitempty"`
+	ReferenceMaterialCost      *float64             `json:"reference_material_cost"`
 	FnbProfile
 	ProductID      string              `json:"product_id"`
 	ProductName    string              `json:"product_name"`
@@ -24,6 +38,24 @@ type FnbCostRow struct {
 	CostStatus     string              `json:"cost_status"` // ready, no_recipe, missing_cost, restricted
 	IsOver         bool                `json:"is_over"`
 	Ingredients    []PpicHppIngredient `json:"ingredients,omitempty"`
+}
+
+type FnbOutletPolicy struct {
+	OutletName    string  `json:"outlet_name"`
+	OutletID      string  `json:"outlet_id"`
+	TargetCostPct float64 `json:"target_cost_pct"`
+	Configured    bool    `json:"configured"`
+}
+
+type FnbPriceComparison struct {
+	ItemID            string   `json:"item_id"`
+	ItemName          string   `json:"item_name"`
+	Unit              string   `json:"unit"`
+	QtyBase           float64  `json:"qty_base"`
+	CurrentUnitCost   float64  `json:"current_unit_cost"`
+	ProjectedUnitCost *float64 `json:"projected_unit_cost"`
+	Source            string   `json:"source"`
+	AsOf              string   `json:"as_of"`
 }
 
 type FnbDevelopment struct {
@@ -49,15 +81,16 @@ type FnbDevelopment struct {
 }
 
 type FnbOverview struct {
-	ProductCount      int            `json:"product_count"`
-	FoodCount         int            `json:"food_count"`
-	BeverageCount     int            `json:"beverage_count"`
-	Unclassified      int            `json:"unclassified"`
-	CostReady         int            `json:"cost_ready"`
-	MissingCost       int            `json:"missing_cost"`
-	NoRecipe          int            `json:"no_recipe"`
-	OverTarget        int            `json:"over_target"`
-	RecipeCount       int            `json:"recipe_count"`
-	DevelopmentStages map[string]int `json:"development_stages"`
-	Attention         []FnbCostRow   `json:"attention"`
+	ProjectedOverTarget int            `json:"projected_over_target"`
+	ProductCount        int            `json:"product_count"`
+	FoodCount           int            `json:"food_count"`
+	BeverageCount       int            `json:"beverage_count"`
+	Unclassified        int            `json:"unclassified"`
+	CostReady           int            `json:"cost_ready"`
+	MissingCost         int            `json:"missing_cost"`
+	NoRecipe            int            `json:"no_recipe"`
+	OverTarget          int            `json:"over_target"`
+	RecipeCount         int            `json:"recipe_count"`
+	DevelopmentStages   map[string]int `json:"development_stages"`
+	Attention           []FnbCostRow   `json:"attention"`
 }

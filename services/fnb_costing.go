@@ -69,12 +69,16 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 	products := []product{}
 	rows, err := database.DB.Query(`SELECT p.id,p.name,p.outlet_id,o.name,COALESCE(p.category_name,''),p.price,
 		COALESCE(p.stock_type,'none'),COALESCE(p.linked_stock_item_id,''),COALESCE(p.recipe_master_id,''),
-		COALESCE(f.menu_kind,r.menu_kind,''),COALESCE(f.target_cost_pct,35),COALESCE(f.packaging_cost,0),COALESCE(f.overhead_cost,0),
-		($3 OR ((r.id IS NULL OR r.visibility='public' OR EXISTS(SELECT 1 FROM recipe_outlet_access a WHERE a.recipe_master_id=r.id AND a.outlet_id=p.outlet_id))
+		COALESCE(f.menu_kind,r.menu_kind,''),COALESCE(op.target_cost_pct,f.target_cost_pct,35),COALESCE(f.packaging_cost,0),COALESCE(f.overhead_cost,0),
+		op.target_cost_pct,CASE WHEN op.outlet_id IS NOT NULL THEN 'outlet' WHEN f.product_id IS NOT NULL THEN 'menu' ELSE 'default' END,
+		($3 OR (NOT EXISTS(SELECT 1 FROM product_recipe_sources ps JOIN recipe_masters rm ON rm.id=ps.recipe_master_id
+			WHERE ps.product_id=p.id AND rm.visibility<>'public' AND NOT EXISTS(SELECT 1 FROM recipe_outlet_access a WHERE a.recipe_master_id=rm.id AND a.outlet_id=p.outlet_id))
 			AND NOT EXISTS(SELECT 1 FROM product_recipes pr WHERE pr.product_id=p.id AND pr.visibility<>'public'
-				AND p.stock_type='recipe' AND COALESCE(p.recipe_master_id,'')='')))
+				AND p.stock_type='recipe' AND NOT EXISTS(SELECT 1 FROM product_recipe_sources ps WHERE ps.product_id=p.id))))
 		FROM cloud_products p JOIN outlets o ON o.id=p.outlet_id
-		LEFT JOIN fnb_product_profiles f ON f.product_id=p.id LEFT JOIN recipe_masters r ON r.id=p.recipe_master_id
+		LEFT JOIN fnb_product_profiles f ON f.product_id=p.id LEFT JOIN fnb_outlet_policies op ON op.outlet_id=p.outlet_id
+		LEFT JOIN LATERAL (SELECT rm.menu_kind FROM product_recipe_sources ps JOIN recipe_masters rm ON rm.id=ps.recipe_master_id
+			WHERE ps.product_id=p.id ORDER BY ps.position,rm.id LIMIT 1) r ON true
 		WHERE NOT p.is_deleted AND o.is_active AND ($1 OR p.outlet_id=ANY($2)) ORDER BY o.name,p.name`, filter == nil, pq.Array(filter), scope == nil)
 	if err != nil {
 		return nil, err
@@ -84,7 +88,7 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 		var p product
 		r := &p.row
 		if err := rows.Scan(&r.ProductID, &r.ProductName, &r.OutletID, &r.OutletName, &r.Category, &r.Price, &p.stockType, &p.linked, &r.RecipeID,
-			&r.MenuKind, &r.TargetCostPct, &r.PackagingCost, &r.OverheadCost, &p.allowed); err != nil {
+			&r.MenuKind, &r.TargetCostPct, &r.PackagingCost, &r.OverheadCost, &r.OutletTargetCostPct, &r.TargetSource, &p.allowed); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -105,11 +109,7 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 		qty float64
 	}
 	mats := map[string][]material{}
-	rows, err = database.DB.Query(`SELECT p.id,x.item_id,x.qty_base FROM cloud_products p
-		JOIN LATERAL (
-			SELECT ri.item_id,ri.qty_base FROM recipe_items ri WHERE ri.recipe_master_id=p.recipe_master_id AND p.stock_type='recipe'
-			UNION ALL SELECT pr.item_id,pr.qty_base FROM product_recipes pr WHERE pr.product_id=p.id AND COALESCE(p.recipe_master_id,'')='' AND p.stock_type='recipe'
-		) x ON true WHERE p.id=ANY($1)`, pq.Array(ids))
+	rows, err = database.DB.Query(`SELECT product_id,item_id,qty_base FROM product_recipe_materials WHERE product_id=ANY($1) ORDER BY product_id,item_id`, pq.Array(ids))
 	if err != nil {
 		return nil, err
 	}
@@ -127,94 +127,24 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Load shared ingredient definitions; valuations below never read another outlet.
-	type ingredient struct{ name, unit string }
-	infos := map[string]ingredient{}
-	rows, err = database.DB.Query(`SELECT id,name,base_unit FROM stock_items`)
+	catalog, err := loadRecipeCostCatalog(database.DB, filter)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var id string
-		var inf ingredient
-		if err := rows.Scan(&id, &inf.name, &inf.unit); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		infos[id] = inf
-	}
-	err = rows.Err()
-	rows.Close()
+	infos, wip, unitCost := catalog.infos, catalog.wip, catalog.unitCost
+	links, err := loadProductRecipeLinks(ids)
 	if err != nil {
 		return nil, err
 	}
-	wip := map[string][]material{}
-	rows, err = database.DB.Query(`SELECT parent_item_id,child_item_id,qty_base FROM stock_item_recipes`)
+	recipeIDs := []string{}
+	for _, ls := range links {
+		for _, l := range ls {
+			recipeIDs = append(recipeIDs, l.RecipeMasterID)
+		}
+	}
+	definitions, err := loadRecipeCostDefinitions(database.DB, recipeIDs)
 	if err != nil {
 		return nil, err
-	}
-	for rows.Next() {
-		var id string
-		var m material
-		if err := rows.Scan(&id, &m.id, &m.qty); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		wip[id] = append(wip[id], m)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	costs := map[string]float64{}
-	rows, err = database.DB.Query(`SELECT l.item_id,COALESCE(w.outlet_id,''),
-		COALESCE(SUM(CASE WHEN l.qty_base>0 THEN l.qty_base*l.avg_cost END)/NULLIF(SUM(CASE WHEN l.qty_base>0 THEN l.qty_base END),0),MAX(l.avg_cost),0)
-		FROM stock_ledger l JOIN warehouses w ON w.id=l.warehouse_id WHERE w.is_active
-		AND (w.type='central' OR $1 OR w.outlet_id=ANY($2)) GROUP BY l.item_id,w.outlet_id`, filter == nil, pq.Array(filter))
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var id, oid string
-		var cost float64
-		if err := rows.Scan(&id, &oid, &cost); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		costs[id+"|"+oid] = cost
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	var unitCost func(string, string, map[string]bool) (float64, bool)
-	unitCost = func(id, oid string, visiting map[string]bool) (float64, bool) {
-		if _, ok := infos[id]; !ok {
-			return 0, false
-		}
-		if v := costs[id+"|"+oid]; v > 0 && fnbFinite(v) {
-			return v, true
-		}
-		if v := costs[id+"|"]; v > 0 && fnbFinite(v) {
-			return v, true
-		}
-		if visiting[id] || len(visiting) >= 20 || len(wip[id]) == 0 {
-			return 0, false
-		}
-		visiting[id] = true
-		defer delete(visiting, id)
-		total := 0.0
-		complete := true
-		for _, m := range wip[id] {
-			v, ok := unitCost(m.id, oid, visiting)
-			if !ok || m.qty <= 0 || !fnbFinite(m.qty) {
-				complete = false
-			}
-			total += v * m.qty
-		}
-		return total, complete && fnbFinite(total)
 	}
 	for _, p := range products {
 		r := p.row
@@ -224,15 +154,45 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 			result = append(result, r)
 			continue
 		}
+		referenceTotal, referenceReady := 0.0, len(links[r.ProductID]) > 0
+		for _, l := range links[r.ProductID] {
+			d := definitions[l.RecipeMasterID]
+			cost := catalog.recipeCost(d, r.OutletID)
+			r.Recipes = append(r.Recipes, models.FnbRecipeCost{ProductRecipeLink: l, RecipeCost: cost})
+			if cost.InitialCost == nil || cost.InitialCost.Total == nil {
+				referenceReady = false
+			} else {
+				referenceTotal += *cost.InitialCost.Total * l.Multiplier
+			}
+		}
+		if referenceReady {
+			v := round4(referenceTotal)
+			r.ReferenceMaterialCost = &v
+		}
 		ms := mats[r.ProductID]
 		if p.stockType == "single" && p.linked != "" {
 			ms = []material{{p.linked, 1}}
 		}
 		if len(ms) > 0 {
 			r.CostStatus = "ready"
+			r.CostBasis = "outlet_stock"
+			projectedTotal, projectedComplete := 0.0, true
 			for _, m := range ms {
 				v, ok := unitCost(m.id, r.OutletID, map[string]bool{})
 				inf := infos[m.id]
+				if catalog.quantities[m.id+"|"+r.OutletID] <= 0 || catalog.costs[m.id+"|"+r.OutletID] <= 0 {
+					r.CostBasis = "estimate"
+				}
+				projected, projectionOK, source, asOf := catalog.projectedUnitCost(m.id, map[string]bool{})
+				comparison := models.FnbPriceComparison{ItemID: m.id, ItemName: inf.name, Unit: inf.unit, QtyBase: m.qty, CurrentUnitCost: round4(v), Source: source, AsOf: asOf}
+				if projectionOK && m.qty > 0 && fnbFinite(m.qty) {
+					value := round4(projected)
+					comparison.ProjectedUnitCost = &value
+					projectedTotal += round4(projected * m.qty)
+				} else {
+					projectedComplete = false
+				}
+				r.PriceComparisons = append(r.PriceComparisons, comparison)
 				if !ok || m.qty <= 0 || !fnbFinite(m.qty) {
 					r.CostStatus = "missing_cost"
 				}
@@ -240,14 +200,36 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 				r.Ingredients = append(r.Ingredients, line)
 				r.MaterialCost += line.Cost
 			}
+			for _, recipe := range r.Recipes {
+				if recipe.CurrentCost == nil {
+					r.CostStatus = "missing_cost"
+				}
+			}
 			r.MaterialCost = round4(r.MaterialCost)
 			r.TotalCost = round4(r.MaterialCost + r.PackagingCost + r.OverheadCost)
+			r.MaxMaterialCost = round4(math.Max(0, r.Price*r.TargetCostPct/100-r.PackagingCost-r.OverheadCost))
+			if projectedComplete {
+				material := round4(projectedTotal)
+				total := round4(material + r.PackagingCost + r.OverheadCost)
+				r.ProjectedMaterialCost = &material
+				r.ProjectedTotalCost = &total
+				suggested := math.Ceil(total / (r.TargetCostPct / 100))
+				r.ProjectedSuggestedPrice = &suggested
+				if r.Price > 0 {
+					pct := round4(total / r.Price * 100)
+					r.ProjectedCostPct = &pct
+					r.ProjectedIsOver = pct >= r.TargetCostPct
+					reduction := round4(math.Max(0, material-r.MaxMaterialCost))
+					r.ProjectedMaterialReduction = &reduction
+				}
+			}
 			if r.CostStatus == "ready" {
 				r.Margin = round4(r.Price - r.TotalCost)
 				r.SuggestedPrice = math.Ceil(r.TotalCost / (r.TargetCostPct / 100))
 				if r.Price > 0 {
 					r.CostPct = round4(r.TotalCost / r.Price * 100)
-					r.IsOver = r.CostPct > r.TargetCostPct
+					r.IsOver = r.CostPct >= r.TargetCostPct
+					r.MaterialReduction = round4(math.Max(0, r.MaterialCost-r.MaxMaterialCost))
 				}
 			}
 		}
@@ -293,8 +275,13 @@ func GetFnbOverview(outlet string, scope []string) (*models.FnbOverview, error) 
 		if c.IsOver {
 			r.OverTarget++
 		}
-		if len(r.Attention) < 12 && (c.IsOver || c.CostStatus != "ready" || c.MenuKind == "" || c.Price <= 0) {
+		if c.ProjectedIsOver {
+			r.ProjectedOverTarget++
+		}
+		if len(r.Attention) < 12 && (c.IsOver || c.ProjectedIsOver || c.CostStatus != "ready" || c.MenuKind == "" || c.Price <= 0) {
 			c.Ingredients = nil
+			c.Recipes = nil
+			c.PriceComparisons = nil
 			r.Attention = append(r.Attention, c)
 		}
 	}

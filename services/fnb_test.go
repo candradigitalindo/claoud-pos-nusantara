@@ -62,6 +62,9 @@ func TestFnbCostingScopeCategoriesAndMissingPrices(t *testing.T) {
 	if _, err := database.DB.Exec(`UPDATE stock_ledger SET avg_cost=0 WHERE item_id=$1 AND warehouse_id=$2`, f.itemID, f.wh); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := database.DB.Exec(`UPDATE stock_batches SET cost_per_base=0 WHERE item_id=$1 AND warehouse_id=$2`, f.itemID, f.wh); err != nil {
+		t.Fatal(err)
+	}
 	rows, err = GetFnbCosting(f.outlet, scope)
 	if err != nil {
 		t.Fatal(err)

@@ -2,6 +2,7 @@ package services
 
 import (
 	"cloud-pos/database"
+	"cloud-pos/models"
 	"fmt"
 	"time"
 
@@ -204,26 +205,39 @@ func BuildPpicReportExcel(tab, dateFrom, dateTo, warehouseID, outletID string, i
 			return nil, "", err
 		}
 		hrow := ppicWriteHeader(f, sheet, st, title, fmt.Sprintf("per %s (kondisi biaya saat ini)", fmtDateID(time.Now().In(GetTimezoneLocation()).Format("2006-01-02"))),
-			"Outlet: "+orDefault(outletName, "Semua (sesuai hak akses)")+fmt.Sprintf(" · Ambang ideal HPP: %.0f%%", rep.IdealPct), actor, [][2]string{
+			"Outlet: "+orDefault(outletName, "Semua (sesuai hak akses)")+" · Batas HPP mengikuti kebijakan masing-masing outlet/menu", actor, [][2]string{
 				{"Jumlah menu", fmt.Sprintf("%d menu, %d di antaranya ber-resep", rep.ProductCount, rep.WithRecipe)},
 				{"Rata-rata HPP", fmt.Sprintf("%.1f%% dari harga jual", rep.AvgHppPct)},
-				{"Menu di atas ambang ideal", fmt.Sprintf("%d menu — perlu tinjau harga/porsi/resep", rep.OverCount)},
-				{"Basis biaya", "Avg cost gudang (FIFO); komponen WIP = HPP produksi aktual atau teoretis dari resep"},
+				{"Menu mencapai batas", fmt.Sprintf("%d menu — perlu tinjau harga/porsi/resep", rep.OverCount)},
+				{"Basis biaya", "Stok outlet + kemasan + overhead; sama dengan F&B. Proyeksi induk untuk perencanaan, bukan HPP penjualan aktual."},
 				{"Menu tanpa resep", orDefault(rep.NoRecipeSample, "—")},
 			})
-		headers := []string{"Menu", "Outlet", "Kategori", "Bahan / Komponen", "Qty", "Satuan", "Harga/Satuan", "Cost", "HPP Total", "Harga Jual", "HPP %", "Margin", "Ideal Cost"}
+		headers := []string{"Menu", "Outlet", "Kategori", "Bahan / Komponen", "Qty", "Satuan", "Harga/Satuan", "Cost", "HPP Total", "Harga Jual", "HPP %", "Margin", "Batas Biaya", "Batas %", "HPP Proyeksi", "Proyeksi %", "Status Biaya", "Kemasan", "Overhead"}
 		ppicHeaderRowAt(f, sheet, hrow, headers, st.header)
 		row := hrow + 1
 		for _, r := range rep.Rows {
-			if !r.HasRecipe {
-				continue
-			}
 			first := true
-			for _, ing := range r.Ingredients {
-				vals := []interface{}{"", "", "", ing.ItemName, ing.QtyBase, ing.Unit, ing.CostPerBase, ing.Cost, "", "", "", "", ""}
+			ingredients := r.Ingredients
+			if len(ingredients) == 0 {
+				ingredients = []models.PpicHppIngredient{{}}
+			}
+			for _, ing := range ingredients {
+				vals := []interface{}{"", "", "", ing.ItemName, ing.QtyBase, ing.Unit, ing.CostPerBase, ing.Cost, "", "", "", "", "", "", "", "", "", "", ""}
 				if first {
 					vals[0], vals[1], vals[2] = r.ProductName, r.OutletName, r.Category
-					vals[8], vals[9], vals[10], vals[11], vals[12] = r.Hpp, r.Price, r.HppPct/100, r.Margin, r.IdealCost
+					vals[9], vals[12], vals[13], vals[16], vals[17], vals[18] = r.Price, r.IdealCost, r.TargetCostPct/100, r.CostStatus, r.PackagingCost, r.OverheadCost
+					if r.CostStatus == "ready" {
+						vals[8] = r.Hpp
+						if r.Price > 0 {
+							vals[10], vals[11] = r.HppPct/100, r.Margin
+						}
+					}
+					if r.ProjectedHpp != nil {
+						vals[14] = *r.ProjectedHpp
+					}
+					if r.ProjectedCostPct != nil {
+						vals[15] = *r.ProjectedCostPct / 100
+					}
 				}
 				if ing.IsWip {
 					vals[3] = "WIP — " + ing.ItemName
@@ -239,16 +253,21 @@ func BuildPpicReportExcel(tab, dateFrom, dateTo, warehouseID, outletID string, i
 					f.SetCellStyle(sheet, fmt.Sprintf("K%d", row), fmt.Sprintf("K%d", row), st.pct)
 				}
 				f.SetCellStyle(sheet, fmt.Sprintf("L%d", row), fmt.Sprintf("M%d", row), st.money)
+				f.SetCellStyle(sheet, fmt.Sprintf("N%d", row), fmt.Sprintf("N%d", row), st.pct)
+				f.SetCellStyle(sheet, fmt.Sprintf("O%d", row), fmt.Sprintf("O%d", row), st.money)
+				f.SetCellStyle(sheet, fmt.Sprintf("P%d", row), fmt.Sprintf("P%d", row), st.pct)
+				f.SetCellStyle(sheet, fmt.Sprintf("R%d", row), fmt.Sprintf("S%d", row), st.money)
 				first = false
 				row++
 			}
 		}
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", row+1), "HPP % merah = di atas ambang ideal. Baris tanpa nama menu = lanjutan rincian bahan menu di atasnya.")
+		f.SetCellValue(sheet, fmt.Sprintf("A%d", row+1), "HPP % merah = mencapai batas outlet/menu. Proyeksi tidak mengubah stok dan HPP transaksi. Baris tanpa nama menu = lanjutan rincian bahan menu di atasnya.")
 		f.SetCellStyle(sheet, fmt.Sprintf("A%d", row+1), fmt.Sprintf("A%d", row+1), st.note)
 		f.SetColWidth(sheet, "A", "A", 30)
 		f.SetColWidth(sheet, "B", "C", 16)
 		f.SetColWidth(sheet, "D", "D", 30)
 		f.SetColWidth(sheet, "E", "M", 13)
+		f.SetColWidth(sheet, "N", "S", 18)
 
 	// ─────────────────────────────────────────────────────────
 	case "variance":
@@ -261,7 +280,8 @@ func BuildPpicReportExcel(tab, dateFrom, dateTo, warehouseID, outletID string, i
 			{"Pemakaian teoretis", rpID(rep.TheoValue) + " (penjualan × resep + produksi × resep)"},
 			{"Pemakaian aktual", rpID(rep.ActValue) + " (buku stok, tanpa transfer)"},
 			{"Variance", fmt.Sprintf("%+.1f%% — target < ±5%%", rep.VariancePct)},
-			{"Food cost aktual", fmt.Sprintf("%.1f%% dari omzet %s (patokan F&B 25–35%%)", rep.FoodCostPct, rpID(rep.Revenue))},
+			{"Food cost aktual", fmt.Sprintf("%.1f%% dari omzet %s (biaya aktual periode laporan)", rep.FoodCostPct, rpID(rep.Revenue))},
+			{"Dasar teoretis", "Simulasi memakai resep saat laporan dibuka. Perubahan resep tidak mengubah pemakaian aktual."},
 			{"Coverage resep", fmt.Sprintf("%.1f%% dari %s porsi terjual", rep.RecipeCoveragePct, qtyID(rep.QtySold))},
 		}
 		if !rep.Representative {

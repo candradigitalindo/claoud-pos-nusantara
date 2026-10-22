@@ -297,17 +297,18 @@ type ProduceRequest struct {
 // ── Master Recipe System ──────────────────────────────────────
 
 type RecipeMaster struct {
-	MenuKind string `json:"menu_kind"`
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Visibility  string            `json:"visibility"` // public | secret
-	Instructions string           `json:"instructions"` // JSON string of steps
-	TotalTime   int               `json:"total_time"`
-	Items       []RecipeItem      `json:"items"`
-	OutletIDs   []string          `json:"outlet_ids"` // For secret access
-	CreatedAt   string            `json:"created_at"`
-	UpdatedAt   string            `json:"updated_at"`
+	RecipeCost
+	MenuKind     string       `json:"menu_kind"`
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Description  string       `json:"description"`
+	Visibility   string       `json:"visibility"`   // public | secret
+	Instructions string       `json:"instructions"` // JSON string of steps
+	TotalTime    int          `json:"total_time"`
+	Items        []RecipeItem `json:"items"`
+	OutletIDs    []string     `json:"outlet_ids"` // For secret access
+	CreatedAt    string       `json:"created_at"`
+	UpdatedAt    string       `json:"updated_at"`
 }
 
 type RecipeItem struct {

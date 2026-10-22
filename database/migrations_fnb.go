@@ -12,6 +12,35 @@ func RunFnbMigrations() error {
 	for _, stmt := range []string{
 		`UPDATE roles SET redirect_to='/fnb/recipes' WHERE redirect_to='/recipes'`,
 		`ALTER TABLE recipe_masters ADD COLUMN IF NOT EXISTS menu_kind VARCHAR(16) NOT NULL DEFAULT ''`,
+		`ALTER TABLE recipe_masters ADD COLUMN IF NOT EXISTS initial_cost_snapshot JSONB`,
+		`CREATE TABLE IF NOT EXISTS fnb_outlet_policies (
+			outlet_id CHAR(26) PRIMARY KEY REFERENCES outlets(id) ON DELETE CASCADE,
+			target_cost_pct NUMERIC(8,4) NOT NULL CHECK(target_cost_pct>0 AND target_cost_pct<=100 AND target_cost_pct::text NOT IN ('NaN','Infinity','-Infinity')),
+			updated_by VARCHAR(100) NOT NULL DEFAULT '',updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS product_recipe_links (
+			product_id CHAR(26) NOT NULL REFERENCES cloud_products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+			recipe_master_id CHAR(26) NOT NULL REFERENCES recipe_masters(id) ON DELETE CASCADE,
+			multiplier NUMERIC(15,4) NOT NULL CHECK(multiplier > 0 AND multiplier::text NOT IN ('NaN','Infinity','-Infinity')),
+			position INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(product_id,recipe_master_id)
+		)`,
+		// Keep legacy single-recipe products readable without inventing historical prices.
+		`CREATE OR REPLACE VIEW product_recipe_sources AS
+			SELECT l.product_id,l.recipe_master_id,l.multiplier,l.position
+			FROM product_recipe_links l JOIN cloud_products p ON p.id=l.product_id WHERE p.stock_type='recipe'
+			UNION ALL
+			SELECT p.id,p.recipe_master_id,1::numeric,0 FROM cloud_products p
+			WHERE p.stock_type='recipe' AND p.recipe_master_id IS NOT NULL
+			AND NOT EXISTS(SELECT 1 FROM product_recipe_links l WHERE l.product_id=p.id)`,
+		`CREATE OR REPLACE VIEW product_recipe_materials AS
+			SELECT x.product_id,x.item_id,SUM(x.qty_base) AS qty_base FROM (
+				SELECT s.product_id,i.item_id,i.qty_base*s.multiplier AS qty_base
+				FROM product_recipe_sources s JOIN recipe_items i ON i.recipe_master_id=s.recipe_master_id
+				UNION ALL
+				SELECT r.product_id,r.item_id,r.qty_base FROM product_recipes r JOIN cloud_products p ON p.id=r.product_id
+				WHERE p.stock_type='recipe' AND NOT EXISTS(SELECT 1 FROM product_recipe_sources s WHERE s.product_id=p.id)
+			) x GROUP BY x.product_id,x.item_id`,
 		`CREATE TABLE IF NOT EXISTS fnb_product_profiles (
 			product_id CHAR(26) PRIMARY KEY REFERENCES cloud_products(id) ON DELETE CASCADE,
 			menu_kind VARCHAR(16) NOT NULL DEFAULT '' CHECK(menu_kind IN ('','food','beverage')),

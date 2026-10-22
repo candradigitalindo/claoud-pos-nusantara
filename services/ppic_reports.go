@@ -97,10 +97,7 @@ func GetPpicVarianceReport(dateFrom, dateTo, warehouseID string, outletScope []s
 			FROM (
 				SELECT p.linked AS item_id, p.qty AS qty_base FROM prod p WHERE p.stype = 'single' AND p.linked <> ''
 				UNION ALL
-				SELECT ri.item_id, ri.qty_base * p.qty FROM prod p JOIN recipe_items ri ON ri.recipe_master_id = p.master WHERE p.master <> ''
-				UNION ALL
-				SELECT pr.item_id, pr.qty_base * p.qty FROM prod p JOIN product_recipes pr ON pr.product_id = p.pid
-					WHERE p.master = '' AND p.stype = 'recipe'
+				SELECT pr.item_id,pr.qty_base*p.qty FROM prod p JOIN product_recipe_materials pr ON pr.product_id=p.pid
 			) x GROUP BY x.item_id`
 		rows, err := database.DB.Query(theoQ, pq.Array(outletIDs), dateFrom, dateTo)
 		if err != nil {
@@ -133,8 +130,7 @@ func GetPpicVarianceReport(dateFrom, dateTo, warehouseID string, outletScope []s
 			LEFT JOIN LATERAL (
 				SELECT (
 					(p.stock_type = 'single' AND COALESCE(p.linked_stock_item_id, '') <> '')
-					OR (COALESCE(p.recipe_master_id, '') <> '' AND EXISTS (SELECT 1 FROM recipe_items ri WHERE ri.recipe_master_id = p.recipe_master_id))
-					OR (p.stock_type = 'recipe' AND EXISTS (SELECT 1 FROM product_recipes pr WHERE pr.product_id = p.id))
+					OR EXISTS(SELECT 1 FROM product_recipe_materials pr WHERE pr.product_id=p.id)
 				) AS ok
 				FROM cloud_products p
 				WHERE p.outlet_id = s.outlet_id AND p.name = s.pname AND COALESCE(p.is_deleted, false) = false
@@ -228,8 +224,8 @@ func GetPpicVarianceReport(dateFrom, dateTo, warehouseID string, outletScope []s
 		rows, err := database.DB.Query(`
 			SELECT si.id, si.code, si.name, si.category, si.base_unit,
 				(SELECT COALESCE(SUM(l.qty_base * l.avg_cost) / NULLIF(SUM(l.qty_base), 0), 0)
-				 FROM stock_ledger l WHERE l.item_id = si.id AND l.qty_base > 0)
-			FROM stock_items si WHERE si.id = ANY($1)`, pq.Array(ids))
+				 FROM stock_ledger l WHERE l.item_id = si.id AND l.qty_base > 0 AND l.warehouse_id=ANY($2))
+			FROM stock_items si WHERE si.id = ANY($1)`, pq.Array(ids),pq.Array(whIDs))
 		if err != nil {
 			return nil, err
 		}
@@ -482,8 +478,7 @@ func GetPpicSoldReport(dateFrom, dateTo, outletID, search string, outletScope []
 		LEFT JOIN LATERAL (
 			SELECT COALESCE(p.category_name, '') AS category, (
 				(p.stock_type = 'single' AND COALESCE(p.linked_stock_item_id, '') <> '')
-				OR (COALESCE(p.recipe_master_id, '') <> '' AND EXISTS (SELECT 1 FROM recipe_items ri WHERE ri.recipe_master_id = p.recipe_master_id))
-				OR (p.stock_type = 'recipe' AND EXISTS (SELECT 1 FROM product_recipes pr WHERE pr.product_id = p.id))
+				OR EXISTS(SELECT 1 FROM product_recipe_materials pr WHERE pr.product_id=p.id)
 			) AS ok
 			FROM cloud_products p
 			WHERE p.outlet_id = s.outlet_id AND p.name = s.pname AND COALESCE(p.is_deleted, false) = false

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"time"
 
@@ -923,7 +924,7 @@ func applyMovementValued(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, ref
 		if err != nil {
 			return movementOutcome{}, err
 		}
-		
+
 		type batchUpdate struct {
 			id  string
 			qty float64
@@ -971,6 +972,17 @@ func applyMovementValued(tx *sql.Tx, itemID, warehouseID, movType, unitUsed, ref
 		// Calculate actual cost for the movement record
 		actualCostPerBase = totalDeductedCost / absQty
 		out.value = totalDeductedCost
+	}
+
+	// Keep the remaining inventory reference aligned with the batches that are
+	// still present, including after FEFO/FIFO consumption. Do not reprice movements.
+	var batchQty, batchValue float64
+	if err := tx.QueryRow(`SELECT COALESCE(SUM(qty_base),0),COALESCE(SUM(qty_base*cost_per_base),0) FROM stock_batches
+		WHERE item_id=$1 AND warehouse_id=$2 AND qty_base>0`, itemID, warehouseID).Scan(&batchQty, &batchValue); err != nil {
+		return movementOutcome{}, err
+	}
+	if batchQty > 0 && math.Abs(batchQty-newQty) < 0.0001 {
+		newAvgCost = batchValue / batchQty
 	}
 
 	_, err = tx.Exec(`UPDATE stock_ledger SET qty_base=$1, avg_cost=$2, updated_at=NOW() WHERE item_id=$3 AND warehouse_id=$4`,
@@ -1675,20 +1687,16 @@ func ListRecipeMastersScoped(outletID, search string, scope []string) ([]models.
 
 func GetRecipeMaster(id string) (models.RecipeMaster, error) {
 	var rm models.RecipeMaster
-	err := database.DB.QueryRow(`SELECT id, name, description, visibility, instructions, total_time, created_at, updated_at, menu_kind FROM recipe_masters WHERE id=$1`, id).Scan(
+	err := database.DB.QueryRow(`SELECT id,name,COALESCE(description,''),visibility,COALESCE(instructions,''),COALESCE(total_time,0),created_at,updated_at,menu_kind FROM recipe_masters WHERE id=$1`, id).Scan(
 		&rm.ID, &rm.Name, &rm.Description, &rm.Visibility, &rm.Instructions, &rm.TotalTime, &rm.CreatedAt, &rm.UpdatedAt, &rm.MenuKind)
 	if err != nil {
 		return rm, err
 	}
-
-	// Items
-	rows, err := database.DB.Query(`
-		SELECT ri.id, ri.item_id, si.name, si.code, ri.qty_base, si.base_unit, ri.notes
-		FROM recipe_items ri
-		JOIN stock_items si ON si.id = ri.item_id
-		WHERE ri.recipe_master_id = $1`, id)
-	if err == nil {
-		defer rows.Close()
+	rows, err := database.DB.Query(`SELECT ri.id,ri.item_id,si.name,si.code,ri.qty_base,si.base_unit,COALESCE(ri.notes,'')
+		FROM recipe_items ri JOIN stock_items si ON si.id=ri.item_id WHERE ri.recipe_master_id=$1 ORDER BY ri.id`, id)
+	if err != nil {
+		return rm, err
+	}
 	for rows.Next() {
 		var ri models.RecipeItem
 		if err := rows.Scan(&ri.ID, &ri.ItemID, &ri.ItemName, &ri.ItemCode, &ri.QtyBase, &ri.Unit, &ri.Notes); err != nil {
@@ -1697,22 +1705,30 @@ func GetRecipeMaster(id string) (models.RecipeMaster, error) {
 		}
 		rm.Items = append(rm.Items, ri)
 	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return rm, err
 	}
-
-	// Outlet Access
-	oaRows, oaErr := database.DB.Query(`SELECT outlet_id FROM recipe_outlet_access WHERE recipe_master_id=$1`, id)
-	if oaErr == nil {
-		defer oaRows.Close()
-		for oaRows.Next() {
-			var oid string
-			if err := oaRows.Scan(&oid); err != nil {
-				return rm, err
-			}
-			rm.OutletIDs = append(rm.OutletIDs, oid)
+	rows, err = database.DB.Query(`SELECT outlet_id FROM recipe_outlet_access WHERE recipe_master_id=$1`, id)
+	if err != nil {
+		return rm, err
+	}
+	for rows.Next() {
+		var oid string
+		if err := rows.Scan(&oid); err != nil {
+			rows.Close()
+			return rm, err
 		}
+		rm.OutletIDs = append(rm.OutletIDs, oid)
 	}
-
-	return rm, nil
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return rm, err
+	}
+	rm.RecipeCost, err = getRecipeCost(id, "")
+	return rm, err
 }
 
 func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error) {
@@ -1738,7 +1754,8 @@ func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error)
 	}
 	defer tx.Rollback()
 
-	if id == "" {
+	isNew := id == ""
+	if isNew {
 		id = NewULID()
 		_, err = tx.Exec(`INSERT INTO recipe_masters (id, name, description, visibility, instructions, total_time, menu_kind) VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,''))`,
 			id, req.Name, req.Description, req.Visibility, req.Instructions, req.TotalTime, req.MenuKind)
@@ -1777,6 +1794,11 @@ func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error)
 		}
 	}
 
+	if isNew {
+		if err := captureInitialRecipeCost(tx, id); err != nil {
+			return "", err
+		}
+	}
 	err = tx.Commit()
 	return id, err
 }

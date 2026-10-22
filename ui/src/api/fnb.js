@@ -1,6 +1,8 @@
 import { apiClient as api } from './client'
 
 export const fnbApi = {
+  outletPolicy: id => api.get(`/admin/fnb/outlets/${encodeURIComponent(id)}/policy`),
+  saveOutletPolicy: (id, data) => api.put(`/admin/fnb/outlets/${encodeURIComponent(id)}/policy`, data),
   dashboard: params => api.get('/admin/fnb/dashboard', { params }),
   costing: params => api.get('/admin/fnb/costing', { params }),
   saveProfile: (id, data) => api.put(`/admin/fnb/products/${id}/profile`, data),

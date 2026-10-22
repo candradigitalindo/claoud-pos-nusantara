@@ -1,5 +1,6 @@
 // One stroke-based SVG family for actions on individual records.
 export const ACTION_ICONS = {
+  add: ['M12 5v14M5 12h14'],
   view: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z'],
   hide: ['m3 3 18 18M10.5 5.1 12 5c6.5 0 10 7 10 7a19 19 0 0 1-3 3.7M6 6.3A22 22 0 0 0 2 12s3.5 7 10 7a11 11 0 0 0 5-1.2', 'M9.8 9.8a3 3 0 0 0 4.4 4.4'],
   edit: ['m16 3 5 5-12 12-6 1 1-6L16 3Z', 'm13 6 5 5'],
@@ -10,6 +11,7 @@ export const ACTION_ICONS = {
   approve: ['M21 12a9 9 0 1 1-3-6.7', 'm8 11 4 4 9-10'],
   reject: ['m8 3-5 5v8l5 5h8l5-5V8l-5-5H8Z', 'm9 9 6 6m0-6-6 6'],
   cancel: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z', 'm8 8 8 8'],
+  close: ['m6 6 12 12M6 18 18 6'],
   enable: ['M12 2v10M6 5a9 9 0 1 0 12 0'],
   disable: ['M12 2v7M5 5a9 9 0 0 0 14 11M19 6a9 9 0 0 1 2 6M3 3l18 18'],
   password: ['M14 7a5 5 0 1 1 2 4L7 20H3v-4l8-8', 'M17 6h.01'],

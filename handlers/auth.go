@@ -123,6 +123,24 @@ func AdminProductRecipeOptions(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: options})
 }
 
+func AdminProductRecipeDetail(c *fiber.Ctx) error {
+	outletID := strings.TrimSpace(c.Query("outlet_id"))
+	if outletID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Error: "Pilih outlet terlebih dahulu"})
+	}
+	if !validateOutletAccess(c, outletID) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Error: "Outlet di luar akses Anda"})
+	}
+	detail, err := services.GetProductRecipeDetail(outletID, c.Params("id"))
+	if errors.Is(err, services.ErrProductRecipe) {
+		return c.Status(fiber.StatusNotFound).JSON(models.APIResponse{Error: "Resep tidak tersedia untuk outlet ini atau komposisinya belum valid"})
+	}
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Error: "Gagal memuat detail resep"})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: detail})
+}
+
 func AdminCreateProduct(c *fiber.Ctx) error {
 	var req models.AdminCreateProductRequest
 	if err := c.BodyParser(&req); err != nil {

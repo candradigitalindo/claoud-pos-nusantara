@@ -261,98 +261,109 @@
 
     <!-- ── Product Modal ──────────────────────────────────── -->
     <Teleport to="body">
-      <div v-if="showProdModal" class="modal-overlay" @click.self="showProdModal = false">
-        <div class="modal-card">
-          <div class="modal-header">
-            <span class="modal-title">{{ editingProd ? 'Edit Produk' : 'Tambah Produk' }}</span>
-            <button class="modal-close" @click="showProdModal = false">&times;</button>
+      <div v-if="showProdModal" class="modal-overlay product-overlay" :inert="showRecipePicker" :aria-hidden="showRecipePicker || undefined" @click.self="closeProductModal" @keydown.esc="closeProductModal">
+        <div class="modal-card product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title" aria-describedby="product-modal-description">
+          <div class="modal-header product-modal-header">
+            <div class="product-heading">
+              <span class="product-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 5v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5" /></svg></span>
+              <div>
+                <h2 id="product-modal-title" class="modal-title">{{ editingProd ? 'Edit Produk' : 'Tambah Produk' }}</h2>
+                <p id="product-modal-description" class="product-modal-description">Atur informasi jual, foto, dan resep produk dalam satu tempat.</p>
+              </div>
+            </div>
+            <AppActionButton icon="close" tone="neutral" label="Tutup formulir produk" :disabled="savingProd" @click="closeProductModal" />
           </div>
-          <form class="modal-body" @submit.prevent="saveProd">
-            <div v-if="!editingProd" class="form-group">
-              <label>Outlet <span class="req">*</span></label>
-              <SearchSelect
-                v-model="formProd.outlet_id"
-                :options="outlets"
-                placeholder="Pilih outlet…"
-                searchPlaceholder="Cari outlet…"
-              />
+          <form ref="productForm" class="product-form" novalidate @submit.prevent="saveProd">
+            <div class="product-tabs" role="group" aria-label="Bagian formulir produk">
+              <button type="button" :aria-pressed="productPane === 'info'" aria-controls="product-info-panel" @click="productPane = 'info'">Informasi produk</button>
+              <button type="button" :aria-pressed="productPane === 'media'" aria-controls="product-media-panel" @click="productPane = 'media'">Foto &amp; resep</button>
             </div>
-            <div class="form-group">
-              <label>Nama Produk <span class="req">*</span></label>
-              <input v-model="formProd.name" class="form-input" placeholder="Contoh: Nasi Goreng" required />
-            </div>
-            <div class="form-group">
-              <label>Kategori</label>
-              <SearchSelect
-                v-model="formProd.category_id"
-                :options="categoryModalOptions"
-                placeholder="Pilih kategori…"
-                searchPlaceholder="Cari kategori…"
-                @change="onCategorySelect"
-              />
-              <span v-if="!formProdOutletId" class="form-hint">Pilih outlet untuk memuat daftar kategori</span>
-            </div>
-            <div class="form-group">
-              <label>Kode Produk</label>
-              <input v-model="formProd.code" class="form-input form-input--code" placeholder="Otomatis dari nama produk" readonly />
-              <span class="form-hint">Kode dibuat otomatis dari huruf pertama nama produk</span>
-            </div>
-            <div class="form-group">
-              <label>Deskripsi</label>
-              <input v-model="formProd.description" class="form-input" placeholder="Deskripsi singkat produk" />
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Harga <span class="req">*</span></label>
-                <input :value="priceDisplay" @input="onPriceInput" class="form-input" type="text" inputmode="numeric" placeholder="Rp 0" required />
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Resep (opsional)</label>
-              <SearchSelect
-                v-model="formProd.recipe_master_id"
-                :options="recipeModalOptions"
-                :disabled="!formProdOutletId || loadingRecipes"
-                :placeholder="loadingRecipes ? 'Memuat resep…' : 'Tanpa resep'"
-                searchPlaceholder="Cari resep…"
-                @change="recipeSelectionChanged = true"
-              />
-              <span v-if="!formProdOutletId" class="form-hint">Pilih outlet untuk melihat resep yang tersedia.</span>
-              <span v-else-if="recipeLoadError" class="form-hint text-red-600" role="alert">
-                {{ recipeLoadError }}
-                <button type="button" class="underline" @click="fetchRecipeOptions(formProdOutletId)">Coba lagi</button>
-              </span>
-              <span v-else-if="currentRecipeUnavailable" class="form-hint">Resep tertaut tidak tersedia dalam pilihan outlet. Anda dapat mempertahankan atau melepas tautannya.</span>
-              <span v-else-if="formProd.recipe_master_id" class="form-hint">Bahan dipotong sesuai resep saat penjualan tersinkron. Takaran resep berlaku untuk 1 produk terjual.</span>
-              <span v-else-if="!recipeSelectionChanged && editingProd?.stock_type === 'single'" class="form-hint">Produk ini memakai stok langsung. Memilih resep akan mengganti pengaturan tersebut.</span>
-              <span v-else-if="!recipeSelectionChanged && editingProd?.stock_type === 'recipe'" class="form-hint">Produk ini memakai resep khusus. Pilih master resep untuk menggantinya, atau pilih Tanpa resep untuk melepasnya.</span>
-              <span v-else class="form-hint">Produk bisa dijual tanpa resep. Tidak ada pemotongan bahan berdasarkan resep.</span>
-            </div>
-            <div class="form-group">
-              <label>Foto Produk</label>
-              <div class="photo-row">
-                <div class="photo-thumb">
-                  <img v-if="photoPreview || formProd.photo_url" :src="photoPreview || formProd.photo_url" alt="Foto produk" />
-                  <span v-else class="photo-empty">Tidak ada foto</span>
+            <div class="product-form-panels">
+              <section id="product-info-panel" class="product-info-panel" :class="{ 'product-pane-inactive': productPane !== 'info' }" aria-labelledby="product-info-title">
+                <div class="product-section-heading"><h3 id="product-info-title">Informasi produk</h3><span><span class="req">*</span> Wajib diisi</span></div>
+                <div class="product-fields">
+                  <div class="form-group product-field-wide">
+                    <label for="product-outlet">Outlet <span v-if="!editingProd" class="req">*</span><span v-else class="product-field-note">Lokasi produk</span></label>
+                    <SearchSelect v-if="!editingProd" id="product-outlet" v-model="formProd.outlet_id" :options="outlets" placeholder="Pilih outlet…" searchPlaceholder="Cari outlet…" aria-required="true" />
+                    <div v-else id="product-outlet" class="product-outlet-readonly" :title="productOutletName">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 10h18l-2-6H5l-2 6Zm2 0v10h14V10M9 20v-6h6v6" /></svg>
+                      <span>{{ productOutletName }}</span>
+                    </div>
+                  </div>
+                  <div class="form-group product-field-wide">
+                    <label for="product-name">Nama produk <span class="req">*</span></label>
+                    <input id="product-name" v-model="formProd.name" class="form-input" placeholder="Contoh: Nasi Goreng Spesial" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="product-category">Kategori</label>
+                    <SearchSelect id="product-category" v-model="formProd.category_id" :options="categoryModalOptions" :disabled="!formProdOutletId" :placeholder="formProdOutletId ? 'Pilih kategori…' : 'Pilih outlet dahulu'" searchPlaceholder="Cari kategori…" @change="onCategorySelect" />
+                  </div>
+                  <div class="form-group">
+                    <label for="product-code">Kode produk <span class="product-field-note">Otomatis</span></label>
+                    <input id="product-code" v-model="formProd.code" class="form-input form-input--code" placeholder="Dibuat saat disimpan" readonly />
+                  </div>
+                  <div class="form-group product-field-wide">
+                    <label for="product-price">Harga jual <span class="req">*</span><span class="product-field-note">Rupiah per produk</span></label>
+                    <input id="product-price" :value="priceDisplay" @input="onPriceInput" class="form-input product-price-input" type="text" inputmode="numeric" placeholder="Rp 0" required />
+                  </div>
+                  <div class="form-group product-field-wide">
+                    <label for="product-description">Deskripsi <span class="product-field-note">Opsional</span></label>
+                    <input id="product-description" v-model="formProd.description" class="form-input" placeholder="Komposisi, rasa, atau keterangan singkat produk" />
+                  </div>
                 </div>
-                <div class="photo-actions">
-                  <input ref="photoInput" type="file" accept="image/*" style="display:none" @change="onPickPhoto" />
-                  <button type="button" class="btn-cancel" @click="photoInput?.click()">{{ (photoPreview || formProd.photo_url) ? 'Ganti Foto' : 'Pilih Foto' }}</button>
-                  <button v-if="photoPreview || formProd.photo_url" type="button" class="btn-photo-del" @click="clearPhoto">Hapus</button>
+              </section>
+              <section id="product-media-panel" class="product-media-panel" :class="{ 'product-pane-inactive': productPane !== 'media' }" aria-labelledby="product-media-title">
+                <div class="product-section-heading"><h3 id="product-media-title">Foto &amp; resep</h3><span>Pelengkap produk</span></div>
+                <div class="product-preview">
+                  <div class="product-preview-image">
+                    <img v-if="photoPreview || formProd.photo_url" :src="photoPreview || formProd.photo_url" :alt="formProd.name || 'Foto produk'" />
+                    <div v-else class="product-preview-placeholder"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v15H3V5Zm0 11 6-6 5 5 3-3 4 4M16 8h.01" /></svg><span>Foto produk</span></div>
+                  </div>
+                  <div class="product-preview-copy">
+                    <span class="product-preview-eyebrow">Pratinjau produk</span>
+                    <strong :title="formProd.name">{{ formProd.name || 'Nama produk' }}</strong>
+                    <span class="product-preview-category">{{ formProd.category_name || 'Tanpa kategori' }}</span>
+                    <span class="product-preview-price">{{ formatRupiah(formProd.price || 0) }}</span>
+                  </div>
                 </div>
-              </div>
-              <span class="form-hint">JPG/PNG/WEBP, maks 10MB. Tampil di halaman reservasi publik.</span>
+                <div class="product-photo-tools">
+                  <p>Foto tampil di reservasi publik.<span>JPG, PNG, WEBP · Maks. 10 MB</span></p>
+                  <div class="photo-actions">
+                    <input ref="photoInput" type="file" accept="image/*" hidden @change="onPickPhoto" />
+                    <AppActionButton icon="upload" :label="(photoPreview || formProd.photo_url) ? 'Ganti foto produk' : 'Pilih foto produk'" @click="photoInput?.click()" />
+                    <AppActionButton v-if="photoPreview || formProd.photo_url" icon="delete" label="Hapus foto produk" @click="clearPhoto" />
+                  </div>
+                </div>
+                <div class="product-recipe-section">
+                  <div class="form-group">
+                    <label for="product-recipe">Resep <span class="product-field-note">Opsional</span></label>
+                    <button id="product-recipe" type="button" class="product-recipe-trigger" :disabled="!formProdOutletId || savingProd" aria-haspopup="dialog" :aria-expanded="showRecipePicker" aria-describedby="product-recipe-help" :title="selectedRecipeName || 'Pilih resep dan lihat bahan serta SOP'" @click="showRecipePicker = true">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 3h13a3 3 0 0 1 3 3v15H7a3 3 0 0 1-3-3V3Zm0 14h16M8 7h8M8 11h6"/></svg>
+                      <span>{{ selectedRecipeName || 'Pilih resep' }}</span>
+                      <svg class="product-recipe-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m9 5 7 7-7 7"/></svg>
+                    </button>
+                  </div>
+                  <div id="product-recipe-help" class="product-recipe-help" :class="{ 'product-recipe-help-warning': recipeLoadError || currentRecipeUnavailable }" :role="recipeLoadError ? 'alert' : undefined">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></svg>
+                    <div><strong>{{ productRecipeInfo.title }}</strong><p>{{ productRecipeInfo.description }}</p><button v-if="recipeLoadError" type="button" class="product-recipe-retry" @click="fetchRecipeOptions(formProdOutletId)">Coba lagi</button></div>
+                  </div>
+                </div>
+              </section>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn-cancel" @click="showProdModal = false">Batal</button>
-              <button type="submit" class="btn-save" :disabled="savingProd">
-                {{ savingProd ? 'Menyimpan…' : (editingProd ? 'Simpan Perubahan' : 'Tambah Produk') }}
-              </button>
+            <div class="product-modal-footer">
+              <p v-if="productSaveError" class="product-save-error" role="alert">{{ productSaveError }}</p>
+              <p v-else class="product-footer-note">{{ editingProd ? 'Perubahan diterapkan setelah disimpan.' : 'Pilih outlet, lalu isi nama dan harga jual.' }}</p>
+              <div class="product-footer-actions">
+                <button type="button" class="btn-cancel" :disabled="savingProd" @click="closeProductModal">Batal</button>
+                <button type="submit" class="btn-save" :disabled="savingProd">{{ savingProd ? 'Menyimpan…' : (editingProd ? 'Simpan Perubahan' : 'Tambah Produk') }}</button>
+              </div>
             </div>
           </form>
         </div>
       </div>
     </Teleport>
+
+    <ProductRecipePicker v-if="showProdModal && showRecipePicker" :key="formProdOutletId" :recipes="recipeOptions" :loading="loadingRecipes" :error="recipeLoadError" :outlet-id="formProdOutletId" :outlet-name="productOutletName" :product-name="formProd.name" :selected="formProd.recipes" @close="showRecipePicker = false" @retry="fetchRecipeOptions(formProdOutletId)" @select="selectProductRecipe" />
 
     <!-- ── Category Modal ─────────────────────────────────── -->
     <Teleport to="body">
@@ -417,7 +428,8 @@
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
-import { ref, watch, onMounted, computed } from 'vue'
+import ProductRecipePicker from '@/components/ProductRecipePicker.vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import { productsApi } from '@/api/products.js'
 import { outletsApi }  from '@/api/outlets.js'
 import { formatRupiah, formatDateTime } from '@/utils/format.js'
@@ -464,11 +476,15 @@ function onPriceInput(e) {
 const showProdModal = ref(false)
 const editingProd   = ref(null)
 const savingProd    = ref(false)
-const formProd      = ref({ outlet_id: '', name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '' })
+const productForm = ref(null)
+const productPane = ref('info')
+const productSaveError = ref('')
+const formProd      = ref({ outlet_id: '', name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '', recipes: [] })
 const recipeOptions = ref([])
 const loadingRecipes = ref(false)
 const recipeLoadError = ref('')
 const recipeSelectionChanged = ref(false)
+const showRecipePicker = ref(false)
 let recipeRequest = 0
 const photoFile     = ref(null)
 const photoPreview  = ref('')
@@ -480,19 +496,56 @@ const formProdOutletId = computed(() => editingProd.value ? editingProd.value.ou
 // Options for SearchSelect components
 const outletFilterOptions = computed(() => [{ id: '', name: 'Semua Outlet' }, ...outlets.value])
 const categoryModalOptions = computed(() => [{ id: '', name: 'Tanpa Kategori' }, ...outletCategories.value])
-const recipeModalOptions = computed(() => {
-  const options = [{ id: '', name: 'Tanpa resep' }, ...recipeOptions.value]
-  const current = editingProd.value
-  if (current?.recipe_master_id && !options.some(r => r.id === current.recipe_master_id)) {
-    options.push({ id: current.recipe_master_id, name: current.recipe_master_name || 'Resep tertaut' })
-  }
-  return options
+const selectedRecipeName = computed(() => {
+  const links = formProd.value.recipes
+  if (!links.length) return ''
+  return links.length > 1 ? `${links.length} resep ditautkan` : `${links[0].name || 'Resep dipilih'}${links[0].multiplier !== 1 ? ` × ${links[0].multiplier}` : ''}`
 })
 const currentRecipeUnavailable = computed(() => !loadingRecipes.value && !recipeLoadError.value &&
-  formProd.value.recipe_master_id && formProd.value.recipe_master_id === editingProd.value?.recipe_master_id &&
-  !recipeOptions.value.some(r => r.id === formProd.value.recipe_master_id))
+  formProd.value.recipes.some(link => !recipeOptions.value.some(r => r.id === link.recipe_master_id)))
+
+const productOutletName = computed(() => outlets.value.find(o => o.id === formProdOutletId.value)?.name || editingProd.value?.outlet_name || 'Outlet produk')
+const productRecipeInfo = computed(() => {
+  if (!formProdOutletId.value) return { title: 'Pilih outlet terlebih dahulu', description: 'Pilihan resep mengikuti akses outlet produk.' }
+  if (recipeLoadError.value) return { title: 'Pilihan resep belum dimuat', description: recipeLoadError.value }
+  if (loadingRecipes.value) return { title: 'Memuat pilihan resep', description: 'Menyiapkan resep yang tersedia untuk outlet ini.' }
+  if (currentRecipeUnavailable.value) return { title: 'Resep tertaut tidak tersedia', description: 'Tautan yang ada tetap tersimpan. Pilih resep lain atau Tanpa resep untuk menggantinya.' }
+  if (formProd.value.recipes.length) return { title: 'Takaran untuk 1 produk terjual', description: 'HPP dan pemotongan stok menjumlahkan seluruh resep sesuai pengali takarannya.' }
+  if (!recipeSelectionChanged.value && editingProd.value?.stock_type === 'single') return { title: 'Menggunakan stok langsung', description: 'Memilih resep akan mengganti pengaturan stok langsung produk ini.' }
+  if (!recipeSelectionChanged.value && editingProd.value?.stock_type === 'recipe') return { title: 'Menggunakan resep khusus', description: 'Pilih master resep untuk menggantinya, atau Tanpa resep untuk melepas tautan.' }
+  return { title: 'Produk tetap bisa dijual tanpa resep', description: 'Tidak ada pemotongan bahan berdasarkan resep. Tautkan resep jika produk menggunakan komposisi bahan.' }
+})
+
+function closeProductModal() {
+  if (!savingProd.value && !showRecipePicker.value) showProdModal.value = false
+}
+function selectProductRecipe(links) {
+  formProd.value.recipes = links
+  formProd.value.recipe_master_id = links[0]?.recipe_master_id || ''
+  recipeSelectionChanged.value = true
+  showRecipePicker.value = false
+}
+let productPreviousFocus, productBodyOverflow
+watch(showProdModal, async visible => {
+  if (visible) {
+    productPreviousFocus = document.activeElement
+    productBodyOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    await nextTick()
+    document.getElementById(!formProdOutletId.value ? 'product-outlet' : 'product-name')?.focus({ preventScroll: true })
+  } else {
+    showRecipePicker.value = false
+    document.body.style.overflow = productBodyOverflow ?? ''
+    productPreviousFocus?.focus?.({ preventScroll: true })
+  }
+})
+onBeforeUnmount(() => {
+  if (showProdModal.value) document.body.style.overflow = productBodyOverflow ?? ''
+})
 
 function productRecipeLabel(product) {
+  if (product.recipes?.length > 1) return `${product.recipes.length} resep ditautkan`
+  if (product.recipes?.length) return `Resep: ${product.recipes[0].name}`
   if (product.recipe_master_id) return `Resep: ${product.recipe_master_name || 'Resep tertaut'}`
   if (product.stock_type === 'single') return 'Stok langsung'
   if (product.stock_type === 'recipe') return 'Resep khusus produk'
@@ -611,6 +664,7 @@ async function fetchRecipeOptions(outletId) {
 
 // When outlet changes in the product form, re-fetch categories
 watch(formProdOutletId, (newId) => {
+  showRecipePicker.value = false
   fetchOutletCategories(newId)
   fetchRecipeOptions(newId)
   // Reset category when outlet changes (only for new products)
@@ -619,6 +673,7 @@ watch(formProdOutletId, (newId) => {
     formProd.value.category_name = ''
     formProd.value.code = ''
     formProd.value.recipe_master_id = ''
+    formProd.value.recipes = []
     recipeSelectionChanged.value = false
   }
 })
@@ -652,8 +707,10 @@ function clearPhoto() {
 }
 
 function openCreateProd() {
+  productPane.value = 'info'
+  productSaveError.value = ''
   editingProd.value = null
-  formProd.value = { outlet_id: selectedOutlet.value, name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '' }
+  formProd.value = { outlet_id: selectedOutlet.value, name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '', recipes: [] }
   recipeSelectionChanged.value = false
   priceDisplay.value = ''
   resetPhoto()
@@ -662,8 +719,10 @@ function openCreateProd() {
   showProdModal.value = true
 }
 function openEditProd(p) {
+  productPane.value = 'info'
+  productSaveError.value = ''
   editingProd.value = p
-  formProd.value = { outlet_id: p.outlet_id, name: p.name, code: p.code ?? '', description: p.description ?? '', category_id: p.category_id ?? '', category_name: p.category_name ?? '', price: p.price, photo_url: p.photo_url ?? '', recipe_master_id: p.recipe_master_id || '' }
+  formProd.value = { outlet_id: p.outlet_id, name: p.name, code: p.code ?? '', description: p.description ?? '', category_id: p.category_id ?? '', category_name: p.category_name ?? '', price: p.price, photo_url: p.photo_url ?? '', recipe_master_id: p.recipe_master_id || '', recipes: (p.recipes || (p.recipe_master_id ? [{ recipe_master_id: p.recipe_master_id, name: p.recipe_master_name, multiplier: 1 }] : [])).map(link => ({ ...link })) }
   recipeSelectionChanged.value = false
   priceDisplay.value = p.price ? fmtRupiahInput(p.price) : ''
   resetPhoto()
@@ -672,6 +731,17 @@ function openEditProd(p) {
   showProdModal.value = true
 }
 async function saveProd() {
+  if (savingProd.value) return
+  productSaveError.value = ''
+  if (!formProdOutletId.value || !productForm.value?.checkValidity()) {
+    productPane.value = 'info'
+    await nextTick()
+    if (!formProdOutletId.value) {
+      productSaveError.value = 'Pilih outlet untuk produk ini.'
+      document.getElementById('product-outlet')?.focus()
+    } else productForm.value?.reportValidity()
+    return
+  }
   savingProd.value = true
   try {
     let productId = editingProd.value?.id
@@ -680,7 +750,7 @@ async function saveProd() {
         name: formProd.value.name, code: formProd.value.code, description: formProd.value.description,
         category_id: formProd.value.category_id, category_name: formProd.value.category_name,
         price: formProd.value.price,
-        ...(recipeSelectionChanged.value ? { recipe_master_id: formProd.value.recipe_master_id } : {}),
+        ...(recipeSelectionChanged.value ? { recipes: formProd.value.recipes } : {}),
       })
     } else {
       const created = await productsApi.createProduct({ ...formProd.value })
@@ -695,7 +765,7 @@ async function saveProd() {
     showProdModal.value = false
     await fetchProducts()
   } catch (e) {
-    alert(e?.message || e?.response?.data?.error || 'Gagal menyimpan produk')
+    productSaveError.value = e?.message || e?.response?.data?.error || 'Gagal menyimpan produk'
   } finally {
     savingProd.value = false
   }
@@ -1002,4 +1072,126 @@ watch(pageCat,  fetchCategories)
 .btn-danger:disabled { opacity: .6; cursor: not-allowed; }
 .btn-danger:hover:not(:disabled) { opacity: .88; }
 .del-text { font-size: .85rem; color: #374151; line-height: 1.55; margin-bottom: .1rem; }
+
+/* Product editor: complete form on desktop, two compact sections on phones. */
+.product-overlay { padding: 16px; }
+.product-modal { max-width: 960px; max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+.product-modal-header { flex-shrink: 0; padding: 18px 24px; gap: 16px; }
+.product-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.product-heading-icon { width: 40px; height: 40px; padding: 9px; flex-shrink: 0; color: #28714a; background: #edf6f0; border: 1px solid #d9e9de; border-radius: 12px; }
+.product-heading-icon svg { width: 100%; height: 100%; }
+.product-modal .modal-title { font-size: 1.12rem; line-height: 1.4; }
+.product-modal-description { margin-top: 3px; font-size: .78rem; line-height: 1.5; color: #6b7d72; }
+.product-form { display: flex; flex-direction: column; min-height: 0; }
+.product-form-panels { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; padding: 20px 24px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.product-info-panel, .product-media-panel { min-width: 0; }
+.product-media-panel { border-left: 1px solid #e6ece8; padding-left: 24px; }
+.product-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+.product-section-heading h3 { font-size: .83rem; font-weight: 700; color: #244332; }
+.product-section-heading > span { font-size: .68rem; color: #7b8b81; }
+.product-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.product-field-wide { grid-column: 1 / -1; }
+.product-modal .form-group { margin-bottom: 0; gap: 5px; min-width: 0; }
+.product-modal .form-group label { display: flex; align-items: baseline; gap: 4px; font-size: .75rem; }
+.product-field-note { margin-left: auto; font-size: .65rem; font-weight: 400; color: #7b8b81; }
+.product-modal .form-input, .product-modal :deep(.ss-trigger) { width: 100%; min-width: 0; min-height: 38px; border-radius: 8px; font-size: .82rem; background-color: #fff; }
+.product-modal .form-input--code { background: #f5f7f6; font-size: .76rem; }
+.product-modal .product-price-input { font-weight: 700; color: #185b35; }
+.product-outlet-readonly { display: flex; align-items: center; gap: 8px; min-height: 38px; border: 1px solid #dce6df; padding: 8px 11px; border-radius: 8px; background: #f6f9f7; font-size: .82rem; color: #385e47; }
+.product-outlet-readonly svg { width: 17px; height: 17px; flex-shrink: 0; }
+.product-outlet-readonly span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-preview { display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid #e0e9e3; border-radius: 12px; background: #f8fbf9; }
+.product-preview-image { flex: 0 0 96px; height: 96px; border-radius: 9px; overflow: hidden; background: #edf2ee; }
+.product-preview-image img { width: 100%; height: 100%; object-fit: cover; }
+.product-preview-placeholder { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #91a697; font-size: .64rem; }
+.product-preview-placeholder svg { width: 29px; height: 29px; }
+.product-preview-copy { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.product-preview-eyebrow { color: #7b8b81; font-size: .6rem; letter-spacing: .04em; text-transform: uppercase; }
+.product-preview-copy strong { font-size: .87rem; line-height: 1.4; color: #224531; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.product-preview-category { color: #7b8b81; font-size: .7rem; }
+.product-preview-price { font-size: .95rem; font-weight: 700; color: #25633d; }
+.product-photo-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0 16px; }
+.product-photo-tools p { font-size: .68rem; line-height: 1.6; color: #607769; }
+.product-photo-tools p span { display: block; font-size: .63rem; color: #89998f; }
+.product-photo-tools .photo-actions { flex-wrap: nowrap; gap: 2px; }
+.product-recipe-section { border-top: 1px solid #e6ece8; padding-top: 16px; }
+.product-recipe-trigger { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 8px 11px; border: 1px solid #dce5df; border-radius: 8px; background: #fff; font-size: .8rem; text-align: left; color: #345d44; cursor: pointer; }
+.product-recipe-trigger > svg { width: 17px; height: 17px; flex-shrink: 0; }
+.product-recipe-trigger > span { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.product-recipe-trigger .product-recipe-chevron { width: 14px; color: #8c9e92; }
+.product-recipe-trigger:hover:not(:disabled) { border-color: #8ab499; background: #f8fbf9; }
+.product-recipe-trigger:focus-visible { outline: 2px solid #5a9170; outline-offset: 2px; }
+.product-recipe-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.product-recipe-help { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 12px; border: 1px solid #e0ece3; border-radius: 9px; background: #f2f8f4; color: #38664a; }
+.product-recipe-help > svg { width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px; }
+.product-recipe-help strong { display: block; font-size: .72rem; line-height: 1.5; font-weight: 650; }
+.product-recipe-help p { margin-top: 3px; font-size: .7rem; line-height: 1.55; color: #617c6b; overflow-wrap: anywhere; }
+.product-recipe-help-warning { background: #fffbef; border-color: #f0dfb7; color: #885d18; }
+.product-recipe-help-warning p { color: #8b744c; }
+.product-recipe-retry { margin-top: 6px; font-size: .72rem; text-decoration: underline; }
+.product-modal-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid #e6ece8; padding: 14px 24px; background: #fbfcfb; }
+.product-footer-note { font-size: .71rem; color: #819086; }
+.product-save-error { font-size: .75rem; color: #b42318; overflow-wrap: anywhere; }
+.product-footer-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.product-footer-actions button { min-height: 38px; }
+.product-tabs { display: none; }
+@media (max-width: 767px) {
+  .product-overlay { padding: 12px; }
+  .product-modal { max-height: calc(100dvh - 24px); border-radius: 16px; }
+  .product-modal-header { padding: 14px 16px; gap: 8px; }
+  .product-heading { gap: 10px; }
+  .product-heading-icon { width: 34px; height: 34px; padding: 7px; border-radius: 10px; }
+  .product-modal .modal-title { font-size: 1rem; }
+  .product-modal-description { font-size: .69rem; }
+  .product-tabs { display: flex; gap: 4px; padding: 12px 16px 0; flex-shrink: 0; }
+  .product-tabs button { flex: 1; min-height: 38px; padding: 7px 9px; border-radius: 8px; border: 1px solid #e2e8e4; background: #fff; font-size: .76rem; font-weight: 600; color: #6b7d72; }
+  .product-tabs button[aria-pressed='true'] { background: #edf6f0; border-color: #c4ddcc; color: #245c39; }
+  .product-form-panels { display: block; padding: 16px; }
+  .product-fields { gap: 10px; }
+  .product-media-panel { border: 0; padding: 0; }
+  .product-section-heading { display: none; }
+  .product-pane-inactive { display: none; }
+  .product-modal-footer { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+  .product-footer-note { display: none; }
+  .product-footer-actions { margin-left: auto; }
+  .product-save-error { width: 100%; }
+}
+@media (max-height: 700px) {
+  .product-modal-header { padding-top: 12px; padding-bottom: 12px; }
+  .product-form-panels { padding-top: 14px; padding-bottom: 14px; }
+  .product-fields { row-gap: 8px; }
+  .product-section-heading { margin-bottom: 10px; }
+  .product-preview-image { flex-basis: 80px; height: 80px; }
+  .product-recipe-section { padding-top: 12px; }
+  .product-recipe-help { padding: 10px; margin-top: 10px; }
+}
+@media (max-width: 767px) and (max-height: 640px) {
+  .product-modal-description { display: none; }
+  .product-modal .form-input, .product-modal :deep(.ss-trigger), .product-outlet-readonly { min-height: 34px; }
+  .product-form-panels { padding-top: 12px; padding-bottom: 12px; }
+}
+@media (min-width: 768px) and (max-height: 540px) {
+  .product-modal-description, .product-section-heading, .product-preview-eyebrow, .product-preview-category { display: none; }
+  .product-field-wide { grid-column: auto; }
+  .product-form-panels { gap: 16px; }
+  .product-media-panel { padding-left: 16px; }
+  .product-preview { padding: 8px; }
+  .product-preview-image { flex-basis: 56px; height: 56px; }
+  .product-photo-tools { padding: 5px 0 8px; }
+  .product-recipe-section { padding-top: 8px; }
+  .product-recipe-help { padding: 8px; margin-top: 8px; }
+  .product-modal-footer { padding-top: 10px; padding-bottom: 10px; }
+}
+@media (min-width: 768px) and (max-height: 450px) {
+  .product-modal-header { padding-top: 8px; padding-bottom: 8px; }
+  .product-form-panels { padding-top: 6px; padding-bottom: 6px; }
+  .product-media-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-content: start; }
+  .product-preview { gap: 8px; padding: 6px; }
+  .product-preview-image { flex-basis: 40px; height: 40px; }
+  .product-preview-placeholder span, .product-photo-tools p { display: none; }
+  .product-photo-tools { padding: 0; }
+  .product-photo-tools .photo-actions { flex-direction: column; }
+  .product-recipe-section { grid-column: 1 / -1; }
+  .product-modal-footer { padding-top: 8px; padding-bottom: 8px; }
+}
 </style>

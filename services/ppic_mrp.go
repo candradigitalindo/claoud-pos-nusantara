@@ -85,7 +85,7 @@ func RunMrp(req models.MrpRunRequest, actor string, outletScope []string) (*mode
 		SELECT df.outlet_id, df.product_name, SUM(%s)
 		FROM demand_forecasts df
 		WHERE df.outlet_id = ANY($1) AND df.forecast_date >= CURRENT_DATE
-		AND df.forecast_date < CURRENT_DATE + $2
+		AND df.forecast_date < CURRENT_DATE + $2::int
 		GROUP BY df.outlet_id, df.product_name
 		HAVING SUM(%s) > 0`, forecastQtyExpr, forecastQtyExpr), pq.Array(outletIDs), horizon)
 	if err != nil {
@@ -125,50 +125,34 @@ func RunMrp(req models.MrpRunRequest, actor string, outletScope []string) (*mode
 	pRows.Close()
 
 	// Muat resep yang dibutuhkan sekali jalan.
-	masterIDs := []string{}
-	legacyIDs := []string{}
+	ids := []string{}
 	for k := range forecast {
 		if pi, ok := prodMap[k]; ok {
-			if pi.recipeMaster != "" {
-				masterIDs = append(masterIDs, pi.recipeMaster)
-			} else if pi.stockType == "recipe" {
-				legacyIDs = append(legacyIDs, pi.id)
-			}
+			ids = append(ids, pi.id)
 		}
 	}
 	type mat struct {
 		itemID  string
 		qtyBase float64
 	}
-	masterRecipes := map[string][]mat{}
-	if len(masterIDs) > 0 {
-		rows, err := database.DB.Query(`SELECT recipe_master_id, item_id, qty_base FROM recipe_items WHERE recipe_master_id = ANY($1)`, pq.Array(masterIDs))
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var mid string
-			var m mat
-			if rows.Scan(&mid, &m.itemID, &m.qtyBase) == nil {
-				masterRecipes[mid] = append(masterRecipes[mid], m)
-			}
-		}
-		rows.Close()
+	productRecipes := map[string][]mat{}
+	r, err := database.DB.Query(`SELECT product_id,item_id,qty_base FROM product_recipe_materials WHERE product_id=ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return nil, err
 	}
-	legacyRecipes := map[string][]mat{}
-	if len(legacyIDs) > 0 {
-		rows, err := database.DB.Query(`SELECT product_id, item_id, qty_base FROM product_recipes WHERE product_id = ANY($1)`, pq.Array(legacyIDs))
-		if err != nil {
+	for r.Next() {
+		var pid string
+		var m mat
+		if err := r.Scan(&pid, &m.itemID, &m.qtyBase); err != nil {
+			r.Close()
 			return nil, err
 		}
-		for rows.Next() {
-			var pid string
-			var m mat
-			if rows.Scan(&pid, &m.itemID, &m.qtyBase) == nil {
-				legacyRecipes[pid] = append(legacyRecipes[pid], m)
-			}
-		}
-		rows.Close()
+		productRecipes[pid] = append(productRecipes[pid], m)
+	}
+	err = r.Err()
+	r.Close()
+	if err != nil {
+		return nil, err
 	}
 
 	// Ledakan level 1: kebutuhan kotor per bahan (satuan dasar).
@@ -183,12 +167,8 @@ func RunMrp(req models.MrpRunRequest, actor string, outletScope []string) (*mode
 		switch {
 		case pi.stockType == "single" && pi.linkedItem != "":
 			gross[strings.TrimSpace(pi.linkedItem)] += qty
-		case pi.recipeMaster != "" && len(masterRecipes[pi.recipeMaster]) > 0:
-			for _, m := range masterRecipes[pi.recipeMaster] {
-				gross[m.itemID] += m.qtyBase * qty
-			}
-		case len(legacyRecipes[pi.id]) > 0:
-			for _, m := range legacyRecipes[pi.id] {
+		case len(productRecipes[pi.id]) > 0:
+			for _, m := range productRecipes[pi.id] {
 				gross[m.itemID] += m.qtyBase * qty
 			}
 		default:

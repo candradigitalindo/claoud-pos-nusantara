@@ -238,6 +238,8 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// F&B: menu development and standard cost; warehouse mutations keep their own permissions.
 	admin.Get("/fnb/dashboard", middleware.RequirePermission("fnb.dashboard.view"), handlers.FnbOverview)
 	admin.Get("/fnb/costing", middleware.RequirePermission("fnb.costing.view"), handlers.FnbCosting)
+	admin.Get("/fnb/outlets/:id/policy", middleware.RequirePermission("fnb.costing.view"), handlers.GetFnbOutletPolicy)
+	admin.Put("/fnb/outlets/:id/policy", middleware.RequirePermission("fnb.costing.update"), handlers.SaveFnbOutletPolicy)
 	admin.Put("/fnb/products/:id/profile", middleware.RequirePermission("fnb.costing.update"), handlers.SaveFnbProfile)
 	admin.Get("/fnb/development-options", middleware.RequirePermission("fnb.development.view"), handlers.FnbDevelopmentOptions)
 	admin.Get("/fnb/developments", middleware.RequirePermission("fnb.development.view"), handlers.ListFnbDevelopments)
@@ -248,6 +250,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Products & Categories — CRUD granular
 	admin.Get("/products", middleware.RequirePermission("products.view"), handlers.AdminGetProducts)
 	admin.Get("/products/recipe-options", middleware.RequireAnyPermission("products.create", "products.update"), handlers.AdminProductRecipeOptions)
+	admin.Get("/products/recipe-options/:id", middleware.RequireAnyPermission("products.create", "products.update"), handlers.AdminProductRecipeDetail)
 	admin.Get("/categories", middleware.RequirePermission("products.view"), handlers.AdminGetCategories)
 	admin.Post("/products", middleware.RequirePermission("products.create"), handlers.AdminCreateProduct)
 	admin.Put("/products/:id", middleware.RequirePermission("products.update"), handlers.AdminUpdateProduct)

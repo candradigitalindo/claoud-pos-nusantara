@@ -32,7 +32,7 @@
         <p v-if="!data.attention.length" class="text-sm text-gray-500 py-5">{{ data.product_count ? 'Tidak ada menu yang memerlukan tindak lanjut.' : 'Belum ada produk aktif. Mulai dengan pengembangan produk atau katalog produk.' }}</p>
         <div v-for="row in data.attention" :key="row.product_id" class="py-3 border-b border-gray-100 last:border-0 flex flex-wrap justify-between gap-2">
           <div><b class="text-sm">{{ row.product_name }}</b><p class="text-xs text-gray-400">{{ row.outlet_name }} · {{ kindLabel(row.menu_kind) }}</p></div>
-          <div class="text-xs text-amber-700 text-right"><p v-if="row.cost_status !== 'ready'">{{ costStatusLabel(row.cost_status) }}</p><p v-if="row.is_over">HPP {{ row.cost_pct.toFixed(1) }}% di atas target {{ row.target_cost_pct }}%</p><p v-if="!row.menu_kind">Tentukan makanan atau minuman</p><p v-if="row.price <= 0">Harga jual belum diisi</p></div>
+          <div class="text-xs text-amber-700 text-right"><p v-if="row.cost_status !== 'ready'">{{ costStatusLabel(row.cost_status) }}</p><p v-if="row.is_over">HPP {{ row.cost_pct.toFixed(1) }}% mencapai batas {{ row.target_cost_pct }}%</p><p v-if="row.projected_is_over">Proyeksi {{ row.projected_cost_pct.toFixed(1) }}% · tinjau biaya / harga</p><p v-if="!row.menu_kind">Tentukan makanan atau minuman</p><p v-if="row.price <= 0">Harga jual belum diisi</p></div>
         </div>
       </AppCard>
       <AppCard>
@@ -56,7 +56,7 @@ const outlet = ref(''), data = ref(null), error = ref(''), loading = ref(false)
 const stats = computed(() => data.value ? [
   { label: 'Menu aktif', value: data.value.product_count, note: 'Produk per outlet' },
   { label: 'HPP lengkap', value: data.value.cost_ready, note: `${data.value.no_recipe} menu tanpa sumber biaya` },
-  { label: 'Di atas target HPP', value: data.value.over_target, note: 'Perlu evaluasi biaya / harga', alert: true },
+  { label: 'Mencapai batas HPP', value: data.value.over_target, note: `${data.value.projected_over_target || 0} menu berisiko dari proyeksi`, alert: true },
   { label: 'Master resep', value: data.value.recipe_count, note: `${data.value.missing_cost} menu dengan biaya belum tersedia` },
 ] : [])
 const categories = computed(() => data.value ? [{ label: 'Makanan', value: data.value.food_count, color: 'bg-emerald-500' }, { label: 'Minuman', value: data.value.beverage_count, color: 'bg-sky-500' }, { label: 'Belum dikategorikan', value: data.value.unclassified, color: 'bg-amber-400' }] : [])

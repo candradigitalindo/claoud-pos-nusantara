@@ -42,13 +42,31 @@ func FnbCosting(c *fiber.Ctx) error {
 	r = services.FilterFnbCosts(r, c.Query("menu_kind"), c.Query("search"))
 	// Cost access alone does not grant the recipe composition.
 	if !roleHasPermission(c, "recipes.view") {
-		for i := range r {
-			r[i].Ingredients = nil
-		}
+		redactFnbComposition(r)
 	}
 	page, limit := getPagination(c)
 	rows, total := pagePpicRows(r, page, limit)
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rows": rows, "total": total, "page": page, "limit": limit}})
+}
+
+func GetFnbOutletPolicy(c *fiber.Ctx) error {
+	r, err := services.GetFnbOutletPolicy(c.Params("id"), getOutletScope(c))
+	if err != nil {
+		return fnbError(c, err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: r})
+}
+
+func SaveFnbOutletPolicy(c *fiber.Ctx) error {
+	var req models.FnbOutletPolicy
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
+	}
+	actor, _ := c.Locals("admin_username").(string)
+	if err := services.SaveFnbOutletPolicy(c.Params("id"), req, getOutletScope(c), actor); err != nil {
+		return fnbError(c, err)
+	}
+	return c.JSON(models.APIResponse{Success: true})
 }
 
 func SaveFnbProfile(c *fiber.Ctx) error {
@@ -129,4 +147,19 @@ func FnbDevelopmentOptions(c *fiber.Ctx) error {
 		}
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"recipes": recipes, "products": options}})
+}
+
+func redactFnbComposition(r []models.FnbCostRow) {
+	for i := range r {
+		r[i].Ingredients = nil
+		r[i].PriceComparisons = nil
+		for j := range r[i].Recipes {
+			r[i].Recipes[j].CostIngredients = nil
+			if r[i].Recipes[j].InitialCost != nil {
+				snapshot := *r[i].Recipes[j].InitialCost
+				snapshot.Ingredients = nil
+				r[i].Recipes[j].InitialCost = &snapshot
+			}
+		}
+	}
 }

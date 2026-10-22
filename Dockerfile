@@ -20,7 +20,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o cloud-api main.go
+RUN CGO_ENABLED=0 GOOS=linux GOMAXPROCS=2 go build -p 2 -ldflags="-s -w" -o cloud-api main.go
 
 
 # ── Stage 3: Go API runtime ──────────────────────────────────────────────────

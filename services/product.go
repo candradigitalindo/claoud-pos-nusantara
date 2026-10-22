@@ -80,6 +80,10 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
+	rows.Close()
+	if err := hydrateProductRecipes(products); err != nil {
+		return nil, 0, err
+	}
 	return products, total, nil
 }
 
@@ -147,7 +151,14 @@ func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int)
 		}
 		products = append(products, p)
 	}
-	return products, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	rows.Close()
+	if err := hydrateProductRecipes(products); err != nil {
+		return nil, 0, err
+	}
+	return products, total, nil
 }
 
 func GetAllCategories(outletID, search string, scopeIDs []string, page, limit int) ([]models.CloudCategory, int, error) {
@@ -223,7 +234,9 @@ const productRecipeAvailable = `(r.visibility = 'public' OR (r.visibility = 'sec
 		AND (i.qty_base <= 0 OR i.qty_base::text IN ('NaN', 'Infinity', '-Infinity')))`
 
 func ListProductRecipeOptions(outletID string) ([]models.ProductRecipeOption, error) {
-	rows, err := database.DB.Query(`SELECT r.id, r.name FROM recipe_masters r WHERE `+productRecipeAvailable+` ORDER BY r.name, r.id`, outletID)
+	rows, err := database.DB.Query(`SELECT r.id, r.name, COALESCE(r.description,''), r.menu_kind, COALESCE(r.total_time,0),
+		(SELECT COUNT(*) FROM recipe_items i WHERE i.recipe_master_id = r.id)
+		FROM recipe_masters r WHERE `+productRecipeAvailable+` ORDER BY r.name, r.id`, outletID)
 	if err != nil {
 		return nil, err
 	}
@@ -231,12 +244,45 @@ func ListProductRecipeOptions(outletID string) ([]models.ProductRecipeOption, er
 	result := []models.ProductRecipeOption{}
 	for rows.Next() {
 		var r models.ProductRecipeOption
-		if err := rows.Scan(&r.ID, &r.Name); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.MenuKind, &r.TotalTime, &r.ItemCount); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+func GetProductRecipeDetail(outletID, recipeID string) (models.ProductRecipeDetail, error) {
+	result := models.ProductRecipeDetail{Items: []models.RecipeItem{}}
+	// Check access and read the composition in one snapshot. Detail access uses
+	// the same outlet and composition rules as selecting/saving the recipe.
+	rows, err := database.DB.Query(`SELECT r.id, r.name, COALESCE(r.description,''), r.menu_kind, COALESCE(r.total_time,0), COALESCE(r.instructions,''),
+		i.id, i.item_id, s.name, s.code, i.qty_base, s.base_unit, COALESCE(i.notes,'')
+		FROM recipe_masters r JOIN recipe_items i ON i.recipe_master_id = r.id
+		JOIN stock_items s ON s.id = i.item_id
+		WHERE `+productRecipeAvailable+` AND r.id = $2 ORDER BY i.id`, outletID, recipeID)
+	if err != nil {
+		return result, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item models.RecipeItem
+		if err := rows.Scan(&result.ID, &result.Name, &result.Description, &result.MenuKind, &result.TotalTime, &result.Instructions,
+			&item.ID, &item.ItemID, &item.ItemName, &item.ItemCode, &item.QtyBase, &item.Unit, &item.Notes); err != nil {
+			return models.ProductRecipeDetail{}, err
+		}
+		result.Items = append(result.Items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return models.ProductRecipeDetail{}, err
+	}
+	if result.ID == "" {
+		return result, ErrProductRecipe
+	}
+	result.ItemCount = len(result.Items)
+	rows.Close()
+	result.RecipeCost, err = getRecipeCost(recipeID, outletID)
+	return result, err
 }
 
 func validateProductRecipe(tx *sql.Tx, outletID, recipeID string) (string, error) {
@@ -280,14 +326,13 @@ func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProdu
 		return models.CloudProduct{}, err
 	}
 	defer tx.Rollback()
-	recipeID := strings.TrimSpace(req.RecipeMasterID)
-	recipeName, err := validateProductRecipe(tx, req.OutletID, recipeID)
+	links, err := normalizeProductRecipes(tx, req.OutletID, req.Recipes, req.RecipeMasterID)
 	if err != nil {
 		return models.CloudProduct{}, err
 	}
-	stockType := "none"
-	if recipeID != "" {
-		stockType = "recipe"
+	recipeID, recipeName, stockType := "", "", "none"
+	if len(links) > 0 {
+		recipeID, recipeName, stockType = links[0].RecipeMasterID, links[0].Name, "recipe"
 	}
 	_, err = tx.Exec(
 		`INSERT INTO cloud_products
@@ -300,6 +345,9 @@ func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProdu
 	if err != nil {
 		return models.CloudProduct{}, err
 	}
+	if err := replaceProductRecipes(tx, id, links); err != nil {
+		return models.CloudProduct{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return models.CloudProduct{}, err
 	}
@@ -308,7 +356,7 @@ func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProdu
 		Name: req.Name, Code: req.Code, Description: req.Description,
 		CategoryID: req.CategoryID, CategoryName: req.CategoryName,
 		Price: req.Price, Destination: req.Destination,
-		StockType: stockType, RecipeMasterID: recipeID, RecipeMasterName: recipeName,
+		StockType: stockType, RecipeMasterID: recipeID, RecipeMasterName: recipeName, Recipes: links,
 		Version: 1, CreatedAt: now, UpdatedAt: now, SyncedAt: now,
 	}, nil
 }
@@ -345,13 +393,19 @@ func AdminUpdateProduct(id string, req models.AdminUpdateProductRequest) error {
 		return err
 	}
 	recipeID, stockType := "", "none"
-	if req.RecipeMasterID != nil {
-		recipeID = strings.TrimSpace(*req.RecipeMasterID)
-		if _, err := validateProductRecipe(tx, outletID, recipeID); err != nil {
+	changeRecipes := req.Recipes != nil || req.RecipeMasterID != nil
+	var links []models.ProductRecipeLink
+	if changeRecipes {
+		legacy := ""
+		if req.RecipeMasterID != nil {
+			legacy = *req.RecipeMasterID
+		}
+		links, err = normalizeProductRecipes(tx, outletID, req.Recipes, legacy)
+		if err != nil {
 			return err
 		}
-		if recipeID != "" {
-			stockType = "recipe"
+		if len(links) > 0 {
+			recipeID, stockType = links[0].RecipeMasterID, "recipe"
 		}
 	}
 	result, err := tx.Exec(
@@ -364,7 +418,7 @@ func AdminUpdateProduct(id string, req models.AdminUpdateProductRequest) error {
 		    updated_at=NOW(), version=version+1
 		WHERE id=$8 AND is_deleted=false`,
 		req.Name, nullStr(req.Code), req.Description, req.CategoryID, req.CategoryName,
-		req.Price, req.Destination, id, req.RecipeMasterID != nil, nullStr(recipeID), stockType,
+		req.Price, req.Destination, id, changeRecipes, nullStr(recipeID), stockType,
 	)
 	if err != nil {
 		return err
@@ -372,6 +426,11 @@ func AdminUpdateProduct(id string, req models.AdminUpdateProductRequest) error {
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("product not found")
+	}
+	if changeRecipes {
+		if err := replaceProductRecipes(tx, id, links); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
