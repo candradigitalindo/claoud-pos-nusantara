@@ -50,11 +50,12 @@ func main() {
 	if err := database.RunProjectUsageMigrations(); err != nil {
 		log.Fatalf("Project usage migration failed: %v", err)
 	}
-	if err := database.RunDocumentMigrations(); err != nil {
-		log.Fatalf("Document migration failed: %v", err)
-	}
 	if err := database.RunFinanceMigrations(); err != nil {
 		log.Fatalf("Finance migration failed: %v", err)
+	}
+	// Grant document access after all migrations that seed roles have completed.
+	if err := database.RunDocumentMigrations(); err != nil {
+		log.Fatalf("Document migration failed: %v", err)
 	}
 
 	// Pemotongan bahan (satu bahan → beberapa hasil): template + dokumen.

@@ -1,6 +1,6 @@
 package database
 
-// Documents are a shared library. Access is granted explicitly through roles.
+// Documents are a shared library. View/download access is seeded to all roles.
 func RunDocumentMigrations() error {
 	tx, err := DB.Begin()
 	if err != nil {
@@ -27,6 +27,22 @@ func RunDocumentMigrations() error {
 	}
 	for _, permission := range []string{"documents.view", "documents.create", "documents.download"} {
 		if _, err := tx.Exec(`INSERT INTO role_permissions(role,permission) VALUES('admin',$1),('superadmin',$1) ON CONFLICT DO NOTHING`, permission); err != nil {
+			return err
+		}
+	}
+	// Seed existing roles once, including custom roles without any permissions.
+	// Later permission changes in the role editor must survive server restarts.
+	seed, err := tx.Exec(`INSERT INTO app_settings(key,value) VALUES('mig_documents_all_roles','done') ON CONFLICT DO NOTHING`)
+	if err != nil {
+		return err
+	}
+	if n, err := seed.RowsAffected(); err != nil {
+		return err
+	} else if n > 0 {
+		if _, err := tx.Exec(`INSERT INTO role_permissions(role,permission)
+			SELECT roles.name, p.permission FROM roles
+			CROSS JOIN (VALUES ('documents.view'), ('documents.download')) AS p(permission)
+			ON CONFLICT DO NOTHING`); err != nil {
 			return err
 		}
 	}
