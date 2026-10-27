@@ -187,11 +187,11 @@
     </template>
 
     <!-- Unpaid detail modal -->
-    <AppModal v-model="showUnpaid" title="Pesanan Belum Dibayar">
+    <AppModal v-model="showUnpaid" title="Pesanan Belum Dibayar" size="xl">
       <div v-if="unpaidLoading" class="py-8 text-center text-sm text-gray-400">Memuat…</div>
       <div v-else-if="!unpaidOrders.length" class="py-8 text-center text-sm text-gray-400">Tidak ada pesanan yang belum dibayar.</div>
-      <div v-else class="space-y-3">
-        <p class="text-xs text-gray-500">{{ unpaidOrders.length }} pesanan · total {{ formatRupiah(unpaidTotal) }}</p>
+      <div v-else class="modal-form-grid">
+        <p class="modal-span-full text-xs text-gray-500">{{ unpaidOrders.length }} pesanan · total {{ formatRupiah(unpaidTotal) }}</p>
         <div v-for="o in unpaidOrders" :key="o.id" class="rounded-xl border border-gray-100 overflow-hidden">
           <div class="flex items-start justify-between gap-2 px-3 py-2 bg-gray-50">
             <div class="min-w-0">

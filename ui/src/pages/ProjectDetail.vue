@@ -275,7 +275,7 @@
     <!-- Arahkan ke halaman pengadaan untuk membuat belanja tahap baru.
          Form pengajuan tetap satu-satunya tempat membuat PR, jadi tidak ada
          duplikasi alur di sini. -->
-    <AppModal v-model="showNewPurchase" title="Belanja Tahap Baru" size="sm">
+    <AppModal v-model="showNewPurchase" title="Belanja Tahap Baru" size="md">
       <p class="text-sm text-gray-600">Belanja tahap dibuat lewat form pengadaan biasa. Pilih jenisnya:</p>
       <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button @click="goNewPurchase('barang')"

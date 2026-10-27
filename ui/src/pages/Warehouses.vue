@@ -74,13 +74,13 @@
     </AppCard>
 
     <!-- Create / Edit Modal -->
-    <AppModal v-model="showForm" :title="editTarget ? 'Edit Gudang' : 'Tambah Gudang'" size="sm">
-      <div class="space-y-3">
-        <div class="grid grid-cols-2 gap-3">
+    <AppModal v-model="showForm" :title="editTarget ? 'Edit Gudang' : 'Tambah Gudang'" size="lg">
+      <div class="modal-form-grid">
+        <div class="contents">
           <AppInput v-model="form.code" label="Kode" placeholder="Contoh: GDG-INDUK" />
           <AppInput v-model="form.name" label="Nama Gudang" placeholder="Contoh: Gudang Pusat" />
         </div>
-        <div>
+        <div class="modal-span-full">
           <label class="block text-sm font-medium text-gray-700 mb-1">Tipe Gudang</label>
           <div class="grid grid-cols-2 gap-2">
             <label v-for="t in TYPES" :key="t.value"
@@ -103,7 +103,7 @@
             labelKey="label"
           />
         </div>
-        <p v-if="form.type === 'outlet'" class="text-xs text-gray-500 -mt-1">
+        <p v-if="form.type === 'outlet'" class="modal-span-full text-xs text-gray-500 -mt-1">
           Setiap outlet hanya boleh memiliki satu gudang outlet. Gudang induk A dan B tetap bisa sama-sama transfer ke gudang outlet yang sama, dan transfer antar gudang outlet juga bisa.
         </p>
         <AppInput v-model="form.notes" label="Keterangan" placeholder="Opsional" />

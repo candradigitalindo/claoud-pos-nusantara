@@ -110,11 +110,11 @@
 
     <!-- Create Modal -->
     <AppModal v-model="showCreate" title="Pengajuan Jasa / Layanan" size="2xl">
-      <form class="space-y-4" @submit.prevent="submitCreate">
-        <AppAlert type="error" :message="createError" />
+      <form class="modal-form-grid" @submit.prevent="submitCreate">
+        <AppAlert class="modal-span-full" type="error" :message="createError" />
         <!-- Unit kerja pengaju: dari /my-work-units (cakupan role). Satu unit
              dipilih otomatis; lebih dari satu wajib dipilih. Outlet ikut unit. -->
-        <AppAlert v-if="!workUnits.length" type="warning"
+        <AppAlert class="modal-span-full" v-if="!workUnits.length" type="warning"
           :message="workUnitsFailed ? 'Daftar unit kerja gagal dimuat — tutup form ini lalu muat ulang halaman.' : 'Anda belum memiliki unit kerja dalam cakupan, jadi pengajuan belum bisa dikirim. Minta admin mengatur unit kerja (Batasan Unit Kerja) role Anda.'" />
         <div v-else class="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
           <p class="text-emerald-800">
@@ -134,15 +134,15 @@
             placeholder="Tanpa projek" searchPlaceholder="Cari projek…" />
           <p class="text-xs text-gray-400">Isi bila belanja ini bagian dari projek pembangunan/renovasi — tiap item lalu memilih baris RAB yang diserapnya.</p>
         </div>
-        <div v-if="rabNotSet" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <div v-if="rabNotSet" class="modal-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
           RAB projek <b>{{ projectRab.project_number }}</b> belum ditetapkan — pengajuan untuk projek ini ditolak server.
           Susun dan tetapkan RAB di halaman Projek dulu.
         </div>
-        <div v-else-if="form.project_id && projectRab" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+        <div v-else-if="form.project_id && projectRab" class="modal-span-full rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
           RAB <b>{{ projectRab.project_number }}</b> v{{ projectRab.rab_version }} · {{ rabLines.length }} baris bisa diserap pengajuan ini.
           Pilih baris RAB pada tiap item agar serapannya tercatat per pos; memilih baris mengisi nama, satuan, HPS, dan sumber HPS.
         </div>
-        <div>
+        <div class="modal-span-full">
           <label class="text-sm font-medium text-gray-700 mb-2 block">Daftar Pengadaan Jasa</label>
           <div class="space-y-3">
             <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
@@ -201,7 +201,7 @@
           </p>
         </div>
 
-        <AppInput v-model="form.notes" label="Catatan / Scope of Work" placeholder="Deskripsi pekerjaan, jadwal, dsb. (opsional)" />
+        <AppInput class="modal-span-full" v-model="form.notes" label="Catatan / Scope of Work" placeholder="Deskripsi pekerjaan, jadwal, dsb. (opsional)" />
       </form>
       <template #footer>
         <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>

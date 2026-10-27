@@ -215,7 +215,7 @@
               <span style="font-size:.8rem;color:#5a7866">Memuat data outlet…</span>
             </div>
 
-            <template v-else-if="detailOutlet">
+            <div v-else-if="detailOutlet" class="outlet-detail-grid">
               <!-- Info grid -->
               <div class="detail-section">
                 <p class="detail-section-title">Informasi Outlet</p>
@@ -276,7 +276,7 @@
                   </div>
                 </div>
               </div>
-            </template>
+            </div>
           </div>
         </div>
       </Transition>
@@ -876,7 +876,7 @@ async function doUpdate() {
   padding: 1rem; background: rgba(7,26,13,.55); backdrop-filter: blur(6px);
 }
 .modal-panel {
-  position: relative; overflow: hidden; width: 100%; max-width: 520px; border-radius: 1.35rem;
+  position: relative; overflow: hidden; width: 100%; max-width: 768px; min-width: 0; max-height: calc(100dvh - 2rem); display: flex; flex-direction: column; border-radius: 1.35rem;
   background: rgba(255,255,255,.88); backdrop-filter: blur(32px) saturate(180%);
   border: 1px solid rgba(255,255,255,.75);
   box-shadow: 0 24px 64px rgba(0,0,0,.18), 0 1px 0 rgba(255,255,255,.9) inset;
@@ -898,9 +898,9 @@ async function doUpdate() {
   background: rgba(0,0,0,.05); color: #5a7866; display: flex; align-items: center; justify-content: center; transition: background .14s;
 }
 .modal-close:hover { background: rgba(0,0,0,.1); color: #0f2d1d; }
-.modal-body { padding: 1.25rem 1.35rem; }
+.modal-body { padding: 1.25rem 1.35rem; min-height: 0; overflow-y: auto; }
 
-.form-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; }
+.form-grid  { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
 .field-span2 { grid-column: span 2; }
 .field { display: flex; flex-direction: column; gap: .3rem; }
 .field-label { font-size: .72rem; font-weight: 700; color: #4a6555; text-transform: uppercase; letter-spacing: .06em; }
@@ -946,7 +946,7 @@ async function doUpdate() {
 .modal-fade-enter-from .modal-panel { transform: scale(.96) translateY(12px); }
 
 /* ── Detail modal ─────────────────────────────────────────── */
-.modal-panel--detail { max-width: 560px; }
+.modal-panel--detail { max-width: 1024px; }
 
 .dh-header {
   display: flex; align-items: center; gap: .85rem; padding: 1.15rem 1.35rem;
@@ -1055,4 +1055,16 @@ async function doUpdate() {
 }
 .btn-regen-do:disabled { opacity: .55; cursor: not-allowed; }
 .btn-regen-do:not(:disabled):hover { opacity: .87; }
+
+.modal-header, .dh-header, .modal-footer { flex-shrink: 0; }
+.modal-footer { flex-wrap: wrap; }
+.field, .info-row { min-width: 0; }
+.outlet-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; overflow-y: auto; }
+@media (min-width: 768px) {
+  .outlet-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 639px) {
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .field-span2 { grid-column: 1 / -1; }
+}
 </style>

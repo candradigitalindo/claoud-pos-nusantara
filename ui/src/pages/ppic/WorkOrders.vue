@@ -62,8 +62,8 @@
     </AppCard>
 
     <!-- Create modal -->
-    <AppModal v-model="showCreate" title="Work Order Mandiri" size="md">
-      <div class="space-y-3">
+    <AppModal v-model="showCreate" title="Work Order Mandiri" size="lg">
+      <div class="modal-form-grid">
         <div>
           <label class="text-xs font-semibold text-gray-600">Gudang</label>
           <SearchSelect v-model="createForm.warehouse_id" :options="warehouseOptions" placeholder="Pilih Gudang" @change="loadProducible" />
@@ -75,19 +75,19 @@
         <div>
           <label class="text-xs font-semibold text-gray-600">Qty Rencana (satuan dasar)</label>
           <input type="number" min="0" step="0.5" v-model.number="createForm.qty_planned_base"
-            class="block w-40 text-sm font-mono border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            class="block w-full text-sm font-mono border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
         </div>
         <textarea v-model="createForm.notes" rows="2" placeholder="Catatan..."
           class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
-        <div class="flex justify-end gap-2">
-          <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
-          <AppButton variant="primary" :loading="creating" @click="doCreate">Buat WO</AppButton>
-        </div>
       </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
+        <AppButton variant="primary" :loading="creating" @click="doCreate">Buat WO</AppButton>
+      </template>
     </AppModal>
 
     <!-- Finish modal -->
-    <AppModal v-model="showFinish" :title="finishTarget ? `Selesaikan ${finishTarget.wo_number}` : ''" size="lg">
+    <AppModal v-model="showFinish" :title="finishTarget ? `Selesaikan ${finishTarget.wo_number}` : ''" size="xl">
       <div v-if="finishTarget" class="space-y-3">
         <div class="flex flex-wrap items-end gap-4">
           <div>
@@ -103,7 +103,7 @@
           </div>
         </div>
 
-        <div>
+        <div class="overflow-x-auto">
           <label class="text-xs font-semibold text-gray-600">Bahan Terpakai (prefill = resep × qty aktual, koreksi bila beda)</label>
           <table class="wo-table mt-1">
             <thead><tr><th>Bahan</th><th class="th-r">Resep (plan)</th><th class="th-r">Stok</th><th class="th-r">Aktual Terpakai</th></tr></thead>
@@ -124,15 +124,15 @@
 
         <textarea v-model="finishForm.notes" rows="2" placeholder="Catatan produksi (opsional)..."
           class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
-        <div class="flex justify-end gap-2">
-          <AppButton variant="secondary" @click="showFinish = false">Batal</AppButton>
-          <AppButton variant="primary" :loading="finishing" @click="doFinish">Posting Produksi</AppButton>
-        </div>
       </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showFinish = false">Batal</AppButton>
+        <AppButton v-if="finishTarget" variant="primary" :loading="finishing" @click="doFinish">Posting Produksi</AppButton>
+      </template>
     </AppModal>
 
     <!-- Detail selesai -->
-    <AppModal v-model="showDetail" :title="detailWo ? detailWo.wo_number + ' — Detail Produksi' : ''" size="lg">
+    <AppModal v-model="showDetail" :title="detailWo ? detailWo.wo_number + ' — Detail Produksi' : ''" size="xl">
       <div v-if="detailWo" class="space-y-3">
         <div class="det-grid">
           <div class="det"><div class="det-l">Hasil</div><div class="det-v">{{ fmtQty(detailWo.qty_actual_base) }} / {{ fmtQty(detailWo.qty_planned_base) }} {{ detailWo.base_unit }}</div></div>
@@ -140,6 +140,7 @@
           <div class="det"><div class="det-l">HPP</div><div class="det-v">{{ fmtRp(detailWo.cost_per_unit) }}/{{ detailWo.base_unit }} · total {{ fmtRp(detailWo.cost_total) }}</div></div>
           <div class="det"><div class="det-l">Expiry Batch</div><div class="det-v">{{ detailWo.expiry_date ? fmtDate(detailWo.expiry_date) : '—' }}</div></div>
         </div>
+        <div class="overflow-x-auto">
         <table class="wo-table">
           <thead><tr><th>Bahan</th><th class="th-r">Plan</th><th class="th-r">Aktual</th><th class="th-r">Variance</th><th class="th-r">Biaya</th></tr></thead>
           <tbody>
@@ -154,6 +155,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
     </AppModal>
   </div>

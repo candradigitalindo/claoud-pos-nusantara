@@ -462,166 +462,169 @@
     </AppModal>
 
     <!-- Payment Modal -->
-    <AppModal v-model="showPayModal" :title="payTargets.length > 1 ? `Pembayaran ${payTargets.length} Pengajuan` : 'Pembayaran Pengajuan'" size="xl">
-      <div class="space-y-4">
-        <!-- Two cards side by side (bertumpuk di ponsel: nama vendor & peringatan rekening tidak terpotong) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <!-- Card 1: Nominal & Vendor -->
-          <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div class="bg-emerald-50 px-4 py-2.5 border-b border-emerald-100">
-              <p class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Total Pembayaran</p>
-              <p class="text-xl font-bold text-emerald-700 mt-0.5">{{ formatRupiah(payTargets.length > 1 ? payRemainingAmount : payTotalAmount) }}</p>
-              <template v-if="payTargets.length === 1 && payTargets[0]?.paid_amount > 0">
-                <div class="flex items-center gap-2 mt-1.5">
-                  <div class="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                    <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: Math.min(100, (payTargets[0].paid_amount / payTargets[0].total_final) * 100) + '%' }" />
+    <AppModal v-model="showPayModal" :title="payTargets.length > 1 ? `Pembayaran ${payTargets.length} Pengajuan` : 'Pembayaran Pengajuan'" size="2xl">
+      <div class="modal-form-grid">
+        <div class="space-y-4">
+          <!-- Ringkasan dan rekening tetap berkelompok di samping isian pembayaran. -->
+          <div class="grid grid-cols-1 gap-3">
+            <!-- Card 1: Nominal & Vendor -->
+            <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div class="bg-emerald-50 px-4 py-2.5 border-b border-emerald-100">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Total Pembayaran</p>
+                <p class="text-xl font-bold text-emerald-700 mt-0.5">{{ formatRupiah(payTargets.length > 1 ? payRemainingAmount : payTotalAmount) }}</p>
+                <template v-if="payTargets.length === 1 && payTargets[0]?.paid_amount > 0">
+                  <div class="flex items-center gap-2 mt-1.5">
+                    <div class="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                      <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: Math.min(100, (payTargets[0].paid_amount / payTargets[0].total_final) * 100) + '%' }" />
+                    </div>
+                    <span class="text-[10px] text-gray-500">{{ Math.round((payTargets[0].paid_amount / payTargets[0].total_final) * 100) }}%</span>
                   </div>
-                  <span class="text-[10px] text-gray-500">{{ Math.round((payTargets[0].paid_amount / payTargets[0].total_final) * 100) }}%</span>
-                </div>
-                <p class="text-[10px] text-gray-500 mt-0.5">Sudah dibayar: {{ formatRupiah(payTargets[0].paid_amount) }} · Sisa: <span class="font-semibold text-amber-600">{{ formatRupiah(payRemainingAmount) }}</span></p>
-              </template>
-            </div>
-            <div class="px-4 py-2.5">
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt class="text-gray-400">Vendor</dt>
-                <dd class="font-medium text-gray-800 truncate">{{ payTargets[0]?.vendor_name || '-' }}</dd>
-                <template v-if="payTargets.length === 1">
-                  <dt class="text-gray-400">Unit Kerja</dt>
-                  <dd class="font-medium text-gray-800 truncate">{{ payTargets[0]?.work_unit_name || '-' }}</dd>
+                  <p class="text-[10px] text-gray-500 mt-0.5">Sudah dibayar: {{ formatRupiah(payTargets[0].paid_amount) }} · Sisa: <span class="font-semibold text-amber-600">{{ formatRupiah(payRemainingAmount) }}</span></p>
                 </template>
-                <template v-if="payTargets.length === 1 && payTargets[0]?.invoice_number">
-                  <dt class="text-gray-400">Invoice</dt>
-                  <dd class="font-medium font-mono text-gray-800">{{ payTargets[0].invoice_number }}</dd>
-                </template>
-                <template v-if="payTargets.length > 1">
-                  <dt class="text-gray-400">Pengajuan</dt>
-                  <dd class="font-medium text-gray-800">{{ payTargets.length }} item</dd>
-                </template>
-              </dl>
+              </div>
+              <div class="px-4 py-2.5">
+                <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                  <dt class="text-gray-400">Vendor</dt>
+                  <dd class="font-medium text-gray-800 truncate">{{ payTargets[0]?.vendor_name || '-' }}</dd>
+                  <template v-if="payTargets.length === 1">
+                    <dt class="text-gray-400">Unit Kerja</dt>
+                    <dd class="font-medium text-gray-800 truncate">{{ payTargets[0]?.work_unit_name || '-' }}</dd>
+                  </template>
+                  <template v-if="payTargets.length === 1 && payTargets[0]?.invoice_number">
+                    <dt class="text-gray-400">Invoice</dt>
+                    <dd class="font-medium font-mono text-gray-800">{{ payTargets[0].invoice_number }}</dd>
+                  </template>
+                  <template v-if="payTargets.length > 1">
+                    <dt class="text-gray-400">Pengajuan</dt>
+                    <dd class="font-medium text-gray-800">{{ payTargets.length }} item</dd>
+                  </template>
+                </dl>
+              </div>
+            </div>
+
+            <!-- Card 2: Bank Info -->
+            <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div class="bg-blue-50 px-4 py-2.5 border-b border-blue-100">
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Rekening Vendor</p>
+              </div>
+              <div v-if="payVendor" class="px-4 py-2.5">
+                <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                  <dt class="text-gray-400">Bank</dt>
+                  <dd class="font-medium text-gray-800">{{ payVendor.bank_name || '-' }}</dd>
+                  <dt class="text-gray-400">No. Rek</dt>
+                  <dd class="font-medium font-mono text-gray-800 flex items-center gap-1">
+                    {{ payVendor.account_number || '-' }}
+                    <AppActionButton icon="copy" label="Salin" v-if="payVendor.account_number" @click="copyText(payVendor.account_number, 'No. Rekening')" />
+                  </dd>
+                  <dt class="text-gray-400">Atas Nama</dt>
+                  <dd class="font-medium text-gray-800 flex items-center gap-1">
+                    {{ payVendor.account_holder || '-' }}
+                    <AppActionButton icon="copy" label="Salin" v-if="payVendor.account_holder" @click="copyText(payVendor.account_holder, 'Atas Nama')" />
+                  </dd>
+                </dl>
+              </div>
+              <div v-else-if="payVendorLoading" class="px-4 py-4 text-xs text-gray-400 text-center">Memuat...</div>
+              <div v-else class="px-4 py-3">
+                <p v-if="payVendorError" class="text-xs text-red-600">Data rekening vendor gagal dimuat ({{ payVendorError }}) — pembayaran belum bisa dicatat. Tutup form ini lalu buka lagi.</p>
+                <p v-else class="text-xs text-red-600">Pengajuan ini belum memilih vendor dari daftar vendor — pembayaran tidak bisa dicatat. Minta bagian pembelian memilih vendornya lewat Isi Harga.</p>
+              </div>
+              <!-- Rekening vendor baru diganti: pastikan sah sebelum transfer. -->
+              <div v-if="recentBankChange" class="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[11px] leading-snug text-amber-800">
+                <p class="font-semibold">Rekening vendor ini diubah {{ formatDateTime(recentBankChange.changed_at) }}<template v-if="recentBankChange.changed_by"> oleh {{ recentBankChange.changed_by }}</template>.</p>
+                <p>Sebelumnya: <span class="font-mono">{{ bankText(recentBankChange.old_bank_name, recentBankChange.old_account_number, recentBankChange.old_account_holder) || '(kosong)' }}</span>. Konfirmasi ke vendor bahwa perubahan ini sah sebelum mentransfer.</p>
+              </div>
             </div>
           </div>
 
-          <!-- Card 2: Bank Info -->
-          <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div class="bg-blue-50 px-4 py-2.5 border-b border-blue-100">
-              <p class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Rekening Vendor</p>
-            </div>
-            <div v-if="payVendor" class="px-4 py-2.5">
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt class="text-gray-400">Bank</dt>
-                <dd class="font-medium text-gray-800">{{ payVendor.bank_name || '-' }}</dd>
-                <dt class="text-gray-400">No. Rek</dt>
-                <dd class="font-medium font-mono text-gray-800 flex items-center gap-1">
-                  {{ payVendor.account_number || '-' }}
-                  <AppActionButton icon="copy" label="Salin" v-if="payVendor.account_number" @click="copyText(payVendor.account_number, 'No. Rekening')" />
-                </dd>
-                <dt class="text-gray-400">Atas Nama</dt>
-                <dd class="font-medium text-gray-800 flex items-center gap-1">
-                  {{ payVendor.account_holder || '-' }}
-                  <AppActionButton icon="copy" label="Salin" v-if="payVendor.account_holder" @click="copyText(payVendor.account_holder, 'Atas Nama')" />
-                </dd>
-              </dl>
-            </div>
-            <div v-else-if="payVendorLoading" class="px-4 py-4 text-xs text-gray-400 text-center">Memuat...</div>
-            <div v-else class="px-4 py-3">
-              <p v-if="payVendorError" class="text-xs text-red-600">Data rekening vendor gagal dimuat ({{ payVendorError }}) — pembayaran belum bisa dicatat. Tutup form ini lalu buka lagi.</p>
-              <p v-else class="text-xs text-red-600">Pengajuan ini belum memilih vendor dari daftar vendor — pembayaran tidak bisa dicatat. Minta bagian pembelian memilih vendornya lewat Isi Harga.</p>
-            </div>
-            <!-- Rekening vendor baru diganti: pastikan sah sebelum transfer. -->
-            <div v-if="recentBankChange" class="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[11px] leading-snug text-amber-800">
-              <p class="font-semibold">Rekening vendor ini diubah {{ formatDateTime(recentBankChange.changed_at) }}<template v-if="recentBankChange.changed_by"> oleh {{ recentBankChange.changed_by }}</template>.</p>
-              <p>Sebelumnya: <span class="font-mono">{{ bankText(recentBankChange.old_bank_name, recentBankChange.old_account_number, recentBankChange.old_account_holder) || '(kosong)' }}</span>. Konfirmasi ke vendor bahwa perubahan ini sah sebelum mentransfer.</p>
+          <!-- Batch detail (only for multi) -->
+          <div v-if="payTargets.length > 1" class="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2.5 space-y-1">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Rincian {{ payTargets.length }} pengajuan</p>
+            <div v-for="t in payTargets" :key="t.id" class="flex justify-between text-xs">
+              <span class="text-gray-500 truncate mr-3">{{ t.request_number }} — {{ (t.items || []).map(i => i.name).join(', ') || t.work_unit_name || '-' }}</span>
+              <span class="font-medium text-emerald-700 whitespace-nowrap">{{ formatRupiah(remainingOf(t)) }}<template v-if="t.paid_amount > 0"> <span class="font-normal text-gray-400">(sisa)</span></template></span>
             </div>
           </div>
+
         </div>
 
-        <!-- Batch detail (only for multi) -->
-        <div v-if="payTargets.length > 1" class="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2.5 space-y-1">
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Rincian {{ payTargets.length }} pengajuan</p>
-          <div v-for="t in payTargets" :key="t.id" class="flex justify-between text-xs">
-            <span class="text-gray-500 truncate mr-3">{{ t.request_number }} — {{ (t.items || []).map(i => i.name).join(', ') || t.work_unit_name || '-' }}</span>
-            <span class="font-medium text-emerald-700 whitespace-nowrap">{{ formatRupiah(remainingOf(t)) }}<template v-if="t.paid_amount > 0"> <span class="font-normal text-gray-400">(sisa)</span></template></span>
-          </div>
-        </div>
+        <div class="space-y-4">
 
-        <!-- Divider -->
-        <hr class="border-gray-100" />
+          <!-- Form 2-col -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            <div v-if="payVendor?.account_number">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Rekening Tujuan</label>
+              <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 break-words">{{ payForm.payment_account_dest }}</p>
+              <p class="mt-1 text-[11px] leading-snug text-gray-500">Diambil dari data vendor dan tersimpan permanen di riwayat pembayaran ini.</p>
+            </div>
+            <div v-else>
+              <AppInput v-model="payForm.payment_account_dest" label="Rekening Tujuan / Cara Bayar" placeholder="mis. Tunai" :disabled="!payVendor" />
+              <p v-if="payVendor" class="mt-1 text-[11px] leading-snug text-amber-700">Vendor ini belum punya rekening terdaftar — tulis cara bayarnya (mis. Tunai). Tercatat sebagai pembayaran manual.</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Rekening Asal (Perusahaan)</label>
+              <SearchSelect
+                v-model="payForm.payment_account_source"
+                :options="bankAccountOptions"
+                placeholder="Pilih rekening…"
+                searchPlaceholder="Cari rekening…"
+                valueKey="id"
+                labelKey="name"
+              />
+              <p v-if="bankAccountsError" class="mt-1 text-[11px] leading-snug text-red-600">{{ bankAccountsError }}</p>
+              <p v-else-if="!bankAccountOptions.length" class="mt-1 text-[11px] leading-snug text-amber-700">
+                Belum ada rekening perusahaan yang aktif — tambahkan di menu Data Rekening dulu.
+              </p>
+            </div>
+            <!-- Bayar per struk: pengajuan yang punya struk pembelian dibayar per
+                 struk (boleh dicicil); tanpa memilih, server membagi ke struk
+                 yang belum lunas, terlama dulu. -->
+            <div v-if="payTargets.length === 1 && payStrukOptions.length" class="sm:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Struk yang Dibayar</label>
+              <!-- Kelas eksplisit: .input-sm hanya ada di style scoped halaman
+                   Pengadaan, di sini pilihan struk tampil tanpa bingkai. -->
+              <SearchableSelect v-model="payStrukId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                <option value="">Bagi otomatis ke struk yang belum lunas (terlama dulu)</option>
+                <option v-for="st in payStrukOptions" :key="st.id" :value="st.id">
+                  {{ st.struk_number }} · {{ formatDate(st.struk_date) }} · sisa {{ formatRupiah(st.remaining) }}
+                </option>
+              </SearchableSelect>
+            </div>
+            <div v-if="payTargets.length === 1">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Bayar</label>
+              <RupiahInput v-model="payForm.payment_amount" :placeholder="selectedPayStruk ? `Kosongkan = lunasi struk (${formatRupiah(selectedPayStruk.remaining)})` : `Kosongkan = bayar penuh (${formatRupiah(payRemainingAmount)})`" />
+              <p class="text-[10px] text-gray-400 mt-0.5">Sisa tagihan: {{ formatRupiah(payRemainingAmount) }}<template v-if="selectedPayStruk"> · sisa struk {{ formatRupiah(selectedPayStruk.remaining) }}</template></p>
+            </div>
+            <AppInput v-model="payForm.payment_proof" label="No. Referensi Transfer" placeholder="Contoh: TRF-20260410-001" />
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
+              <textarea v-model="payForm.payment_notes" rows="1" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Opsional"></textarea>
+            </div>
+          </div>
 
-        <!-- Form 2-col -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-          <div v-if="payVendor?.account_number">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Rekening Tujuan</label>
-            <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 break-words">{{ payForm.payment_account_dest }}</p>
-            <p class="mt-1 text-[11px] leading-snug text-gray-500">Diambil dari data vendor dan tersimpan permanen di riwayat pembayaran ini.</p>
+          <!-- Upload -->
+          <div v-if="uploadLoading" class="flex items-center gap-2 text-xs text-gray-500 py-1">
+            <svg class="w-4 h-4 animate-spin text-emerald-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            Mengunggah...
           </div>
-          <div v-else>
-            <AppInput v-model="payForm.payment_account_dest" label="Rekening Tujuan / Cara Bayar" placeholder="mis. Tunai" :disabled="!payVendor" />
-            <p v-if="payVendor" class="mt-1 text-[11px] leading-snug text-amber-700">Vendor ini belum punya rekening terdaftar — tulis cara bayarnya (mis. Tunai). Tercatat sebagai pembayaran manual.</p>
+          <div v-else-if="!uploadedFileUrl" class="relative">
+            <label class="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50/50 hover:bg-gray-100 hover:border-emerald-400 cursor-pointer transition-colors px-4 py-2.5">
+              <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+              <span class="text-xs text-gray-500">Upload bukti transfer <span class="text-gray-400">(opsional) — JPG, PNG, WEBP, PDF, maks 5MB</span></span>
+              <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.pdf" @change="handleFileUpload" />
+            </label>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Rekening Asal (Perusahaan)</label>
-            <SearchSelect
-              v-model="payForm.payment_account_source"
-              :options="bankAccountOptions"
-              placeholder="Pilih rekening…"
-              searchPlaceholder="Cari rekening…"
-              valueKey="id"
-              labelKey="name"
-            />
-            <p v-if="bankAccountsError" class="mt-1 text-[11px] leading-snug text-red-600">{{ bankAccountsError }}</p>
-            <p v-else-if="!bankAccountOptions.length" class="mt-1 text-[11px] leading-snug text-amber-700">
-              Belum ada rekening perusahaan yang aktif — tambahkan di menu Data Rekening dulu.
-            </p>
+          <div v-else class="flex items-center gap-3 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2">
+            <div v-if="uploadedFileIsImage" class="shrink-0">
+              <img v-if="safeUrl(uploadedFileUrl)" :src="safeUrl(uploadedFileUrl)" class="w-9 h-9 rounded object-cover border border-gray-200" />
+            </div>
+            <div v-else class="shrink-0 w-9 h-9 rounded bg-red-50 border border-red-200 flex items-center justify-center">
+              <svg class="w-4.5 h-4.5 text-red-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+            </div>
+            <p class="text-xs font-medium text-gray-700 truncate flex-1 min-w-0">{{ uploadedFileName }}</p>
+            <button @click="removeUploadedFile" class="shrink-0 p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors" title="Hapus">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
           </div>
-          <!-- Bayar per struk: pengajuan yang punya struk pembelian dibayar per
-               struk (boleh dicicil); tanpa memilih, server membagi ke struk
-               yang belum lunas, terlama dulu. -->
-          <div v-if="payTargets.length === 1 && payStrukOptions.length" class="sm:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Struk yang Dibayar</label>
-            <!-- Kelas eksplisit: .input-sm hanya ada di style scoped halaman
-                 Pengadaan, di sini pilihan struk tampil tanpa bingkai. -->
-            <SearchableSelect v-model="payStrukId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
-              <option value="">Bagi otomatis ke struk yang belum lunas (terlama dulu)</option>
-              <option v-for="st in payStrukOptions" :key="st.id" :value="st.id">
-                {{ st.struk_number }} · {{ formatDate(st.struk_date) }} · sisa {{ formatRupiah(st.remaining) }}
-              </option>
-            </SearchableSelect>
-          </div>
-          <div v-if="payTargets.length === 1">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Bayar</label>
-            <RupiahInput v-model="payForm.payment_amount" :placeholder="selectedPayStruk ? `Kosongkan = lunasi struk (${formatRupiah(selectedPayStruk.remaining)})` : `Kosongkan = bayar penuh (${formatRupiah(payRemainingAmount)})`" />
-            <p class="text-[10px] text-gray-400 mt-0.5">Sisa tagihan: {{ formatRupiah(payRemainingAmount) }}<template v-if="selectedPayStruk"> · sisa struk {{ formatRupiah(selectedPayStruk.remaining) }}</template></p>
-          </div>
-          <AppInput v-model="payForm.payment_proof" label="No. Referensi Transfer" placeholder="Contoh: TRF-20260410-001" />
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
-            <textarea v-model="payForm.payment_notes" rows="1" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Opsional"></textarea>
-          </div>
-        </div>
-
-        <!-- Upload -->
-        <div v-if="uploadLoading" class="flex items-center gap-2 text-xs text-gray-500 py-1">
-          <svg class="w-4 h-4 animate-spin text-emerald-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-          Mengunggah...
-        </div>
-        <div v-else-if="!uploadedFileUrl" class="relative">
-          <label class="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50/50 hover:bg-gray-100 hover:border-emerald-400 cursor-pointer transition-colors px-4 py-2.5">
-            <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-            <span class="text-xs text-gray-500">Upload bukti transfer <span class="text-gray-400">(opsional) — JPG, PNG, WEBP, PDF, maks 5MB</span></span>
-            <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.pdf" @change="handleFileUpload" />
-          </label>
-        </div>
-        <div v-else class="flex items-center gap-3 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2">
-          <div v-if="uploadedFileIsImage" class="shrink-0">
-            <img v-if="safeUrl(uploadedFileUrl)" :src="safeUrl(uploadedFileUrl)" class="w-9 h-9 rounded object-cover border border-gray-200" />
-          </div>
-          <div v-else class="shrink-0 w-9 h-9 rounded bg-red-50 border border-red-200 flex items-center justify-center">
-            <svg class="w-4.5 h-4.5 text-red-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-          </div>
-          <p class="text-xs font-medium text-gray-700 truncate flex-1 min-w-0">{{ uploadedFileName }}</p>
-          <button @click="removeUploadedFile" class="shrink-0 p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors" title="Hapus">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
         </div>
       </div>
       <template #footer>

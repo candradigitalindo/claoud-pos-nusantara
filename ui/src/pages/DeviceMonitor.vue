@@ -157,16 +157,16 @@
     </div>
 
     <!-- Detail modal -->
-    <AppModal v-model="detailOpen" :title="active?.outlet_name || 'Detail Perangkat'" size="lg">
-      <div v-if="active" class="space-y-4">
-        <div class="flex items-center justify-between flex-wrap gap-2">
+    <AppModal v-model="detailOpen" :title="active?.outlet_name || 'Detail Perangkat'" size="xl">
+      <div v-if="active" class="modal-form-grid">
+        <div class="modal-span-full flex items-center justify-between flex-wrap gap-2">
           <span class="st-badge" :class="`st--${active.status}`"><span class="st-dot" /> {{ statusLabel(active.status) }}</span>
           <span class="text-xs text-gray-500">Terakhir lapor {{ relTime(active.stale_minutes) }}</span>
         </div>
 
         <template v-if="active.has_data">
           <!-- Spesifikasi -->
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+          <div class="modal-span-full grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div class="kv"><span>Model</span><b>{{ active.model || '—' }}</b></div>
             <div class="kv"><span>Sistem</span><b>{{ active.os || '—' }}</b></div>
             <div class="kv"><span>Versi App</span><b>{{ active.app_version || '—' }}</b></div>
@@ -223,7 +223,7 @@
           </div>
         </template>
 
-        <div v-else class="nodata py-6">
+        <div v-else class="modal-span-full nodata py-6">
           <p class="text-sm font-medium text-gray-400">Perangkat belum mengirim heartbeat.</p>
           <p class="text-xs text-gray-400">Pastikan App POS outlet ini aktif & terhubung internet.</p>
         </div>

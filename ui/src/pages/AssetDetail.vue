@@ -113,7 +113,7 @@
               <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label class="lbl">Biaya</label>
-                  <input v-model.number="mForm.cost" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
+                  <RupiahInput v-model="mForm.cost" aria-label="Biaya" step="1" min="0" placeholder="0" />
                 </div>
                 <div>
                   <label class="lbl">Pelaksana / Teknisi</label>
@@ -204,6 +204,7 @@
 </template>
 
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'

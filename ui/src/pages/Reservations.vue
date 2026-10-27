@@ -125,7 +125,7 @@
           </p>
         </div>
 
-        <form id="resv-form" class="space-y-4" @submit.prevent="save">
+        <form id="resv-form" class="modal-form-grid reservation-form-grid" @submit.prevent="save">
           <!-- 1. Outlet & jadwal -->
           <section class="sec">
             <header class="sec-hd">
@@ -217,7 +217,7 @@
               <div>
                 <label class="lbl">DP yang diminta</label>
                 <div class="flex gap-2">
-                  <input :value="dpDisplay" @input="onDpInput" type="text" inputmode="numeric" class="form-input" placeholder="Rp 0" :disabled="locked" />
+                  <RupiahInput :model-value="form.down_payment" @update:model-value="onDpInput" class="min-w-0 flex-1" min="0" step="1" :disabled="locked" />
                   <button v-if="!locked" type="button" class="btn-chip" :disabled="!computedTotal" :title="computedTotal ? `Isi ${settings.dp_percent}% dari total` : 'Pilih menu dulu agar total terhitung'" @click="applyDpPolicy">{{ settings.dp_percent }}%</button>
                 </div>
                 <p class="hint">Kebijakan: {{ settings.dp_percent }}% dari total<template v-if="computedTotal"> = {{ formatRupiah(policyDp) }}</template>. Tekan tombol persen untuk mengisi otomatis.</p>
@@ -244,7 +244,7 @@
             </div>
           </section>
 
-          <div>
+          <div class="modal-span-full">
             <label class="lbl">Catatan</label>
             <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Permintaan khusus, nomor meja, dll. (opsional)" :disabled="locked"></textarea>
           </div>
@@ -298,7 +298,7 @@
               </div>
               <div>
                 <label class="lbl">Nominal</label>
-                <input v-model.number="payForm.amount" type="number" inputmode="numeric" min="1" class="form-input" />
+                <RupiahInput v-model="payForm.amount" min="1" step="1" />
               </div>
               <div>
                 <label class="lbl">Metode</label>
@@ -359,6 +359,7 @@
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { reservationsApi } from '@/api/reservations.js'
@@ -471,7 +472,6 @@ const acting = ref(false)
 const form = ref({})
 const pickProduct = ref('')
 const products = ref([])
-const dpDisplay = ref('')
 const showPay = ref(false)
 const cancelChoice = ref(false)
 const payForm = ref({})
@@ -485,12 +485,8 @@ const canRecordPayment = computed(() => {
   return e.status === 'cancelled' && e.cancel_disposition === 'refund' && e.paid_amount > 0
 })
 
-function fmtRupiahInput(v) { const d = String(v ?? '').replace(/[^\d]/g, ''); return d ? 'Rp ' + new Intl.NumberFormat('id-ID').format(Number(d)) : '' }
-function onDpInput(e) {
-  const d = e.target.value.replace(/[^\d]/g, '')
-  const num = d ? parseInt(d, 10) : 0
+function onDpInput(num) {
   form.value.down_payment = num
-  dpDisplay.value = num ? fmtRupiahInput(num) : ''
   if (num > 0 && form.value.status === 'confirmed') form.value.status = 'pending'
 }
 
@@ -501,7 +497,6 @@ const policyDp = computed(() => Math.round(computedTotal.value * (Number(setting
 function applyDpPolicy() {
   const num = policyDp.value
   form.value.down_payment = num
-  dpDisplay.value = num ? fmtRupiahInput(num) : ''
   if (num > 0 && form.value.status === 'confirmed') form.value.status = 'pending'
 }
 function statusHint(r) {
@@ -532,14 +527,13 @@ function addProduct() {
 }
 
 async function openCreate() {
-  editing.value = null; form.value = blank(); pickProduct.value = ''; dpDisplay.value = ''
+  editing.value = null; form.value = blank(); pickProduct.value = ''
   showPay.value = false; cancelChoice.value = false
   await loadProducts(form.value.outlet_id)
   modal.value = true
 }
 function fillForm(r) {
   form.value = { outlet_id: r.outlet_id, customer_name: r.customer_name, customer_phone: r.customer_phone, pax: r.pax, reservation_date: r.reservation_date || '', reservation_time: r.reservation_time || '', items: (r.items||[]).map(i=>({...i})), down_payment: r.down_payment, status: r.status, notes: r.notes }
-  dpDisplay.value = r.down_payment ? fmtRupiahInput(r.down_payment) : ''
 }
 async function openEdit(r) {
   showPay.value = false; cancelChoice.value = false
@@ -637,6 +631,8 @@ onMounted(async () => { await loadOutlets(); await Promise.all([load(), loadSett
 .btn-ghost:hover { background: #e5e7eb; }
 
 /* Bagian bernomor di modal */
+.reservation-form-grid { grid-template-columns: minmax(0, 1fr); }
+@container modal (min-width: 1024px) { .reservation-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sec { display: flex; flex-direction: column; gap: .75rem; padding: .75rem; border: 1px solid #e5e7eb; border-radius: .75rem; background: #fff; }
 @media (min-width: 640px) { .sec { padding: 1rem; } }
 .sec--pay { border-color: #a7f3d0; background: #f0fdf4; }

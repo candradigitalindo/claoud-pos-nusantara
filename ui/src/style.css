@@ -75,6 +75,34 @@ h1, h2, h3, h4, h5 { color: #14532d; }
 .text-muted  { color: #6b7280 !important; }
 .text-subtle { color: #9ca3af !important; }
 
+/* Modal forms reflow using the dialog's available width, including nested
+   dialogs. Short confirmations stay compact; only opted-in forms use columns. */
+.modal-layout {
+  container: modal / inline-size;
+}
+.modal-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem 1.25rem;
+  align-items: start;
+}
+.modal-form-grid > * {
+  min-width: 0;
+}
+.modal-span-full {
+  grid-column: 1 / -1;
+}
+@container modal (min-width: 640px) {
+  .modal-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container modal (min-width: 1024px) {
+  .modal-form-grid--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 /* ── Badge status/kondisi aset ───────────────────────────────────
    Dipakai bersama oleh halaman Perlengkapan, Detail Aset, dan label.
    Warna sengaja seragam di semua layar: satu status = satu warna. */

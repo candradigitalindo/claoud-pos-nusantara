@@ -79,7 +79,7 @@
     </AppCard>
 
     <AppModal v-model="modal" :title="editing ? 'Edit Kategori' : 'Tambah Kategori'" size="lg">
-      <form class="space-y-3" @submit.prevent="save">
+      <form id="asset-category-form" class="modal-form-grid" @submit.prevent="save">
         <div>
           <label class="lbl">Nama Kategori <span class="text-red-500">*</span></label>
           <input v-model="form.name" class="form-input" placeholder="mis. AC & Pendingin" required />
@@ -87,31 +87,29 @@
             Mengganti nama juga memperbarui {{ editing.asset_count }} aset yang memakainya.
           </p>
         </div>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Umur Ekonomis (bulan)</label>
-            <input v-model.number="form.useful_life_months" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
-            <p class="mt-1 text-[11px] text-gray-400">Mengisi otomatis saat aset baru dicatat. 0 = tidak disusutkan.</p>
-          </div>
-          <div>
-            <label class="lbl">Interval Perawatan (bulan)</label>
-            <input v-model.number="form.maintenance_interval_months" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
-            <p class="mt-1 text-[11px] text-gray-400">Menentukan jadwal berikutnya saat perawatan ditutup. 0 = tanpa jadwal.</p>
-          </div>
+        <div>
+          <label class="lbl">Umur Ekonomis (bulan)</label>
+          <input v-model.number="form.useful_life_months" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
+          <p class="mt-1 text-[11px] text-gray-400">Mengisi otomatis saat aset baru dicatat. 0 = tidak disusutkan.</p>
+        </div>
+        <div>
+          <label class="lbl">Interval Perawatan (bulan)</label>
+          <input v-model.number="form.maintenance_interval_months" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
+          <p class="mt-1 text-[11px] text-gray-400">Menentukan jadwal berikutnya saat perawatan ditutup. 0 = tanpa jadwal.</p>
         </div>
         <div>
           <label class="lbl">Catatan</label>
           <input v-model="form.notes" class="form-input" placeholder="Contoh barang yang termasuk kategori ini" />
         </div>
-        <label v-if="editing" class="flex items-center gap-2 text-sm text-gray-700">
+        <label v-if="editing" class="modal-span-full flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" v-model="form.is_active" class="h-4 w-4 accent-emerald-600" />
           Aktif — kategori nonaktif tidak muncul saat mencatat aset baru
         </label>
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="modal = false">Batal</button>
-          <AppButton type="submit" :loading="saving">{{ editing ? 'Simpan' : 'Tambah' }}</AppButton>
-        </div>
       </form>
+      <template #footer>
+        <button type="button" class="btn-ghost" @click="modal = false">Batal</button>
+        <AppButton type="submit" form="asset-category-form" :loading="saving">{{ editing ? 'Simpan' : 'Tambah' }}</AppButton>
+      </template>
     </AppModal>
   </div>
 </template>

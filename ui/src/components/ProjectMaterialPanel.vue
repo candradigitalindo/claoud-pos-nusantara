@@ -63,16 +63,16 @@
     </AppModal>
 
     <!-- Nasib sisa -->
-    <AppModal v-model="settleModal" :title="`Tentukan Sisa — ${active?.name || ''}`" size="lg">
-      <form class="space-y-3" @submit.prevent="saveSettle">
-        <div class="flex flex-wrap gap-1.5">
+    <AppModal v-model="settleModal" :title="`Tentukan Sisa — ${active?.name || ''}`" size="xl">
+      <form id="project-material-settle-form" class="modal-form-grid" @submit.prevent="saveSettle">
+        <div class="modal-span-full flex flex-wrap gap-1.5">
           <button v-for="a in SETTLE_ACTIONS" :key="a.key" type="button" @click="settleForm.action = a.key"
             class="rounded-lg px-2.5 py-1.5 text-xs font-semibold transition"
             :class="settleForm.action === a.key ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
             {{ a.label }}
           </button>
         </div>
-        <p class="text-xs text-gray-500">{{ actionHint }}</p>
+        <p class="modal-span-full text-xs text-gray-500">{{ actionHint }}</p>
 
         <div>
           <label class="lbl">Jumlah</label>
@@ -80,7 +80,7 @@
             :max="active?.remaining" class="form-input" />
         </div>
 
-        <div v-if="settleForm.action === 'gudang'" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <template v-if="settleForm.action === 'gudang'">
           <div>
             <label class="lbl">Item Stok <span class="text-red-500">*</span></label>
             <SearchSelect v-model="settleForm.stock_item_id" :options="stockItems" placeholder="Pilih item stok…" />
@@ -89,9 +89,9 @@
             <label class="lbl">Gudang <span class="text-red-500">*</span></label>
             <SearchSelect v-model="settleForm.warehouse_id" :options="warehouses" placeholder="Pilih gudang…" />
           </div>
-        </div>
+        </template>
 
-        <div v-else-if="settleForm.action === 'aset'" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <template v-else-if="settleForm.action === 'aset'">
           <div>
             <label class="lbl">Outlet <span class="text-red-500">*</span></label>
             <SearchSelect v-model="settleForm.outlet_id" :options="outlets" placeholder="Pilih outlet…" />
@@ -100,7 +100,7 @@
             <label class="lbl">Kategori Aset</label>
             <SearchSelect v-model="settleForm.category" :options="categoryOptions" placeholder="Pilih kategori…" />
           </div>
-        </div>
+        </template>
 
         <div v-else-if="settleForm.action === 'pindah'">
           <label class="lbl">Projek Tujuan <span class="text-red-500">*</span></label>
@@ -115,12 +115,12 @@
             :placeholder="settleForm.action === 'susut' ? 'mis. mengeras kena hujan' : 'opsional'" />
         </div>
 
-        <MaterialEvidence v-model="settleEvidence" :max-files="1" photo-only label="Bukti penyelesaian sisa" @busy="evidenceBusy = $event" />
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="settleModal = false">Batal</button>
-          <AppButton type="submit" :loading="saving" :disabled="evidenceBusy">Simpan</AppButton>
-        </div>
+        <MaterialEvidence class="modal-span-full" v-model="settleEvidence" :max-files="1" photo-only label="Bukti penyelesaian sisa" @busy="evidenceBusy = $event" />
       </form>
+      <template #footer>
+        <button type="button" class="btn-ghost" @click="settleModal = false">Batal</button>
+        <AppButton type="submit" form="project-material-settle-form" :loading="saving" :disabled="evidenceBusy">Simpan</AppButton>
+      </template>
     </AppModal>
   </div>
 </template>

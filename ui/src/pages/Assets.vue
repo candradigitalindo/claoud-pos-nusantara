@@ -135,7 +135,7 @@
 
     <!-- ── Modal tambah/edit ── -->
     <AppModal v-model="assetModal" :title="editing ? 'Edit Perlengkapan' : 'Tambah Perlengkapan'" size="2xl">
-      <form class="space-y-3" @submit.prevent="saveAsset">
+      <form id="asset-editor-form" class="modal-form-grid modal-form-grid--three" @submit.prevent="saveAsset">
         <div v-if="!editing">
           <label class="lbl">Outlet <span class="text-red-500">*</span></label>
           <SearchSelect v-model="form.outlet_id" :options="outlets" placeholder="Pilih outlet…" searchPlaceholder="Cari outlet…" />
@@ -150,126 +150,113 @@
           <input v-model="form.name" class="form-input" placeholder="Contoh: AC Daikin 1PK" required />
         </div>
 
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Kategori</label>
-            <SearchSelect v-model="form.category" :options="categoryOptions" placeholder="Pilih kategori…"
-              searchPlaceholder="Cari kategori…" @change="applyCategoryDefaults" />
-            <p class="mt-1 text-[11px] text-gray-400">
-              Dikelola di <RouterLink to="/perlengkapan/kategori" class="text-emerald-700 underline">Kategori Aset</RouterLink>.
-            </p>
-          </div>
-          <div>
-            <label class="lbl">Kode / Tag internal</label>
-            <input v-model="form.code" class="form-input" placeholder="mis. stiker lama MJ-001" />
-          </div>
+        <div>
+          <label class="lbl">Kategori</label>
+          <SearchSelect v-model="form.category" :options="categoryOptions" placeholder="Pilih kategori…"
+            searchPlaceholder="Cari kategori…" @change="applyCategoryDefaults" />
+          <p class="mt-1 text-[11px] text-gray-400">
+            Dikelola di <RouterLink to="/perlengkapan/kategori" class="text-emerald-700 underline">Kategori Aset</RouterLink>.
+          </p>
         </div>
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <label class="lbl">Mode Pencatatan</label>
-            <SearchableSelect v-model="form.tracking_mode" class="form-input">
-              <option v-for="(lbl, key) in TRACKING_MODES" :key="key" :value="key">{{ lbl }}</option>
-            </SearchableSelect>
-          </div>
-          <div>
-            <label class="lbl">Jumlah</label>
-            <input v-model.number="form.quantity" type="number" inputmode="numeric" min="1" class="form-input"
-              :disabled="form.tracking_mode === 'tunggal'" />
-            <p v-if="form.tracking_mode === 'tunggal'" class="mt-1 text-[11px] text-gray-400">Mode tunggal selalu 1 unit.</p>
-          </div>
-          <div>
-            <label class="lbl">Satuan</label>
-            <input v-model="form.unit" class="form-input" placeholder="unit" />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <label class="lbl">Merk</label>
-            <input v-model="form.brand" class="form-input" placeholder="mis. Daikin" />
-          </div>
-          <div>
-            <label class="lbl">Tipe / Model</label>
-            <input v-model="form.model" class="form-input" placeholder="mis. FTKC25" />
-          </div>
-          <div>
-            <label class="lbl">Nomor Seri</label>
-            <input v-model="form.serial_number" class="form-input" placeholder="Opsional" />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Kondisi</label>
-            <SearchableSelect v-model="form.condition" class="form-input">
-              <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
-            </SearchableSelect>
-          </div>
-          <div>
-            <label class="lbl">Status</label>
-            <SearchableSelect v-model="form.status" class="form-input" :disabled="systemStatusLocked">
-              <option v-for="(lbl, key) in EDITABLE_STATUSES" :key="key" :value="key">{{ lbl }}</option>
-            </SearchableSelect>
-            <p v-if="systemStatusLocked" class="mt-1 text-[11px] text-amber-600">
-              Status “{{ statusLabel(editing.status) }}” diatur oleh dokumen, bukan form ini.
-            </p>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Lokasi / Ruang</label>
-            <input v-model="form.location" class="form-input" placeholder="mis. Lantai 1 – Area Indoor" />
-          </div>
-          <div>
-            <label class="lbl">Penanggung Jawab</label>
-            <input v-model="form.pic_name" class="form-input" placeholder="Nama petugas" />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <label class="lbl">Tgl Perolehan</label>
-            <input v-model="form.purchase_date" type="date" class="form-input" />
-          </div>
-          <div>
-            <label class="lbl">Harga Perolehan</label>
-            <input v-model.number="form.purchase_price" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
-          </div>
-          <div>
-            <label class="lbl">Garansi s/d</label>
-            <input v-model="form.warranty_until" type="date" class="form-input" />
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Umur Ekonomis (bulan)</label>
-            <input v-model.number="form.useful_life_months" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0 = tidak disusutkan" />
-            <p class="mt-1 text-[11px] text-gray-400">Dipakai menghitung nilai buku (garis lurus).</p>
-          </div>
-          <div>
-            <label class="lbl">Nilai Residu</label>
-            <input v-model.number="form.residual_value" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
-          </div>
+        <div>
+          <label class="lbl">Kode / Tag internal</label>
+          <input v-model="form.code" class="form-input" placeholder="mis. stiker lama MJ-001" />
         </div>
 
         <div>
+          <label class="lbl">Mode Pencatatan</label>
+          <SearchableSelect v-model="form.tracking_mode" class="form-input">
+            <option v-for="(lbl, key) in TRACKING_MODES" :key="key" :value="key">{{ lbl }}</option>
+          </SearchableSelect>
+        </div>
+        <div>
+          <label class="lbl">Jumlah</label>
+          <input v-model.number="form.quantity" type="number" inputmode="numeric" min="1" class="form-input"
+            :disabled="form.tracking_mode === 'tunggal'" />
+          <p v-if="form.tracking_mode === 'tunggal'" class="mt-1 text-[11px] text-gray-400">Mode tunggal selalu 1 unit.</p>
+        </div>
+        <div>
+          <label class="lbl">Satuan</label>
+          <input v-model="form.unit" class="form-input" placeholder="unit" />
+        </div>
+
+        <div>
+          <label class="lbl">Merk</label>
+          <input v-model="form.brand" class="form-input" placeholder="mis. Daikin" />
+        </div>
+        <div>
+          <label class="lbl">Tipe / Model</label>
+          <input v-model="form.model" class="form-input" placeholder="mis. FTKC25" />
+        </div>
+        <div>
+          <label class="lbl">Nomor Seri</label>
+          <input v-model="form.serial_number" class="form-input" placeholder="Opsional" />
+        </div>
+
+        <div>
+          <label class="lbl">Kondisi</label>
+          <SearchableSelect v-model="form.condition" class="form-input">
+            <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
+          </SearchableSelect>
+        </div>
+        <div>
+          <label class="lbl">Status</label>
+          <SearchableSelect v-model="form.status" class="form-input" :disabled="systemStatusLocked">
+            <option v-for="(lbl, key) in EDITABLE_STATUSES" :key="key" :value="key">{{ lbl }}</option>
+          </SearchableSelect>
+          <p v-if="systemStatusLocked" class="mt-1 text-[11px] text-amber-600">
+            Status “{{ statusLabel(editing.status) }}” diatur oleh dokumen, bukan form ini.
+          </p>
+        </div>
+
+        <div>
+          <label class="lbl">Lokasi / Ruang</label>
+          <input v-model="form.location" class="form-input" placeholder="mis. Lantai 1 – Area Indoor" />
+        </div>
+        <div>
+          <label class="lbl">Penanggung Jawab</label>
+          <input v-model="form.pic_name" class="form-input" placeholder="Nama petugas" />
+        </div>
+
+        <div>
+          <label class="lbl">Tgl Perolehan</label>
+          <input v-model="form.purchase_date" type="date" class="form-input" />
+        </div>
+        <div>
+          <label class="lbl">Harga Perolehan</label>
+          <RupiahInput v-model="form.purchase_price" aria-label="Harga Perolehan" step="1" min="0" placeholder="0" />
+        </div>
+        <div>
+          <label class="lbl">Garansi s/d</label>
+          <input v-model="form.warranty_until" type="date" class="form-input" />
+        </div>
+
+        <div>
+          <label class="lbl">Umur Ekonomis (bulan)</label>
+          <input v-model.number="form.useful_life_months" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0 = tidak disusutkan" />
+          <p class="mt-1 text-[11px] text-gray-400">Dipakai menghitung nilai buku (garis lurus).</p>
+        </div>
+        <div>
+          <label class="lbl">Nilai Residu</label>
+          <RupiahInput v-model="form.residual_value" aria-label="Nilai Residu" step="1" min="0" placeholder="0" />
+        </div>
+
+        <div class="modal-span-full">
           <label class="lbl">Catatan</label>
           <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Opsional"></textarea>
         </div>
 
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="assetModal = false">Batal</button>
-          <AppButton type="submit" :loading="saving">{{ editing ? 'Simpan' : 'Tambah' }}</AppButton>
-        </div>
       </form>
+      <template #footer>
+        <button type="button" class="btn-ghost" @click="assetModal = false">Batal</button>
+        <AppButton type="submit" form="asset-editor-form" :loading="saving">{{ editing ? 'Simpan' : 'Tambah' }}</AppButton>
+      </template>
     </AppModal>
   </div>
 </template>
 
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'

@@ -51,7 +51,7 @@
     </AppCard>
 
     <!-- Form Terima Barang -->
-    <AppModal v-model="formOpen" title="Terima Barang" size="lg">
+    <AppModal v-model="formOpen" title="Terima Barang" size="2xl">
       <div class="space-y-4">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -86,30 +86,30 @@
           </div>
           <div v-if="!form.items.length" class="p-4 text-sm text-gray-400 text-center">Belum ada item. Klik "Tambah item".</div>
           <div v-for="(ln, i) in form.items" :key="i" class="p-3 border-t border-gray-100 grid grid-cols-12 gap-2 items-end">
-            <div class="col-span-12 sm:col-span-4">
+            <div class="col-span-12 lg:col-span-4">
               <label class="lbl">Item stok</label>
               <SearchSelect v-model="ln.item_id" :options="itemOptions" placeholder="Pilih item" searchPlaceholder="Cari item…" valueKey="value" labelKey="label" @change="onItemPick(ln)" />
             </div>
-            <div class="col-span-4 sm:col-span-2">
+            <div class="col-span-6 lg:col-span-2">
               <label class="lbl">Jumlah</label>
               <input v-model.number="ln.qty_dist" type="number" min="0" step="0.01" class="form-input" />
               <SearchableSelect :value="ln.unit_used" @change="changeLineUnit(ln, $event.target.value)" class="form-input mt-1" aria-label="Satuan penerimaan">
                 <option v-for="unit in stockUnitOptions(itemById(ln.item_id))" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
               </SearchableSelect>
             </div>
-            <div class="col-span-4 sm:col-span-3">
+            <div class="col-span-6 lg:col-span-3">
               <label class="lbl">Harga / {{ ln.unit_used || 'unit' }}</label>
-              <input v-model.number="ln.cost_per_unit" type="number" min="0" step="0.01" class="form-input" />
+              <RupiahInput v-model="ln.cost_per_unit" :aria-label="`Harga / ${ln.unit_used || 'unit'}`" min="0" step="0.01" />
             </div>
-            <div class="col-span-4 sm:col-span-2">
+            <div class="col-span-6 lg:col-span-2">
               <label class="lbl">Kadaluarsa</label>
               <input v-model="ln.expiry_date" type="date" class="form-input" />
             </div>
-            <div class="col-span-12 sm:col-span-1 flex justify-between items-center">
-              <span class="text-xs text-gray-400 sm:hidden">Subtotal {{ formatRupiah(lineSubtotal(ln)) }}</span>
+            <div class="col-span-6 lg:col-span-1 flex justify-between items-center">
+              <span class="text-xs text-gray-400 lg:hidden">Subtotal {{ formatRupiah(lineSubtotal(ln)) }}</span>
               <AppActionButton icon="delete" label="Hapus baris" @click="form.items.splice(i, 1)" />
             </div>
-            <div class="col-span-12 hidden sm:block text-right text-xs text-gray-400 -mt-1">
+            <div class="col-span-12 hidden lg:block text-right text-xs text-gray-400 -mt-1">
               = {{ baseQty(ln) }} {{ baseUnitOf(ln.item_id) }} · Subtotal {{ formatRupiah(lineSubtotal(ln)) }}
             </div>
           </div>
@@ -125,9 +125,9 @@
     </AppModal>
 
     <!-- Detail GRN -->
-    <AppModal v-model="detailOpen" :title="`Detail — ${active?.grn_number || ''}`">
+    <AppModal v-model="detailOpen" :title="`Detail — ${active?.grn_number || ''}`" size="xl">
       <div v-if="active" class="space-y-3 text-sm">
-        <div class="grid grid-cols-2 gap-2">
+        <div class="modal-form-grid modal-form-grid--three">
           <div class="kv"><span>Gudang</span><b>{{ active.warehouse_name }}</b></div>
           <div class="kv"><span>Waktu</span><b>{{ fmtDateTime(active.received_at) }}</b></div>
           <div class="kv"><span>Vendor</span><b>{{ active.vendor_name || '—' }}</b></div>
@@ -155,6 +155,7 @@
 </template>
 
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { stockUnitOptions, stockUnitRatio, preferredStockUnit } from '@/utils/stockUnits.js'

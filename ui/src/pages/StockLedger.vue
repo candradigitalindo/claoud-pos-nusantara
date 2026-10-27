@@ -119,7 +119,7 @@
     </AppCard>
 
     <!-- Movements Modal -->
-    <AppModal v-model="showMovements" title="Histori Pergerakan Stok" size="lg">
+    <AppModal v-model="showMovements" title="Histori Pergerakan Stok" size="2xl">
       <div class="mb-3 text-sm font-medium text-gray-700">
         {{ movTarget?.item_name }} — {{ movTarget?.warehouse_name }}
       </div>
@@ -127,7 +127,7 @@
         <DateRangePicker v-model="movRange" clearable />
         <AppButton size="sm" @click="loadMovements">Tampilkan</AppButton>
       </div>
-      <div class="overflow-auto max-h-96">
+      <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
           <thead class="bg-gray-50 text-xs text-gray-500">
             <tr>
@@ -168,14 +168,14 @@
     </AppModal>
 
     <!-- Adjustment Modal -->
-    <AppModal v-model="showAdjust" title="Penyesuaian Stok" size="sm">
-      <div class="space-y-3">
-        <p class="text-sm text-gray-600">
+    <AppModal v-model="showAdjust" title="Penyesuaian Stok" size="lg">
+      <div class="modal-form-grid">
+        <p class="modal-span-full text-sm text-gray-600">
           Item: <strong>{{ adjustTarget?.item_name }}</strong><br/>
           Gudang: <strong>{{ adjustTarget?.warehouse_name }}</strong><br/>
           Stok saat ini: <strong>{{ adjustTarget?.qty_base?.toFixed(3) }} {{ adjustTarget?.base_unit }}</strong>
         </p>
-        <div>
+        <div class="modal-span-full">
           <label class="block text-sm font-medium text-gray-700 mb-1">Tipe Gerakan</label>
           <div class="grid grid-cols-2 gap-2">
             <label v-for="t in ADJ_TYPES" :key="t.value"
@@ -193,11 +193,11 @@
           </SearchableSelect>
         </div>
         <AppInput v-model.number="adjustQty" :label="`Qty (${adjustUnit})`" type="number" step="0.0001" placeholder="0" />
-        <AppInput v-if="adjForm.movement_type === 'purchase_in'" v-model.number="adjustCost"
-          :label="`HPP per ${adjustUnit}`" type="number" step="0.01" placeholder="0" />
+        <RupiahInput v-if="adjForm.movement_type === 'purchase_in'" v-model="adjustCost"
+          :label="`HPP per ${adjustUnit}`" step="0.01" placeholder="0" />
         <AppInput v-if="['purchase_in', 'adjustment', 'return_in'].includes(adjForm.movement_type)" 
           v-model="adjForm.expiry_date" label="Tanggal Kadaluarsa" type="date" />
-        <AppInput v-model="adjForm.notes" label="Keterangan" placeholder="Opsional" />
+        <AppInput class="modal-span-full" v-model="adjForm.notes" label="Keterangan" placeholder="Opsional" />
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="showAdjust = false">Batal</AppButton>
@@ -206,8 +206,8 @@
     </AppModal>
 
     <!-- Produce Modal -->
-    <AppModal v-model="showProduce" title="Produksi / Memasak" size="sm">
-      <div class="space-y-4">
+    <AppModal v-model="showProduce" title="Produksi / Memasak" size="lg">
+      <div class="modal-form-grid">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Barang yang Dibuat</label>
           <SearchSelect
@@ -230,10 +230,10 @@
           />
         </div>
         <AppInput v-model.number="produceForm.qty_produce" label="Kuantitas Hasil Produksi" type="number" step="0.001" placeholder="0" />
-        <div v-if="produceForm.item_id" class="p-3 bg-amber-50 rounded-lg border border-amber-100 text-xs text-amber-700">
+        <div v-if="produceForm.item_id" class="modal-span-full p-3 bg-amber-50 rounded-lg border border-amber-100 text-xs text-amber-700">
           <strong>Info:</strong> Stok bahan baku penyusun akan otomatis terpotong sesuai resep yang telah diatur, dan HPP akan dihitung secara otomatis.
         </div>
-        <AppInput v-model="produceForm.notes" label="Catatan Produksi" placeholder="Opsional" />
+        <AppInput class="modal-span-full" v-model="produceForm.notes" label="Catatan Produksi" placeholder="Opsional" />
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="showProduce = false">Batal</AppButton>
@@ -242,7 +242,7 @@
     </AppModal>
 
     <!-- Pemotongan: satu bahan → beberapa hasil menurut pola yang dipilih -->
-    <AppModal v-model="showBreakdown" title="Pemotongan Bahan" size="lg">
+    <AppModal v-model="showBreakdown" title="Pemotongan Bahan" size="xl">
       <div class="space-y-4">
         <p class="text-xs text-gray-500">
           Satu bahan dipotong atau diolah menjadi beberapa hasil — mis. ayam utuh → paha, dada, sayap; daging sapi → has dalam,
@@ -307,7 +307,7 @@
               <span class="text-sm font-medium text-gray-700">Hasil Aktual<span v-if="bdPatterns.length > 1" class="font-normal text-gray-500"> · {{ bdPattern.name }}</span></span>
               <span class="text-[11px] text-gray-400">terisi hasil standar — ubah sesuai hasil nyata</span>
             </div>
-            <div class="space-y-2">
+            <div class="modal-form-grid">
               <div v-for="r in bdRows" :key="r.item_id" class="rounded-lg border border-gray-200 p-3">
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
@@ -351,7 +351,7 @@
     </AppModal>
 
     <!-- Riwayat Pemotongan -->
-    <AppModal v-model="showBdHistory" title="Riwayat Pemotongan" size="xl">
+    <AppModal v-model="showBdHistory" title="Riwayat Pemotongan" size="2xl">
       <div class="mb-3 max-w-md">
         <SearchSelect
           v-model="bdHistWarehouse"
@@ -365,7 +365,7 @@
       </div>
       <div v-if="bdHistLoading" class="py-6 text-center text-sm text-gray-400">Memuat…</div>
       <div v-else-if="bdHistory.length === 0" class="py-6 text-center text-sm text-gray-400">Belum ada pemotongan.</div>
-      <ul v-else class="space-y-3">
+      <ul v-else class="modal-form-grid">
         <li v-for="d in bdHistory" :key="d.id" class="rounded-lg border border-gray-200 p-3">
           <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
             <span class="font-mono text-sm font-semibold text-gray-900">{{ d.breakdown_number }}</span>
@@ -408,6 +408,7 @@
 </template>
 
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { stockQtyText, stockUnitOptions, stockUnitRatio, stockUnitLabel, preferredStockUnit } from '@/utils/stockUnits.js'

@@ -49,7 +49,7 @@
               </td>
               <td class="px-2 py-1.5"><input v-model.number="r.qty" :disabled="disabled" type="number" min="0" step="any" class="input-sm w-full text-right" /></td>
               <td class="px-2 py-1.5"><input v-model.trim="r.unit" :disabled="disabled" class="input-sm w-full" placeholder="m², sak, ls" /></td>
-              <td class="px-2 py-1.5"><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="Rp 0" /></td>
+              <td class="px-2 py-1.5"><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="0" /></td>
               <td class="px-2 py-1.5 text-right font-semibold text-gray-800">{{ formatRupiah(rowTotal(r)) }}</td>
               <td class="px-2 py-1.5">
                 <AppActionButton icon="delete" label="Hapus baris" v-if="!disabled" type="button" @click="removeRow(g, ri)" />
@@ -75,7 +75,7 @@
             </label>
             <label class="fld"><span>Satuan</span><input v-model.trim="r.unit" :disabled="disabled" class="input-sm w-full" placeholder="m², sak, ls" /></label>
             <label class="fld"><span>Volume</span><input v-model.number="r.qty" :disabled="disabled" type="number" min="0" step="any" class="input-sm w-full text-right" /></label>
-            <label class="fld"><span>Harga satuan</span><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="Rp 0" /></label>
+            <label class="fld"><span>Harga satuan</span><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="0" /></label>
           </div>
           <input v-model.trim="r.notes" :disabled="disabled" class="input-sm w-full border-dashed text-[11px]" placeholder="Spesifikasi / catatan (opsional)" />
           <p class="text-right text-xs">Jumlah: <b class="text-gray-800">{{ formatRupiah(rowTotal(r)) }}</b></p>

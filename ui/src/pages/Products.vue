@@ -304,7 +304,7 @@
                   </div>
                   <div class="form-group product-field-wide">
                     <label for="product-price">Harga jual <span class="req">*</span><span class="product-field-note">Rupiah per produk</span></label>
-                    <input id="product-price" :value="priceDisplay" @input="onPriceInput" class="form-input product-price-input" type="text" inputmode="numeric" placeholder="Rp 0" required />
+                    <RupiahInput id="product-price" v-model="formProd.price" input-class="product-price-input" min="0" step="1" required />
                   </div>
                   <div class="form-group product-field-wide">
                     <label for="product-description">Deskripsi <span class="product-field-note">Opsional</span></label>
@@ -428,6 +428,7 @@
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import ProductRecipePicker from '@/components/ProductRecipePicker.vue'
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import { productsApi } from '@/api/products.js'
@@ -454,23 +455,6 @@ const categories = ref([])
 const totalCat   = ref(0)
 const pageCat    = ref(1)
 const loadingCat = ref(false)
-
-// ── Rupiah input helpers ──────────────────────────────────
-const priceDisplay = ref('')
-function fmtRupiahInput(val) {
-  const d = String(val ?? '').replace(/[^\d]/g, '')
-  if (!d) return ''
-  return 'Rp ' + new Intl.NumberFormat('id-ID').format(Number(d))
-}
-function parseRupiahInput(val) {
-  const d = String(val || '').replace(/[^\d]/g, '')
-  return d ? parseInt(d, 10) : 0
-}
-function onPriceInput(e) {
-  const num = parseRupiahInput(e.target.value)
-  formProd.value.price = num
-  priceDisplay.value = num ? fmtRupiahInput(num) : ''
-}
 
 // ── CRUD — Product ────────────────────────────────────────
 const showProdModal = ref(false)
@@ -712,7 +696,6 @@ function openCreateProd() {
   editingProd.value = null
   formProd.value = { outlet_id: selectedOutlet.value, name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '', recipes: [] }
   recipeSelectionChanged.value = false
-  priceDisplay.value = ''
   resetPhoto()
   fetchOutletCategories(selectedOutlet.value)
   fetchRecipeOptions(selectedOutlet.value)
@@ -724,7 +707,6 @@ function openEditProd(p) {
   editingProd.value = p
   formProd.value = { outlet_id: p.outlet_id, name: p.name, code: p.code ?? '', description: p.description ?? '', category_id: p.category_id ?? '', category_name: p.category_name ?? '', price: p.price, photo_url: p.photo_url ?? '', recipe_master_id: p.recipe_master_id || '', recipes: (p.recipes || (p.recipe_master_id ? [{ recipe_master_id: p.recipe_master_id, name: p.recipe_master_name, multiplier: 1 }] : [])).map(link => ({ ...link })) }
   recipeSelectionChanged.value = false
-  priceDisplay.value = p.price ? fmtRupiahInput(p.price) : ''
   resetPhoto()
   fetchOutletCategories(p.outlet_id)
   fetchRecipeOptions(p.outlet_id)
@@ -995,6 +977,7 @@ watch(pageCat,  fetchCategories)
   box-shadow: 0 20px 60px rgba(0,0,0,.2);
 }
 .modal-card--sm { max-width: 360px; }
+.modal-card:not(.product-modal) { max-height: calc(100dvh - 2.5rem); overflow-y: auto; }
 .modal-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 1.15rem 1.4rem .75rem; border-bottom: 1px solid rgba(0,0,0,.06);
@@ -1096,7 +1079,7 @@ watch(pageCat,  fetchCategories)
 .product-field-note { margin-left: auto; font-size: .65rem; font-weight: 400; color: #7b8b81; }
 .product-modal .form-input, .product-modal :deep(.ss-trigger) { width: 100%; min-width: 0; min-height: 38px; border-radius: 8px; font-size: .82rem; background-color: #fff; }
 .product-modal .form-input--code { background: #f5f7f6; font-size: .76rem; }
-.product-modal .product-price-input { font-weight: 700; color: #185b35; }
+.product-modal :deep(.product-price-input) { font-weight: 700; color: #185b35; }
 .product-outlet-readonly { display: flex; align-items: center; gap: 8px; min-height: 38px; border: 1px solid #dce6df; padding: 8px 11px; border-radius: 8px; background: #f6f9f7; font-size: .82rem; color: #385e47; }
 .product-outlet-readonly svg { width: 17px; height: 17px; flex-shrink: 0; }
 .product-outlet-readonly span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

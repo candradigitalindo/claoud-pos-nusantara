@@ -1,7 +1,7 @@
 <template>
   <AppModal :model-value="modelValue" @update:modelValue="$emit('update:modelValue', $event)"
     title="Impor Aset dari Excel" size="2xl">
-    <div class="space-y-4">
+    <div class="modal-form-grid">
       <!-- Langkah 1: template -->
       <div class="rounded-xl border border-gray-200 p-3">
         <div class="flex flex-wrap items-start justify-between gap-2">
@@ -33,11 +33,11 @@
         </div>
       </div>
 
-      <AppAlert type="error" :message="errorMsg" />
+      <AppAlert class="modal-span-full" type="error" :message="errorMsg" />
 
       <!-- Langkah 3: hasil pemeriksaan -->
       <template v-if="result">
-        <div class="grid grid-cols-3 gap-2">
+        <div class="modal-span-full grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div class="rounded-xl border border-gray-200 p-3">
             <p class="stat-lbl">Baris Terbaca</p>
             <p class="stat-val">{{ result.total_rows }}</p>
@@ -73,7 +73,7 @@
           <p class="border-b border-gray-100 bg-gray-50 p-2 text-xs font-bold uppercase tracking-wide text-gray-500">
             Siap disimpan
           </p>
-          <div class="max-h-48 overflow-y-auto">
+          <div class="max-h-64 overflow-auto">
             <table class="w-full text-sm">
               <tbody class="divide-y divide-gray-100">
                 <tr v-for="r in validRows" :key="r.row">
@@ -88,7 +88,7 @@
           </div>
         </div>
 
-        <p v-if="saved" class="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{{ result.message }}</p>
+        <p v-if="saved" class="modal-span-full rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{{ result.message }}</p>
       </template>
     </div>
 

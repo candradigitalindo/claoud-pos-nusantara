@@ -4,7 +4,9 @@
   Props:
     modelValue  : boolean  — v-model controls open/close
     title       : string   — dialog title in the header
-    size        : 'sm' | 'md' | 'lg' | 'xl'   default 'md'
+    size        : 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' (default 'md')
+                  sm: confirmation, md: short form, lg: two-column form,
+                  xl/2xl/3xl: detailed forms and wide tables
 
   Slots:
     default   — modal body content
@@ -46,14 +48,14 @@
           aria-modal="true"
           :aria-labelledby="titleId"
           :class="[
-            'relative bg-white rounded-xl shadow-xl w-full min-w-0 flex flex-col max-h-[92vh] sm:max-h-[90vh]',
-            SIZES[size],
+            'app-modal-panel relative bg-white rounded-xl shadow-xl w-full min-w-0 flex flex-col',
+            SIZES[size] || SIZES.md,
           ]"
           @keydown.esc="close"
         >
           <!-- Header -->
           <div class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0">
-            <h2 :id="titleId" class="min-w-0 truncate text-base sm:text-lg font-semibold text-gray-900">
+            <h2 :id="titleId" class="min-w-0 break-words text-base sm:text-lg leading-snug font-semibold text-gray-900">
               {{ title }}
             </h2>
             <button
@@ -68,7 +70,7 @@
           </div>
 
           <!-- Body -->
-          <div class="overflow-y-auto px-4 sm:px-6 py-4 flex-1">
+          <div class="app-modal-body modal-layout min-h-0 min-w-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 flex-1">
             <slot />
           </div>
 
@@ -104,9 +106,23 @@ const titleId = computed(() => `modal-title-${Math.random().toString(36).slice(2
 
 const SIZES = {
   sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-  xl: 'max-w-2xl',
-  '2xl': 'max-w-4xl',
+  md: 'max-w-xl',
+  lg: 'max-w-3xl',
+  xl: 'max-w-5xl',
+  '2xl': 'max-w-7xl',
+  '3xl': 'max-w-[96rem]',
 }
 </script>
+
+<style scoped>
+.app-modal-panel {
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+}
+@media (min-width: 640px) {
+  .app-modal-panel {
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+  }
+}
+</style>

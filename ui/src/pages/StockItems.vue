@@ -150,10 +150,10 @@
 
     <!-- Create / Edit Modal -->
     <AppModal v-model="showForm" :title="editTarget ? 'Edit Bahan Baku' : 'Tambah Bahan'" size="2xl">
-      <div class="space-y-5">
+      <div class="stock-item-form-sections">
 
         <!-- Live preview strip -->
-        <div class="flex items-center gap-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50/60 px-4 py-3 ring-1 ring-emerald-100">
+        <div class="modal-span-full flex items-center gap-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50/60 px-4 py-3 ring-1 ring-emerald-100">
           <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
@@ -175,7 +175,7 @@
         </div>
 
         <!-- Read-only catalog notice for outlet warehouses / role per outlet -->
-        <div v-if="!catalogEditable" class="flex items-start gap-2 rounded-lg bg-amber-50 ring-1 ring-amber-100 px-3 py-2 text-xs text-amber-700">
+        <div v-if="!catalogEditable" class="modal-span-full flex items-start gap-2 rounded-lg bg-amber-50 ring-1 ring-amber-100 px-3 py-2 text-xs text-amber-700">
           <svg class="h-4 w-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           <span>Definisi bahan (nama, satuan, distribusi) diwarisi dari <b>Gudang Induk</b> dan tidak dapat diubah dari sini. Anda hanya mengatur stok minimal &amp; saldo untuk outlet ini.</span>
         </div>
@@ -183,7 +183,7 @@
         <!-- Catalog fields (editable only at central) -->
         <div>
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Definisi Bahan {{ catalogEditable ? '' : '(hanya-baca)' }}</p>
-          <div class="grid grid-cols-2 gap-x-5 gap-y-4">
+          <div class="modal-form-grid">
             <AppInput v-model="form.name" label="Nama Bahan" placeholder="Udang Segar" :disabled="!catalogEditable" />
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
@@ -200,8 +200,8 @@
             <AppInput v-model="form.dist_unit" label="Satuan Kemasan / Gudang Induk" placeholder="dus / pak / karung" :disabled="!catalogEditable" />
             <AppInput v-model.number="form.dist_ratio" :label="`Isi 1 ${form.dist_unit || 'kemasan'} dalam ${form.base_unit || 'satuan dasar'}`" type="number" min="0.0001" step="0.0001" placeholder="Contoh: 24" :disabled="!catalogEditable" />
             <AppInput v-model="form.dist_unit_label" label="Label Kemasan (opsional)" placeholder="Dus 24 botol" :disabled="!catalogEditable" />
-            <p class="col-span-2 text-xs text-gray-500">Contoh: satuan dasar botol, kemasan dus, isi 24 berarti 1 dus = 24 botol. Satuan dan isi dapat berbeda untuk setiap barang.</p>
-            <AppInput v-model="form.notes" label="Keterangan" placeholder="Catatan opsional…" :disabled="!catalogEditable" class="col-span-2" />
+            <p class="modal-span-full text-xs text-gray-500">Contoh: satuan dasar botol, kemasan dus, isi 24 berarti 1 dus = 24 botol. Satuan dan isi dapat berbeda untuk setiap barang.</p>
+            <AppInput v-model="form.notes" label="Keterangan" placeholder="Catatan opsional…" :disabled="!catalogEditable" class="modal-span-full" />
           </div>
         </div>
 
@@ -213,8 +213,8 @@
             </span>
             <p class="text-sm font-semibold text-gray-700">{{ selectedWarehouse?.name }}</p>
           </div>
-          <div class="grid grid-cols-2 gap-x-5 gap-y-4">
-            <div class="col-span-2">
+          <div class="modal-form-grid">
+            <div class="modal-span-full">
               <label class="block text-sm font-medium text-gray-700 mb-1">Satuan Input Stok</label>
               <SearchableSelect v-model="stockEntryUnit" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2">
                 <option v-for="unit in stockUnitOptions(form)" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
@@ -234,8 +234,8 @@
             </div>
 
             <!-- Cost (relevant when adding stock) -->
-            <AppInput v-if="!editTarget ? form.opening_stock > 0 : (form.set_stock !== '' && form.set_stock != null)"
-              v-model.number="entryCost" :label="`HPP per ${stockEntryUnit || 'unit'}`" type="number" step="0.01" placeholder="0" />
+            <RupiahInput v-if="!editTarget ? form.opening_stock > 0 : (form.set_stock !== '' && form.set_stock != null)"
+              v-model="entryCost" :label="`HPP per ${stockEntryUnit || 'unit'}`" step="0.01" placeholder="0" />
 
             <!-- Current avg cost display -->
             <div v-if="editTarget" class="flex flex-col">
@@ -374,7 +374,7 @@
     </AppModal>
 
     <!-- Stock Detail Modal -->
-    <AppModal v-model="showStockDetail" :title="`Detail Stok: ${stockDetailTarget?.name || ''}`" size="md">
+    <AppModal v-model="showStockDetail" :title="`Detail Stok: ${stockDetailTarget?.name || ''}`" size="xl">
       <div v-if="detailLoading" class="py-8 text-center text-gray-400">Memuat data stok...</div>
       <div v-else class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
@@ -388,7 +388,7 @@
           </div>
         </div>
 
-        <div class="overflow-hidden border border-gray-100 rounded-xl">
+        <div class="overflow-x-auto border border-gray-100 rounded-xl">
           <table class="min-w-full text-sm">
             <thead class="bg-gray-50 text-xs text-gray-500">
               <tr>
@@ -423,6 +423,7 @@
 </template>
 
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { stockQtyText, stockUnitOptions, stockUnitRatio, stockUnitLabel, preferredStockUnit } from '@/utils/stockUnits.js'
@@ -792,3 +793,11 @@ async function deleteCategoryItem(cat) {
   }
 }
 </script>
+
+<style scoped>
+.stock-item-form-sections { display: grid; gap: 1.25rem; }
+.stock-item-form-sections > * { min-width: 0; }
+@container modal (min-width: 1000px) {
+  .stock-item-form-sections { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+}
+</style>

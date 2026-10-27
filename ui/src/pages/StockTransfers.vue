@@ -84,9 +84,9 @@
     </AppCard>
 
     <!-- Create Transfer Modal -->
-    <AppModal v-model="showCreate" :title="isRequestForm ? 'Minta Stok ke Gudang Induk' : 'Buat Transfer Stok'" size="lg">
+    <AppModal v-model="showCreate" :title="isRequestForm ? 'Minta Stok ke Gudang Induk' : 'Buat Transfer Stok'" size="xl">
       <div class="space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="modal-form-grid">
           <div class="space-y-1">
             <label class="block text-sm font-medium text-gray-700">Gudang Asal</label>
             <SearchSelect
@@ -110,7 +110,7 @@
             />
           </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="modal-form-grid">
           <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
             <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Asal</div>
             <div class="mt-1 text-sm font-semibold text-gray-900">{{ selectedFromWarehouse?.name || 'Belum dipilih' }}</div>
@@ -188,7 +188,7 @@
     </AppModal>
 
     <!-- Detail Modal -->
-    <AppModal v-model="showDetail" :title="`Transfer ${detail?.transfer_number || ''}`" size="lg">
+    <AppModal v-model="showDetail" :title="`Transfer ${detail?.transfer_number || ''}`" size="2xl">
       <div v-if="detail" class="space-y-4">
         <!-- Status flow -->
         <div class="flex items-center gap-2 overflow-x-auto pb-1">

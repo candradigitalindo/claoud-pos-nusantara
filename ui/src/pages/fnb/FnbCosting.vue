@@ -73,19 +73,20 @@
       <div v-else class="space-y-3"><p class="font-semibold">{{ policy.outlet_name }}</p><AppAlert type="error" :message="policyError" /><AppInput v-model.number="policy.target_cost_pct" label="Batas HPP (%)" type="number" min="0.01" max="100" step="0.01" /><p class="text-xs text-gray-500">Berlaku untuk seluruh menu di outlet ini, termasuk menu yang dibuat kemudian. Peringatan muncul saat HPP outlet atau proyeksi mencapai batas. Misalnya 40% berarti biaya maksimal Rp4.000 untuk harga jual Rp10.000.</p></div>
       <template #footer><AppButton variant="secondary" :disabled="policySaving" @click="showPolicy = false">Batal</AppButton><AppButton :loading="policySaving" :disabled="policyLoading || !!policyError" @click="savePolicy">Simpan batas outlet</AppButton></template>
     </AppModal>
-    <AppModal v-model="showEdit" title="Kategori & Target HPP" size="md">
-      <div class="space-y-4"><p class="text-sm font-semibold">{{ target?.product_name }} · {{ target?.outlet_name }}</p>
+    <AppModal v-model="showEdit" title="Kategori & Target HPP" size="lg">
+      <div class="modal-form-grid"><p class="modal-span-full text-sm font-semibold">{{ target?.product_name }} · {{ target?.outlet_name }}</p>
         <div><label for="fnb-profile-kind" class="block text-sm mb-1">Kategori F&B</label><SearchableSelect id="fnb-profile-kind" v-model="form.menu_kind" class="field w-full"><option value="">Belum dikategorikan</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></SearchableSelect></div>
         <AppInput v-model.number="form.target_cost_pct" :disabled="target?.target_source === 'outlet'" :label="target?.target_source === 'outlet' ? 'Batas mengikuti outlet (%)' : 'Target HPP menu (%)'" type="number" min="0.01" max="100" step="0.01" />
-        <AppInput v-model.number="form.packaging_cost" label="Biaya kemasan per porsi (Rp)" type="number" min="0" step="0.01" />
-        <AppInput v-model.number="form.overhead_cost" label="Overhead per porsi (Rp)" type="number" min="0" step="0.01" />
-        <p class="text-xs text-gray-500">Isi alokasi tenaga kerja, energi, dan biaya lain yang ingin dihitung per porsi. Gunakan “Atur batas outlet” untuk menetapkan persentase yang sama bagi seluruh menu outlet tersebut.</p>
+        <RupiahInput v-model="form.packaging_cost" label="Biaya kemasan per porsi (Rp)" min="0" step="0.01" />
+        <RupiahInput v-model="form.overhead_cost" label="Overhead per porsi (Rp)" min="0" step="0.01" />
+        <p class="modal-span-full text-xs text-gray-500">Isi alokasi tenaga kerja, energi, dan biaya lain yang ingin dihitung per porsi. Gunakan “Atur batas outlet” untuk menetapkan persentase yang sama bagi seluruh menu outlet tersebut.</p>
       </div>
       <template #footer><AppButton variant="secondary" @click="showEdit = false">Batal</AppButton><AppButton :loading="saving" @click="save">Simpan</AppButton></template>
     </AppModal>
   </div>
 </template>
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import RecipeCostSummary from '@/components/RecipeCostSummary.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'

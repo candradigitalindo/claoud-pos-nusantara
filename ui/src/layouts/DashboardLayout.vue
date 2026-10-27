@@ -148,10 +148,10 @@
     </div>
 
     <!-- ── Profile Modal ── -->
-    <AppModal v-model="showProfileModal" title="Profil Saya" size="md">
-      <div class="space-y-6">
+    <AppModal v-model="showProfileModal" title="Profil Saya" size="lg">
+      <div class="modal-form-grid">
         <!-- Profile Info -->
-        <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+        <div class="modal-span-full flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
           <div class="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white text-xl font-bold shadow-md flex-shrink-0">
             {{ adminInitial }}
           </div>
@@ -169,7 +169,7 @@
             Ubah Nama
           </h3>
           <div class="flex gap-2">
-            <AppInput v-model="profileForm.name" placeholder="Nama lengkap" class="flex-1" />
+            <AppInput v-model="profileForm.name" placeholder="Nama lengkap" class="min-w-0 flex-1" />
             <AppButton :loading="profileLoading" @click="updateProfile" size="sm">Simpan</AppButton>
           </div>
           <p v-if="profileMsg" class="text-xs mt-1.5" :class="profileSuccess ? 'text-emerald-600' : 'text-red-600'">{{ profileMsg }}</p>
@@ -191,7 +191,7 @@
         </div>
 
         <!-- Logout -->
-        <div class="pt-3 border-t border-gray-200">
+        <div class="modal-span-full pt-3 border-t border-gray-200">
           <button class="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors" @click="logout">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 20 20" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"

@@ -66,7 +66,7 @@
         </div>
         <p v-else class="rp-pay-hint">Hubungi kami untuk rekening tujuan, lalu unggah buktinya di sini.</p>
         <div class="rp-fields">
-          <div><label>Nominal transfer <span>*</span></label><input v-model.number="pay.amount" type="number" inputmode="numeric" min="1" /></div>
+          <div><label>Nominal transfer <span>*</span></label><RupiahInput v-model="pay.amount" min="1" step="1" input-class="rp-currency-input" /></div>
           <div v-if="status.bank_accounts?.length"><label>Transfer ke rekening</label>
             <SearchableSelect v-model="pay.bank_account_id"><option value="">— pilih —</option><option v-for="b in status.bank_accounts" :key="b.id" :value="b.id">{{ b.bank_name }} {{ b.account_number }}</option></SearchableSelect></div>
           <div><label>Tanggal transfer</label><input v-model="pay.paid_at" type="date" /></div>
@@ -183,6 +183,7 @@
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
@@ -423,9 +424,9 @@ onMounted(async () => {
 .rp-fields { display: flex; flex-direction: column; gap: .8rem; }
 .rp-fields label { display: block; font-size: .72rem; font-weight: 700; color: rgba(168,203,191,.85); margin-bottom: .25rem; }
 .rp-fields label span { color: #fca5a5; }
-.rp-fields input, .rp-fields textarea { width: 100%; padding: .65rem .75rem; border-radius: .65rem; border: 1px solid rgba(255,255,255,.16); font-size: .9rem; outline: none; background: rgba(255,255,255,.07); color: #fff; }
-.rp-fields input::placeholder, .rp-fields textarea::placeholder { color: rgba(255,255,255,.38); }
-.rp-fields input:focus, .rp-fields textarea:focus { border-color: rgba(126,184,154,.6); box-shadow: 0 0 0 3px rgba(126,184,154,.18); }
+.rp-fields input, .rp-fields textarea, .rp-fields :deep(.rp-currency-input) { width: 100%; padding: .65rem .75rem; border-radius: .65rem; border: 1px solid rgba(255,255,255,.16); font-size: .9rem; outline: none; background: rgba(255,255,255,.07); color: #fff; }
+.rp-fields input::placeholder, .rp-fields textarea::placeholder, .rp-fields :deep(.rp-currency-input::placeholder) { color: rgba(255,255,255,.38); }
+.rp-fields input:focus, .rp-fields textarea:focus, .rp-fields :deep(.rp-currency-input:focus) { border-color: rgba(126,184,154,.6); box-shadow: 0 0 0 3px rgba(126,184,154,.18); }
 .rp-row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
 .rp-err { color: #fca5a5; font-size: .8rem; margin-top: .7rem; }
 .rp-next { width: 100%; margin-top: 1rem; background: linear-gradient(145deg, #7eb89a, #5d9b78); color: #14271d; border: none; padding: .85rem; border-radius: .8rem; font-size: .95rem; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(126,184,154,.3); }

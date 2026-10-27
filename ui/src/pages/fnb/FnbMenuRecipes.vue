@@ -72,17 +72,17 @@
 
     <!-- Recipe Modal (SOP Dapur) -->
     <AppModal v-model="showModal" :title="readOnly ? 'Detail Resep & SOP' : editingId ? 'Edit SOP & Resep Master' : 'Buat SOP & Resep Baru'" size="2xl">
-      <div class="space-y-6">
+      <div class="space-y-4">
 
         <fieldset :disabled="readOnly" class="space-y-4 min-w-0">
         <!-- Header Info -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="space-y-4">
+        <div class="modal-form-grid modal-form-grid--three">
+          <div class="contents">
             <AppInput v-model="form.name" label="Nama Menu / Resep" placeholder="Contoh: Nasi Goreng Spesial" required />
             <div><label for="recipe-menu-kind" class="block text-sm font-medium text-gray-700 mb-1">Kategori F&B</label><SearchableSelect id="recipe-menu-kind" v-model="form.menu_kind" class="w-full border border-gray-200 rounded-lg p-2 text-sm"><option value="">Belum dikategorikan</option><option value="food">Makanan</option><option value="beverage">Minuman</option></SearchableSelect></div>
             <AppInput v-model="form.description" label="Keterangan Singkat" placeholder="Catatan standar porsi, dll." />
           </div>
-          <div class="space-y-4">
+          <div class="contents">
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5">Visibilitas Akses</label>
               <div class="grid grid-cols-2 gap-2">
@@ -130,8 +130,8 @@
         </div>
 
         <!-- Tab Content -->
-        <div v-if="activeTab === 'items'" class="space-y-4 min-h-[300px]">
-          <div class="border rounded-xl overflow-hidden">
+        <div v-if="activeTab === 'items'" class="space-y-4">
+          <div class="border rounded-xl overflow-x-auto">
             <table class="min-w-full text-xs">
               <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-[10px]">
                 <tr>
@@ -168,12 +168,12 @@
           <button v-if="!readOnly" @click="addItem" class="text-xs font-bold text-emerald-600">+ Tambah Bahan</button>
         </div>
 
-        <div v-if="activeTab === 'steps'" class="space-y-4 min-h-[300px]">
+        <div v-if="activeTab === 'steps'" class="modal-form-grid">
           <div v-for="(step, idx) in form.instruction_steps" :key="idx" class="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
              <div class="flex items-start gap-4">
                 <div class="w-6 h-6 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0">{{ idx + 1 }}</div>
                 <p v-if="readOnly" class="flex-1 text-sm whitespace-pre-line">{{ stepPlainText(step.text) }}</p>
-                <QuillEditor v-else v-model="step.text" class="flex-1 bg-white" placeholder="Instruksi..." />
+                <QuillEditor v-else v-model="step.text" class="min-w-0 flex-1 bg-white" placeholder="Instruksi..." />
                 <AppActionButton icon="delete" label="Hapus langkah" v-if="!readOnly" @click="form.instruction_steps.splice(idx, 1)" />
              </div>
              <div class="flex items-center gap-3 pl-10">
@@ -184,7 +184,7 @@
                 </div>
              </div>
           </div>
-          <button v-if="!readOnly" @click="addStep" class="text-xs font-bold text-emerald-600">+ Tambah Langkah</button>
+          <button v-if="!readOnly" @click="addStep" class="modal-span-full justify-self-start text-xs font-bold text-emerald-600">+ Tambah Langkah</button>
         </div>
 
       </div>

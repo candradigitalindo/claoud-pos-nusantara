@@ -77,11 +77,11 @@
       </section>
     </div>
 
-    <AppModal v-model="formOpen" :title="editing ? 'Ubah kamera' : 'Tambah kamera'" size="lg">
-      <form id="camera-form" class="grid grid-cols-1 gap-4 sm:grid-cols-2" @submit.prevent="saveCamera">
-        <AppAlert class="sm:col-span-2" type="error" :message="formError" />
-        <AppAlert v-if="probeResult" class="sm:col-span-2" :type="probeResult.ok ? 'success' : 'error'" :message="probeResult.message" />
-        <label class="field sm:col-span-2">Outlet
+    <AppModal v-model="formOpen" :title="editing ? 'Ubah kamera' : 'Tambah kamera'" size="2xl">
+      <form id="camera-form" class="modal-form-grid modal-form-grid--three" @submit.prevent="saveCamera">
+        <AppAlert class="modal-span-full" type="error" :message="formError" />
+        <AppAlert v-if="probeResult" class="modal-span-full" :type="probeResult.ok ? 'success' : 'error'" :message="probeResult.message" />
+        <label class="field">Outlet
           <SearchableSelect aria-label="Outlet" v-model="form.outlet_id" class="form-input" required :disabled="!!editing">
             <option disabled value="">Pilih outlet</option>
             <option v-for="outlet in outlets" :key="outlet.id" :value="outlet.id">{{ outlet.name }}</option>
@@ -89,12 +89,13 @@
         </label>
         <label class="field">Nama kamera<input v-model.trim="form.name" class="form-input" required maxlength="100" placeholder="Kasir depan" /></label>
         <label class="field">Merek<SearchableSelect aria-label="Merek" v-model="form.brand" class="form-input" @change="changeBrand"><option v-for="brand in options.brands" :key="brand" :value="brand.toLowerCase()">{{ brand }}</option></SearchableSelect></label>
-        <label class="field sm:col-span-2">Jenis koneksi<SearchableSelect aria-label="Jenis koneksi" v-model="form.connection_type" class="form-input" @change="changeConnection"><option v-for="connection in options.connections" :key="connection.id" :value="connection.id">{{ connection.name }}</option></SearchableSelect><span class="text-xs font-normal text-gray-500">{{ selectedConnection?.help }}</span></label>
-        <label v-if="form.connection_type !== 'tuya'" class="field sm:col-span-2">Jalur ke outlet<SearchableSelect aria-label="Jalur ke outlet" v-model="form.access_mode" class="form-input"><option value="gateway">Penghubung outlet — tanpa VPN</option><option value="direct">Langsung — alamat dapat dijangkau server</option></SearchableSelect><span class="text-xs font-normal text-gray-500">{{ form.access_mode === 'gateway' ? 'Satu penghubung berjalan di jaringan outlet dan mengirim tayangan melalui HTTPS.' : 'Untuk alamat perangkat atau layanan vendor yang dapat dijangkau server.' }}</span></label>
-        <AppAlert v-if="form.access_mode === 'gateway' && !gatewayFor(form.outlet_id)?.online" class="sm:col-span-2" type="info" message="Konfigurasi kamera dapat disimpan sekarang. Hubungkan outlet melalui tombol Koneksi outlet sebelum menonton." />
-        <p v-if="brandHelp" class="text-xs text-amber-700 sm:col-span-2">{{ brandHelp }}</p>
-        <p v-if="['v380','yoosee','hk'].includes(form.brand)" class="text-xs text-amber-700 sm:col-span-2">Dukungan tergantung model. Gunakan RTSP/ONVIF bila tersedia; UID aplikasi bawaan belum tentu dapat digunakan pada sistem lain.</p>
-        <div v-if="form.connection_type === 'tuya'" class="sm:col-span-2 space-y-3 rounded-lg border border-gray-200 p-3">
+        <label class="field">Jenis koneksi<SearchableSelect aria-label="Jenis koneksi" v-model="form.connection_type" class="form-input" @change="changeConnection"><option v-for="connection in options.connections" :key="connection.id" :value="connection.id">{{ connection.name }}</option></SearchableSelect><span class="text-xs font-normal text-gray-500">{{ selectedConnection?.help }}</span></label>
+        <label v-if="form.connection_type !== 'tuya'" class="field">Jalur ke outlet<SearchableSelect aria-label="Jalur ke outlet" v-model="form.access_mode" class="form-input"><option value="gateway">Penghubung outlet — tanpa VPN</option><option value="direct">Langsung — alamat dapat dijangkau server</option></SearchableSelect><span class="text-xs font-normal text-gray-500">{{ form.access_mode === 'gateway' ? 'Satu penghubung berjalan di jaringan outlet dan mengirim tayangan melalui HTTPS.' : 'Untuk alamat perangkat atau layanan vendor yang dapat dijangkau server.' }}</span></label>
+        <label v-if="!selectedConnection?.needs_url" class="field">Alamat perangkat<input aria-label="Alamat perangkat" v-model.trim="form.host" class="form-input" :required="!form.source_ticket && !form.source_url && !(editing && savedSecrets.source && !clearSecrets.source && editedConnection === form.connection_type)" maxlength="120" placeholder="IP atau hostname kamera/DVR" /><span class="text-xs font-normal text-gray-500">Untuk penghubung outlet, isi IP lokal kamera di outlet tersebut.</span></label>
+        <AppAlert v-if="form.access_mode === 'gateway' && !gatewayFor(form.outlet_id)?.online" class="modal-span-full" type="info" message="Konfigurasi kamera dapat disimpan sekarang. Hubungkan outlet melalui tombol Koneksi outlet sebelum menonton." />
+        <p v-if="brandHelp" class="text-xs text-amber-700 modal-span-full">{{ brandHelp }}</p>
+        <p v-if="['v380','yoosee','hk'].includes(form.brand)" class="text-xs text-amber-700 modal-span-full">Dukungan tergantung model. Gunakan RTSP/ONVIF bila tersedia; UID aplikasi bawaan belum tentu dapat digunakan pada sistem lain.</p>
+        <div v-if="form.connection_type === 'tuya'" class="modal-span-full space-y-3 rounded-lg border border-gray-200 p-3">
           <p class="text-sm font-medium">Hubungkan Tuya Smart tanpa VPN</p>
           <p class="text-xs text-gray-500">Gunakan akun Tuya Smart. Akun Smart Life tidak didukung konektor ini. Dukungan kamera tetap mengikuti layanan vendor.</p>
           <label class="field">Region<SearchableSelect aria-label="Region Tuya" v-model="cloud.region" class="form-input"><option v-for="region in options.tuya_regions" :key="region.id" :value="region.id">{{ region.name }}</option></SearchableSelect></label>
@@ -104,27 +105,28 @@
           <AppAlert type="error" :message="cloudError" />
           <label v-if="cloudDevices.length" class="field">Kamera cloud<SearchableSelect aria-label="Kamera cloud" v-model="form.source_ticket" class="form-input" @change="selectCloudDevice"><option value="">Pilih kamera</option><option v-for="device in cloudDevices" :key="device.id" :value="device.ticket">{{ device.name }}</option></SearchableSelect></label>
         </div>
-        <label v-if="selectedConnection?.needs_url || form.connection_type === 'onvif'" class="field sm:col-span-2">{{ form.connection_type === 'onvif' ? 'URL ONVIF khusus (opsional)' : 'URL sumber' }}<input aria-label="URL sumber" v-model.trim="form.source_url" type="password" class="form-input" autocomplete="new-password" :disabled="clearSecrets.source" :required="selectedConnection?.needs_url && !form.source_ticket && !(editing && savedSecrets.source && editedConnection === form.connection_type)" :placeholder="editing ? 'Kosong = pertahankan sumber lama' : form.connection_type === 'rtsp' ? 'rtsp://user:password@alamat/path' : 'URL konektor sesuai dokumentasi perangkat'" /><span v-if="form.brand === 'ezviz' && form.connection_type === 'rtsp'" class="break-all text-xs font-normal text-gray-500">Contoh C6N/TY1/TY2: rtsp://admin:PASSWORD_LOKAL@IP_KAMERA:554/ch1/main. Gunakan password koneksi lokal; kode verifikasi pada label berlaku jika belum diganti. Model lain dapat memakai URL berbeda.</span><span v-if="form.source_ticket" class="text-xs text-emerald-700">{{ form.connection_type === 'onvif' ? 'Profil ONVIF telah dipilih.' : 'Kamera cloud telah dipilih.' }}</span></label>
-        <label v-if="editing && savedSecrets.source && !selectedConnection?.needs_url" class="flex items-center gap-2 text-sm text-gray-600 sm:col-span-2"><input v-model="clearSecrets.source" type="checkbox" /> Hapus URL sumber khusus tersimpan dan gunakan alamat perangkat</label>
-        <label v-if="!selectedConnection?.needs_url" class="field sm:col-span-2">Alamat perangkat<input aria-label="Alamat perangkat" v-model.trim="form.host" class="form-input" :required="!form.source_ticket && !form.source_url && !(editing && savedSecrets.source && !clearSecrets.source && editedConnection === form.connection_type)" maxlength="120" placeholder="IP atau hostname kamera/DVR" /><span class="text-xs font-normal text-gray-500">Untuk penghubung outlet, isi IP lokal kamera di outlet tersebut.</span></label>
+        <label v-if="selectedConnection?.needs_url || form.connection_type === 'onvif'" class="field modal-span-full">{{ form.connection_type === 'onvif' ? 'URL ONVIF khusus (opsional)' : 'URL sumber' }}<input aria-label="URL sumber" v-model.trim="form.source_url" type="password" class="form-input" autocomplete="new-password" :disabled="clearSecrets.source" :required="selectedConnection?.needs_url && !form.source_ticket && !(editing && savedSecrets.source && editedConnection === form.connection_type)" :placeholder="editing ? 'Kosong = pertahankan sumber lama' : form.connection_type === 'rtsp' ? 'rtsp://user:password@alamat/path' : 'URL konektor sesuai dokumentasi perangkat'" /><span v-if="form.brand === 'ezviz' && form.connection_type === 'rtsp'" class="break-all text-xs font-normal text-gray-500">Contoh C6N/TY1/TY2: rtsp://admin:PASSWORD_LOKAL@IP_KAMERA:554/ch1/main. Gunakan password koneksi lokal; kode verifikasi pada label berlaku jika belum diganti. Model lain dapat memakai URL berbeda.</span><span v-if="form.source_ticket" class="text-xs text-emerald-700">{{ form.connection_type === 'onvif' ? 'Profil ONVIF telah dipilih.' : 'Kamera cloud telah dipilih.' }}</span></label>
+        <label v-if="editing && savedSecrets.source && !selectedConnection?.needs_url" class="flex items-center gap-2 text-sm text-gray-600 modal-span-full"><input v-model="clearSecrets.source" type="checkbox" /> Hapus URL sumber khusus tersimpan dan gunakan alamat perangkat</label>
         <label v-if="!selectedConnection?.needs_url" class="field">Port<input v-model.number="form.port" class="form-input" type="number" min="1" max="65535" required /></label>
         <label v-if="['hikvision','dahua','dvrip','reolink'].includes(form.connection_type)" class="field">Channel<input v-model.number="form.channel" class="form-input" type="number" min="1" max="256" required /></label>
         <label v-if="!selectedConnection?.needs_url" class="field">Username perangkat<input v-model.trim="form.rtsp_username" class="form-input" maxlength="80" autocomplete="off" /></label>
         <label v-if="!selectedConnection?.needs_url" class="field">Password perangkat<input v-model="form.rtsp_password" class="form-input" type="password" autocomplete="new-password" :disabled="clearSecrets.password" :placeholder="editing ? 'Kosong = pertahankan password lama' : 'Password DVR'" /></label>
-        <label v-if="editing && savedSecrets.password && !selectedConnection?.needs_url" class="flex items-center gap-2 text-sm text-gray-600 sm:col-span-2"><input v-model="clearSecrets.password" type="checkbox" /> Hapus password perangkat tersimpan</label>
-        <div v-if="form.connection_type === 'onvif'" class="space-y-3 rounded-lg border border-gray-200 p-3 sm:col-span-2">
+        <label v-if="editing && savedSecrets.password && !selectedConnection?.needs_url" class="flex items-center gap-2 text-sm text-gray-600 modal-span-full"><input v-model="clearSecrets.password" type="checkbox" /> Hapus password perangkat tersimpan</label>
+        <div v-if="form.connection_type === 'onvif'" class="space-y-3 rounded-lg border border-gray-200 p-3 modal-span-full">
           <p class="text-xs text-gray-600">Cari profil pada alamat perangkat untuk memilih kamera/channel dan kualitas yang benar. Jika hanya ada satu profil, sistem dapat memilihnya otomatis.</p>
           <AppButton size="sm" variant="secondary" :loading="findingProfiles" :disabled="!form.outlet_id || saving || probing" @click="findONVIFProfiles">Cari profil ONVIF</AppButton>
           <AppAlert type="error" :message="profileError" />
           <label v-if="onvifProfiles.length" class="field">Profil ONVIF<SearchableSelect aria-label="Profil ONVIF" v-model="form.source_ticket" class="form-input" :required="!savedSecrets.source || clearSecrets.source" @change="clearSecrets.source = false"><option value="">Pilih profil kamera/channel</option><option v-for="profile in onvifProfiles" :key="profile.id" :value="profile.ticket">{{ profile.name }}</option></SearchableSelect></label>
         </div>
         <label v-if="!selectedConnection?.needs_url && form.connection_type !== 'onvif'" class="field">Kualitas<SearchableSelect v-model.number="form.subtype" class="form-input"><option :value="1">Hemat bandwidth (sub-stream)</option><option :value="0">Kualitas utama (main-stream)</option></SearchableSelect></label>
-        <p v-else class="text-xs text-gray-500 sm:col-span-2">Channel dan kualitas mengikuti profil, URL sumber, atau kamera cloud yang dipilih.</p>
+        <p v-else class="text-xs text-gray-500 modal-span-full">Channel dan kualitas mengikuti profil, URL sumber, atau kamera cloud yang dipilih.</p>
         <label class="field">Urutan<input v-model.number="form.sort_order" class="form-input" type="number" min="0" max="100000" /></label>
-        <label class="field">Zona waktu kamera<SearchableSelect v-model="form.timezone" class="form-input"><option value="Asia/Jakarta">WIB — Jakarta</option><option value="Asia/Makassar">WITA — Makassar</option><option value="Asia/Jayapura">WIT — Jayapura</option><option value="UTC">UTC</option><option v-if="!['Asia/Jakarta','Asia/Makassar','Asia/Jayapura','UTC'].includes(form.timezone)" :value="form.timezone">{{ form.timezone }}</option></SearchableSelect></label>
-        <label class="field sm:col-span-2">URL rekaman RTSP (opsional)<input v-model.trim="form.playback_url" type="password" class="form-input" autocomplete="new-password" :disabled="clearSecrets.playback" :placeholder="editing ? 'Kosong = pertahankan URL rekaman lama' : 'URL playback dari dokumentasi perangkat'" /><span class="text-xs font-normal text-gray-500">Hikvision/Dahua memakai pola bawaan. Merek lain memerlukan URL rekaman; placeholder waktu: {start}, {end}, {start_iso}, {end_iso}, {start_unix}, {end_unix}.</span></label>
-        <label v-if="editing && savedSecrets.playback" class="flex items-center gap-2 text-sm text-gray-600 sm:col-span-2"><input v-model="clearSecrets.playback" type="checkbox" /> Hapus URL rekaman tersimpan</label>
-        <label class="flex items-center gap-2 text-sm text-gray-700"><input v-model="form.is_active" type="checkbox" class="accent-emerald-600" /> Kamera aktif</label>
+        <div class="space-y-3">
+          <label class="field">Zona waktu kamera<SearchableSelect v-model="form.timezone" class="form-input"><option value="Asia/Jakarta">WIB — Jakarta</option><option value="Asia/Makassar">WITA — Makassar</option><option value="Asia/Jayapura">WIT — Jayapura</option><option value="UTC">UTC</option><option v-if="!['Asia/Jakarta','Asia/Makassar','Asia/Jayapura','UTC'].includes(form.timezone)" :value="form.timezone">{{ form.timezone }}</option></SearchableSelect></label>
+          <label class="flex items-center gap-2 text-sm text-gray-700"><input v-model="form.is_active" type="checkbox" class="accent-emerald-600" /> Kamera aktif</label>
+        </div>
+        <label class="field modal-span-full camera-playback-field">URL rekaman RTSP (opsional)<input v-model.trim="form.playback_url" type="password" class="form-input" autocomplete="new-password" :disabled="clearSecrets.playback" :placeholder="editing ? 'Kosong = pertahankan URL rekaman lama' : 'URL playback dari dokumentasi perangkat'" /><span class="text-xs font-normal text-gray-500">Hikvision/Dahua memakai pola bawaan. Merek lain memerlukan URL rekaman; placeholder waktu: {start}, {end}, {start_iso}, {end_iso}, {start_unix}, {end_unix}.</span></label>
+        <label v-if="editing && savedSecrets.playback" class="flex items-center gap-2 text-sm text-gray-600 modal-span-full"><input v-model="clearSecrets.playback" type="checkbox" /> Hapus URL rekaman tersimpan</label>
       </form>
       <template #footer>
         <AppButton variant="secondary" @click="formOpen = false">Batal</AppButton>
@@ -153,14 +155,14 @@
       <template #footer><AppButton variant="secondary" @click="refreshGateways">Periksa status</AppButton><AppButton @click="gatewayOpen = false">Selesai</AppButton></template>
     </AppModal>
 
-    <AppModal v-model="playbackOpen" title="Putar ulang rekaman DVR">
-      <form id="playback-form" class="space-y-4" @submit.prevent="startPlayback">
-        <p class="text-sm text-gray-600">{{ selectedCamera?.name }} · {{ selectedCamera?.outlet_name }}</p>
-        <p class="text-xs text-gray-500">Waktu mengikuti zona perangkat: {{ selectedCamera?.timezone || 'Asia/Jakarta' }}. Pastikan jam DVR sudah benar.</p>
-        <AppAlert type="error" :message="playbackError" />
+    <AppModal v-model="playbackOpen" title="Putar ulang rekaman DVR" size="lg">
+      <form id="playback-form" class="modal-form-grid" @submit.prevent="startPlayback">
+        <p class="modal-span-full text-sm text-gray-600">{{ selectedCamera?.name }} · {{ selectedCamera?.outlet_name }}</p>
+        <p class="modal-span-full text-xs text-gray-500">Waktu mengikuti zona perangkat: {{ selectedCamera?.timezone || 'Asia/Jakarta' }}. Pastikan jam DVR sudah benar.</p>
+        <AppAlert class="modal-span-full" type="error" :message="playbackError" />
         <label class="field">Mulai<input v-model="playback.start" type="datetime-local" step="1" class="form-input" required /></label>
         <label class="field">Selesai<input v-model="playback.end" type="datetime-local" step="1" class="form-input" required /></label>
-        <p class="text-xs text-gray-500">Pilih waktu sesuai jam lokal DVR. Rekaman harus tersedia pada DVR outlet.</p>
+        <p class="modal-span-full text-xs text-gray-500">Pilih waktu sesuai jam lokal DVR. Rekaman harus tersedia pada DVR outlet.</p>
       </form>
       <template #footer>
         <AppButton variant="secondary" @click="playbackOpen = false">Batal</AppButton>
@@ -540,6 +542,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+@container modal (min-width: 1024px) { .camera-playback-field { grid-column: span 2; } }
 .field { display: flex; flex-direction: column; gap: .375rem; font-size: .875rem; font-weight: 500; color: #374151; }
 .form-input { width: 100%; min-width: 0; padding: .5rem .7rem; border-radius: .6rem; border: 1px solid #d1d5db; background: #fff; color: #111827; font-weight: 400; }
 .form-input:focus { outline: 2px solid #a7f3d0; border-color: #059669; }

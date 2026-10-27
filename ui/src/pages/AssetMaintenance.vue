@@ -113,22 +113,25 @@
     </AppCard>
 
     <!-- Detail WO -->
-    <AppModal v-model="detailModal" :title="detail ? `Work Order ${detail.wo_number}` : 'Work Order'" size="xl">
-      <div v-if="detail" class="space-y-4">
-        <div class="flex flex-wrap items-center gap-2">
-          <span :class="woStatusCls(detail.status)">{{ woStatusLabel(detail.status) }}</span>
-          <span v-if="detail.due_in_days !== undefined && detail.due_in_days !== null" :class="dueCls(detail.due_in_days)">{{ dueLabel(detail.due_in_days) }}</span>
-          <span class="text-sm text-gray-700">{{ detail.asset_name }}</span>
-        </div>
-
-        <dl class="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-          <div v-for="f in detailFields" :key="f.label" class="flex justify-between gap-3 border-b border-gray-50 py-1">
-            <dt class="shrink-0 text-gray-400">{{ f.label }}</dt>
-            <dd class="min-w-0 break-words text-right font-medium text-gray-800">{{ f.value }}</dd>
+    <AppModal v-model="detailModal" :title="detail ? `Work Order ${detail.wo_number}` : 'Work Order'" size="2xl">
+      <div v-if="detail" :class="canWrite && ['dijadwalkan','berjalan'].includes(detail.status) ? 'modal-form-grid' : 'space-y-4'">
+        <div class="space-y-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <span :class="woStatusCls(detail.status)">{{ woStatusLabel(detail.status) }}</span>
+            <span v-if="detail.due_in_days !== undefined && detail.due_in_days !== null" :class="dueCls(detail.due_in_days)">{{ dueLabel(detail.due_in_days) }}</span>
+            <span class="text-sm text-gray-700">{{ detail.asset_name }}</span>
           </div>
-        </dl>
 
-        <p class="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">{{ detail.description }}</p>
+          <dl class="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+            <div v-for="f in detailFields" :key="f.label" class="flex justify-between gap-3 border-b border-gray-50 py-1">
+              <dt class="shrink-0 text-gray-400">{{ f.label }}</dt>
+              <dd class="min-w-0 break-words text-right font-medium text-gray-800">{{ f.value }}</dd>
+            </div>
+          </dl>
+
+          <p class="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">{{ detail.description }}</p>
+
+        </div>
 
         <!-- Form penutupan -->
         <div v-if="canWrite && ['dijadwalkan','berjalan'].includes(detail.status)" class="space-y-3 rounded-lg border border-gray-200 p-3">
@@ -140,7 +143,7 @@
             </div>
             <div>
               <label class="lbl">Biaya</label>
-              <input v-model.number="cForm.cost" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
+              <RupiahInput v-model="cForm.cost" aria-label="Biaya" step="1" min="0" placeholder="0" />
             </div>
           </div>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -195,6 +198,7 @@
 </template>
 
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'

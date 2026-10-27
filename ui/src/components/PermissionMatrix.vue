@@ -11,7 +11,7 @@
   Parent owns the active list + view-dependency cascade; this only emits toggle(key).
 -->
 <template>
-  <div class="pm">
+  <div class="pm" :class="{ 'pm--compact': compact }">
     <!-- Ringkasan + pencarian -->
     <div class="pm-top">
       <div class="pm-sum">
@@ -113,6 +113,7 @@ import { ref, computed } from 'vue'
 const props = defineProps({
   permissions: { type: Array, default: () => [] },
   disabled:    { type: Boolean, default: false },
+  compact:     { type: Boolean, default: false },
 })
 const emit = defineEmits(['toggle'])
 
@@ -519,7 +520,7 @@ const visibleCats = computed(() => {
 
 // ── Lipat kategori: di layar sempit mulai terlipat agar daftar tidak memanjang ──
 const narrow = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches
-const closed = ref(new Set(narrow ? CATEGORIES.map(c => c.label) : []))
+const closed = ref(new Set(narrow || props.compact ? CATEGORIES.map(c => c.label) : []))
 function isClosed(cat) { return !q.value && closed.value.has(cat.label) }
 function toggleCat(cat) {
   const next = new Set(closed.value)
@@ -532,6 +533,12 @@ function toggleAll() { closed.value = new Set(allClosed.value ? [] : CATEGORIES.
 
 <style scoped>
 .pm { display: flex; flex-direction: column; gap: .75rem; }
+.pm--compact { gap: .5rem; }
+@container role-permissions (min-width: 640px) {
+  .pm--compact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .pm--compact > .pm-top, .pm--compact > .pm-legend, .pm--compact > .pm-empty,
+  .pm--compact > .pm-cat:not(.pm-cat--closed) { grid-column: 1 / -1; }
+}
 
 .pm-cat { border: 1.5px solid #eef0f3; border-radius: .85rem; background: #fff; padding: .7rem .8rem .8rem; transition: border-color .15s, box-shadow .15s; }
 .pm-cat:hover { border-color: #e2e8f0; box-shadow: 0 2px 10px rgba(15,23,42,.04); }

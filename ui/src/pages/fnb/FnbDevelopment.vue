@@ -16,23 +16,24 @@
         <div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-100"><AppActionButton icon="view" label="Detail" @click="open(row)" /><AppActionButton :icon="({ trial: 'trial', review: 'review', approved: 'approve', launched: 'launch', archived: 'archive' })[next]" :label="(actionLabel(next))" v-for="next in actions(row)" :key="next" :disabled="acting === row.id" @click="transition(row, next)" :loading="acting === row.id" /></div>
       </AppCard>
     </div>
-    <AppModal v-model="showForm" :title="editing ? 'Detail Pengembangan' : 'Ide Produk Baru'" size="lg">
-      <fieldset :disabled="readOnly || saving" class="space-y-4 min-w-0">
-        <div class="grid sm:grid-cols-2 gap-3"><AppInput v-model="form.name" label="Nama produk / ide" placeholder="Contoh: Es Kopi Pandan" /><div><label for="dev-form-kind" class="label">Kategori *</label><SearchableSelect id="dev-form-kind" v-model="form.menu_kind" class="field w-full"><option value="">Pilih kategori</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></SearchableSelect></div></div>
+    <AppModal v-model="showForm" :title="editing ? 'Detail Pengembangan' : 'Ide Produk Baru'" size="xl">
+      <fieldset :disabled="readOnly || saving" class="modal-form-grid min-w-0">
+        <div class="contents"><AppInput v-model="form.name" label="Nama produk / ide" placeholder="Contoh: Es Kopi Pandan" /><div><label for="dev-form-kind" class="label">Kategori *</label><SearchableSelect id="dev-form-kind" v-model="form.menu_kind" class="field w-full"><option value="">Pilih kategori</option><option v-for="k in MENU_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option></SearchableSelect></div></div>
         <div><label class="label">Outlet pengujian / peluncuran *</label><SearchSelect v-model="form.outlet_id" :options="outlets" :disabled="!!editing || readOnly" @change="changeOutlet" placeholder="Pilih outlet" /></div>
         <div><label for="dev-brief" class="label">Konsep & sasaran produk</label><textarea id="dev-brief" v-model="form.brief" rows="3" class="field w-full" placeholder="Konsep, target pelanggan, porsi, penyajian, dan pembeda produk"></textarea></div>
-        <div class="grid sm:grid-cols-2 gap-3"><AppInput v-model.number="form.target_price" label="Harga jual target (Rp)" type="number" min="0" step="0.01" /><AppInput v-model.number="form.target_cost_pct" label="Target HPP (%)" type="number" min="0.01" max="100" step="0.01" /></div>
-        <AppAlert type="error" :message="optionsError" />
-        <div class="grid sm:grid-cols-2 gap-3"><div><label class="label">Master resep (opsional)</label><SearchSelect v-model="form.recipe_master_id" :options="recipeOptions" :disabled="readOnly || optionsLoading || !form.outlet_id" placeholder="Tanpa resep" /></div><div><label class="label">Produk POS (opsional)</label><SearchSelect v-model="form.product_id" :options="productOptions" :disabled="readOnly || optionsLoading || !form.outlet_id" placeholder="Belum ditautkan" /></div></div>
-        <p class="text-xs text-gray-500">Resep boleh kosong untuk produk siap jual seperti minuman kemasan. Tautkan produk POS sebelum review bila akan diluncurkan; penautan di sini mencatat referensi pengembangan dan tidak mengubah resep atau harga produk POS.</p>
+        <div class="contents"><RupiahInput v-model="form.target_price" label="Harga jual target (Rp)" min="0" step="0.01" /><AppInput v-model.number="form.target_cost_pct" label="Target HPP (%)" type="number" min="0.01" max="100" step="0.01" /></div>
+        <AppAlert class="modal-span-full" type="error" :message="optionsError" />
+        <div class="contents"><div><label class="label">Master resep (opsional)</label><SearchSelect v-model="form.recipe_master_id" :options="recipeOptions" :disabled="readOnly || optionsLoading || !form.outlet_id" placeholder="Tanpa resep" /></div><div><label class="label">Produk POS (opsional)</label><SearchSelect v-model="form.product_id" :options="productOptions" :disabled="readOnly || optionsLoading || !form.outlet_id" placeholder="Belum ditautkan" /></div></div>
+        <p class="modal-span-full text-xs text-gray-500">Resep boleh kosong untuk produk siap jual seperti minuman kemasan. Tautkan produk POS sebelum review bila akan diluncurkan; penautan di sini mencatat referensi pengembangan dan tidak mengubah resep atau harga produk POS.</p>
         <div><label for="dev-notes" class="label">Hasil uji coba & evaluasi</label><textarea id="dev-notes" v-model="form.trial_notes" rows="5" class="field w-full" placeholder="Tanggal/penguji, rasa, porsi/yield, tampilan, konsistensi, biaya, temuan, dan tindakan perbaikan"></textarea></div>
-        <p v-if="editing?.status === 'review'" class="text-xs text-amber-700">Mengubah isi saat review akan mengembalikan pengembangan ke tahap uji coba.</p>
+        <p v-if="editing?.status === 'review'" class="modal-span-full text-xs text-amber-700">Mengubah isi saat review akan mengembalikan pengembangan ke tahap uji coba.</p>
       </fieldset>
       <template #footer><AppButton variant="secondary" @click="showForm = false">Tutup</AppButton><AppButton v-if="!readOnly" :loading="saving" :disabled="optionsLoading || !!optionsError" @click="save">Simpan Pengembangan</AppButton></template>
     </AppModal>
   </div>
 </template>
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, watch, onMounted } from 'vue'

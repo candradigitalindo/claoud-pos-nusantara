@@ -39,7 +39,7 @@
     </AppCard>
 
     <!-- Create / Edit Modal -->
-    <AppModal v-model="showModal" :title="editTarget ? 'Edit Rekening' : 'Tambah Rekening'" size="sm">
+    <AppModal v-model="showModal" :title="editTarget ? 'Edit Rekening' : 'Tambah Rekening'" size="md">
       <div class="space-y-3">
         <AppInput v-model="form.bank_name" label="Nama Bank" placeholder="Contoh: BCA, BRI, Mandiri" />
         <AppInput v-model="form.account_number" label="Nomor Rekening" placeholder="Contoh: 1234567890" />

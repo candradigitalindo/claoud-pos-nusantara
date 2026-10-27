@@ -65,7 +65,7 @@
 
     <!-- Form serah terima -->
     <AppModal v-model="createModal" title="Serahkan Aset ke PIC" size="2xl">
-      <form class="space-y-3" @submit.prevent="save">
+      <form id="asset-handover-form" class="modal-form-grid" @submit.prevent="save">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label class="lbl">Nama PIC Penerima <span class="text-red-500">*</span></label>
@@ -102,22 +102,22 @@
             hint="Foto saat barang diserahkan ke PIC. Salinannya dikirim ke email cadangan." />
         </div>
 
-        <div>
+        <div class="modal-span-full">
           <label class="lbl">Catatan</label>
           <input v-model="form.notes" class="form-input" placeholder="Opsional" />
         </div>
 
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
-          <AppButton type="submit" :loading="saving">Serahkan</AppButton>
-        </div>
       </form>
+      <template #footer>
+        <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
+        <AppButton type="submit" form="asset-handover-form" :loading="saving">Serahkan</AppButton>
+      </template>
     </AppModal>
 
     <!-- Detail -->
-    <AppModal v-model="detailModal" :title="detail ? `Serah Terima ${detail.handover_number}` : ''" size="lg">
-      <div v-if="detail" class="space-y-3">
-        <dl class="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+    <AppModal v-model="detailModal" :title="detail ? `Serah Terima ${detail.handover_number}` : ''" size="xl">
+      <div v-if="detail" class="modal-form-grid">
+        <dl class="modal-span-full grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
           <div class="flex justify-between gap-2 border-b border-gray-50 py-1">
             <dt class="text-gray-400">PIC penerima</dt><dd class="font-medium text-gray-800">{{ detail.pic_name }}</dd>
           </div>

@@ -45,25 +45,26 @@
     </AppCard>
 
     <AppModal :model-value="showEditor" title="Laporan penggunaan barang" size="2xl" @update:model-value="closeEditor">
-      <form id="usage-form" class="space-y-4" @submit.prevent="save">
-        <AppAlert type="error" :message="formError" />
-        <div class="grid gap-3 sm:grid-cols-2">
+      <form id="usage-form" class="modal-form-grid" @submit.prevent="save">
+        <AppAlert class="modal-span-full" type="error" :message="formError" />
+        <div class="modal-form-grid modal-form-grid--three modal-span-full">
           <div><label for="report-kind" class="lbl">Jenis laporan</label><select id="report-kind" v-model="form.kind" :disabled="!!editingId || saving" class="field"><option value="pemakaian">Pemakaian material</option><option value="susut">Susut / rusak / terbuang</option></select></div>
           <div><label for="report-date" class="lbl">Tanggal penggunaan</label><input id="report-date" v-model="form.usage_date" type="date" required :max="today" class="field" /></div>
           <div><label for="report-location" class="lbl">Lokasi pekerjaan</label><input id="report-location" v-model="form.location" maxlength="200" class="field" placeholder="Contoh: dapur lantai 1" /></div>
           <div><label for="report-performer" class="lbl">Pelaksana</label><input id="report-performer" v-model="form.performer" maxlength="150" class="field" /></div>
-          <div class="sm:col-span-2"><label for="report-pic" class="lbl">PIC yang mengonfirmasi penggunaan</label><input id="report-pic" v-model="form.pic_name" maxlength="150" class="field" /></div>
+          <div><label for="report-pic" class="lbl">PIC yang mengonfirmasi penggunaan</label><input id="report-pic" v-model="form.pic_name" maxlength="150" class="field" /></div>
         </div>
-        <div><label for="report-work" class="lbl">Pekerjaan / alasan susut</label><textarea id="report-work" v-model="form.work_description" rows="3" maxlength="3000" class="field" placeholder="Jelaskan penggunaan barang dan hasil pekerjaan atau penyebab kerusakan." /></div>
-        <fieldset class="space-y-3"><legend class="text-sm font-semibold mb-2">Barang yang dilaporkan</legend>
+
+        <fieldset class="modal-span-full modal-form-grid"><legend class="modal-span-full text-sm font-semibold mb-2">Barang yang dilaporkan</legend>
           <div v-for="(item, i) in form.items" :key="i" class="rounded-lg bg-gray-50 p-3 space-y-2">
             <label :for="`item-${i}`" class="lbl">Barang {{ i + 1 }}</label><select :id="`item-${i}`" v-model="item.material_id" required class="field"><option value="">Pilih material</option><option v-for="m in editorMaterials" :key="m.id" :value="m.id">{{ m.name }} · {{ m.request_number || 'Pindahan' }} · sisa {{ qty(m.remaining) }} {{ m.unit }}</option></select>
             <div class="flex gap-3 items-end"><div class="flex-1"><label :for="`qty-${i}`" class="lbl">Jumlah {{ i + 1 }}</label><input :id="`qty-${i}`" v-model.number="item.qty" type="number" min="0.0001" step="0.0001" required class="field" /></div><button v-if="form.items.length > 1" type="button" class="text-sm text-red-600 pb-2" @click="form.items.splice(i, 1)">Hapus</button></div>
           </div>
-          <AppButton type="button" size="sm" variant="secondary" @click="form.items.push({ material_id: '', qty: 1 })">Tambah barang</AppButton>
+          <AppButton class="justify-self-start" type="button" size="sm" variant="secondary" @click="form.items.push({ material_id: '', qty: 1 })">Tambah barang</AppButton>
         </fieldset>
+        <div><label for="report-work" class="lbl">Pekerjaan / alasan susut</label><textarea id="report-work" v-model="form.work_description" rows="3" maxlength="3000" class="field" placeholder="Jelaskan penggunaan barang dan hasil pekerjaan atau penyebab kerusakan." /></div>
         <MaterialEvidence v-model="form.evidence" :disabled="saving" @busy="uploading = $event" />
-        <p class="text-xs text-gray-500">Draft belum mengurangi saldo. Saat diajukan, jumlah dicatat sebagai pemakaian/susut. Foto, pekerjaan, lokasi, pelaksana, dan PIC wajib lengkap saat diajukan.</p>
+        <p class="modal-span-full text-xs text-gray-500">Draft belum mengurangi saldo. Saat diajukan, jumlah dicatat sebagai pemakaian/susut. Foto, pekerjaan, lokasi, pelaksana, dan PIC wajib lengkap saat diajukan.</p>
       </form>
       <template #footer><AppButton variant="secondary" :disabled="saving || uploading" @click="closeEditor(false)">Batal</AppButton><AppButton type="submit" form="usage-form" :loading="saving" :disabled="uploading">Simpan draft / perbaikan</AppButton></template>
     </AppModal>

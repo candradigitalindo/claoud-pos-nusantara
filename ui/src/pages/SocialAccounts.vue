@@ -250,18 +250,18 @@
     </template>
 
     <!-- ── Tambah / ubah akun ───────────────────────────────────── -->
-    <AppModal v-model="modal.open" :title="modal.id ? 'Ubah Akun' : 'Tambah Akun'">
-      <div class="space-y-4">
+    <AppModal v-model="modal.open" :title="modal.id ? 'Ubah Akun' : 'Tambah Akun'" size="lg">
+      <div class="modal-form-grid">
         <AppSelect v-model="form.outlet_id" label="Outlet" :options="opsiOutlet"
           placeholder="Pilih outlet" :disabled="!!modal.id" />
         <AppSelect v-model="form.platform" label="Platform" :options="OPSI_PLATFORM" :disabled="!!modal.id" />
-        <AppInput v-model="form.username" label="Tautan profil atau nama akun"
+        <AppInput class="modal-span-full" v-model="form.username" label="Tautan profil atau nama akun"
           placeholder="https://www.instagram.com/nama.akun/ atau @nama.akun" />
-        <p class="text-xs leading-relaxed text-gray-500">
+        <p class="modal-span-full text-xs leading-relaxed text-gray-500">
           Tautan boleh ditempel apa adanya dari peramban — bagian di belakang tanda tanya ikut dibuang otomatis.
         </p>
 
-        <div class="rounded-lg border border-gray-200 p-3">
+        <div class="modal-span-full rounded-lg border border-gray-200 p-3">
           <label class="flex cursor-pointer items-start gap-2.5">
             <input v-model="form.auto_fetch" type="checkbox"
               class="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
@@ -278,11 +278,11 @@
           </p>
         </div>
 
-        <p v-if="modal.id" class="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-700">
+        <p v-if="modal.id" class="modal-span-full rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs leading-relaxed text-amber-700">
           Mengganti nama akun akan menghapus seluruh riwayat akun lama. Riwayat dua akun berbeda yang
           disambung jadi satu garis akan terbaca sebagai lonjakan pengikut yang tidak pernah terjadi.
         </p>
-        <AppAlert type="error" :message="modal.error" />
+        <AppAlert class="modal-span-full" type="error" :message="modal.error" />
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="modal.open = false">Batal</AppButton>
@@ -291,7 +291,7 @@
     </AppModal>
 
     <!-- ── Isian manual mingguan ────────────────────────────────── -->
-    <AppModal v-model="manual.open" size="xl"
+    <AppModal v-model="manual.open" size="2xl"
       :title="manual.akun ? `Isian Manual — @${manual.akun.username}` : 'Isian Manual'">
       <div class="space-y-4 sm:space-y-5">
         <p class="text-xs leading-relaxed text-gray-600">
@@ -302,7 +302,7 @@
 
         <div v-if="busy.manual" class="flex justify-center py-10"><AppSpinner /></div>
 
-        <div v-else class="max-h-[55vh] overflow-y-auto pr-1">
+        <div v-else class="overflow-x-auto">
           <!-- Ponsel: satu kartu per minggu -->
           <ul class="space-y-2.5 sm:hidden">
             <li v-for="r in barisMinggu" :key="r.week_start"

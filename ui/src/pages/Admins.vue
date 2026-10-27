@@ -86,7 +86,7 @@
     <Teleport to="body">
       <Transition name="modal-fade">
         <div v-if="showCreate" class="modal-backdrop" @click.self="closeCreate">
-          <div class="modal-panel">
+          <div class="modal-panel modal-panel--form" role="dialog" aria-modal="true" aria-label="Tambah Pengguna">
             <div class="modal-glare" aria-hidden="true" />
 
             <!-- Header -->
@@ -103,12 +103,12 @@
               </button>
             </div>
 
-            <div class="modal-body">
-              <AppAlert type="error" :message="createError" />
+            <div class="modal-body modal-body--form">
+              <AppAlert class="form-wide" type="error" :message="createError" />
 
               <!-- Credential section -->
-              <p class="section-label">Kredensial Login</p>
-              <div class="form-grid">
+              <p class="section-label form-wide">Kredensial Login</p>
+              <div class="form-grid form-wide">
                 <div class="field" :class="{ 'field--error': formErrors.username }">
                   <label class="field-label">Username <span class="req">*</span></label>
                   <div class="field-input-wrap">
@@ -127,7 +127,7 @@
                 </div>
               </div>
 
-              <div class="field field-span2 mt-3">
+              <div class="field">
                 <label class="field-label">Nomor WhatsApp <span style="font-weight:400;color:#9ca3af">(opsional)</span></label>
                 <div class="field-input-wrap">
                   <svg class="field-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
@@ -135,7 +135,7 @@
                 </div>
               </div>
 
-              <div class="field field-span2 mt-3" :class="{ 'field--error': formErrors.password }">
+              <div class="field" :class="{ 'field--error': formErrors.password }">
                 <label class="field-label">Password <span class="req">*</span></label>
                 <div class="field-input-wrap">
                   <svg class="field-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -159,7 +159,7 @@
               </div>
 
               <!-- Role section -->
-              <div class="field mt-4" :class="{ 'field--error': formErrors.role }">
+              <div class="field form-wide" :class="{ 'field--error': formErrors.role }">
                 <label class="field-label">Role <span class="req">*</span></label>
                 <SearchSelect
                   v-model="form.role"
@@ -194,7 +194,7 @@
     <Teleport to="body">
       <Transition name="modal-fade">
         <div v-if="showEdit" class="modal-backdrop" @click.self="showEdit = false">
-          <div class="modal-panel" style="max-width:440px">
+          <div class="modal-panel modal-panel--form" role="dialog" aria-modal="true" aria-label="Edit Pengguna">
             <div class="modal-glare" aria-hidden="true" />
             <div class="modal-header">
               <div class="modal-icon" style="background:linear-gradient(135deg,#1d4ed8,#1e40af)">
@@ -206,15 +206,15 @@
               </div>
               <button class="modal-close" @click="showEdit = false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
-            <div class="modal-body">
-              <AppAlert type="error" :message="editError" />
+            <div class="modal-body modal-body--form">
+              <AppAlert class="form-wide" type="error" :message="editError" />
               <div class="field">
                 <label class="field-label">Nama Lengkap</label>
                 <div class="field-input-wrap">
                   <input v-model="editForm.name" class="field-input" placeholder="Nama lengkap" />
                 </div>
               </div>
-              <div class="field mt-4">
+              <div class="field">
                 <label class="field-label">Nomor WhatsApp</label>
                 <div class="field-input-wrap">
                   <input v-model="editForm.wa_phone" class="field-input field-input--mono" placeholder="08xx… (kosongkan bila tidak dikirimi notifikasi)" />
@@ -224,7 +224,7 @@
                   Terima notifikasi WhatsApp sesuai posisi (role &amp; outlet)
                 </label>
               </div>
-              <div class="field mt-4">
+              <div class="field form-wide">
                 <label class="field-label">Role</label>
                 <SearchSelect
                   v-model="editForm.role"
@@ -631,16 +631,16 @@ async function doDelete() {
 
 /* Modal shared */
 .modal-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0,0,0,.45); backdrop-filter: blur(6px); }
-.modal-panel { position: relative; width: 100%; max-width: 520px; background: rgba(255,255,255,.96); backdrop-filter: blur(40px) saturate(180%); border-radius: 1.25rem; border: 1px solid rgba(255,255,255,.8); box-shadow: 0 24px 80px rgba(0,0,0,.18), 0 4px 24px rgba(0,0,0,.1); overflow: hidden; }
+.modal-panel { position: relative; width: 100%; max-width: 768px; min-width: 0; max-height: calc(100dvh - 2rem); display: flex; flex-direction: column; background: rgba(255,255,255,.96); backdrop-filter: blur(40px) saturate(180%); border-radius: 1.25rem; border: 1px solid rgba(255,255,255,.8); box-shadow: 0 24px 80px rgba(0,0,0,.18), 0 4px 24px rgba(0,0,0,.1); overflow: hidden; }
 .modal-glare { position: absolute; top: 0; left: 10%; right: 10%; height: 1px; background: linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent); pointer-events: none; }
-.modal-header { display: flex; align-items: center; gap: .85rem; padding: 1.25rem 1.4rem 1rem; border-bottom: 1px solid rgba(0,0,0,.06); }
+.modal-header { flex-shrink: 0; display: flex; align-items: center; gap: .85rem; padding: 1.25rem 1.4rem 1rem; border-bottom: 1px solid rgba(0,0,0,.06); }
 .modal-icon { width: 36px; height: 36px; border-radius: .75rem; background: linear-gradient(135deg,#1a5c38,#0f4226); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .modal-title { font-size: 1rem; font-weight: 700; color: #0f2d1d; line-height: 1.2; }
 .modal-sub { font-size: .75rem; color: #7a9e8a; margin-top: .1rem; }
 .modal-close { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: .55rem; border: none; background: rgba(0,0,0,.05); color: #64748b; cursor: pointer; transition: background .14s; flex-shrink: 0; }
 .modal-close:hover { background: rgba(0,0,0,.1); }
-.modal-body { padding: 1.2rem 1.4rem; display: flex; flex-direction: column; gap: .25rem; max-height: 70vh; overflow-y: auto; }
-.modal-footer { display: flex; justify-content: flex-end; gap: .6rem; padding: .9rem 1.4rem; border-top: 1px solid rgba(0,0,0,.06); background: rgba(0,0,0,.015); }
+.modal-body { padding: 1.2rem 1.4rem; display: flex; flex-direction: column; gap: .25rem; min-height: 0; overflow-y: auto; }
+.modal-footer { flex-shrink: 0; flex-wrap: wrap; display: flex; justify-content: flex-end; gap: .6rem; padding: .9rem 1.4rem; border-top: 1px solid rgba(0,0,0,.06); background: rgba(0,0,0,.015); }
 .modal-btn-cancel { padding: .48rem 1rem; border-radius: .65rem; font-size: .82rem; font-weight: 600; background: transparent; border: 1px solid rgba(0,0,0,.12); color: #475569; cursor: pointer; transition: background .14s; }
 .modal-btn-cancel:hover { background: rgba(0,0,0,.05); }
 .modal-btn-save { display: inline-flex; align-items: center; gap: .4rem; padding: .48rem 1.1rem; border-radius: .65rem; font-size: .82rem; font-weight: 700; background: linear-gradient(135deg,#1a5c38,#0f4226); color: #fff; border: none; cursor: pointer; transition: opacity .15s; }
@@ -650,7 +650,7 @@ async function doDelete() {
 /* Fields */
 .section-label { font-size: .68rem; font-weight: 700; color: #7a9e8a; text-transform: uppercase; letter-spacing: .07em; margin-bottom: .5rem; }
 .mt-3 { margin-top: .75rem; } .mt-4 { margin-top: 1rem; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 .field { display: flex; flex-direction: column; gap: .3rem; }
 .field--error .field-input { border-color: #ef4444 !important; }
 .field-label { font-size: .72rem; font-weight: 600; color: #334155; }
@@ -688,4 +688,14 @@ async function doDelete() {
 /* Modal transition */
 .modal-fade-enter-active, .modal-fade-leave-active { transition: opacity .2s, transform .2s; }
 .modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(.96) translateY(8px); }
+
+.modal-body--form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.modal-body--form > *, .form-grid > * { min-width: 0; }
+.form-wide { grid-column: 1 / -1; }
+@media (min-width: 768px) {
+  .modal-body--form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 639px) {
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+}
 </style>

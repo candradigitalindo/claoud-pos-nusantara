@@ -84,31 +84,27 @@
 
     <!-- ── Modal buat mutasi ── -->
     <AppModal v-model="createModal" title="Buat Mutasi Aset" size="2xl">
-      <form class="space-y-3" @submit.prevent="saveDraft">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Outlet Asal <span class="text-red-500">*</span></label>
-            <SearchSelect v-model="form.from_outlet_id" :options="outlets" placeholder="Pilih outlet asal…" @change="loadAvailable" />
-          </div>
-          <div>
-            <label class="lbl">Outlet Tujuan <span class="text-red-500">*</span></label>
-            <SearchSelect v-model="form.to_outlet_id" :options="destinationOptions" placeholder="Pilih outlet tujuan…" />
-          </div>
+      <form id="asset-transfer-form" class="modal-form-grid" @submit.prevent="saveDraft">
+        <div>
+          <label class="lbl">Outlet Asal <span class="text-red-500">*</span></label>
+          <SearchSelect v-model="form.from_outlet_id" :options="outlets" placeholder="Pilih outlet asal…" @change="loadAvailable" />
         </div>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Alasan</label>
-            <SearchableSelect v-model="form.reason" class="form-input" @change="loadAvailable">
-              <option v-for="(lbl, key) in TRANSFER_REASONS" :key="key" :value="key">{{ lbl }}</option>
-            </SearchableSelect>
-          </div>
-          <div v-if="form.reason === 'pinjam' || form.reason === 'perbaikan'">
-            <label class="lbl">Rencana Kembali</label>
-            <input v-model="form.expected_return" type="date" class="form-input" />
-          </div>
+        <div>
+          <label class="lbl">Outlet Tujuan <span class="text-red-500">*</span></label>
+          <SearchSelect v-model="form.to_outlet_id" :options="destinationOptions" placeholder="Pilih outlet tujuan…" />
+        </div>
+        <div>
+          <label class="lbl">Alasan</label>
+          <SearchableSelect v-model="form.reason" class="form-input" @change="loadAvailable">
+            <option v-for="(lbl, key) in TRANSFER_REASONS" :key="key" :value="key">{{ lbl }}</option>
+          </SearchableSelect>
+        </div>
+        <div v-if="form.reason === 'pinjam' || form.reason === 'perbaikan'">
+          <label class="lbl">Rencana Kembali</label>
+          <input v-model="form.expected_return" type="date" class="form-input" />
         </div>
 
-        <div>
+        <div class="modal-span-full">
           <label class="lbl">Aset yang Dimutasi <span class="text-red-500">*</span></label>
           <p v-if="!form.from_outlet_id" class="rounded-lg bg-gray-50 p-3 text-xs text-gray-500">
             Pilih outlet asal dulu untuk melihat aset yang bisa dimutasi.
@@ -118,7 +114,7 @@
             Tidak ada aset yang bisa dimutasi dari outlet ini. Aset yang sedang dalam perjalanan atau sudah
             tercantum di dokumen mutasi lain tidak ditawarkan.
           </p>
-          <ul v-else class="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-2">
+          <ul v-else class="modal-form-grid max-h-80 overflow-y-auto rounded-lg border border-gray-200 p-2">
             <li v-for="a in available" :key="a.id" class="rounded-lg p-2" :class="picked[a.id] ? 'bg-emerald-50' : 'hover:bg-gray-50'">
               <div class="flex items-start gap-2">
                 <input type="checkbox" class="mt-1 h-4 w-4 shrink-0 accent-emerald-600"
@@ -136,16 +132,16 @@
           </ul>
         </div>
 
-        <div>
+        <div class="modal-span-full">
           <label class="lbl">Catatan</label>
           <textarea v-model="form.notes" rows="2" class="form-input" placeholder="Opsional"></textarea>
         </div>
 
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
-          <AppButton type="submit" :loading="saving">Simpan Draft</AppButton>
-        </div>
       </form>
+      <template #footer>
+        <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
+        <AppButton type="submit" form="asset-transfer-form" :loading="saving">Simpan Draft</AppButton>
+      </template>
     </AppModal>
 
     <!-- ── Modal detail ── -->

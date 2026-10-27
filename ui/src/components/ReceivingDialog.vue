@@ -13,12 +13,12 @@
          lewat tombol Selesai) atau belum disetujui / sudah batal. -->
     <AppAlert v-else-if="draft && !receivable" type="warning" :message="notReceivableMsg" />
 
-    <div v-else-if="draft" class="space-y-4">
-      <p v-if="isBahan" class="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">
+    <div v-else-if="draft" class="modal-form-grid">
+      <p v-if="isBahan" class="modal-span-full rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">
         Ini pengajuan <strong>bahan baku</strong>: seluruh barisnya diterima ke <strong>stok gudang</strong>
         (Gudang Induk), berapa pun harganya, dan tidak menjadi aset.
       </p>
-      <p v-else class="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">
+      <p v-else class="modal-span-full rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">
         Tentukan tujuan tiap barang yang datang. Barang yang sudah ada di <strong>katalog stok</strong>
         (bahan dapur) langsung diarahkan ke gudang berapa pun harganya; sisanya yang bernilai
         <strong>{{ formatRupiah(draft.capitalization_min) }}</strong> ke atas diusulkan menjadi
@@ -31,7 +31,7 @@
         <p class="mt-1 text-[11px] text-amber-700">Pengajuan ini tidak terikat outlet, jadi tujuan asetnya dipilih di sini.</p>
       </div>
 
-      <p v-if="!openLines.length" class="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">
+      <p v-if="!openLines.length" class="modal-span-full rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">
         Semua barang pada pengajuan ini sudah dicatat. Tidak ada yang tersisa untuk diterima.
       </p>
 
@@ -55,7 +55,7 @@
           hint="Ambil foto barangnya di tempat serah terima. Salinannya otomatis dikirim ke email cadangan." />
       </div>
 
-      <div v-for="group in groups" :key="group.key" class="space-y-3">
+      <div v-for="group in groups" :key="group.key" class="modal-span-full space-y-3">
         <div v-if="groups.length > 1" class="flex items-center gap-2">
           <span class="text-xs font-bold uppercase tracking-wide text-gray-500">{{ group.title }}</span>
           <span class="text-[11px] text-gray-400">{{ group.hint }}</span>
@@ -164,7 +164,7 @@
       </template>
       </div>
 
-      <p v-if="openLines.length && !handledLines.length" class="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+      <p v-if="openLines.length && !handledLines.length" class="modal-span-full rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
         Tidak ada baris yang bisa Anda catat di sini — baris peralatan dicatat bagian Aset (izin tambah aset),
         baris dapur/stok dicatat petugas gudang (izin penyesuaian stok).
       </p>

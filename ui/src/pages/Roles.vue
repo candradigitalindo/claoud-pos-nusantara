@@ -148,59 +148,62 @@
     <Teleport to="body">
       <Transition name="modal-fade">
         <div v-if="showCreate" class="modal-backdrop" @click.self="showCreate = false">
-          <div class="modal modal--lg">
+          <div class="modal modal--lg" role="dialog" aria-modal="true" aria-label="Tambah Role">
             <div class="modal-hd">
               <span class="modal-title">{{ copyingFrom ? 'Duplikat Role' : 'Tambah Role Baru' }}</span>
               <button class="modal-close" @click="showCreate = false">✕</button>
             </div>
-            <div class="modal-bd">
-              <div v-if="copyingFrom" class="copy-note">
+            <div class="modal-bd role-create-layout">
+              <div v-if="copyingFrom" class="copy-note role-wide">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                 Disalin dari <b>{{ copyingFrom }}</b> — hak akses sudah ikut tersalin. Cukup ubah nama &amp; unit kerja.
               </div>
-              <AppAlert type="error" :message="createError" />
+              <AppAlert class="role-wide" type="error" :message="createError" />
 
-              <div class="form-row">
-                <AppInput v-model="form.name" label="Nama Role" placeholder="contoh: kasir" :error="formErrors.name" />
-                <AppInput v-model="form.description" label="Deskripsi (opsional)" placeholder="Deskripsi singkat role" />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Halaman Setelah Login</label>
-                <SearchSelect v-model="form.redirect_to" :options="REDIRECT_SEARCH_OPTIONS" placeholder="Cari halaman tujuan..." />
-                <p v-if="!redirectAllowed(form.permissions, form.redirect_to)" class="form-hint" style="color:#b45309">
-                  ⚠ Role ini belum punya izin untuk halaman tersebut — centang izinnya di Hak Akses di bawah, atau user akan mendarat di halaman "Akses Ditolak".
-                </p>
-                <p v-else class="form-hint">Semua halaman sidebar tersedia — ketik untuk mencari.</p>
-              </div>
-
-              <!-- Scope -->
-              <div class="form-section">
-                <div class="form-section-title">🏢 Scope Unit Kerja</div>
-                <div class="scope-row">
-                  <label class="scope-opt" :class="{ 'scope-opt--on': form.scope_type === 'all' }">
-                    <input type="radio" name="create_scope" value="all" v-model="form.scope_type" />
-                    <div><span>Semua Unit Kerja</span><small>Akses semua outlet & unit kerja</small></div>
-                  </label>
-                  <label class="scope-opt" :class="{ 'scope-opt--on': form.scope_type === 'specific' }">
-                    <input type="radio" name="create_scope" value="specific" v-model="form.scope_type" />
-                    <div><span>Unit Kerja Tertentu</span><small>Pilih unit kerja spesifik</small></div>
-                  </label>
+              <div class="role-identity">
+                <div class="form-row">
+                  <AppInput v-model="form.name" label="Nama Role" placeholder="contoh: kasir" :error="formErrors.name" />
+                  <AppInput v-model="form.description" label="Deskripsi (opsional)" placeholder="Deskripsi singkat role" />
                 </div>
-                <div v-if="form.scope_type === 'specific'" class="wu-list">
-                  <label v-for="wu in workUnits" :key="wu.id" class="wu-item">
-                    <input type="checkbox" :checked="form.work_unit_ids.includes(wu.id)" @change="toggleFormWorkUnit(wu.id)" />
-                    <div><span>{{ wu.name }}</span><small v-if="wu.outlet_name">{{ wu.outlet_name }}</small></div>
-                  </label>
-                  <p v-if="workUnits.length === 0" class="wu-empty">Belum ada unit kerja.</p>
+
+                <div class="form-group">
+                  <label class="form-label">Halaman Setelah Login</label>
+                  <SearchSelect v-model="form.redirect_to" :options="REDIRECT_SEARCH_OPTIONS" placeholder="Cari halaman tujuan..." />
+                  <p v-if="!redirectAllowed(form.permissions, form.redirect_to)" class="form-hint" style="color:#b45309">
+                    ⚠ Role ini belum punya izin untuk halaman tersebut — centang izinnya di Hak Akses di bawah, atau user akan mendarat di halaman "Akses Ditolak".
+                  </p>
+                  <p v-else class="form-hint">Semua halaman sidebar tersedia — ketik untuk mencari.</p>
                 </div>
+
+                <!-- Scope -->
+                <div class="form-section">
+                  <div class="form-section-title">🏢 Scope Unit Kerja</div>
+                  <div class="scope-row">
+                    <label class="scope-opt" :class="{ 'scope-opt--on': form.scope_type === 'all' }">
+                      <input type="radio" name="create_scope" value="all" v-model="form.scope_type" />
+                      <div><span>Semua Unit Kerja</span><small>Akses semua outlet & unit kerja</small></div>
+                    </label>
+                    <label class="scope-opt" :class="{ 'scope-opt--on': form.scope_type === 'specific' }">
+                      <input type="radio" name="create_scope" value="specific" v-model="form.scope_type" />
+                      <div><span>Unit Kerja Tertentu</span><small>Pilih unit kerja spesifik</small></div>
+                    </label>
+                  </div>
+                  <div v-if="form.scope_type === 'specific'" class="wu-list">
+                    <label v-for="wu in workUnits" :key="wu.id" class="wu-item">
+                      <input type="checkbox" :checked="form.work_unit_ids.includes(wu.id)" @change="toggleFormWorkUnit(wu.id)" />
+                      <div><span>{{ wu.name }}</span><small v-if="wu.outlet_name">{{ wu.outlet_name }}</small></div>
+                    </label>
+                    <p v-if="workUnits.length === 0" class="wu-empty">Belum ada unit kerja.</p>
+                  </div>
+                </div>
+
               </div>
 
               <!-- Permissions matrix -->
               <div class="form-section">
                 <div class="form-section-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:-2px;margin-right:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>Hak Akses</div>
 
-                <PermissionMatrix :permissions="form.permissions" @toggle="toggleFormPermission" />
+                <PermissionMatrix compact :permissions="form.permissions" @toggle="toggleFormPermission" />
               </div>
             </div>
             <div class="modal-ft">
@@ -292,7 +295,7 @@
     <Teleport to="body">
       <Transition name="modal-fade">
         <div v-if="showScopeEdit" class="modal-backdrop" @click.self="showScopeEdit = false">
-          <div class="modal modal--sm">
+          <div class="modal modal--scope">
             <div class="modal-hd">
               <span class="modal-title">Pilih Unit Kerja</span>
               <button class="modal-close" @click="showScopeEdit = false">✕</button>
@@ -1061,13 +1064,14 @@ watch(showCreate, v => {
 }
 .modal {
   background: #fff; border-radius: .875rem; width: 100%;
-  max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column;
+  max-height: calc(100dvh - 2rem); min-width: 0; overflow: hidden; display: flex; flex-direction: column;
   box-shadow: 0 20px 60px rgba(0,0,0,.22);
 }
 .modal--sm { max-width: 420px; }
-.modal--lg { max-width: 820px; }
+.modal--lg { max-width: 1280px; }
 
 .modal-hd {
+  flex-shrink: 0;
   display: flex; align-items: center; justify-content: space-between;
   padding: 1rem 1.25rem; border-bottom: 1.5px solid #f3f4f6;
   background: linear-gradient(135deg, #6366f1, #4f46e5); border-radius: .875rem .875rem 0 0;
@@ -1082,8 +1086,9 @@ watch(showCreate, v => {
 }
 .modal-close:hover { background: rgba(255,255,255,.35); }
 
-.modal-bd { padding: 1.25rem; flex: 1; overflow-y: auto; }
+.modal-bd { padding: 1.25rem; flex: 1; min-height: 0; overflow-y: auto; }
 .modal-ft {
+  flex-shrink: 0; flex-wrap: wrap;
   padding: 1rem 1.25rem; border-top: 1.5px solid #f3f4f6;
   display: flex; justify-content: flex-end; gap: .5rem; background: #fafafa;
   border-radius: 0 0 .875rem .875rem;
@@ -1193,7 +1198,7 @@ watch(showCreate, v => {
 
   /* Modal: sisakan ruang untuk matriks */
   .modal-backdrop { padding: .6rem; align-items: flex-start; padding-top: max(.6rem, env(safe-area-inset-top)); }
-  .modal { max-height: calc(100vh - 1.2rem); }
+  .modal { max-height: calc(100dvh - 1.2rem); }
   .modal-hd { padding: .85rem 1rem; }
   .modal-bd { padding: .85rem .85rem 1rem; }
   .modal-ft { padding: .75rem .85rem; }
@@ -1201,5 +1206,19 @@ watch(showCreate, v => {
   .form-row   { grid-template-columns: 1fr; }
   .scope-row  { grid-template-columns: 1fr; }
   .wu-list { max-height: 12rem; }
+}
+
+.role-create-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.role-create-layout > *, .role-identity { min-width: 0; }
+.role-wide { grid-column: 1 / -1; }
+.role-create-layout > .form-section { margin-top: 0; container: role-permissions / inline-size; }
+.modal--scope { max-width: 768px; }
+.modal--scope .wu-list { display: grid; grid-template-columns: minmax(0, 1fr); max-height: none; overflow: visible; }
+@media (min-width: 768px) {
+  .modal--scope .wu-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .role-create-layout { grid-template-columns: minmax(280px, .8fr) minmax(0, 1.6fr); }
+  .role-create-layout > .form-section { border-top: 0; padding-top: 0; }
 }
 </style>

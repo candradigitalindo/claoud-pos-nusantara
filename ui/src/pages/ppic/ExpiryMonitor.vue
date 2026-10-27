@@ -84,11 +84,11 @@
         </p>
         <textarea v-model="ackNote" rows="3" placeholder="Catatan penanganan (mis. sudah dibuang / dipakai duluan / ditransfer)..."
           class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
-        <div class="flex justify-end gap-2">
-          <AppButton variant="secondary" @click="showAck = false">Batal</AppButton>
-          <AppButton variant="primary" :loading="acking" @click="doAck">Simpan</AppButton>
-        </div>
       </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showAck = false">Batal</AppButton>
+        <AppButton v-if="ackTarget" variant="primary" :loading="acking" @click="doAck">Simpan</AppButton>
+      </template>
     </AppModal>
   </div>
 </template>

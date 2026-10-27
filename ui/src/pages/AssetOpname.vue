@@ -88,8 +88,8 @@
       </ul>
     </AppCard>
 
-    <AppModal v-model="createModal" title="Buka Sesi Opname" size="lg">
-      <form class="space-y-3" @submit.prevent="createSession">
+    <AppModal v-model="createModal" title="Buka Sesi Opname" size="md">
+      <form id="asset-opname-form" class="space-y-3" @submit.prevent="createSession">
         <div>
           <label class="lbl">Outlet <span class="text-red-500">*</span></label>
           <SearchSelect v-model="newSession.outlet_id" :options="outlets" placeholder="Pilih outlet…" />
@@ -102,11 +102,11 @@
           Daftar aset outlet akan dibekukan sebagai baris hitungan. Aset yang sedang dalam perjalanan
           mutasi tidak diikutkan — barangnya memang tidak ada di tempat.
         </p>
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
-          <AppButton type="submit" :loading="creating">Buka Sesi</AppButton>
-        </div>
       </form>
+      <template #footer>
+        <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
+        <AppButton type="submit" form="asset-opname-form" :loading="creating">Buka Sesi</AppButton>
+      </template>
     </AppModal>
   </div>
 </template>

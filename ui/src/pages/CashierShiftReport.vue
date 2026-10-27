@@ -110,9 +110,9 @@
     </AppCard>
 
     <!-- Detail modal -->
-    <AppModal v-model="detailOpen" :title="`Detail Shift — ${active?.opened_by || ''}`">
-      <div v-if="active" class="space-y-4">
-        <div class="flex items-center justify-between flex-wrap gap-2 text-xs text-gray-500">
+    <AppModal v-model="detailOpen" :title="`Detail Shift — ${active?.opened_by || ''}`" size="xl">
+      <div v-if="active" class="modal-form-grid">
+        <div class="modal-span-full flex items-center justify-between flex-wrap gap-2 text-xs text-gray-500">
           <span>{{ active.outlet_name }} · {{ active.status === 'open' ? 'Berjalan' : 'Tutup' }}</span>
           <span class="vbadge" :class="varCls(active)">{{ varLabel(active) }}</span>
         </div>
@@ -162,15 +162,15 @@
             <span>Penjualan per Metode ({{ active.sales_count }} trx · {{ formatRupiah(active.sales_total) }})</span>
             <span v-if="active.sales_source === 'cloud'" class="font-normal normal-case text-sky-600">☁ dari transaksi cloud</span>
           </div>
-          <div class="p-3 grid grid-cols-2 gap-2 text-sm">
+          <div class="p-3 grid grid-cols-1 gap-2 text-sm">
             <div v-for="m in ['cash','qris','card','transfer']" :key="m" class="flex justify-between">
               <span class="text-gray-500 capitalize">{{ m }}</span>
               <span>{{ formatRupiah(active.by_method?.[m]?.total || 0) }} <span class="text-xs text-gray-400">({{ active.by_method?.[m]?.count || 0 }})</span></span>
             </div>
           </div>
         </div>
-        <p v-if="active.sales_source === 'cloud'" class="text-xs text-sky-600">☁ Penjualan dihitung dari transaksi yang tersinkron ke cloud karena laporan tutup kasir dari perangkat belum/tidak diterima. Angka bisa lebih kecil dari struk bila ada transaksi yang belum tersinkron.</p>
-        <p v-if="active.notes" class="text-xs text-gray-500">Catatan: {{ active.notes }}</p>
+        <p v-if="active.sales_source === 'cloud'" class="modal-span-full text-xs text-sky-600">☁ Penjualan dihitung dari transaksi yang tersinkron ke cloud karena laporan tutup kasir dari perangkat belum/tidak diterima. Angka bisa lebih kecil dari struk bila ada transaksi yang belum tersinkron.</p>
+        <p v-if="active.notes" class="modal-span-full text-xs text-gray-500">Catatan: {{ active.notes }}</p>
       </div>
     </AppModal>
   </div>

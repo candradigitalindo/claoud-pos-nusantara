@@ -166,7 +166,7 @@
 
     <!-- Create/Edit Modal -->
     <AppModal v-model="showForm" :title="editTarget ? 'Edit Vendor' : 'Tambah Vendor Baru'" size="2xl">
-      <div class="space-y-5">
+      <div class="modal-form-grid">
         <!-- Section: Informasi Umum -->
         <div>
           <div class="flex items-center gap-2 mb-3">
@@ -188,7 +188,7 @@
         </div>
 
         <!-- Section: Detail Pembayaran -->
-        <div class="border-t border-gray-200 pt-5">
+        <div class="rounded-xl border border-gray-200 p-4">
           <div class="flex items-center gap-2 mb-3">
             <span class="flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-600">
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
@@ -196,7 +196,7 @@
             <h3 class="text-sm font-semibold text-gray-800">Detail Pembayaran</h3>
           </div>
           <div class="bg-blue-50/60 rounded-xl p-4 border border-blue-100">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 gap-3">
               <AppInput v-model="form.bank_name" label="Nama Bank" placeholder="BCA, BRI, Mandiri, dll" />
               <AppInput v-model="form.account_number" label="Nomor Rekening" placeholder="1234567890" />
               <AppInput v-model="form.account_holder" label="Atas Nama Rekening" placeholder="PT. Sumber Jaya" />
@@ -207,7 +207,7 @@
         </div>
 
         <!-- Section: Catatan -->
-        <div class="border-t border-gray-200 pt-5">
+        <div class="modal-span-full border-t border-gray-200 pt-4">
           <div class="flex items-center gap-2 mb-3">
             <span class="flex items-center justify-center w-7 h-7 rounded-full bg-amber-100 text-amber-600">
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>

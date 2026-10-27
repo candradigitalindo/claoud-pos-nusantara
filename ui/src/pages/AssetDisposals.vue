@@ -72,46 +72,45 @@
     </AppCard>
 
     <AppModal v-model="createModal" title="Ajukan Penghapusan Aset" size="lg">
-      <form class="space-y-3" @submit.prevent="save">
+      <form id="asset-disposal-form" class="modal-form-grid" @submit.prevent="save">
         <div>
           <label class="lbl">Aset <span class="text-red-500">*</span></label>
           <SearchSelect v-model="form.asset_id" :options="assetOptions" placeholder="Pilih aset…" searchPlaceholder="Cari nama / nomor…" />
         </div>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label class="lbl">Jumlah</label>
-            <input v-model.number="form.qty" type="number" inputmode="numeric" min="1" :max="selectedAsset?.quantity || 1" class="form-input" />
-            <p v-if="selectedAsset" class="mt-1 text-[11px] text-gray-400">Tersedia {{ selectedAsset.quantity }} {{ selectedAsset.unit }}</p>
-          </div>
-          <div>
-            <label class="lbl">Cara</label>
-            <SearchableSelect v-model="form.method" class="form-input">
-              <option v-for="(lbl, key) in DISPOSAL_METHODS" :key="key" :value="key">{{ lbl }}</option>
-            </SearchableSelect>
-          </div>
+        <div>
+          <label class="lbl">Jumlah</label>
+          <input v-model.number="form.qty" type="number" inputmode="numeric" min="1" :max="selectedAsset?.quantity || 1" class="form-input" />
+          <p v-if="selectedAsset" class="mt-1 text-[11px] text-gray-400">Tersedia {{ selectedAsset.quantity }} {{ selectedAsset.unit }}</p>
+        </div>
+        <div>
+          <label class="lbl">Cara</label>
+          <SearchableSelect v-model="form.method" class="form-input">
+            <option v-for="(lbl, key) in DISPOSAL_METHODS" :key="key" :value="key">{{ lbl }}</option>
+          </SearchableSelect>
         </div>
         <div v-if="form.method === 'dijual' || form.method === 'tukar_tambah'">
           <label class="lbl">Hasil Penjualan</label>
-          <input v-model.number="form.proceeds" type="number" inputmode="numeric" min="0" class="form-input" placeholder="0" />
+          <RupiahInput v-model="form.proceeds" aria-label="Hasil Penjualan" step="1" min="0" placeholder="0" />
         </div>
-        <div>
+        <div class="modal-span-full">
           <label class="lbl">Alasan <span class="text-red-500">*</span></label>
           <textarea v-model="form.reason" rows="2" class="form-input" placeholder="mis. rusak berat, biaya perbaikan melebihi harga barang" required></textarea>
         </div>
-        <p v-if="selectedAsset" class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+        <p v-if="selectedAsset" class="modal-span-full rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
           Nilai buku saat ini {{ formatRupiah(selectedAsset.book_value) }} per unit — angka ini dibekukan pada dokumen
           agar berita acara tetap cocok meski penyusutan terus berjalan.
         </p>
-        <div class="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-          <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
-          <AppButton type="submit" :loading="saving">Ajukan</AppButton>
-        </div>
       </form>
+      <template #footer>
+        <button type="button" class="btn-ghost" @click="createModal = false">Batal</button>
+        <AppButton type="submit" form="asset-disposal-form" :loading="saving">Ajukan</AppButton>
+      </template>
     </AppModal>
   </div>
 </template>
 
 <script setup>
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted } from 'vue'

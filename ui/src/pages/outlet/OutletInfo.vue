@@ -398,7 +398,7 @@ async function doRegen() {
   padding: 1rem; background: rgba(7,26,13,.55); backdrop-filter: blur(6px);
 }
 .modal-panel {
-  position: relative; overflow: hidden; width: 100%; max-width: 500px; border-radius: 1.35rem;
+  position: relative; overflow: hidden; width: 100%; max-width: 768px; min-width: 0; max-height: calc(100dvh - 2rem); display: flex; flex-direction: column; border-radius: 1.35rem;
   background: rgba(255,255,255,.9); backdrop-filter: blur(32px) saturate(180%);
   border: 1px solid rgba(255,255,255,.75);
   box-shadow: 0 24px 64px rgba(0,0,0,.18), 0 1px 0 rgba(255,255,255,.9) inset;
@@ -422,11 +422,11 @@ async function doRegen() {
   background: rgba(0,0,0,.05); color: #5a7866; display: flex; align-items: center; justify-content: center; transition: background .14s;
 }
 .modal-close:hover { background: rgba(0,0,0,.1); }
-.modal-body { padding: 1.15rem 1.3rem; }
+.modal-body { padding: 1.15rem 1.3rem; min-height: 0; overflow-y: auto; }
 .confirm-text { font-size: .82rem; color: #4a6555; line-height: 1.55; }
 .confirm-text strong { color: #0f2d1d; }
 
-.form-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.form-grid  { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
 .field-span2 { grid-column: span 2; }
 .field { display: flex; flex-direction: column; gap: .28rem; }
 .field-label { font-size: .67rem; font-weight: 700; color: #4a6555; text-transform: uppercase; letter-spacing: .06em; }
@@ -475,4 +475,12 @@ async function doRegen() {
 .mfade-leave-active { transition: all .16s ease-in; }
 .mfade-enter-from, .mfade-leave-to { opacity: 0; }
 .mfade-enter-from .modal-panel { transform: scale(.96) translateY(10px); }
+
+.modal-header, .modal-footer { flex-shrink: 0; }
+.modal-footer { flex-wrap: wrap; }
+.field { min-width: 0; }
+@media (max-width: 639px) {
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .field-span2 { grid-column: 1 / -1; }
+}
 </style>

@@ -145,8 +145,8 @@
       </AppCard>
 
       <!-- Create modal -->
-      <AppModal v-model="showCreate" title="Sesi Opname Baru" size="md">
-        <div class="space-y-3">
+      <AppModal v-model="showCreate" title="Sesi Opname Baru" size="lg">
+        <div class="modal-form-grid">
           <div>
             <label class="text-xs font-semibold text-gray-600">Gudang</label>
             <SearchSelect v-model="createForm.warehouse_id" :options="warehouseOnlyOptions" placeholder="Pilih Gudang" />
@@ -155,16 +155,16 @@
             <label class="text-xs font-semibold text-gray-600">Batasi Kategori (opsional — cycle count)</label>
             <SearchSelect v-model="createForm.category" :options="categoryOptions" placeholder="Semua Kategori" />
           </div>
-          <div>
+          <div class="modal-span-full">
             <label class="text-xs font-semibold text-gray-600">Catatan</label>
             <textarea v-model="createForm.notes" rows="2" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
           </div>
-          <p class="text-[11px] text-gray-400">Qty sistem di-snapshot saat sesi dibuat. Satu gudang hanya boleh punya satu sesi aktif.</p>
-          <div class="flex justify-end gap-2">
-            <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
-            <AppButton variant="primary" :loading="creating" @click="createSession">Mulai Opname</AppButton>
-          </div>
+          <p class="modal-span-full text-[11px] text-gray-400">Qty sistem di-snapshot saat sesi dibuat. Satu gudang hanya boleh punya satu sesi aktif.</p>
         </div>
+        <template #footer>
+          <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
+          <AppButton variant="primary" :loading="creating" @click="createSession">Mulai Opname</AppButton>
+        </template>
       </AppModal>
     </template>
   </div>

@@ -1,6 +1,6 @@
 <template>
     <!-- Pola Pemotongan: satu bahan → beberapa hasil; satu bahan boleh punya beberapa pola -->
-    <AppModal v-model="showBreakdownModal" title="Atur Pemotongan" size="xl">
+    <AppModal v-model="showBreakdownModal" title="Atur Pemotongan" size="2xl">
       <p v-if="readOnly" class="mb-3 text-sm text-amber-800">Hanya baca. Perubahan pola dikelola F &amp; B dengan akses ubah resep untuk semua outlet.</p>
       <fieldset :disabled="readOnly || bdLoading || !!bdLoadError" class="space-y-4 min-w-0">
         <div class="p-3 bg-pink-50 rounded-lg border border-pink-100">
@@ -39,7 +39,7 @@
                 class="flex-1 min-w-0 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
             </div>
 
-            <div class="space-y-2">
+            <div class="modal-form-grid">
               <div v-for="(r, idx) in p.outputs" :key="idx" class="rounded-lg border border-gray-100 bg-white p-2.5 space-y-2">
                 <div class="flex items-end gap-2">
                   <div class="flex-1 min-w-0">
@@ -73,10 +73,10 @@
                 </div>
                 <p class="text-[11px] text-gray-400">Porsi biaya pada hasil standar: <b class="text-gray-600">{{ bdSharePct(p, r) }}</b></p>
               </div>
-              <div v-if="p.outputs.length === 0" class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-lg">
+              <div v-if="p.outputs.length === 0" class="modal-span-full text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-lg">
                 Pola ini belum punya hasil.
               </div>
-              <button v-if="!readOnly" @click="addBdLine(p)" class="text-xs font-bold text-pink-600 hover:text-pink-800">+ Tambah Hasil</button>
+              <button v-if="!readOnly" @click="addBdLine(p)" class="modal-span-full justify-self-start text-xs font-bold text-pink-600 hover:text-pink-800">+ Tambah Hasil</button>
             </div>
           </div>
 

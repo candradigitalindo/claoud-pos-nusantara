@@ -357,7 +357,7 @@
     </div>
 
     <!-- Modal penerima -->
-    <AppModal v-model="showRecipient" :title="recipientForm.id ? 'Ubah Penerima' : 'Tambah Penerima'" size="lg">
+    <AppModal v-model="showRecipient" :title="recipientForm.id ? 'Ubah Penerima' : 'Tambah Penerima'" size="xl">
       <form class="space-y-4" @submit.prevent="saveRecipient">
         <div class="grid gap-3 sm:grid-cols-2">
           <div>
@@ -390,7 +390,7 @@
         <div>
           <label class="lbl">Event yang diterima</label>
           <label class="flex items-center gap-2 text-sm"><input v-model="recipientAll" type="checkbox" class="accent-emerald-600" /> Semua notifikasi internal</label>
-          <div v-if="!recipientAll" class="mt-2 grid gap-1 sm:grid-cols-2">
+          <div v-if="!recipientAll" class="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
             <label v-for="ev in internalEvents" :key="ev.key" class="flex items-center gap-2 text-xs text-gray-700">
               <input v-model="recipientForm.events" type="checkbox" :value="ev.key" class="accent-emerald-600" /> {{ ev.group }} · {{ ev.label }}
             </label>
@@ -398,7 +398,7 @@
         </div>
         <div>
           <label class="lbl">Batasi outlet (kosong = semua)</label>
-          <div class="grid gap-1 sm:grid-cols-2">
+          <div class="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
             <label v-for="o in outlets" :key="o.id" class="flex items-center gap-2 text-xs text-gray-700">
               <input v-model="recipientForm.outlet_ids" type="checkbox" :value="o.id" class="accent-emerald-600" /> {{ o.name }}
             </label>

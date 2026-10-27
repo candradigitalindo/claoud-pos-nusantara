@@ -100,21 +100,21 @@
       </AppCard>
 
       <!-- Create modal -->
-      <AppModal v-model="showCreate" title="Rencana Produksi Baru" size="lg">
+      <AppModal v-model="showCreate" title="Rencana Produksi Baru" size="xl">
         <div class="space-y-3">
-          <div class="flex flex-wrap gap-3">
-            <div class="min-w-[220px] flex-1">
+          <div class="modal-form-grid">
+            <div class="min-w-0">
               <label class="text-xs font-semibold text-gray-600">Gudang Produksi</label>
               <SearchSelect v-model="createForm.warehouse_id" :options="warehouseOptions" placeholder="Pilih Gudang" @change="loadProducible" />
             </div>
             <div>
               <label class="text-xs font-semibold text-gray-600">Tanggal Rencana</label>
               <input type="date" v-model="createForm.plan_date"
-                class="block text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                class="block w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
             </div>
           </div>
 
-          <div v-if="createForm.warehouse_id">
+          <div v-if="createForm.warehouse_id" class="overflow-x-auto">
             <label class="text-xs font-semibold text-gray-600">Item Setengah Jadi (ber-resep internal)</label>
             <div v-if="!producible.length" class="text-xs text-gray-400 p-3 bg-gray-50 rounded-lg mt-1">
               Tidak ada item ber-resep internal. Definisikan resep dulu di halaman Item Stok.
@@ -141,11 +141,11 @@
 
           <textarea v-model="createForm.notes" rows="2" placeholder="Catatan..."
             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
-          <div class="flex justify-end gap-2">
-            <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
-            <AppButton variant="primary" :loading="creating" @click="doCreate">Simpan Draft</AppButton>
-          </div>
         </div>
+        <template #footer>
+          <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
+          <AppButton variant="primary" :loading="creating" @click="doCreate">Simpan Draft</AppButton>
+        </template>
       </AppModal>
     </template>
   </div>

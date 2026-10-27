@@ -49,9 +49,9 @@
     <AppModal v-model="showForm" :title="editing ? 'Edit Draf Keuangan' : form.direction === 'in' ? 'Catat Pemasukan' : 'Catat Pengeluaran'" size="2xl">
       <form id="finance-form" class="space-y-4" @submit.prevent="save">
         <AppAlert type="error" :message="formError" />
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div class="modal-form-grid modal-form-grid--three">
           <label><span class="field-label">Akun *</span><SearchableSelect v-model="form.account_code" required class="field"><option value="" disabled>Pilih akun</option><option v-for="a in entryAccounts" :key="a.code" :value="a.code">{{ a.code }} · {{ a.name }}</option></SearchableSelect></label>
-          <label><span class="field-label">Nominal (Rp) *</span><input v-model.number="form.amount" type="number" min="0.01" max="1000000000000" step="0.01" required class="field" /></label>
+          <RupiahInput v-model="form.amount" label="Nominal (Rp) *" min="0.01" max="1000000000000" step="0.01" required />
           <label><span class="field-label">Tanggal transaksi *</span><input v-model="form.occurred_at" type="date" :max="today" required class="field" /></label>
           <label><span class="field-label">Periode {{ form.account_code === '5-310' ? 'gaji *' : '(opsional)' }}</span><input v-model="form.period" type="month" :required="form.account_code === '5-310'" class="field" /></label>
           <label><span class="field-label">Outlet *</span><SearchableSelect v-model="form.outlet_id" class="field" @change="form.work_unit_id = ''"><option v-if="lookups.allow_central" value="">Pusat / Divisi</option><option v-else value="" disabled>Pilih outlet</option><option v-for="o in lookups.outlets" :key="o.id" :value="o.id">{{ o.name }}</option></SearchableSelect></label>
@@ -100,6 +100,7 @@ import { useToastStore } from '@/stores/toast'
 import { formatRupiah, todayDateString } from '@/utils/format'
 import { safeUrl } from '@/utils/safeUrl'
 import AppCard from '@/components/ui/AppCard.vue'
+import RupiahInput from '@/components/ui/RupiahInput.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
