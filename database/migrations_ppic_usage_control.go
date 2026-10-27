@@ -1,6 +1,9 @@
 package database
 
-import "fmt"
+import (
+	"database/sql"
+	"fmt"
+)
 
 // RunPpicUsageControlMigrations creates explicit limits without inventing any
 // tolerances. History records survive catalog deletion and cannot be rewritten.
@@ -55,7 +58,8 @@ func RunPpicUsageControlMigrations() error {
 		return err
 	} else if n > 0 {
 		roleSeed, err := tx.Exec(`INSERT INTO roles(name,description,is_system,scope_type,redirect_to)
-			VALUES('ppic','PPIC: pengendalian pemakaian bahan baku dan batas waste',false,'all','/ppic/usage-control') ON CONFLICT DO NOTHING`)
+			SELECT 'ppic','PPIC: pengendalian pemakaian bahan baku dan batas waste',false,'all','/ppic/usage-control'
+			WHERE NOT EXISTS(SELECT 1 FROM roles WHERE lower(name)='ppic') ON CONFLICT DO NOTHING`)
 		if err != nil {
 			return err
 		}
@@ -71,12 +75,67 @@ func RunPpicUsageControlMigrations() error {
 			}
 		}
 		for _, permission := range []string{"ppic.control.view", "ppic.control.update", "ppic.control.export"} {
-			for _, role := range []string{"admin", "superadmin", "ppic"} {
-				if _, err := tx.Exec(`INSERT INTO role_permissions(role,permission) VALUES($1,$2) ON CONFLICT DO NOTHING`, role, permission); err != nil {
-					return err
-				}
+			if _, err := tx.Exec(`INSERT INTO role_permissions(role,permission)
+				SELECT target.role,$1 FROM (
+					SELECT name AS role FROM roles WHERE lower(name)='ppic'
+					UNION SELECT 'admin' UNION SELECT 'superadmin'
+				) target ON CONFLICT DO NOTHING`, permission); err != nil {
+				return err
 			}
 		}
 	}
+	if err := repairPpicUsageRoleCase(tx); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// The original seed only recognized lowercase "ppic". Repair skipped legacy
+// case variants once, without modifying their names, scopes or existing rights.
+func repairPpicUsageRoleCase(tx *sql.Tx) error {
+	seed, err := tx.Exec(`INSERT INTO app_settings(key,value) VALUES('mig_ppic_usage_control_role_case','done') ON CONFLICT DO NOTHING`)
+	if err != nil {
+		return err
+	}
+	count, err := seed.RowsAffected()
+	if err != nil || count == 0 {
+		return err
+	}
+	// A partial control grant may be deliberate; never expand that selection.
+	rows, err := tx.Query(`SELECT r.name FROM roles r WHERE lower(r.name)='ppic' AND r.name<>'ppic'
+		AND NOT EXISTS(SELECT 1 FROM role_permissions p WHERE p.role=r.name AND p.permission LIKE 'ppic.control.%')
+		ORDER BY r.name FOR UPDATE OF r`)
+	if err != nil {
+		return err
+	}
+	var roles []string
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			rows.Close()
+			return err
+		}
+		roles = append(roles, role)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, permission := range []string{"ppic.control.view", "ppic.control.update", "ppic.control.export"} {
+			if _, err := tx.Exec(`INSERT INTO role_permissions(role,permission) VALUES($1,$2) ON CONFLICT DO NOTHING`, role, permission); err != nil {
+				return err
+			}
+		}
+		// Retain unrelated custom landing pages. Only the old operational PPIC
+		// destinations are moved to the newly available control screen.
+		if _, err := tx.Exec(`UPDATE roles SET redirect_to='/ppic/usage-control' WHERE name=$1
+			AND split_part(split_part(redirect_to,'?',1),'#',1) IN (
+				'/ppic/dashboard','/ppic/planning-params','/ppic/forecast','/ppic/mrp',
+				'/ppic/production-plans','/ppic/work-orders','/ppic/reports','/ppic/opname','/ppic/expiry','/403')`, role); err != nil {
+			return err
+		}
+	}
+	return nil
 }
