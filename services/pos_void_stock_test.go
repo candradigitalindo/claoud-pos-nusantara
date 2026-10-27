@@ -334,7 +334,13 @@ func TestPOSVoidReportsLossWithoutSalesCOGS(t *testing.T) {
 	if _, err := SaveOrder(f.outlet, f.void()); err != nil {
 		t.Fatal(err)
 	}
-	report, err := ListFinanceOperations("2026-10-20", "2026-10-23", f.outlet, "stock", "", "5-380", "", 1, 100, nil)
+	// Inventory accounting follows the movement posting day, even when an
+	// offline payment/void carries an older POS date.
+	var postedDay string
+	if err := database.DB.QueryRow(`SELECT tz_today()::text`).Scan(&postedDay); err != nil {
+		t.Fatal(err)
+	}
+	report, err := ListFinanceOperations(postedDay, postedDay, f.outlet, "stock", "", "5-380", "", 1, 100, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

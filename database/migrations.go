@@ -1128,11 +1128,11 @@ func RunMigrations() error {
 	// Migrate .manage → granular CRUD permissions (one-time, idempotent)
 	{
 		manageToCRUD := map[string][]string{
-			"outlets.manage":  {"outlets.create", "outlets.update", "outlets.delete"},
-			"products.manage": {"products.create", "products.update", "products.delete"},
+			"outlets.manage":   {"outlets.create", "outlets.update", "outlets.delete"},
+			"products.manage":  {"products.create", "products.update", "products.delete"},
 			"warehouse.manage": {"warehouse.create", "warehouse.update", "warehouse.delete"},
-			"users.manage":    {"users.create", "users.update", "users.delete"},
-			"settings.manage": {"settings.update"},
+			"users.manage":     {"users.create", "users.update", "users.delete"},
+			"settings.manage":  {"settings.update"},
 		}
 		for oldPerm, newPerms := range manageToCRUD {
 			var count int
@@ -1908,16 +1908,14 @@ func RunMigrations() error {
 	}
 
 	// ── Seed izin PPIC (one-shot, marker) ───────────────────────────────────
-	// Role yang saat ini boleh melihat Dashboard Gudang otomatis mendapat semua
-	// izin PPIC Fase 1 SEKALI saat deploy; setelah itu pencabutan oleh admin
+	// Role yang saat ini boleh melihat Dashboard Gudang otomatis mendapat izin
+	// opname dan kedaluwarsa SEKALI saat deploy; setelah itu pencabutan oleh admin
 	// tidak ditimpa saat boot. Wajib di akhir fungsi ini (lihat catatan blok
 	// split di atas: re-seed coarse-key berjalan tiap boot).
 	var ppicSeeded int
 	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_ppic_phase1'").Scan(&ppicSeeded)
 	if ppicSeeded == 0 {
 		ppicPerms := []string{
-			"ppic.dashboard.view",
-			"ppic.planning.view", "ppic.planning.update",
 			"ppic.expiry.view", "ppic.expiry.ack",
 			"ppic.opname.view", "ppic.opname.create", "ppic.opname.approve",
 		}
@@ -1928,39 +1926,6 @@ func RunMigrations() error {
 		}
 		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_ppic_phase1', 'done') ON CONFLICT (key) DO NOTHING`)
 		log.Printf("Permission PPIC Fase 1 di-seed ke role pemegang warehouse_dashboard.view")
-	}
-
-	// ── Seed izin PPIC Fase 2 (one-shot, marker) — lihat catatan blok Fase 1 ──
-	var ppic2Seeded int
-	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_ppic_phase2'").Scan(&ppic2Seeded)
-	if ppic2Seeded == 0 {
-		for _, p := range []string{
-			"ppic.forecast.view", "ppic.forecast.manage",
-			"ppic.mrp.view", "ppic.mrp.run", "ppic.mrp.execute",
-		} {
-			DB.Exec(`INSERT INTO role_permissions (role, permission)
-				SELECT DISTINCT role, $1 FROM role_permissions WHERE permission = 'ppic.dashboard.view'
-				ON CONFLICT DO NOTHING`, p)
-		}
-		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_ppic_phase2', 'done') ON CONFLICT (key) DO NOTHING`)
-		log.Printf("Permission PPIC Fase 2 di-seed ke role pemegang ppic.dashboard.view")
-	}
-
-	// ── Seed izin PPIC Fase 3 (one-shot, marker) — lihat catatan blok Fase 1 ──
-	var ppic3Seeded int
-	DB.QueryRow("SELECT COUNT(*) FROM app_settings WHERE key = 'mig_ppic_phase3'").Scan(&ppic3Seeded)
-	if ppic3Seeded == 0 {
-		for _, p := range []string{
-			"ppic.production.view", "ppic.production.create", "ppic.production.approve",
-			"ppic.workorders.view", "ppic.workorders.create", "ppic.workorders.execute",
-			"ppic.reports.view", "ppic.reports.export",
-		} {
-			DB.Exec(`INSERT INTO role_permissions (role, permission)
-				SELECT DISTINCT role, $1 FROM role_permissions WHERE permission = 'ppic.dashboard.view'
-				ON CONFLICT DO NOTHING`, p)
-		}
-		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_ppic_phase3', 'done') ON CONFLICT (key) DO NOTHING`)
-		log.Printf("Permission PPIC Fase 3 di-seed ke role pemegang ppic.dashboard.view")
 	}
 
 	// ── Seed izin Pelanggan (one-shot, marker) — lihat catatan blok Fase 1 ──
@@ -1990,7 +1955,6 @@ func RunMigrations() error {
 		log.Printf("Permission reports.business_analysis.view di-seed ke role admin")
 	}
 
-
 	// ── Seed izin Bayar Pengadaan (one-shot, marker) ────────────────────────
 	// Aksi 'pay' dulu diguard oleh finance.payments.view, sehingga siapa pun
 	// yang boleh MELIHAT halaman Pembayaran otomatis boleh MENCAIRKAN uang.
@@ -2006,7 +1970,6 @@ func RunMigrations() error {
 		DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_finance_payments_pay', 'done') ON CONFLICT (key) DO NOTHING`)
 		log.Printf("Permission finance.payments.pay di-seed ke role pemegang finance.payments.view")
 	}
-
 
 	// ── Seed izin Projek (one-shot, marker) ─────────────────────────────────
 	// Lihat: diturunkan ke role yang hari ini boleh melihat pengadaan, supaya

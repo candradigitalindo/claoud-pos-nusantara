@@ -422,15 +422,9 @@ const REDIRECT_GROUPS = [
     { value: '/vendors',               label: 'Vendor',              perm: 'vendors.view' },
   ]},
   { category: 'PPIC', options: [
-    { value: '/ppic/dashboard',        label: 'Dashboard PPIC',        perm: 'ppic.dashboard.view' },
-    { value: '/ppic/planning-params',  label: 'Par Level & ROP',       perm: 'ppic.planning.view' },
-    { value: '/ppic/expiry',           label: 'Monitor Kedaluwarsa',   perm: 'ppic.expiry.view' },
+    { value: '/ppic/usage-control',    label: 'Kontrol Pemakaian Bahan', perm: 'ppic.control.view' },
     { value: '/ppic/opname',           label: 'Stock Opname',          perm: 'ppic.opname.view' },
-    { value: '/ppic/forecast',         label: 'Demand Forecast',       perm: 'ppic.forecast.view' },
-    { value: '/ppic/mrp',              label: 'Kebutuhan Bahan (MRP)', perm: 'ppic.mrp.view' },
-    { value: '/ppic/production-plans', label: 'Rencana Produksi',      perm: 'ppic.production.view' },
-    { value: '/ppic/work-orders',      label: 'Work Order',            perm: 'ppic.workorders.view' },
-    { value: '/ppic/reports',          label: 'Laporan PPIC',          perm: 'ppic.reports.view' },
+    { value: '/ppic/expiry',           label: 'Monitor Kedaluwarsa',   perm: 'ppic.expiry.view' },
   ]},
   { category: 'Pengguna', options: [
     { value: '/admins', label: 'User (Admin)', perm: 'users.view' },

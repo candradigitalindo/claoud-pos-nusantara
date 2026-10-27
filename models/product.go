@@ -115,16 +115,16 @@ type ProductRecipeLink struct {
 }
 
 type RecipeCostSnapshot struct {
-	CapturedAt  string              `json:"captured_at"`
-	Source      string              `json:"source"`
-	Total       *float64            `json:"total"`
-	Ingredients []PpicHppIngredient `json:"ingredients"`
+	CapturedAt  string                 `json:"captured_at"`
+	Source      string                 `json:"source"`
+	Total       *float64               `json:"total"`
+	Ingredients []RecipeCostIngredient `json:"ingredients"`
 }
 
 type RecipeCost struct {
-	CurrentCost     *float64            `json:"current_cost"`
-	CostIngredients []PpicHppIngredient `json:"cost_ingredients"`
-	InitialCost     *RecipeCostSnapshot `json:"initial_cost"`
+	CurrentCost     *float64               `json:"current_cost"`
+	CostIngredients []RecipeCostIngredient `json:"cost_ingredients"`
+	InitialCost     *RecipeCostSnapshot    `json:"initial_cost"`
 }
 
 type FnbRecipeCost struct {

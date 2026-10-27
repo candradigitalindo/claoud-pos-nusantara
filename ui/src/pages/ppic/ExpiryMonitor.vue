@@ -61,7 +61,7 @@
                 <span v-else class="text-[11px] text-gray-300">belum</span>
               </td>
               <td class="text-right whitespace-nowrap">
-                <router-link v-if="r.bucket === 'expired'" class="act act-red" to="/stock-wastes">Buang</router-link>
+                <router-link v-if="r.bucket === 'expired' && canViewWaste" class="act act-red" to="/stock-wastes">Lihat Waste</router-link>
                 <AppActionButton icon="approve" label="Tandai Ditindak" v-if="canAck && !r.ack_at" @click="openAck(r)" />
               </td>
             </tr>
@@ -80,7 +80,7 @@
       <div v-if="ackTarget" class="space-y-3">
         <p class="text-sm text-gray-600">
           <b>{{ ackTarget.item_name }}</b> — {{ fmtQty(ackTarget.qty_base) }} {{ ackTarget.base_unit }} di {{ ackTarget.warehouse_name }},
-          kedaluwarsa {{ fmtDate(ackTarget.expiry_date) }}. Alert dashboard untuk batch ini akan disenyapkan.
+          kedaluwarsa {{ fmtDate(ackTarget.expiry_date) }}. Peringatan untuk batch ini akan disenyapkan setelah penanganannya dicatat.
         </p>
         <textarea v-model="ackNote" rows="3" placeholder="Catatan penanganan (mis. sudah dibuang / dipakai duluan / ditransfer)..."
           class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
@@ -97,7 +97,6 @@
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
-import { warehousesApi } from '@/api/warehouse'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import debounce from 'lodash/debounce'
@@ -111,6 +110,7 @@ import SearchSelect  from '@/components/ui/SearchSelect.vue'
 const auth = useAuthStore()
 const toast = useToastStore()
 const canAck = computed(() => auth.hasPermission('ppic.expiry.ack'))
+const canViewWaste = computed(() => auth.hasPermission('stockwastes.view'))
 
 const BUCKETS = [
   { key: 'expired', label: 'Sudah Lewat', cls: 'red' },
@@ -136,10 +136,9 @@ const acking = ref(false)
 onMounted(async () => {
   load()
   try {
-    const whRes = await warehousesApi.list({ limit: 100 })
-    const whList = Array.isArray(whRes) ? whRes : (whRes?.data || [])
-    warehouseOptions.value = [{ id: '', name: 'Semua Gudang' }, ...whList.map(w => ({ id: w.id, name: `${w.name} (${w.code})` }))]
-  } catch { /* selector tetap kosong, halaman tetap jalan */ }
+    const lookup = await ppicApi.getLookups()
+    warehouseOptions.value = [{ id: '', name: 'Semua Gudang' }, ...lookup.warehouses.map(w => ({ id: w.id, name: w.name }))]
+  } catch (e) { toast.error(e?.message || 'Gagal memuat pilihan gudang') }
 })
 
 async function load() {

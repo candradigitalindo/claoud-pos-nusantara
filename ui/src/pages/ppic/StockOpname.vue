@@ -174,7 +174,6 @@
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
-import { warehousesApi, stockItemCategoriesApi } from '@/api/warehouse'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import AppButton     from '@/components/ui/AppButton.vue'
@@ -224,13 +223,12 @@ const acting = ref(false)
 onMounted(async () => {
   load()
   try {
-    const [whRes, catRes] = await Promise.all([warehousesApi.list({ limit: 100 }), stockItemCategoriesApi.list()])
-    const whList = Array.isArray(whRes) ? whRes : (whRes?.data || [])
-    warehouseOptions.value = [{ id: '', name: 'Semua Gudang' }, ...whList.map(w => ({ id: w.id, name: `${w.name} (${w.code})` }))]
-    warehouseOnlyOptions.value = whList.map(w => ({ id: w.id, name: `${w.name} (${w.code})` }))
-    const cats = Array.isArray(catRes) ? catRes : (catRes?.data || [])
-    categoryOptions.value = [{ id: '', name: 'Semua Kategori' }, ...cats.map(c => ({ id: c.name, name: c.name }))]
-  } catch { /* filter tetap default */ }
+    const lookup = await ppicApi.getLookups()
+    warehouseOnlyOptions.value = lookup.warehouses.map(w => ({ id: w.id, name: w.name }))
+    warehouseOptions.value = [{ id: '', name: 'Semua Gudang' }, ...warehouseOnlyOptions.value]
+    const cats = [...new Set(lookup.items.map(item => item.category).filter(Boolean))].sort()
+    categoryOptions.value = [{ id: '', name: 'Semua Kategori' }, ...cats.map(name => ({ id: name, name }))]
+  } catch (e) { toast.error(e?.message || 'Gagal memuat pilihan gudang dan kategori opname') }
 })
 
 async function load() {

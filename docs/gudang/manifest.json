@@ -1,8 +1,8 @@
 {
   "title": "Panduan Operasional Gudang — Cloud POS",
   "date": "2026-10-27",
-  "revision": "Revisi 3 — Gudang mengelola bahan baku; resep dikelola F&B (dasar 67092f2 + workspace)",
-  "screen_data": "simulasi terisolasi",
+  "revision": "Revisi 4 — Fokus PPIC: kontrol bahan, opname, kedaluwarsa",
+  "screen_data": "simulasi terisolasi; screenshot revisi sebelumnya, perubahan label dijelaskan dalam naskah",
   "pages": [
     {
       "page": 1,

@@ -93,15 +93,9 @@ const StockTransfers      = () => import('@/pages/StockTransfers.vue')
 const StockLedger         = () => import('@/pages/StockLedger.vue')
 const GoodsReceipt        = () => import('@/pages/GoodsReceipt.vue')
 const Recipes             = () => import('@/pages/Recipes.vue')
-const PpicDashboard       = () => import('@/pages/ppic/PpicDashboard.vue')
-const PlanningParams      = () => import('@/pages/ppic/PlanningParams.vue')
+const UsageControl        = () => import('@/pages/ppic/UsageControl.vue')
 const ExpiryMonitor       = () => import('@/pages/ppic/ExpiryMonitor.vue')
 const StockOpname         = () => import('@/pages/ppic/StockOpname.vue')
-const DemandForecast      = () => import('@/pages/ppic/DemandForecast.vue')
-const MrpWorksheet        = () => import('@/pages/ppic/MrpWorksheet.vue')
-const ProductionPlans     = () => import('@/pages/ppic/ProductionPlans.vue')
-const WorkOrders          = () => import('@/pages/ppic/WorkOrders.vue')
-const PpicReports         = () => import('@/pages/ppic/PpicReports.vue')
 const DashboardLayout = () => import('@/layouts/DashboardLayout.vue')
 const AuthLayout     = () => import('@/layouts/AuthLayout.vue')
 
@@ -456,16 +450,10 @@ const routes = [
       },
       // ── PPIC ────────────────────────────────────────────
       {
-        path: 'ppic/dashboard',
-        name: 'PpicDashboard',
-        component: PpicDashboard,
-        meta: { title: 'Dashboard PPIC — Cloud POS', requiresAuth: true, permission: 'ppic.dashboard.view' },
-      },
-      {
-        path: 'ppic/planning-params',
-        name: 'PlanningParams',
-        component: PlanningParams,
-        meta: { title: 'Par Level & ROP — Cloud POS', requiresAuth: true, permission: 'ppic.planning.view' },
+        path: 'ppic/usage-control',
+        name: 'PpicUsageControl',
+        component: UsageControl,
+        meta: { title: 'Kontrol Pemakaian Bahan — Cloud POS', requiresAuth: true, permission: 'ppic.control.view' },
       },
       {
         path: 'ppic/expiry',
@@ -480,34 +468,11 @@ const routes = [
         meta: { title: 'Stock Opname — Cloud POS', requiresAuth: true, permission: 'ppic.opname.view' },
       },
       {
-        path: 'ppic/forecast',
-        name: 'DemandForecast',
-        component: DemandForecast,
-        meta: { title: 'Demand Forecast — Cloud POS', requiresAuth: true, permission: 'ppic.forecast.view' },
-      },
-      {
-        path: 'ppic/mrp',
-        name: 'MrpWorksheet',
-        component: MrpWorksheet,
-        meta: { title: 'Kebutuhan Bahan (MRP) — Cloud POS', requiresAuth: true, permission: 'ppic.mrp.view' },
-      },
-      {
-        path: 'ppic/production-plans',
-        name: 'ProductionPlans',
-        component: ProductionPlans,
-        meta: { title: 'Rencana Produksi — Cloud POS', requiresAuth: true, permission: 'ppic.production.view' },
-      },
-      {
-        path: 'ppic/work-orders',
-        name: 'WorkOrders',
-        component: WorkOrders,
-        meta: { title: 'Work Order — Cloud POS', requiresAuth: true, permission: 'ppic.workorders.view' },
-      },
-      {
-        path: 'ppic/reports',
-        name: 'PpicReports',
-        component: PpicReports,
-        meta: { title: 'Laporan PPIC — Cloud POS', requiresAuth: true, permission: 'ppic.reports.view' },
+        // Bookmarks and cached login destinations follow a permitted PPIC page.
+        path: 'ppic/:retired(dashboard|planning-params|forecast|mrp|production-plans|work-orders|reports)/:pathMatch(.*)*',
+        name: 'RetiredPpic',
+        component: Forbidden,
+        meta: { requiresAuth: true, retiredPpic: true },
       },
       // ── Warehouse / Gudang ──────────────────────────────
       {
@@ -720,6 +685,20 @@ router.beforeEach(async (to) => {
   // Always refresh permissions from API on first navigation after page load
   if (auth.isAuthenticated && !auth.permsSynced) {
     await auth.fetchPermissions()
+  }
+
+  if (to.meta.retiredPpic && auth.isAuthenticated) {
+    const targets = [
+      ['ppic.control.view', '/ppic/usage-control'],
+      ['ppic.opname.view', '/ppic/opname'],
+      ['ppic.expiry.view', '/ppic/expiry'],
+    ]
+    const target = targets.find(([permission]) => auth.hasPermission(permission))?.[1] || '/403'
+    if (auth.redirectTo?.startsWith(`/ppic/${to.params.retired}`)) {
+      auth.redirectTo = target
+      localStorage.setItem('cloud_pos_redirect_to', target)
+    }
+    return { path: target, replace: true }
   }
 
   // Superadmin-only routes

@@ -47,6 +47,12 @@ func main() {
 	if err := database.RunPOSVoidMigrations(); err != nil {
 		log.Fatalf("POS void stock migration failed: %v", err)
 	}
+	if err := database.RunPpicUsageControlMigrations(); err != nil {
+		log.Fatalf("PPIC usage control migration failed: %v", err)
+	}
+	if err := database.RunPpicFocusMigrations(); err != nil {
+		log.Fatalf("PPIC access cleanup migration failed: %v", err)
+	}
 	if err := database.RunProjectUsageMigrations(); err != nil {
 		log.Fatalf("Project usage migration failed: %v", err)
 	}
@@ -81,7 +87,7 @@ func main() {
 	}
 	services.StartCCTVStreamCleaner()
 
-	// PPIC: evaluasi alert harian (expired/ROP) + broadcast SSE ke dashboard.
+	// PPIC: monitor kedaluwarsa dan pemulihan deduksi bahan penjualan.
 	services.StartPpicScheduler()
 
 	// Medsos: tarik angka IG/TikTok tiap dini hari untuk grafik Analisa Bisnis.

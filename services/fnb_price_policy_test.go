@@ -1,20 +1,15 @@
 package services
 
 import (
-	"bytes"
 	"cloud-pos/database"
 	"cloud-pos/models"
 	"errors"
 	"math"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
-
-	"github.com/xuri/excelize/v2"
 )
 
-func TestFnbPriceTransferTimingPlanningAndHistoricalFinance(t *testing.T) {
+func TestFnbPriceTransferTimingAndHistoricalFinance(t *testing.T) {
 	outlet, central, item := unitWarehouses(t)
 	if _, err := database.DB.Exec(`UPDATE stock_items SET name='Cabe uji harga',base_unit='g',dist_unit='kg',dist_ratio=1000 WHERE id=$1`, item); err != nil {
 		t.Fatal(err)
@@ -46,10 +41,6 @@ func TestFnbPriceTransferTimingPlanningAndHistoricalFinance(t *testing.T) {
 		r := rows[0]
 		if r.CostStatus != "ready" || r.CostBasis != "outlet_stock" || !bdNear(r.TotalCost, current) || r.ProjectedTotalCost == nil || !bdNear(*r.ProjectedTotalCost, projection) || r.TargetCostPct != 40 || r.TargetSource != "outlet" || r.IsOver != currentAlert || r.ProjectedIsOver != (projection/5000*100 >= 40) {
 			t.Fatalf("F&B prices: %+v", r)
-		}
-		ppic, err := GetPpicHppReport(outlet.outlet, 35, scope)
-		if err != nil || len(ppic.Rows) != 1 || !bdNear(ppic.Rows[0].Hpp, current) || ppic.Rows[0].TargetCostPct != 40 || ppic.Rows[0].ProjectedHpp == nil || !bdNear(*ppic.Rows[0].ProjectedHpp, projection) {
-			t.Fatalf("PPIC disagrees with F&B: %+v %v", ppic, err)
 		}
 	}
 	check(1000, 2000, false) // central purchase changes the forecast, not outlet stock.
@@ -98,35 +89,6 @@ func TestFnbPriceTransferTimingPlanningAndHistoricalFinance(t *testing.T) {
 		t.Fatal(err)
 	}
 	financeNear(t, pl.Summary.COGS, 50000, "recipe edits do not reprice historical COGS")
-	data, _, err := BuildPpicReportExcel("hpp", today, today, "", outlet.outlet, 35, "uji", scope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	book, err := excelize.OpenReader(bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer book.Close()
-	rows, err := book.GetRows(book.GetSheetName(0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, row := range rows {
-		if len(row) > 16 && row[0] == p.Name {
-			found = true
-			pct, parseErr := strconv.ParseFloat(strings.TrimSuffix(row[13], "%"), 64)
-			if parseErr != nil || pct != 40 {
-				t.Fatalf("export threshold: %+v", row)
-			}
-			if row[16] != "ready" {
-				t.Fatalf("export status: %+v", row)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("export omitted product")
-	}
 }
 
 func TestFnbOutletPolicyScopeIsolationAndThreshold(t *testing.T) {
@@ -166,8 +128,8 @@ func TestFnbOutletPolicyScopeIsolationAndThreshold(t *testing.T) {
 	if rows[0].ProjectedTotalCost != nil {
 		t.Fatal("missing central price fabricated as a projection")
 	}
-	if _, err := GetPpicHppReport(other.outlet, 35, []string{f.outlet}); !errors.Is(err, ErrFnbScope) {
-		t.Fatalf("PPIC scope bypass: %v", err)
+	if _, err := GetFnbCosting(other.outlet, []string{f.outlet}); !errors.Is(err, ErrFnbScope) {
+		t.Fatalf("F&B scope bypass: %v", err)
 	}
 	if err := SaveFnbOutletPolicy(f.outlet, models.FnbOutletPolicy{TargetCostPct: 45}, nil, "uji"); err != nil {
 		t.Fatal(err)

@@ -29,7 +29,7 @@ func TestFnbRejectsOutsideScopeBeforeDataAccess(t *testing.T) {
 }
 
 func TestFnbCostOnlyAccessRedactsAllComposition(t *testing.T) {
-	snapshot := &models.RecipeCostSnapshot{Ingredients: []models.PpicHppIngredient{{ItemID: "secret"}}}
+	snapshot := &models.RecipeCostSnapshot{Ingredients: []models.RecipeCostIngredient{{ItemID: "secret"}}}
 	rows := []models.FnbCostRow{{Ingredients: snapshot.Ingredients, PriceComparisons: []models.FnbPriceComparison{{ItemID: "secret"}}, Recipes: []models.FnbRecipeCost{{RecipeCost: models.RecipeCost{InitialCost: snapshot, CostIngredients: snapshot.Ingredients}}}}}
 	redactFnbComposition(rows)
 	if len(rows[0].Ingredients) > 0 || len(rows[0].PriceComparisons) > 0 || len(rows[0].Recipes[0].CostIngredients) > 0 || len(rows[0].Recipes[0].InitialCost.Ingredients) > 0 {

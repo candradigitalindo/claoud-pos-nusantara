@@ -464,15 +464,9 @@ const NAV_ITEMS_DATA = [
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M8 17h5" />
     </svg>`,
     children: [
-      { to: '/ppic/dashboard',       label: 'Dashboard', permission: 'ppic.dashboard.view' },
-      { to: '/ppic/planning-params', label: 'Par Level & ROP', permission: 'ppic.planning.view' },
-      { to: '/ppic/expiry',          label: 'Monitor Kedaluwarsa', permission: 'ppic.expiry.view' },
+      { to: '/ppic/usage-control',   label: 'Kontrol Pemakaian Bahan', permission: 'ppic.control.view' },
       { to: '/ppic/opname',          label: 'Stock Opname', permission: 'ppic.opname.view' },
-      { to: '/ppic/forecast',        label: 'Demand Forecast', permission: 'ppic.forecast.view' },
-      { to: '/ppic/mrp',             label: 'Kebutuhan Bahan (MRP)', permission: 'ppic.mrp.view' },
-      { to: '/ppic/production-plans', label: 'Rencana Produksi', permission: 'ppic.production.view' },
-      { to: '/ppic/work-orders',     label: 'Work Order', permission: 'ppic.workorders.view' },
-      { to: '/ppic/reports',         label: 'Laporan PPIC', permission: 'ppic.reports.view' },
+      { to: '/ppic/expiry',          label: 'Monitor Kedaluwarsa', permission: 'ppic.expiry.view' },
     ],
   },
   {

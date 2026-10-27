@@ -570,12 +570,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/goods-receipts/:id", middleware.RequireAnyPermission(whView...), handlers.GetGoodsReceipt)
 	admin.Post("/goods-receipts", middleware.RequirePermission("stockledger.adjust"), handlers.CreateGoodsReceipt)
 
-	// PPIC — Fase 1: dashboard, par level/ROP, monitor kedaluwarsa, stock opname.
-	// Semua respons difilter scope outlet (gudang pusat + gudang outlet dalam scope).
-	admin.Get("/ppic/dashboard", middleware.RequirePermission("ppic.dashboard.view"), handlers.GetPpicDashboard)
-	admin.Get("/ppic/planning-params", middleware.RequirePermission("ppic.planning.view"), handlers.ListPlanningParams)
-	admin.Put("/ppic/planning-params", middleware.RequirePermission("ppic.planning.update"), handlers.UpsertPlanningParams)
-	admin.Post("/ppic/planning-params/auto-fill", middleware.RequirePermission("ppic.planning.update"), handlers.AutoFillPlanningParams)
+	// PPIC — kontrol pemakaian: lookup minimal dan kebijakan terpisah dari mutasi Gudang/resep F&B.
+	admin.Get("/ppic/usage-control/lookups", middleware.RequirePermission("ppic.control.view"), handlers.GetPpicUsageLookups)
+	admin.Put("/ppic/usage-control/policy", middleware.RequirePermission("ppic.control.update"), handlers.SavePpicUsagePolicy)
+	admin.Get("/ppic/usage-control/policy/history", middleware.RequirePermission("ppic.control.view"), handlers.GetPpicUsagePolicyHistory)
+	admin.Get("/ppic/usage-control/export", middleware.RequirePermission("ppic.control.export"), handlers.ExportPpicUsageControl)
+	admin.Get("/ppic/usage-control", middleware.RequirePermission("ppic.control.view"), handlers.GetPpicUsageControl)
+
+	// PPIC — lookup minimal, opname, dan pemantauan kedaluwarsa.
+	admin.Get("/ppic/lookups", middleware.RequireAnyPermission("ppic.control.view", "ppic.opname.view", "ppic.expiry.view"), handlers.GetPpicUsageLookups)
 	admin.Get("/ppic/expiry", middleware.RequirePermission("ppic.expiry.view"), handlers.GetExpiryMonitor)
 	admin.Post("/ppic/expiry/:batchId/ack", middleware.RequirePermission("ppic.expiry.ack"), handlers.AckExpiryBatch)
 	admin.Get("/ppic/opnames", middleware.RequirePermission("ppic.opname.view"), handlers.ListStockOpnames)
@@ -585,32 +588,6 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/ppic/opnames/:id/submit", middleware.RequirePermission("ppic.opname.create"), handlers.SubmitStockOpname)
 	admin.Post("/ppic/opnames/:id/approve", middleware.RequirePermission("ppic.opname.approve"), handlers.ApproveStockOpname)
 	admin.Post("/ppic/opnames/:id/cancel", middleware.RequirePermission("ppic.opname.create"), handlers.CancelStockOpname)
-	// PPIC — Fase 2: demand forecast + MRP (saran beli/transfer masuk alur existing).
-	admin.Get("/ppic/forecasts", middleware.RequirePermission("ppic.forecast.view"), handlers.ListForecasts)
-	admin.Get("/ppic/forecasts/history", middleware.RequirePermission("ppic.forecast.view"), handlers.GetForecastSalesHistory)
-	admin.Put("/ppic/forecasts", middleware.RequirePermission("ppic.forecast.manage"), handlers.UpdateForecasts)
-	admin.Post("/ppic/forecasts/generate", middleware.RequirePermission("ppic.forecast.manage"), handlers.GenerateForecasts)
-	admin.Get("/ppic/mrp/runs", middleware.RequirePermission("ppic.mrp.view"), handlers.ListMrpRuns)
-	admin.Get("/ppic/mrp/runs/:id", middleware.RequirePermission("ppic.mrp.view"), handlers.GetMrpRun)
-	admin.Post("/ppic/mrp/run", middleware.RequirePermission("ppic.mrp.run"), handlers.RunMrp)
-	admin.Post("/ppic/mrp/runs/:id/create-pr", middleware.RequirePermission("ppic.mrp.execute"), handlers.CreateMrpPurchaseRequest)
-	admin.Post("/ppic/mrp/runs/:id/create-transfer", middleware.RequirePermission("ppic.mrp.execute"), handlers.CreateMrpTransfer)
-	// PPIC — Fase 3: rencana produksi (MPS) + work order + laporan & export.
-	admin.Get("/ppic/producible-items", middleware.RequirePermission("ppic.production.view"), handlers.ListProducibleItems)
-	admin.Get("/ppic/production-plans", middleware.RequirePermission("ppic.production.view"), handlers.ListProductionPlans)
-	admin.Get("/ppic/production-plans/:id", middleware.RequirePermission("ppic.production.view"), handlers.GetProductionPlan)
-	admin.Post("/ppic/production-plans", middleware.RequirePermission("ppic.production.create"), handlers.CreateProductionPlan)
-	admin.Post("/ppic/production-plans/:id/approve", middleware.RequirePermission("ppic.production.approve"), handlers.ApproveProductionPlan)
-	admin.Post("/ppic/production-plans/:id/release", middleware.RequirePermission("ppic.production.approve"), handlers.ReleaseProductionPlan)
-	admin.Post("/ppic/production-plans/:id/cancel", middleware.RequirePermission("ppic.production.create"), handlers.CancelProductionPlan)
-	admin.Get("/ppic/work-orders", middleware.RequirePermission("ppic.workorders.view"), handlers.ListWorkOrders)
-	admin.Get("/ppic/work-orders/:id", middleware.RequirePermission("ppic.workorders.view"), handlers.GetWorkOrder)
-	admin.Post("/ppic/work-orders", middleware.RequirePermission("ppic.workorders.create"), handlers.CreateWorkOrder)
-	admin.Post("/ppic/work-orders/:id/start", middleware.RequirePermission("ppic.workorders.execute"), handlers.StartWorkOrder)
-	admin.Post("/ppic/work-orders/:id/finish", middleware.RequirePermission("ppic.workorders.execute"), handlers.FinishWorkOrder)
-	admin.Post("/ppic/work-orders/:id/cancel", middleware.RequirePermission("ppic.workorders.create"), handlers.CancelWorkOrder)
-	admin.Get("/ppic/reports/:tab", middleware.RequirePermission("ppic.reports.view"), handlers.GetPpicReport)
-	admin.Get("/ppic/reports/:tab/export", middleware.RequirePermission("ppic.reports.export"), handlers.ExportPpicReport)
 
 	// Settings — view + update only (no create/delete for settings)
 	// ── WhatsApp: koneksi gateway, notifikasi, penerima, log, broadcast ──

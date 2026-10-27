@@ -111,18 +111,12 @@ var AllPermissions = []string{
 	"fnb.dashboard.view", "fnb.development.view", "fnb.development.create", "fnb.development.update", "fnb.development.approve",
 	"fnb.costing.view", "fnb.costing.update",
 
-	// PPIC — Fase 1: pengendalian (dashboard, par level/ROP, kedaluwarsa, opname)
-	"ppic.dashboard.view",
-	"ppic.planning.view", "ppic.planning.update",
+	// PPIC — kontrol pemakaian bahan dan kebijakan batas yang eksplisit.
+	"ppic.control.view", "ppic.control.update", "ppic.control.export",
+
+	// PPIC — pemeriksaan fisik dan pencegahan waste.
 	"ppic.expiry.view", "ppic.expiry.ack",
 	"ppic.opname.view", "ppic.opname.create", "ppic.opname.approve",
-	// PPIC — Fase 2: perencanaan (demand forecast + MRP)
-	"ppic.forecast.view", "ppic.forecast.manage",
-	"ppic.mrp.view", "ppic.mrp.run", "ppic.mrp.execute",
-	// PPIC — Fase 3: produksi (MPS + work order) & laporan
-	"ppic.production.view", "ppic.production.create", "ppic.production.approve",
-	"ppic.workorders.view", "ppic.workorders.create", "ppic.workorders.execute",
-	"ppic.reports.view", "ppic.reports.export",
 
 	// Pengaturan
 	"settings.company.view", "settings.company.update",

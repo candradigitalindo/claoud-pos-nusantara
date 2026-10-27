@@ -32,6 +32,6 @@ for i,p in enumerate(pages):
 css=(source/'book.css').read_text()
 css+='\n.toc .toc-row{font-size:8.7pt;padding:1.3mm 0;line-height:1.28}.toc h3{margin-top:3mm}\n'
 (out/'panduan-operasional-gudang.html').write_text('<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Panduan Operasional Gudang — Cloud POS</title><style>'+css+'</style></head><body>'+''.join(chunks)+'</body></html>')
-manifest={'title':'Panduan Operasional Gudang — Cloud POS','date':'2026-10-27','revision':'Revisi 3 — Gudang mengelola bahan baku; resep dikelola F&B (dasar 67092f2 + workspace)','screen_data':'simulasi terisolasi','pages':[{'page':i+1,**{k:v for k,v in p.items() if k!='html'}} for i,p in enumerate(pages)],'images':images}
+manifest={'title':'Panduan Operasional Gudang — Cloud POS','date':'2026-10-27','revision':'Revisi 4 — Fokus PPIC: kontrol bahan, opname, kedaluwarsa','screen_data':'simulasi terisolasi; screenshot revisi sebelumnya, perubahan label dijelaskan dalam naskah','pages':[{'page':i+1,**{k:v for k,v in p.items() if k!='html'}} for i,p in enumerate(pages)],'images':images}
 (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
 print(f'{len(pages)} halaman, {len(images)} screenshot')

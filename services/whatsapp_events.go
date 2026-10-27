@@ -331,18 +331,15 @@ Oleh {actor} · {type} · {outlet} {work_unit}
 	},
 	// ── Gudang / PPIC ──
 	{
-		Key: "ppic.alert", Label: "Peringatan stok (kedaluwarsa & di bawah ROP)", Group: "Gudang", Audience: "internal", Scheduled: true,
-		Permissions:  []string{"ppic.dashboard.view", "ppic.expiry.view", "warehouse_dashboard.view"},
+		Key: "ppic.alert", Label: "Peringatan bahan kedaluwarsa", Group: "Gudang", Audience: "internal", Scheduled: true,
+		Permissions:  []string{"ppic.expiry.view", "warehouse_dashboard.view"},
 		Description:  "Evaluasi harian PPIC (sekitar pukul 02:00) dan saat aplikasi dinyalakan.",
-		Placeholders: []string{"company", "date", "expired_count", "expiring_count", "rop_count", "expiring_list", "rop_list"},
+		Placeholders: []string{"company", "date", "expired_count", "expiring_count", "expiring_list"},
 		Template: `⚠️ *Peringatan Stok {date}*
-Batch kedaluwarsa: *{expired_count}* · ≤3 hari: *{expiring_count}* · Di bawah ROP: *{rop_count}*
+Batch kedaluwarsa: *{expired_count}* · ≤3 hari: *{expiring_count}*
 
 Segera kedaluwarsa:
-{expiring_list}
-
-Di bawah titik pesan ulang:
-{rop_list}`,
+{expiring_list}`,
 	},
 	// ── Aset ──
 	{
@@ -469,8 +466,8 @@ func waSampleVars(spec *waEventSpec) map[string]string {
 		"unpaid_count": "1", "unpaid_amount": "Rp 85.000", "void_count": "0",
 		"number": "PR-2026-0912", "type": "Barang", "requested_by": "Andi", "work_unit": "· Dapur", "project": "",
 		"vendor": "CV Sumber Rejeki", "actor": "manager", "paid_total": "Rp 1.000.000",
-		"expired_count": "2", "expiring_count": "3", "rop_count": "5",
-		"expiring_list": "• Ayam fillet — Gudang Induk — exp 23-09 (12 kg)", "rop_list": "• Minyak goreng — Outlet A: 4 / min 10 L",
+		"expired_count": "2", "expiring_count": "3", "rop_count": waPpicROPNotEvaluated,
+		"expiring_list": "• Ayam fillet — Gudang Induk — exp 23-09 (12 kg)", "rop_list": waPpicROPNotEvaluated,
 		"count": "2", "list": "• WO-0021 Genset — servis rutin — 25-09-2026",
 		"last_seen": "21-09-2026 09:12", "minutes": "45", "pending_sync": "3", "battery": "42%",
 	}
@@ -1107,7 +1104,19 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 
 // ── PPIC ────────────────────────────────────────────────────────────────────
 
-func NotifyPpicAlert(expired, expiring, belowRop int) {
+const waPpicROPNotEvaluated = "tidak dievaluasi (fitur ROP dinonaktifkan)"
+
+func waPpicExpiryVars(day string, expired, expiring int, expLines []string) map[string]string {
+	return map[string]string{
+		"date": waDate(day), "expired_count": fmt.Sprintf("%d", expired), "expiring_count": fmt.Sprintf("%d", expiring),
+		"expiring_list": waOr(strings.Join(expLines, "\n"), "(tidak ada)"),
+		// Existing custom templates may still use these retired placeholders.
+		"rop_count": waPpicROPNotEvaluated,
+		"rop_list":  waPpicROPNotEvaluated,
+	}
+}
+
+func NotifyPpicAlert(expired, expiring int) {
 	if waGatewayURL == "" {
 		return
 	}
@@ -1129,36 +1138,7 @@ func NotifyPpicAlert(expired, expiring, belowRop int) {
 		}
 		rows.Close()
 	}
-	ropLines := []string{}
-	rows, err = database.DB.Query(`
-		SELECT si.name, w.name, sl.qty_base, COALESCE(NULLIF(pp.reorder_point, 0), sl.min_stock), si.base_unit
-		FROM stock_ledger sl
-		JOIN stock_items si ON si.id = sl.item_id AND si.is_active = true
-		JOIN warehouses w ON w.id = sl.warehouse_id
-		LEFT JOIN item_planning_params pp ON pp.item_id = sl.item_id AND pp.warehouse_id = sl.warehouse_id
-		WHERE COALESCE(NULLIF(pp.reorder_point, 0), sl.min_stock) > 0
-		  AND sl.qty_base <= COALESCE(NULLIF(pp.reorder_point, 0), sl.min_stock) AND w.is_active = true
-		ORDER BY (sl.qty_base / NULLIF(COALESCE(NULLIF(pp.reorder_point, 0), sl.min_stock),0)) ASC LIMIT 10`)
-	if err == nil {
-		for rows.Next() {
-			var item, wh, unit string
-			var qty, rop float64
-			if rows.Scan(&item, &wh, &qty, &rop, &unit) == nil {
-				ropLines = append(ropLines, fmt.Sprintf("• %s — %s: %.0f / min %.0f %s", item, wh, qty, rop, unit))
-			}
-		}
-		rows.Close()
-	}
-	if belowRop > 10 {
-		ropLines = append(ropLines, fmt.Sprintf("… dan %d item lain", belowRop-10))
-	}
-	vars := map[string]string{
-		"date": waDate(day), "expired_count": fmt.Sprintf("%d", expired), "expiring_count": fmt.Sprintf("%d", expiring),
-		"rop_count":     fmt.Sprintf("%d", belowRop),
-		"expiring_list": waOr(strings.Join(expLines, "\n"), "(tidak ada)"),
-		"rop_list":      waOr(strings.Join(ropLines, "\n"), "(tidak ada)"),
-	}
-	notifyWA("ppic.alert", day, "", vars, "")
+	notifyWA("ppic.alert", day, "", waPpicExpiryVars(day, expired, expiring, expLines), "")
 }
 
 // ── Aset ────────────────────────────────────────────────────────────────────

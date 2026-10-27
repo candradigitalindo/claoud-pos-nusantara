@@ -196,7 +196,7 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 				if !ok || m.qty <= 0 || !fnbFinite(m.qty) {
 					r.CostStatus = "missing_cost"
 				}
-				line := models.PpicHppIngredient{ItemID: m.id, ItemName: inf.name, Unit: inf.unit, QtyBase: m.qty, CostPerBase: round4(v), Cost: round4(v * m.qty), IsWip: len(wip[m.id]) > 0}
+				line := models.RecipeCostIngredient{ItemID: m.id, ItemName: inf.name, Unit: inf.unit, QtyBase: m.qty, CostPerBase: round4(v), Cost: round4(v * m.qty), IsWip: len(wip[m.id]) > 0}
 				r.Ingredients = append(r.Ingredients, line)
 				r.MaterialCost += line.Cost
 			}

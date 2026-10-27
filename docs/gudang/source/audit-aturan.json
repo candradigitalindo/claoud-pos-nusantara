@@ -26,7 +26,7 @@
         "Transfer create stocktransfers.create; approve .approve; send/cancel .update; inspect receive stocktransfers.receive ATAU stockquality.central.receive/outlet.receive; reject tambahan stocktransfers.reject.",
         "Mutu: stockquality.view, stockquality.central|outlet.report/approve/execute/receive sesuai tahap; refund stockquality.refund. Scope outlet tidak dapat tindakan mutu pada central. Pelapor dilarang menyetujui/melepas kasus sendiri.",
         "Scope tidak identik antar jalur: WarehouseMutableInScope mengizinkan central dan outlet sendiri untuk pengguna terbatas; WarehouseInOutletScope hanya outlet sendiri. GRN/adjust/produksi sederhana memakai Mutable; pemotongan memakai InOutlet. Tahap approve/send central transfer wajib scope semua outlet. Warehouse CRUD handlers tidak menambah scope guard di luar izin route, jadi jangan klaim seluruh aksi selalu dibatasi outlet.",
-        "PPIC expiry view/ack; opname view/create/approve; production view/create/approve; workorders view/create/execute. Pembuatan role/nama jabatan tidak menentukan izin tanpa konfigurasi aktual."
+        "PPIC control view/update/export; expiry view/ack; opname view/create/approve. Menu perencanaan/produksi lama dihapus, data historis dipertahankan. Pembuatan role/nama jabatan tidak menentukan izin tanpa konfigurasi aktual."
       ],
       "sources": [
         "routes/routes.go:495",
@@ -228,10 +228,7 @@
       "id": "recipes_production",
       "rules": [
         "Master resep shared: nama/visibility(public|secret)/durasi>=0 valid, minimal1 bahan unik qty>0 finite. Secret master list/detail dibatasi outlet akses, CRUD semuaoutlet. Resep internal stock_item berbeda dari master recipe; jangan samakan struktur/validasi semua resep.",
-        "Produksi (Masak) di Kartu Stok menggunakan internal stock_item_recipe, qty hasil>0, resep harus ada. Bahan qty resep×hasil dikurangi satu gudang, stok cukup; hasil ditambahkan gudang sama, HPP jumlah biaya aktual bahan/hasil. Single transaction, tanpa approval/foto atau expiry hasil; permintaan baru dapat membuat produksi kedua, bukan idempotensi umum.",
-        "PPIC rencana produksi draft->approved->released; cancel draft/approved. Release membuat workorders, tetapi loop creation dan status plan tidak satu transaksi; jangan janji retry release bebas duplikasi tanpa memeriksa hasil.",
-        "WO planned->in_progress->done; finish juga menerima planned; cancel planned/in_progress. Finish mengunci WO, validasi status, output positif; material default snapshot skala output/planned atau actual submitted nonnegatif, omitted0. Stok baru diposting saat finish, bukan start. HPP aktual, expiry hasil jika ShelfLifeDays>0, yield actual/planned×100. Plan closed saat semua WO done/cancelled.",
-        "Tidak ada kewajiban pelapor/approver berbeda pada rencana/WO; tidak semua bahan actual wajib >0. SOP review hasil/komposisi dan jangan jalankan Produksi Masak kedua kali untuk hasil yang sama sudah WO done."
+        "Produksi (Masak) di Kartu Stok menggunakan internal stock_item_recipe, qty hasil>0, resep harus ada. Bahan qty resep×hasil dikurangi satu gudang, stok cukup; hasil ditambahkan gudang sama, HPP jumlah biaya aktual bahan/hasil. Single transaction, tanpa approval/foto atau expiry hasil; permintaan baru dapat membuat produksi kedua, bukan idempotensi umum."
       ],
       "sources": [
         "services/warehouse.go:1652",
@@ -239,10 +236,7 @@
         "services/warehouse.go:1833",
         "services/warehouse.go:1856",
         "handlers/warehouse.go:621",
-        "ui/src/pages/StockLedger.vue:13",
-        "services/ppic_production.go:183",
-        "services/ppic_production.go:198",
-        "services/ppic_production.go:415"
+        "ui/src/pages/StockLedger.vue:13"
       ]
     },
     {

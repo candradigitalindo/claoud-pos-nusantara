@@ -330,12 +330,12 @@ const CATEGORIES = [
   {
     label: 'PPIC', icon: IC.gauge,
     items: [
-      { type: 'single', key: 'ppic.dashboard.view', label: 'Dashboard PPIC', icon: IC.gauge },
       {
-        type: 'toggles', label: 'Par Level & ROP', icon: IC.stockitem,
+        type: 'toggles', label: 'Kontrol Pemakaian Bahan', icon: IC.gauge,
         toggles: [
-          { key: 'ppic.planning.view',   label: 'Lihat' },
-          { key: 'ppic.planning.update', label: 'Ubah' },
+          { key: 'ppic.control.view', label: 'Lihat' },
+          { key: 'ppic.control.update', label: 'Atur Batas' },
+          { key: 'ppic.control.export', label: 'Export Excel' },
         ],
       },
       {
@@ -351,44 +351,6 @@ const CATEGORIES = [
           { key: 'ppic.opname.view',    label: 'Lihat' },
           { key: 'ppic.opname.create',  label: 'Buat/Hitung' },
           { key: 'ppic.opname.approve', label: 'Approve' },
-        ],
-      },
-      {
-        type: 'toggles', label: 'Demand Forecast', icon: IC.finance,
-        toggles: [
-          { key: 'ppic.forecast.view',   label: 'Lihat' },
-          { key: 'ppic.forecast.manage', label: 'Generate/Ubah' },
-        ],
-      },
-      {
-        type: 'toggles', label: 'Kebutuhan Bahan (MRP)', icon: IC.cart,
-        toggles: [
-          { key: 'ppic.mrp.view',    label: 'Lihat' },
-          { key: 'ppic.mrp.run',     label: 'Hitung' },
-          { key: 'ppic.mrp.execute', label: 'Buat Draft PR/Transfer' },
-        ],
-      },
-      {
-        type: 'toggles', label: 'Rencana Produksi (MPS)', icon: IC.workunit,
-        toggles: [
-          { key: 'ppic.production.view',    label: 'Lihat' },
-          { key: 'ppic.production.create',  label: 'Buat' },
-          { key: 'ppic.production.approve', label: 'Approve/Release' },
-        ],
-      },
-      {
-        type: 'toggles', label: 'Work Order', icon: IC.recipe,
-        toggles: [
-          { key: 'ppic.workorders.view',    label: 'Lihat' },
-          { key: 'ppic.workorders.create',  label: 'Buat/Batal' },
-          { key: 'ppic.workorders.execute', label: 'Mulai/Selesaikan' },
-        ],
-      },
-      {
-        type: 'toggles', label: 'Laporan PPIC', icon: IC.report,
-        toggles: [
-          { key: 'ppic.reports.view',   label: 'Lihat' },
-          { key: 'ppic.reports.export', label: 'Export Excel' },
         ],
       },
     ],

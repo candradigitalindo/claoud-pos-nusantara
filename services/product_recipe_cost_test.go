@@ -3,11 +3,11 @@ package services
 import (
 	"cloud-pos/database"
 	"cloud-pos/models"
-	"encoding/json"
 	"errors"
 	"math"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func costTestRecipe(t *testing.T, item string, qty float64) string {
@@ -214,46 +214,34 @@ func TestRecipeCostUsesBasePriceFromBoxReceipt(t *testing.T) {
 	}
 }
 
-func TestProductRecipeMultiplePpicConsumers(t *testing.T) {
+func TestProductRecipeMultipleCostingAndUsageControl(t *testing.T) {
 	f := newProductRecipeFixture(t)
 	r1, r2 := costTestRecipe(t, f.itemID, 2), costTestRecipe(t, f.itemID, 3)
 	links := []models.ProductRecipeLink{{RecipeMasterID: r1, Multiplier: 1}, {RecipeMasterID: r2, Multiplier: .5}}
-	p, err := AdminCreateProduct(models.AdminCreateProductRequest{OutletID: f.outlet, Name: "PPIC gabungan", Recipes: &links})
+	p, err := AdminCreateProduct(models.AdminCreateProductRequest{OutletID: f.outlet, Name: "Menu gabungan", Recipes: &links})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.stockIn(t, f.itemID, 100, 1000, "")
-	hpp, err := GetPpicHppReport(f.outlet, 35, []string{f.outlet})
-	if err != nil || len(hpp.Rows) != 1 || len(hpp.Rows[0].Ingredients) != 1 || hpp.Rows[0].Ingredients[0].QtyBase != 3.5 {
-		t.Fatalf("PPIC HPP: %+v %v", hpp, err)
-	}
-	if _, err := database.DB.Exec(`INSERT INTO demand_forecasts(id,outlet_id,product_name,forecast_date,qty_system) VALUES($1,$2,$3,CURRENT_DATE,4)`, NewULID(), f.outlet, p.Name); err != nil {
-		t.Fatal(err)
+	costing, err := GetFnbCosting(f.outlet, []string{f.outlet})
+	if err != nil || len(costing) != 1 || len(costing[0].Ingredients) != 1 || costing[0].Ingredients[0].QtyBase != 3.5 {
+		t.Fatalf("F&B combined ingredients: %+v %v", costing, err)
 	}
 	t.Cleanup(func() {
-		execScratch(`DELETE FROM mrp_run_items WHERE run_id IN (SELECT id FROM mrp_runs WHERE warehouse_id=$1)`, f.wh)
-		execScratch(`DELETE FROM mrp_runs WHERE warehouse_id=$1`, f.wh)
+		execScratch(`DELETE FROM pos_stock_deductions WHERE outlet_id=$1`, f.outlet)
+		execScratch(`DELETE FROM stock_deduction_failures WHERE outlet_id=$1`, f.outlet)
+		execScratch(`DELETE FROM transaction_payments WHERE outlet_id=$1`, f.outlet)
+		execScratch(`DELETE FROM cloud_transactions WHERE outlet_id=$1`, f.outlet)
 	})
-	mrp, err := RunMrp(models.MrpRunRequest{WarehouseID: f.wh, HorizonDays: 1}, "uji", []string{f.outlet})
-	if err != nil || len(mrp.Items) != 1 || mrp.Items[0].GrossReq != 14 {
-		t.Fatalf("MRP: %+v %v", mrp, err)
-	}
-	order := NewULID()
-	items, _ := json.Marshal([]map[string]any{{"product_name": p.Name, "qty": 4}})
-	if _, err := database.DB.Exec(`INSERT INTO cloud_orders(id,local_id,outlet_id,outlet_code,items,total_amount,created_at) VALUES($1::char(26),$1::text,$2,'HPPTEST',$3,100000,NOW() AT TIME ZONE 'UTC')`, order, f.outlet, string(items)); err != nil {
+	if _, err := SaveTransaction(f.outlet, models.PushTransactionRequest{LocalID: NewULID(), OutletCode: "COSTTEST", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano), TotalAmount: 100000, PaymentMethod: "cash", Items: []models.TransactionItem{{ProductID: p.LocalID, ProductName: p.Name, Quantity: 4, Price: 25000, Subtotal: 100000}}}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { execScratch(`DELETE FROM cloud_orders WHERE id=$1`, order) })
 	var day string
 	if err := database.DB.QueryRow(`SELECT tz_today()::text`).Scan(&day); err != nil {
 		t.Fatal(err)
 	}
-	variance, err := GetPpicVarianceReport(day, day, f.wh, []string{f.outlet})
-	if err != nil || len(variance.Rows) != 1 || variance.Rows[0].TheoQty != 14 || variance.QtySoldWithRecipe != 4 {
-		t.Fatalf("variance: %+v %v", variance, err)
-	}
-	sold, err := GetPpicSoldReport(day, day, f.outlet, "", []string{f.outlet})
-	if err != nil || len(sold.Rows) != 1 || !sold.Rows[0].HasRecipe {
-		t.Fatalf("coverage: %+v %v", sold, err)
+	report, err := GetPpicUsageControl(day, day, f.wh, "", "", []string{f.outlet}, 1, 0)
+	if err != nil || len(report.Rows) != 1 || report.Rows[0].SaleQty != 14 || report.Rows[0].ReferenceQty != 14 {
+		t.Fatalf("usage from paid combined recipe snapshot: %+v %v", report, err)
 	}
 }

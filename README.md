@@ -99,6 +99,54 @@ kelompok F & B pada halaman Role. Izin Gudang tidak otomatis memberikan akses
 resep; jangan memberikan hak tulis resep hanya untuk mengizinkan petugas
 menjalankan transaksi stok.
 
+## Kontrol pemakaian bahan (PPIC)
+
+**PPIC → Kontrol Pemakaian Bahan** membandingkan acuan pemakaian yang tercatat
+pada penjualan/produksi, pemakaian lain, waste, serta koreksi stok hasil opname
+per **bahan dan gudang**. F&B menetapkan resep; Gudang menjalankan transaksi
+persediaan; PPIC menetapkan batas dan menindaklanjuti penyimpangan.
+
+- PPIC mengisi toleransi pemakaian dan waste secara terpisah. Tidak ada batas
+  bawaan. Bahan yang belum mempunyai kebijakan ditandai **Batas belum ditetapkan**;
+  angka **0%** berarti kebijakan tanpa toleransi, bukan batas yang belum diisi.
+- Batas pemakaian = acuan × (1 + toleransi pemakaian / 100).
+  Batas waste = acuan × toleransi waste / 100. Jika acuan nol, batas kuantitas
+  dan rasio tidak dihitung; hasil tidak otomatis dinyatakan wajar.
+- Acuan penjualan memakai kuantitas bahan pada catatan transaksi, bukan menghitung
+  ulang resep terkini. Work order memakai rincian standar yang tersimpan;
+  produksi langsung dan pemotongan yang tidak mempunyai standar pembanding
+  independen diberi keterangan. Kuantitas memakai satuan dasar bahan.
+- Pemakaian POS otomatis belum membuktikan pemakaian fisik. Periksa stock opname
+  dan bukti waste. Koreksi negatif dan positif ditampilkan terpisah, sehingga
+  kelebihan di satu gudang/bahan tidak menghapus kekurangan di tempat lain.
+- Waste dihitung sekali dari catatan waste, termasuk void yang menghasilkan
+  waste dan pemusnahan barang karantina. Pengeluaran waste tanpa dokumen tetap
+  masuk total dan ditandai agar bukti dilengkapi. Titipan, transfer, dan penahanan barang
+  tidak dianggap konsumsi. Jangan menambahkan void sekali lagi ke total waste.
+- Periode mengikuti tanggal pencatatan stok/waste. Sinkronisasi POS terlambat,
+  pembatalan kemudian, dan persetujuan opname dapat berbeda dari tanggal kejadian
+  fisik. Data pemotongan yang belum lengkap ditandai untuk diperiksa.
+- Laporan menggunakan **kebijakan yang aktif sekarang**, termasuk saat melihat
+  periode lampau. Setiap perubahan batas wajib mempunyai alasan, pengubah, waktu,
+  dan nomor revisi; riwayat tersedia di rincian bahan. Ekspor Excel mengikuti
+  filter serta cakupan akses laporan yang ditampilkan.
+
+Izin khusus: `ppic.control.view`, `ppic.control.update`, dan
+`ppic.control.export`. Akun dengan cakupan outlet hanya melihat/mengubah batas
+gudang outletnya; kebijakan gudang pusat memerlukan cakupan semua outlet.
+Izin ini tidak memberikan akses mengubah resep atau melakukan mutasi stok.
+
+Alur kerja PPIC: lengkapi batas → periksa baris di atas batas/data belum lengkap
+→ cocokkan resep, bukti waste, dan opname → koreksi melalui dokumen sumber yang
+sesuai. Status **Dalam batas tercatat** tetap merupakan hasil kontrol catatan,
+bukan pembuktian bahwa tidak ada kehilangan.
+
+Menu PPIC hanya berisi **Kontrol Pemakaian Bahan**, **Stock Opname**, dan
+**Monitor Kedaluwarsa**. Dashboard lama, Par Level & ROP, Forecast, MRP,
+Rencana Produksi, Work Order, serta laporan lama telah dihapus bersama API
+dan izinnya. Data historis tetap disimpan untuk penelusuran stok.
+Lihat [panduan PPIC](docs/pengembangan-sidebar-ppic.md).
+
 ## Resep produk (opsional)
 
 Di **Produk & Kategori → Tambah/Edit Produk**, pilih **Resep (opsional)**.
@@ -214,8 +262,7 @@ retur, belum membuat jurnal kas/bank otomatis pada laporan keuangan.
 dalam satu pemeriksaan berfoto. Sisa yang belum datang tetap dalam perjalanan
 dan dapat diterima berikutnya. Reject masuk karantina dengan nilai biaya
 pengiriman; tidak otomatis dicatat sebagai kehilangan. Versi dokumen dan
-kunci transaksi mencegah penerimaan atau penyelesaian ganda. Perencanaan MRP
-menghitung hanya sisa transfer yang masih dalam perjalanan.
+kunci transaksi mencegah penerimaan atau penyelesaian ganda.
 
 Foto melalui `/admin/stock-evidence` divalidasi sebagai JPG/PNG/WebP (maksimal
 5 MB/25 megapiksel), diberi cap **waktu pencatatan server UTC** dan pengunggah,

@@ -69,7 +69,7 @@ func loadRecipeCostDefinitions(q recipeCostQuerier, ids []string) (map[string]re
 }
 
 func (c *recipeCostCatalog) recipeCost(d recipeCostDefinition, outlet string) models.RecipeCost {
-	r := models.RecipeCost{InitialCost: d.initial, CostIngredients: []models.PpicHppIngredient{}}
+	r := models.RecipeCost{InitialCost: d.initial, CostIngredients: []models.RecipeCostIngredient{}}
 	total, complete := 0.0, len(d.materials) > 0
 	for _, m := range d.materials {
 		v, ok := c.unitCost(m.id, outlet, map[string]bool{})
@@ -77,7 +77,7 @@ func (c *recipeCostCatalog) recipeCost(d recipeCostDefinition, outlet string) mo
 			complete = false
 		}
 		inf := c.infos[m.id]
-		line := models.PpicHppIngredient{ItemID: m.id, ItemName: inf.name, Unit: inf.unit, QtyBase: m.qty, CostPerBase: round4(v), Cost: round4(v * m.qty), IsWip: len(c.wip[m.id]) > 0}
+		line := models.RecipeCostIngredient{ItemID: m.id, ItemName: inf.name, Unit: inf.unit, QtyBase: m.qty, CostPerBase: round4(v), Cost: round4(v * m.qty), IsWip: len(c.wip[m.id]) > 0}
 		r.CostIngredients = append(r.CostIngredients, line)
 		total += line.Cost
 	}

@@ -23,21 +23,21 @@ type FnbCostRow struct {
 	Recipes                    []FnbRecipeCost      `json:"recipes,omitempty"`
 	ReferenceMaterialCost      *float64             `json:"reference_material_cost"`
 	FnbProfile
-	ProductID      string              `json:"product_id"`
-	ProductName    string              `json:"product_name"`
-	OutletID       string              `json:"outlet_id"`
-	OutletName     string              `json:"outlet_name"`
-	Category       string              `json:"category"`
-	RecipeID       string              `json:"recipe_id"`
-	Price          float64             `json:"price"`
-	MaterialCost   float64             `json:"material_cost"`
-	TotalCost      float64             `json:"total_cost"`
-	CostPct        float64             `json:"cost_pct"`
-	Margin         float64             `json:"margin"`
-	SuggestedPrice float64             `json:"suggested_price"`
-	CostStatus     string              `json:"cost_status"` // ready, no_recipe, missing_cost, restricted
-	IsOver         bool                `json:"is_over"`
-	Ingredients    []PpicHppIngredient `json:"ingredients,omitempty"`
+	ProductID      string                 `json:"product_id"`
+	ProductName    string                 `json:"product_name"`
+	OutletID       string                 `json:"outlet_id"`
+	OutletName     string                 `json:"outlet_name"`
+	Category       string                 `json:"category"`
+	RecipeID       string                 `json:"recipe_id"`
+	Price          float64                `json:"price"`
+	MaterialCost   float64                `json:"material_cost"`
+	TotalCost      float64                `json:"total_cost"`
+	CostPct        float64                `json:"cost_pct"`
+	Margin         float64                `json:"margin"`
+	SuggestedPrice float64                `json:"suggested_price"`
+	CostStatus     string                 `json:"cost_status"` // ready, no_recipe, missing_cost, restricted
+	IsOver         bool                   `json:"is_over"`
+	Ingredients    []RecipeCostIngredient `json:"ingredients,omitempty"`
 }
 
 type FnbOutletPolicy struct {

@@ -436,7 +436,6 @@ var waPermissionLabels = map[string]string{
 	"procurement.requests.approve":    "Persetujuan Pengadaan",
 	"procurement.requests.purchasing": "Purchasing (isi harga/beli)",
 	"finance.payments.pay":            "Pencairan Pembayaran",
-	"ppic.dashboard.view":             "Dashboard PPIC",
 	"ppic.expiry.view":                "Kedaluwarsa PPIC",
 	"warehouse_dashboard.view":        "Dashboard Gudang",
 	"assets.maintenance.view":         "Perawatan Aset",
