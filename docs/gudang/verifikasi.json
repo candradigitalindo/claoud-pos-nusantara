@@ -12,13 +12,16 @@
   "revision": "Revisi 4 — Fokus PPIC: kontrol bahan, opname, kedaluwarsa",
   "screen_data": "simulasi terisolasi; screenshot revisi sebelumnya, perubahan label dijelaskan dalam naskah",
   "publication": {
-    "status": "prepared",
-    "uploaded": false,
-    "note": "Artefak revisi 4 telah disiapkan dan diperiksa secara lokal. Status publikasi dan verifikasi unduhan diperbarui setelah pemeriksaan server.",
+    "status": "published",
+    "uploaded": true,
+    "note": "PDF revisi 4 diterbitkan setelah deployment PPIC; unduhan publik dan ketiga file origin telah diverifikasi identik dengan artefak rilis.",
     "target_url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=4",
-    "previous_revision_url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=3"
+    "previous_revision_url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=3",
+    "canonical_url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=4",
+    "verified_at": "2026-10-27T11:34:29.978076+07:00",
+    "cache_note": "Gunakan URL dengan rev=4. File canonical dan dua alias lama sudah diperbarui di origin; cache URL lama dapat bertahan sesuai kebijakan CDN."
   },
-  "application_deployed": false,
+  "application_deployed": true,
   "checks": [
     "HTML dan PDF revisi 4 dibangun ulang dari sumber; naskah tidak memuat status deployment sementara.",
     "69 halaman; checksum seluruh 45 aset screenshot sesuai manifest.",
@@ -26,10 +29,46 @@
     "Seluruh anchor HTML dan tujuan halaman tautan PDF valid; URL eksternal berformat HTTPS.",
     "Instruksi menjalankan Rencana Produksi/Work Order PPIC dihapus; fungsi PPIC dibatasi kontrol bahan, opname dan kedaluwarsa.",
     "Teks mempertahankan data historis, batas peran Gudang/F&B/PPIC dan penjelasan screenshot demo revisi sebelumnya.",
-    "Pemeriksaan visual sampul, pengantar dan lampiran terakhir: teks serta footer terbaca dan tidak terpotong."
+    "Pemeriksaan visual sampul, pengantar dan lampiran terakhir: teks serta footer terbaca dan tidak terpotong.",
+    "Unduhan publik revisi 4: HTTP 200, application/pdf, ukuran dan SHA256 cocok dengan artefak rilis.",
+    "File canonical dan dua alias lama di origin menyajikan PDF revisi 4 yang identik.",
+    "Aplikasi PPIC berhasil di-deploy; 17 pemeriksaan API dan 11 skenario browser produksi lulus."
   ],
   "validation_tools": {
     "pdf": "PyMuPDF",
     "render": "Playwright 1.47.2 / Chromium"
-  }
+  },
+  "application_commit": "bdbe3c43e663a53fdf8781b2c5ed292fe26c97d1",
+  "download": {
+    "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=4",
+    "http_status": 200,
+    "content_type": "application/pdf",
+    "bytes": 9762513,
+    "sha256": "f0c71495ef964d7ef1c6f275092a18752f17d3c322cd65853dbe53e74dbb702a",
+    "sha256_matches_local": true,
+    "cache_status": "MISS"
+  },
+  "origin_verification": [
+    {
+      "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf",
+      "checked_at_origin": true,
+      "http_status": 200,
+      "bytes": 9762513,
+      "sha256": "f0c71495ef964d7ef1c6f275092a18752f17d3c322cd65853dbe53e74dbb702a"
+    },
+    {
+      "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-2026-10-27.pdf",
+      "checked_at_origin": true,
+      "http_status": 200,
+      "bytes": 9762513,
+      "sha256": "f0c71495ef964d7ef1c6f275092a18752f17d3c322cd65853dbe53e74dbb702a"
+    },
+    {
+      "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-Revisi-FNB-2026-10-27.pdf",
+      "checked_at_origin": true,
+      "http_status": 200,
+      "bytes": 9762513,
+      "sha256": "f0c71495ef964d7ef1c6f275092a18752f17d3c322cd65853dbe53e74dbb702a"
+    }
+  ]
 }
