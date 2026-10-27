@@ -35,7 +35,7 @@
     "handlers/stock_breakdown.go",
     "database/migrations.go"
   ],
-  "publication_status": "lokal, belum diterbitkan",
+  "publication_status": "published",
   "document_changes": [
     "Gudang mengelola bahan baku dan persediaannya tanpa membuat atau mengubah resep.",
     "Tutorial pusat resep F&B, resep bahan setengah jadi dan pengaturan pola pemotongan dikeluarkan dari panduan Gudang.",
@@ -45,5 +45,14 @@
     "48-fnb-recipe-center.png",
     "09-sfg-recipe.png",
     "10-breakdown-pattern.png"
-  ]
+  ],
+  "publication_urls": {
+    "canonical": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=3",
+    "replaces": [
+      "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-2026-10-27.pdf",
+      "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-Revisi-FNB-2026-10-27.pdf"
+    ],
+    "origin_file": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf"
+  },
+  "publication_cache_note": "Dua URL lama sudah diperbarui dan diverifikasi di origin. Cache CDN pada URL lama dapat masih menyajikan edisi sebelumnya sesuai Cache-Control max-age=14400; gunakan URL canonical dengan rev=3 untuk revisi terbaru."
 }

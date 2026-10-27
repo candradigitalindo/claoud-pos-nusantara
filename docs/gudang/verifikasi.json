@@ -2,24 +2,31 @@
   "pages": 69,
   "expected_pages": 69,
   "pages_with_screenshots": 45,
-  "file_bytes": 9763099,
-  "sha256": "c9af13491ff01fea1511e54c8a57d67856f8d4c948bb88553ea2eac068093613",
+  "file_bytes": 9763104,
+  "sha256": "81e8d10d9f7ce8d2d6ab9cf5a466bf1845fded93420ce30bd31575a98beaabc3",
   "internal_and_external_links": 134,
   "html_links": 134,
   "external_link_targets": [
     "https://pos.nbp.co.id/uploads/panduan/Panduan-Pengadaan-sampai-Penerimaan-Cloud-POS-2026-10-26.pdf"
   ],
   "external_link_validation": "Target URI diperiksa dari struktur PDF; ketersediaan jaringan tidak diuji ulang.",
-  "text_characters": 108560,
+  "text_characters": 108601,
   "issues": [],
-  "revision": "Revisi 3 lokal — Gudang mengelola bahan baku; resep dikelola F&B (dasar 67092f2 + workspace)",
+  "revision": "Revisi 3 — Gudang mengelola bahan baku; resep dikelola F&B (dasar 67092f2 + workspace)",
   "document_revision": 3,
   "screen_data": "simulasi terisolasi; menggunakan screenshot revisi sebelumnya",
   "date": "2026-10-27",
   "publication": {
-    "status": "local_only",
-    "uploaded": false,
-    "note": "PDF revisi 3 belum diterbitkan. URL edisi sebelumnya tidak mewakili file lokal ini."
+    "status": "published",
+    "uploaded": true,
+    "note": "PDF revisi 3 sudah terbit; unduhan URL publik mengembalikan HTTP 200 dan checksum yang sama dengan artefak lokal.",
+    "canonical_url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=3",
+    "replaces_urls": [
+      "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-2026-10-27.pdf",
+      "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-Revisi-FNB-2026-10-27.pdf"
+    ],
+    "origin_file_url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf",
+    "cache_note": "Dua URL lama sudah diperbarui dan diverifikasi di origin. Cache CDN pada URL lama dapat masih menyajikan edisi sebelumnya sesuai Cache-Control max-age=14400; gunakan URL canonical dengan rev=3 untuk revisi terbaru."
   },
   "application_deployed": false,
   "checks": [
@@ -30,10 +37,39 @@
     "Checksum seluruh gambar dalam manifest sesuai aset lokal.",
     "Tutorial g48/g09/g10 dan instruksi Simpan Resep/Simpan Pola tidak ada dalam HTML terbitan.",
     "PDF berisi penegasan bahwa Gudang tidak membuat atau mengubah resep.",
-    "Pemeriksaan visual sampul, pengantar, pembagian tugas, daftar isi langkah dan halaman penerimaan: teks, gambar dan footer tidak terpotong."
+    "Label lokal dan klaim PDF belum diterbitkan sudah tidak ada; batas pembaruan dokumen dan deployment aplikasi tetap dinyatakan.",
+    "Pemeriksaan visual sampul, pengantar dan halaman sumber setelah persiapan publikasi: teks dan footer tidak terpotong.",
+    "URL publik revisi 3: HTTP 200, application/pdf, ukuran dan SHA256 cocok dengan PDF lokal.",
+    "File canonical dan dua URL lama diperbarui di origin; ketiganya mengirim PDF revisi 3 yang identik."
   ],
   "validation_tools": {
     "pdf": "PyMuPDF",
     "render": "Playwright 1.47.2 / Chromium di container lokal"
-  }
+  },
+  "download": {
+    "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=3",
+    "http_status": 200,
+    "content_type": "application/pdf",
+    "bytes": 9763104,
+    "sha256": "81e8d10d9f7ce8d2d6ab9cf5a466bf1845fded93420ce30bd31575a98beaabc3",
+    "cache_status": "MISS",
+    "sha256_matches_local": true
+  },
+  "origin_verification": [
+    {
+      "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf",
+      "http_status": 200,
+      "sha256_matches_local": true
+    },
+    {
+      "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-2026-10-27.pdf",
+      "http_status": 200,
+      "sha256_matches_local": true
+    },
+    {
+      "url": "https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-Revisi-FNB-2026-10-27.pdf",
+      "http_status": 200,
+      "sha256_matches_local": true
+    }
+  ]
 }

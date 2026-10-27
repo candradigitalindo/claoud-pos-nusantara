@@ -20,7 +20,7 @@ tersedia di ../manifest.json; hasil pemeriksaan PDF pada ../verifikasi.json.
 Audit tampilan tambahan terdapat pada audit-tampilan.txt.
 Tidak ada akun, token, atau kredensial database di sumber dokumentasi ini.
 
-REVISI 3 LOKAL — GUDANG MENGELOLA BAHAN BAKU
+REVISI 3 — GUDANG MENGELOLA BAHAN BAKU
 Gudang mengelola bahan baku dan persediaannya, tanpa membuat atau mengubah resep.
 Tutorial pusat resep F&B, resep bahan setengah jadi dan pengaturan pola pemotongan
 dikeluarkan dari panduan Gudang. Alur transaksi stok tetap dijelaskan menggunakan
@@ -32,10 +32,19 @@ sebagai arsip, tetapi tidak dirujuk HTML, PDF atau manifest revisi 3:
 48-fnb-recipe-center.png, 09-sfg-recipe.png, 10-breakdown-pattern.png.
 
 Audit-aturan dan audit-tampilan merupakan dasar audit awal; revisi-fnb.json
-menjelaskan perubahan atas dasar tersebut. Hasil validasi artefak lokal revisi 3
+menjelaskan perubahan atas dasar tersebut. Hasil validasi artefak revisi 3
 tersimpan di ../verifikasi.json. Klaim pengujian aplikasi dari revisi sebelumnya
 tidak dianggap sebagai pengujian ulang untuk perubahan dokumen ini.
 
-PDF revisi 3 hanya diperbarui secara lokal, belum diterbitkan atau diunggah.
-URL PDF revisi 2 yang pernah dicatat menunjuk edisi lama dan bukan PDF lokal ini.
-Perubahan aplikasi pada workspace belum dinyatakan diterapkan ke produksi.
+Status publikasi: published. PDF revisi 3 diterbitkan pada 27 Oktober 2026.
+URL unduhan revisi 3 terverifikasi (parameter revisi menghindari cache lama):
+https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS.pdf?rev=3
+Dua URL lama berikut sudah diganti di origin dengan PDF revisi 3 yang sama:
+https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-2026-10-27.pdf
+https://pos.nbp.co.id/uploads/panduan/Panduan-Operasional-Gudang-Cloud-POS-Revisi-FNB-2026-10-27.pdf
+Ketiga file di origin telah diperiksa dan identik. Cache CDN pada URL lama dapat
+menyajikan edisi sebelumnya sampai masa cache berakhir (hingga 4 jam).
+URL unduhan revisi 3: HTTP 200, application/pdf, SHA256 sama dengan PDF lokal.
+Hasil akses URL dan checksum unduhan tersimpan pada ../verifikasi.json.
+Pembaruan PDF tidak menerapkan perubahan aplikasi ke produksi. Perubahan aplikasi
+belum diterapkan ke produksi saat artefak revisi ini disiapkan.
