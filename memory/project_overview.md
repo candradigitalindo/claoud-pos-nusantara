@@ -59,7 +59,8 @@ Backend berjalan di port default **3000**. Frontend (Vue 3) di-serve langsung ol
 | Vendors | Master data vendor/supplier |
 | Bank Accounts | Rekening bank untuk pembayaran procurement |
 | Reports | Sales, product sales, unpaid orders, tax, cash flow, balance, profit-loss, general ledger |
-| Warehouse | Stock items, gudang (central/outlet), stock ledger, mutasi, transfer, waste, resep |
+| Warehouse | Hanya mengelola bahan baku dan persediaan: katalog, satuan, saldo, penerimaan, mutasi, transfer, waste, dan opname. Tidak membuat atau mengubah resep. Pencatatan pemakaian/hasil pengolahan mengikuti formula F & B |
+| F & B Recipes | Pembuatan/perubahan seluruh resep menu/SOP, resep bahan setengah jadi, dan pola pemotongan di `/fnb/recipes`; seluruh pengaturan resep menjadi tugas F & B |
 | Settings | Company identity, timezone, tax (PB1) |
 | Upload | File upload (foto bukti pembayaran, logo, dll.) |
 

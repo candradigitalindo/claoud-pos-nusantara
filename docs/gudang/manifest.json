@@ -1,0 +1,758 @@
+{
+  "title": "Panduan Operasional Gudang — Cloud POS",
+  "date": "2026-10-27",
+  "revision": "Revisi 3 lokal — Gudang mengelola bahan baku; resep dikelola F&B (dasar 67092f2 + workspace)",
+  "screen_data": "simulasi terisolasi",
+  "pages": [
+    {
+      "page": 1,
+      "id": "sampul",
+      "title": "Panduan Operasional Gudang",
+      "kind": "cover"
+    },
+    {
+      "page": 2,
+      "id": "cara-baca",
+      "title": "Cakupan dan cara membaca",
+      "subtitle": "Gunakan aturan dan langkah kerja sesuai jenis transaksi serta kewenangan Anda.",
+      "kind": "intro"
+    },
+    {
+      "page": 3,
+      "id": "tanggung-jawab-resep",
+      "kind": "intro",
+      "title": "Gudang mengelola bahan baku",
+      "subtitle": "Pembuatan dan perubahan resep merupakan tugas F & B."
+    },
+    {
+      "page": 4,
+      "id": "daftar-isi",
+      "title": "Daftar isi · aturan & SOP",
+      "kind": "toc",
+      "subtitle": "Jenis gudang, pengendalian stok, dan ketentuan setiap transaksi."
+    },
+    {
+      "page": 5,
+      "id": "daftar-isi-langkah",
+      "title": "Daftar isi · cara menggunakan",
+      "kind": "toc",
+      "subtitle": "Langkah operasional dan screenshot tampilan aplikasi."
+    },
+    {
+      "page": 6,
+      "id": "gudang-aturan-alur",
+      "title": "Peta proses dan batas pencatatan",
+      "subtitle": "Aturan aplikasi dan anjuran SOP dibedakan secara tegas",
+      "kind": "rule"
+    },
+    {
+      "page": 7,
+      "id": "gudang-aturan-akses",
+      "title": "Wewenang, cakupan, dan master",
+      "subtitle": "Izin tindakan perlu diperiksa terpisah dari nama jabatan",
+      "kind": "rule"
+    },
+    {
+      "page": 8,
+      "id": "gudang-aturan-satuan",
+      "title": "Satuan, batch, dan nilai persediaan",
+      "subtitle": "Pengeluaran mengikuti tanggal kedaluwarsa terdekat",
+      "kind": "rule"
+    },
+    {
+      "page": 9,
+      "id": "gudang-aturan-saldo",
+      "title": "Saldo awal dan penyesuaian",
+      "subtitle": "Bedakan target saldo dengan jumlah perubahan",
+      "kind": "rule"
+    },
+    {
+      "page": 10,
+      "id": "gudang-aturan-grn",
+      "title": "Penerimaan Barang dan pengadaan",
+      "subtitle": "GRN manual berbeda dari penerimaan pengajuan",
+      "kind": "rule"
+    },
+    {
+      "page": 11,
+      "id": "gudang-aturan-transfer-kirim",
+      "title": "Transfer: permintaan sampai pengiriman",
+      "subtitle": "Persetujuan belum memindahkan persediaan",
+      "kind": "rule"
+    },
+    {
+      "page": 12,
+      "id": "gudang-aturan-transfer-terima",
+      "title": "Pemeriksaan penerimaan transfer",
+      "subtitle": "Terima baik, reject, dan belum datang adalah tiga keadaan berbeda",
+      "kind": "rule"
+    },
+    {
+      "page": 13,
+      "id": "gudang-aturan-karantina",
+      "title": "Pelaporan karantina dan bukti foto",
+      "subtitle": "Barang dipisahkan dari stok tersedia sejak laporan berhasil",
+      "kind": "rule"
+    },
+    {
+      "page": 14,
+      "id": "gudang-aturan-keputusan-mutu",
+      "title": "Keputusan, pelepasan, dan pemusnahan",
+      "subtitle": "Persetujuan dan pelaksanaan mempunyai status terpisah",
+      "kind": "rule"
+    },
+    {
+      "page": 15,
+      "id": "gudang-aturan-retur",
+      "title": "Retur ke induk dan supplier",
+      "subtitle": "Penggantian barang dan refund diselesaikan sesuai keputusan",
+      "kind": "rule"
+    },
+    {
+      "page": 16,
+      "id": "gudang-aturan-waste",
+      "title": "Waste, void POS, dan rekonsiliasi",
+      "subtitle": "Laporan waste tidak selalu berarti pengurangan baru",
+      "kind": "rule"
+    },
+    {
+      "page": 17,
+      "id": "gudang-aturan-produksi",
+      "title": "Pencatatan stok produksi",
+      "subtitle": "Gunakan formula yang ditetapkan F & B",
+      "kind": "rule"
+    },
+    {
+      "page": 18,
+      "id": "gudang-aturan-pemotongan",
+      "title": "Pemotongan dan pembagian biaya",
+      "subtitle": "Satu bahan dapat menghasilkan beberapa barang stok",
+      "kind": "rule"
+    },
+    {
+      "page": 19,
+      "id": "gudang-aturan-opname",
+      "title": "Stock opname",
+      "subtitle": "Persetujuan menyetel saldo ke hasil hitung fisik",
+      "kind": "rule"
+    },
+    {
+      "page": 20,
+      "id": "gudang-aturan-expiry",
+      "title": "Monitor kedaluwarsa dan kontrol harian",
+      "subtitle": "Acknowledgement bukan karantina atau pernyataan aman",
+      "kind": "rule"
+    },
+    {
+      "page": 21,
+      "id": "g01",
+      "title": "Membaca Dashboard Gudang",
+      "subtitle": "Temukan stok rendah, transfer tertunda, dan pergerakan terbaru",
+      "route": "/warehouse-dashboard",
+      "image": "01-dashboard.png",
+      "kind": "guide"
+    },
+    {
+      "page": 22,
+      "id": "g02",
+      "title": "Memeriksa daftar Gudang",
+      "subtitle": "Bedakan lokasi pusat dengan gudang milik outlet",
+      "route": "/warehouses",
+      "image": "02-warehouses.png",
+      "kind": "guide"
+    },
+    {
+      "page": 23,
+      "id": "g03",
+      "title": "Mengisi master Gudang",
+      "subtitle": "Kode, tipe, dan outlet menentukan konteks lokasi",
+      "route": "/warehouses",
+      "image": "03-warehouse-form.png",
+      "kind": "guide"
+    },
+    {
+      "page": 24,
+      "id": "g04",
+      "title": "Menggunakan daftar Item Stok",
+      "subtitle": "Pilih konteks gudang sebelum membaca atau mengubah saldo",
+      "route": "/stock-items",
+      "image": "04-items.png",
+      "kind": "guide"
+    },
+    {
+      "page": 25,
+      "id": "g05",
+      "title": "Membuat definisi bahan",
+      "subtitle": "Tetapkan nama dan hubungan satuan sebelum transaksi",
+      "route": "/stock-items",
+      "image": "05-item-form.png",
+      "kind": "guide"
+    },
+    {
+      "page": 26,
+      "id": "g06",
+      "title": "Mengatur minimum dan saldo gudang",
+      "subtitle": "Bedakan stok awal, target saldo, dan transaksi masuk",
+      "route": "/stock-items",
+      "image": "06-item-balances.png",
+      "kind": "guide"
+    },
+    {
+      "page": 27,
+      "id": "g07",
+      "title": "Mengelola kategori bahan",
+      "subtitle": "Pengelompokan katalog untuk pencarian dan cycle count",
+      "route": "/stock-items",
+      "image": "07-categories.png",
+      "kind": "guide"
+    },
+    {
+      "page": 28,
+      "id": "g08",
+      "title": "Membaca Detail Stok",
+      "subtitle": "Lihat sebaran bahan sebelum memindahkan barang",
+      "route": "/stock-items",
+      "image": "08-stock-detail.png",
+      "kind": "guide"
+    },
+    {
+      "page": 29,
+      "id": "g11",
+      "title": "Membaca daftar Penerimaan Barang",
+      "subtitle": "Temukan dokumen GRN dan sumber barang masuk",
+      "route": "/goods-receipts",
+      "image": "11-grn.png",
+      "kind": "guide"
+    },
+    {
+      "page": 30,
+      "id": "g12",
+      "title": "Mencatat GRN manual",
+      "subtitle": "Input jumlah, satuan, biaya, dan tanggal kedaluwarsa",
+      "route": "/goods-receipts",
+      "image": "12-grn-form.png",
+      "kind": "guide"
+    },
+    {
+      "page": 31,
+      "id": "g13",
+      "title": "Memeriksa detail GRN",
+      "subtitle": "Cocokkan satuan input dengan saldo dasar",
+      "route": "/goods-receipts",
+      "image": "13-grn-detail.png",
+      "kind": "guide"
+    },
+    {
+      "page": 32,
+      "id": "g14",
+      "title": "Membuka antrean penerimaan pengadaan",
+      "subtitle": "Selesaikan jumlah PR yang benar-benar datang",
+      "route": "/gudang/penerimaan-pengadaan",
+      "image": "14-pr-receiving.png",
+      "kind": "guide"
+    },
+    {
+      "page": 33,
+      "id": "g15",
+      "title": "Menerima pengadaan menjadi stok",
+      "subtitle": "Periksa foto, jumlah, bahan katalog, dan lokasi",
+      "route": "/gudang/penerimaan-pengadaan",
+      "image": "15-pr-receive-form.png",
+      "kind": "guide"
+    },
+    {
+      "page": 34,
+      "id": "g16",
+      "title": "Membaca daftar Transfer Stok",
+      "subtitle": "Ikuti rute dan tahap pemindahan barang",
+      "route": "/stock-transfers",
+      "image": "16-transfers.png",
+      "kind": "guide"
+    },
+    {
+      "page": 35,
+      "id": "g17",
+      "title": "Membuat transfer stok",
+      "subtitle": "Susun asal, tujuan, jumlah, dan satuan",
+      "route": "/stock-transfers",
+      "image": "17-transfer-create.png",
+      "kind": "guide"
+    },
+    {
+      "page": 36,
+      "id": "g18",
+      "title": "Meminta stok dari Gudang Induk",
+      "subtitle": "Permintaan outlet diproses oleh gudang asal",
+      "route": "/stock-transfers",
+      "image": "18-outlet-request.png",
+      "kind": "guide"
+    },
+    {
+      "page": 37,
+      "id": "g19",
+      "title": "Menyetujui transfer",
+      "subtitle": "Periksa kebutuhan dan rute sebelum barang disiapkan",
+      "route": "/stock-transfers",
+      "image": "19-transfer-draft.png",
+      "kind": "guide"
+    },
+    {
+      "page": 38,
+      "id": "g20",
+      "title": "Mencatat pengiriman transfer",
+      "subtitle": "Foto barang berangkat sebelum menandai Dikirim",
+      "route": "/stock-transfers",
+      "image": "20-transfer-send.png",
+      "kind": "guide"
+    },
+    {
+      "page": 39,
+      "id": "g21",
+      "title": "Memeriksa penerimaan transfer",
+      "subtitle": "Catat diterima, reject, dan sisa dalam satuan dasar",
+      "route": "/stock-transfers",
+      "image": "21-transfer-receive.png",
+      "kind": "guide"
+    },
+    {
+      "page": 40,
+      "id": "g47",
+      "title": "Menyimpan bukti pemeriksaan transfer",
+      "subtitle": "Pastikan unggahan selesai sebelum menyimpan jumlah terima dan reject",
+      "route": "/stock-transfers",
+      "image": "47-transfer-proof.png",
+      "kind": "guide"
+    },
+    {
+      "page": 41,
+      "id": "g22",
+      "title": "Membaca hasil pemeriksaan transfer",
+      "subtitle": "Riwayat setiap kedatangan dan barang yang ditolak",
+      "route": "/stock-transfers",
+      "image": "22-transfer-history.png",
+      "kind": "guide"
+    },
+    {
+      "page": 42,
+      "id": "g23",
+      "title": "Mengelola Reject, Retur & Kedaluwarsa",
+      "subtitle": "Karantina, keputusan, dan penyelesaian dapat ditelusuri",
+      "route": "/stock-quality",
+      "image": "23-quality.png",
+      "kind": "guide"
+    },
+    {
+      "page": 43,
+      "id": "g24",
+      "title": "Melaporkan barang dan karantina",
+      "subtitle": "Pilih batch, jumlah, alasan, dan foto kondisi",
+      "route": "/stock-quality",
+      "image": "24-quality-report.png",
+      "kind": "guide"
+    },
+    {
+      "page": 44,
+      "id": "g25",
+      "title": "Menelusuri detail laporan mutu",
+      "subtitle": "Baca nilai karantina dan bukti setiap tindakan",
+      "route": "/stock-quality",
+      "image": "25-quality-detail.png",
+      "kind": "guide"
+    },
+    {
+      "page": 45,
+      "id": "g26",
+      "title": "Menetapkan keputusan supervisor",
+      "subtitle": "Pilih pemusnahan atau rute retur yang sesuai",
+      "route": "/stock-quality",
+      "image": "26-quality-approve.png",
+      "kind": "guide"
+    },
+    {
+      "page": 46,
+      "id": "g27",
+      "title": "Mencatat pemusnahan",
+      "subtitle": "Simpan pelaksanaan nyata dan bukti setelah disetujui",
+      "route": "/stock-quality",
+      "image": "27-quality-dispose.png",
+      "kind": "guide"
+    },
+    {
+      "page": 47,
+      "id": "g28",
+      "title": "Menerima retur outlet di gudang induk",
+      "subtitle": "Terima barang kembali sebagai karantina untuk pemeriksaan lanjutan",
+      "route": "/stock-quality",
+      "image": "28-quality-return-outlet.png",
+      "kind": "guide"
+    },
+    {
+      "page": 48,
+      "id": "g29",
+      "title": "Mengembalikan barang ke supplier",
+      "subtitle": "Tentukan bukti asal dan bentuk penyelesaian",
+      "route": "/stock-quality",
+      "image": "29-quality-return-supplier.png",
+      "kind": "guide"
+    },
+    {
+      "page": 49,
+      "id": "g30",
+      "title": "Menerima barang pengganti supplier",
+      "subtitle": "Catat jumlah yang benar-benar kembali",
+      "route": "/stock-quality",
+      "image": "30-quality-replacement.png",
+      "kind": "guide"
+    },
+    {
+      "page": 50,
+      "id": "g31",
+      "title": "Mencatat refund yang diterima",
+      "subtitle": "Pisahkan uang kembali dari nilai klaim",
+      "route": "/stock-quality",
+      "image": "31-quality-refund.png",
+      "kind": "guide"
+    },
+    {
+      "page": 51,
+      "id": "g32",
+      "title": "Melepas karantina",
+      "subtitle": "Kembalikan hanya barang yang dinyatakan layak",
+      "route": "/stock-quality",
+      "image": "32-quality-release.png",
+      "kind": "guide"
+    },
+    {
+      "page": 52,
+      "id": "g33",
+      "title": "Memeriksa riwayat Waste",
+      "subtitle": "Jumlah dan nilai kerugian setelah pembuangan",
+      "route": "/stock-wastes",
+      "image": "33-waste.png",
+      "kind": "guide"
+    },
+    {
+      "page": 53,
+      "id": "g34",
+      "title": "Membaca Kartu Stok",
+      "subtitle": "Saldo lokal, biaya, dan nilai persediaan",
+      "route": "/stock-ledger",
+      "image": "34-ledger.png",
+      "kind": "guide"
+    },
+    {
+      "page": 54,
+      "id": "g35",
+      "title": "Menelusuri histori pergerakan",
+      "subtitle": "Baca jumlah gerakan, saldo sesudah, dan referensi",
+      "route": "/stock-ledger",
+      "image": "35-movements.png",
+      "kind": "guide"
+    },
+    {
+      "page": 55,
+      "id": "g36",
+      "title": "Mencatat penyesuaian langsung",
+      "subtitle": "Gunakan tipe gerakan dan jumlah perubahan yang benar",
+      "route": "/stock-ledger",
+      "image": "36-adjustment.png",
+      "kind": "guide"
+    },
+    {
+      "page": 56,
+      "id": "g37",
+      "title": "Mencatat produksi atau memasak",
+      "subtitle": "Resep mengurangi bahan dan menambah hasil",
+      "route": "/stock-ledger",
+      "image": "37-production.png",
+      "kind": "guide"
+    },
+    {
+      "page": 57,
+      "id": "g38",
+      "title": "Mencatat pemotongan aktual",
+      "subtitle": "Ubah hasil standar menjadi hasil nyata",
+      "route": "/stock-ledger",
+      "image": "38-breakdown.png",
+      "kind": "guide"
+    },
+    {
+      "page": 58,
+      "id": "g39",
+      "title": "Memeriksa riwayat pemotongan",
+      "subtitle": "Bandingkan input, standar, hasil, dan biaya",
+      "route": "/stock-ledger",
+      "image": "39-breakdown-history.png",
+      "kind": "guide"
+    },
+    {
+      "page": 59,
+      "id": "g40",
+      "title": "Membaca daftar Stock Opname",
+      "subtitle": "Pantau sesi hitung fisik hingga persetujuan",
+      "route": "/ppic/opname",
+      "image": "40-opname.png",
+      "kind": "guide"
+    },
+    {
+      "page": 60,
+      "id": "g41",
+      "title": "Memulai sesi opname",
+      "subtitle": "Pilih lokasi dan batas kategori penghitungan",
+      "route": "/ppic/opname",
+      "image": "41-opname-create.png",
+      "kind": "guide"
+    },
+    {
+      "page": 61,
+      "id": "g42",
+      "title": "Mengisi hitungan fisik",
+      "subtitle": "Blind count memisahkan pengukuran dari angka sistem",
+      "route": "/ppic/opname",
+      "image": "42-opname-count.png",
+      "kind": "guide"
+    },
+    {
+      "page": 62,
+      "id": "g43",
+      "title": "Mereview selisih opname",
+      "subtitle": "Simpan koreksi dan alasan sebelum posting",
+      "route": "/ppic/opname",
+      "image": "43-opname-review.png",
+      "kind": "guide"
+    },
+    {
+      "page": 63,
+      "id": "g44",
+      "title": "Memeriksa opname yang disetujui",
+      "subtitle": "Telusuri item yang diposting dan yang dilewati",
+      "route": "/ppic/opname",
+      "image": "44-opname-approved.png",
+      "kind": "guide"
+    },
+    {
+      "page": 64,
+      "id": "g45",
+      "title": "Memantau tanggal kedaluwarsa",
+      "subtitle": "Prioritaskan batch berdasarkan kedekatan tanggal",
+      "route": "/ppic/expiry",
+      "image": "45-expiry.png",
+      "kind": "guide"
+    },
+    {
+      "page": 65,
+      "id": "g46",
+      "title": "Menandai batch sudah ditindak",
+      "subtitle": "Catatan penanganan menyenyapkan alert, bukan mengubah saldo",
+      "route": "/ppic/expiry",
+      "image": "46-expiry-ack.png",
+      "kind": "guide"
+    },
+    {
+      "page": 66,
+      "id": "ritme-harian",
+      "title": "Rutinitas petugas Gudang",
+      "subtitle": "Anjuran operasional untuk menjaga fisik, dokumen, dan saldo tetap sesuai."
+    },
+    {
+      "page": 67,
+      "id": "cek-hasil",
+      "title": "Bukti bahwa transaksi selesai",
+      "subtitle": "Satu perubahan status belum cukup untuk menjelaskan seluruh fisik barang."
+    },
+    {
+      "page": 68,
+      "id": "pemulihan",
+      "title": "Masalah umum dan penanganannya",
+      "subtitle": "Telusuri penyebab sebelum membuat transaksi koreksi."
+    },
+    {
+      "page": 69,
+      "id": "istilah-sumber",
+      "title": "Istilah dan dasar pemeriksaan",
+      "subtitle": "Versi aplikasi serta rujukan untuk pemeliharaan panduan."
+    }
+  ],
+  "images": [
+    {
+      "file": "01-dashboard.png",
+      "sha256": "3b6dd7885a8febf8c99877089e1a81bf6639cf7d9b6f11d53e713cf12c220b3f"
+    },
+    {
+      "file": "02-warehouses.png",
+      "sha256": "09f4480fc04109de641a3146bb272205fb5a6c645861db5ebf57276106e5bfaf"
+    },
+    {
+      "file": "03-warehouse-form.png",
+      "sha256": "b5ac8b88ddce5247d4e3ad541202b88de3c42cf1b3d08d4d80227e195ee39085"
+    },
+    {
+      "file": "04-items.png",
+      "sha256": "00ff9f066a7e8febf81cca35e89f81888a9b89bebae770a0e3d6ba617aea19e4"
+    },
+    {
+      "file": "05-item-form.png",
+      "sha256": "be45357744848ecab607fdf4c167f984271d5101990fdd005ed2a94cc9811aa6"
+    },
+    {
+      "file": "06-item-balances.png",
+      "sha256": "cdf31203f1d1eea76eaa7cc2cddf6cfb58ed03eb4423f36b05ea78fef0c7869f"
+    },
+    {
+      "file": "07-categories.png",
+      "sha256": "547fb24f86df7b2646c5be8d3f4c301fbe1c319db63e7eabe3bf3dd247ade12c"
+    },
+    {
+      "file": "08-stock-detail.png",
+      "sha256": "72597bbb6e7ccc57a3a404d4469181b61dd21219339fea85923fe87df685f150"
+    },
+    {
+      "file": "11-grn.png",
+      "sha256": "3ffe430c00c11eddd76efb48c7e6a0b1cab8eb573500084a57988820770eca95"
+    },
+    {
+      "file": "12-grn-form.png",
+      "sha256": "aa2cab2fc7f6fd4957f7b9cf422c4be8db4c816791d51e3bd32987b09dc96b64"
+    },
+    {
+      "file": "13-grn-detail.png",
+      "sha256": "e58e1789d57a8ad26c20fdf6cbd549f7b283bc742346b17df944c92f666d79e3"
+    },
+    {
+      "file": "14-pr-receiving.png",
+      "sha256": "cbb96d170f82b9cdc1e586b956f2ee76549e3e2ce87a37e6a020b99a507b3e18"
+    },
+    {
+      "file": "15-pr-receive-form.png",
+      "sha256": "ef9249efa5fb6951902fcba786c0a7bb1746b87eb98a30e7d9058eeef6f4f1d2"
+    },
+    {
+      "file": "16-transfers.png",
+      "sha256": "d569d988f77ecb903071edac85a59e358b9f2496ecaca0787de56cd5a74abe0f"
+    },
+    {
+      "file": "17-transfer-create.png",
+      "sha256": "3ae07f8fdabc9480207f7d0553bacbe8667bcee55dd9afa04a429e6f24d0c136"
+    },
+    {
+      "file": "18-outlet-request.png",
+      "sha256": "0e4efbaf70bba80b9f033a9369ae979e5570f23d76670ad27d7c9cf23e31681e"
+    },
+    {
+      "file": "19-transfer-draft.png",
+      "sha256": "93770cab914eb09b15564f2c45690c6d7c21fbae48271da61bdc52addaef4071"
+    },
+    {
+      "file": "20-transfer-send.png",
+      "sha256": "1425d760c2589514c49aad19311660a9148722ec4aa4ab45585ed390c51ff2ff"
+    },
+    {
+      "file": "21-transfer-receive.png",
+      "sha256": "7deaacb3dae3d765883e0eb2b76b456716fe8406688fe2790d21ccf76d4d4063"
+    },
+    {
+      "file": "47-transfer-proof.png",
+      "sha256": "c676ea4cc239b39b37f2799d59aa740940a0873210fc770f113c32f750ce4b00"
+    },
+    {
+      "file": "22-transfer-history.png",
+      "sha256": "8e68971cd88874626d2222245b25bdc67180a0d5f22bc994ca5f0f2f9d503bec"
+    },
+    {
+      "file": "23-quality.png",
+      "sha256": "7ff46b71c1fbd75fffa3d9626e9156daa35a12b91ecb3484cf36b75768040324"
+    },
+    {
+      "file": "24-quality-report.png",
+      "sha256": "5fbe252845453ac38604b0bac657d2cbbb7539e0acc366a9c0b5b78ee1a700f7"
+    },
+    {
+      "file": "25-quality-detail.png",
+      "sha256": "76ca7b89240f48858cee821641b318afcfe173924c3bbe970e249c559d9e4d65"
+    },
+    {
+      "file": "26-quality-approve.png",
+      "sha256": "58b8f5b8dd30bd12609311e5e98db296dcd345d3343ecb1bc5441e2ff88553af"
+    },
+    {
+      "file": "27-quality-dispose.png",
+      "sha256": "22b406b3afca51f884b7f249a5c7c22aaebe96ebdfe42270f948f21afc3cf330"
+    },
+    {
+      "file": "28-quality-return-outlet.png",
+      "sha256": "e5d6f97c581817d02c706fc405a9aa89693b978f8cde135764c90c2e9d8ac6aa"
+    },
+    {
+      "file": "29-quality-return-supplier.png",
+      "sha256": "89aa832c9b8ec03919a445aebaee0659ae499c6bfae92e39544e5d5fddd0efa9"
+    },
+    {
+      "file": "30-quality-replacement.png",
+      "sha256": "161ce3e9f10a9bd7be620bd40cbf68db4917781027e525373b756d6833eacf4e"
+    },
+    {
+      "file": "31-quality-refund.png",
+      "sha256": "2b00841a20e9f296a2fad75a031c10436643f4c0d638559a9c2860849ee13d5e"
+    },
+    {
+      "file": "32-quality-release.png",
+      "sha256": "17d949c80667c7800614eadbc94fdf3913bb571c8d63a709ea0e3399de659a4c"
+    },
+    {
+      "file": "33-waste.png",
+      "sha256": "19d74cc0eaf1c69952e065dd13c30de73b525a927c5a7a1080b8f40d880c7f76"
+    },
+    {
+      "file": "34-ledger.png",
+      "sha256": "fb494afa20518274f07b573147b6a3e6843383b7db5d8a299e05e8a9971cc5af"
+    },
+    {
+      "file": "35-movements.png",
+      "sha256": "c912dd42d018ff2e0051608d5df59b3617c08bdc0a648a118a2ecfdead034cc6"
+    },
+    {
+      "file": "36-adjustment.png",
+      "sha256": "a9797340c4ac39c9d9f8a21ec757625145259b326aa369ea0abd05866631960f"
+    },
+    {
+      "file": "37-production.png",
+      "sha256": "5c38e8b6054b9177bd16941ed98695ad04d0744cda36d932ea9cd7655cf41f0f"
+    },
+    {
+      "file": "38-breakdown.png",
+      "sha256": "1a71b4c7edff8b32115a889820cbb9fadbbe739202201874399c16a8185da722"
+    },
+    {
+      "file": "39-breakdown-history.png",
+      "sha256": "e70fccb4d511a9e9c98aff36efa173222cfd7ec81eb49b684d7f90006e0fbaa8"
+    },
+    {
+      "file": "40-opname.png",
+      "sha256": "bdc9432beb8f959fbe2087864bd423e05442a5db846aae53544f142cd1c6dab6"
+    },
+    {
+      "file": "41-opname-create.png",
+      "sha256": "9aee6057e5cd8fd398d7d08c14560b0548a295ff8363093b481c8d23d482eeca"
+    },
+    {
+      "file": "42-opname-count.png",
+      "sha256": "0a55c6a61f093b2a57e7e4b68a45f79ed7ad8b5cf60cc742e6bb065e019f56d3"
+    },
+    {
+      "file": "43-opname-review.png",
+      "sha256": "3782fff5a5632b9eb3a1bf87e02f913acfa698174e0d2b6d8871f4698be96621"
+    },
+    {
+      "file": "44-opname-approved.png",
+      "sha256": "769e452a57bf70c4d403c46806d843f975e69be64d88238a42b045235a9e2fd2"
+    },
+    {
+      "file": "45-expiry.png",
+      "sha256": "cfb781bbea2e20ef04633a65918521c00774ee5aad9ec5012d9250edf278702a"
+    },
+    {
+      "file": "46-expiry-ack.png",
+      "sha256": "7d38fe8342ffccf24bb7b6b41d7d717378f3c64cfc2d0ccc89c867ac5e7c0cc8"
+    }
+  ]
+}

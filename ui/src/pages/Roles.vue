@@ -445,7 +445,7 @@ const REDIRECT_GROUPS = [
     { value: '/fnb/dashboard', label: 'Dashboard F&B', perm: 'fnb.dashboard.view' },
     { value: '/fnb/development', label: 'Pengembangan Produk', perm: 'fnb.development.view' },
     { value: '/fnb/costing', label: 'HPP Menu', perm: 'fnb.costing.view' },
-    { value: '/fnb/recipes', label: 'Resep & SOP', perm: 'recipes.view' },
+    { value: '/fnb/recipes', label: 'Resep & Formula', perm: 'recipes.view' },
   ]},
   { category: 'WhatsApp', options: [
     { value: '/whatsapp',           label: 'Koneksi & Notifikasi', perm: 'whatsapp.view' },

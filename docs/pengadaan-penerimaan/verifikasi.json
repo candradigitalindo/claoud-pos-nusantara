@@ -1,0 +1,22 @@
+{
+  "pages": 62,
+  "expected_pages": 62,
+  "pages_with_screenshots": 43,
+  "file_bytes": 11927287,
+  "internal_links": 121,
+  "text_characters": 103495,
+  "issues": [],
+  "revision": "67092f2",
+  "screen_data": "simulasi terisolasi",
+  "date": "2026-10-26",
+  "layout_overflow": [],
+  "checks": [
+    "Build UI revisi 67092f2 berhasil",
+    "Screenshot browser Chromium dengan API demo asli",
+    "Aturan dan petunjuk diperiksa terhadap source aplikasi",
+    "Jumlah halaman dan gambar sesuai manifest",
+    "Tidak ada halaman kosong atau isi melewati footer",
+    "Daftar isi dan tautan internal tersedia",
+    "Sampel halaman PDF diperiksa secara visual"
+  ]
+}

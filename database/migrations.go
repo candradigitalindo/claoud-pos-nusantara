@@ -1208,16 +1208,18 @@ func RunMigrations() error {
 			"reports.cashflow.view", "reports.pnl.view", "reports.balance.view",
 			"reports.tax.view", "reports.void.view", "reports.discount.view",
 		},
+		// Recipe access belongs to F&B. Preserve explicit recipes.* grants,
+		// but never infer read or write access from legacy warehouse permissions.
 		"warehouse.view": {
 			"warehouse_dashboard.view", "warehouses.view", "stockitems.view",
-			"stocktransfers.view", "stockwastes.view", "stockledger.view", "recipes.view",
+			"stocktransfers.view", "stockwastes.view", "stockledger.view",
 		},
 		"warehouse.create": {
 			"warehouses.create", "stockitems.create", "stocktransfers.create",
-			"stockwastes.create", "stockledger.adjust", "recipes.create",
+			"stockwastes.create", "stockledger.adjust",
 		},
-		"warehouse.update": {"warehouses.update", "stockitems.update", "stocktransfers.update", "stocktransfers.approve", "stocktransfers.receive", "recipes.update"},
-		"warehouse.delete": {"warehouses.delete", "stockitems.delete", "recipes.delete"},
+		"warehouse.update": {"warehouses.update", "stockitems.update", "stocktransfers.update", "stocktransfers.approve", "stocktransfers.receive"},
+		"warehouse.delete": {"warehouses.delete", "stockitems.delete"},
 
 		"procurement.view":       {"procurement.dashboard.view", "procurement.requests.view", "vendors.view"},
 		"procurement.submit":     {"procurement.requests.submit"},

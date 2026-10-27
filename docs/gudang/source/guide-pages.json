@@ -1,0 +1,362 @@
+[
+  {
+    "id": "g01",
+    "title": "Membaca Dashboard Gudang",
+    "subtitle": "Temukan stok rendah, transfer tertunda, dan pergerakan terbaru",
+    "route": "/warehouse-dashboard",
+    "image": "01-dashboard.png",
+    "html": "<p>Buka Gudang → Dashboard untuk meninjau keadaan gudang sebelum memulai pekerjaan. Ringkasan mengikuti data yang dapat diakses oleh akun.</p>\n<ol><li>Periksa Total Gudang beserta jumlah Induk dan Outlet, Total Item Bahan, serta jumlah item yang mempunyai stok.</li><li>Baca Stok Rendah dan item habis. Bandingkan dengan Stok per Gudang agar kebutuhan satu lokasi tidak tertukar dengan saldo lokasi lain.</li><li>Tinjau Nilai Aset Stok, Transfer Pending, dan Pergerakan Hari Ini. Nilai stok pada ringkasan menggunakan biaya rata-rata.</li><li>Gulir ke Pergerakan Stok 14 Hari, Stok Rendah / Habis, Transfer Pending, dan Pergerakan Stok Terkini.</li><li>Gunakan Lihat Semua untuk menuju Kartu Stok atau Transfer Stok. Tekan Refresh setelah transaksi lain perlu ditampilkan kembali.</li></ol>\n<p>Hasil pemeriksaan menentukan tindak lanjut: mencari sumber stok, menyelesaikan transfer, atau menelusuri gerakan tertentu melalui referensinya.</p>\n<p class=\"note\">Dashboard adalah ringkasan. Untuk jumlah dan bukti transaksi, buka dokumen terkait. Monitor kedaluwarsa berada pada menu PPIC; tombol Refresh memuat ulang data, bukan bukti bahwa halaman terus memperbarui diri otomatis.</p>"
+  },
+  {
+    "id": "g02",
+    "title": "Memeriksa daftar Gudang",
+    "subtitle": "Bedakan lokasi pusat dengan gudang milik outlet",
+    "route": "/warehouses",
+    "image": "02-warehouses.png",
+    "html": "<p>Buka halaman master Gudang untuk memeriksa lokasi penyimpanan yang dipakai pada penerimaan, transfer, produksi, dan opname.</p>\n<ol><li>Gunakan filter Tipe untuk melihat seluruh lokasi, Gudang Induk, atau Gudang Outlet.</li><li>Cocokkan kode dan nama gudang. Periksa tipe serta outlet terkait agar lokasi yang mirip namanya tidak tertukar.</li><li>Klik + Tambah Gudang bila lokasi fisik baru memang perlu dicatat. Untuk perbaikan data lokasi yang sama, gunakan ikon Edit.</li><li>Sesudah menyimpan perubahan, periksa daftar kembali dan pastikan gudang tersedia pada pilihan transaksi yang sesuai.</li><li>Jika menggunakan ikon Hapus, baca nama gudang pada konfirmasi. Penghapusan tetap dapat ditolak ketika kondisi data tidak mengizinkan.</li></ol>\n<p>Gudang Induk dapat lebih dari satu dan dapat memasok outlet mana pun. Gudang Outlet memiliki hubungan dengan outlet tertentu; hubungan ini memengaruhi pilihan transaksi pengguna outlet.</p>\n<p class=\"note\">Tipe gudang tidak sama dengan kategori bahan. Jangan membuat gudang baru hanya untuk memisahkan kategori barang yang masih disimpan pada lokasi sama. Saldo dan riwayat transaksi ditelusuri per gudang yang dipilih.</p>"
+  },
+  {
+    "id": "g03",
+    "title": "Mengisi master Gudang",
+    "subtitle": "Kode, tipe, dan outlet menentukan konteks lokasi",
+    "route": "/warehouses",
+    "image": "03-warehouse-form.png",
+    "html": "<p>Klik + Tambah Gudang atau ikon Edit untuk membuka form. Siapkan identitas lokasi sebelum menyimpan agar tidak muncul master ganda.</p>\n<ol><li>Isi Kode yang mudah dikenali, misalnya kode lokasi internal, lalu Nama Gudang yang jelas.</li><li>Pilih Tipe Gudang: Gudang Induk untuk pusat penyimpanan, atau Gudang Outlet untuk lokasi yang terikat outlet.</li><li>Jika memilih Gudang Outlet, pilih Outlet Terkait. Pilihan ini wajib; satu outlet hanya boleh mempunyai satu gudang outlet.</li><li>Isi Keterangan bila perlu menjelaskan fungsi atau lokasi penyimpanan.</li><li>Klik Simpan. Periksa pesan berhasil dan kecocokan data pada daftar. Jika muncul galat, perbaiki penyebabnya sebelum mengulang.</li></ol>\n<p>Memilih Gudang Induk mengosongkan keterkaitan outlet pada form. Beberapa gudang induk dapat memasok gudang outlet yang sama; antaroutlet juga dapat menggunakan transfer sesuai cakupan.</p>\n<p class=\"note\">Gunakan Edit untuk memperbaiki master yang sudah ada. Mengganti tipe atau outlet perlu mempertimbangkan transaksi yang sudah menggunakan lokasi tersebut; jangan membuat duplikat sebagai jalan pintas untuk masalah akses pengguna.</p>"
+  },
+  {
+    "id": "g04",
+    "title": "Menggunakan daftar Item Stok",
+    "subtitle": "Pilih konteks gudang sebelum membaca atau mengubah saldo",
+    "route": "/stock-items",
+    "image": "04-items.png",
+    "html": "<p>Buka Gudang → Item Stok. Judul halaman adalah Bahan Baku; ini katalog barang dan saldo gudang, berbeda dari halaman pengajuan pembelian bahan.</p>\n<ol><li>Pilih Kelola stok untuk gudang. Periksa badge Gudang Induk atau Gudang Outlet pada konteks aktif.</li><li>Cari nama atau kode bahan. Gunakan Aktif saja untuk menyaring katalog, atau lepaskan filter jika mencari bahan nonaktif.</li><li>Baca satuan, Stok gudang, stok minimal, HPP gudang, dan stok global. Cocokkan angka dalam satuan yang sama.</li><li>Klik kode atau nama bahan untuk membuka Detail Stok. Ikon Edit membuka pengaturan yang dapat diubah pada konteks ini.</li><li>Gunakan + Tambah Bahan hanya untuk barang baru. Gunakan Kategori untuk mengelompokkan bahan baku.</li></ol>\n<p>Definisi bahan digunakan bersama oleh seluruh gudang, sedangkan saldo dan stok minimal mengikuti gudang. Pengguna outlet dapat melihat definisi hanya-baca dan mengatur bagian lokal sesuai akses.</p>\n<p class=\"note\">Stok global tidak berarti seluruh jumlah tersedia di lokasi terpilih. Periksa sebaran gudang sebelum membuat transfer atau menganggap kebutuhan outlet sudah tercukupi.</p><p class=\"note\">Petugas Gudang mengelola bahan baku dan stok sesuai aksesnya. Pembuatan dan perubahan resep ditangani F &amp; B.</p>"
+  },
+  {
+    "id": "g05",
+    "title": "Membuat definisi bahan",
+    "subtitle": "Tetapkan nama dan hubungan satuan sebelum transaksi",
+    "route": "/stock-items",
+    "image": "05-item-form.png",
+    "html": "<p>Dari konteks Gudang Induk, klik + Tambah Bahan. Pada bahan yang sudah ada, ikon Edit membuka Edit Bahan Baku.</p>\n<ol><li>Isi Nama Bahan yang konsisten dan pilih Kategori bila tersedia. Nama yang sama membantu pencarian serta pemetaan penerimaan pengadaan.</li><li>Isi Satuan Dasar / Pemakaian Outlet, misalnya botol, gram, kilogram, atau pcs.</li><li>Isi Satuan Kemasan / Gudang Induk, kemudian Isi 1 kemasan dalam satuan dasar. Contoh: satu dus berisi 24 botol.</li><li>Isi Label Kemasan bila diperlukan, misalnya Dus 24 botol, serta Keterangan opsional.</li><li>Periksa pratinjau hubungan satuan, kemudian lanjutkan bagian saldo gudang sebelum Simpan.</li></ol>\n<p>Nama, kategori, dan hubungan satuan merupakan definisi global. Dari konteks outlet, bagian ini dapat tampil hanya-baca karena perubahan akan memengaruhi barang yang sama di lokasi lain.</p>\n<p class=\"warn\">Label kemasan tidak menggantikan rasio angka. Kesalahan rasio akan mengubah padanan jumlah dan biaya saat transaksi. Siapkan satuan dengan benar sebelum barang diterima, dipindahkan, atau digunakan dalam produksi.</p>"
+  },
+  {
+    "id": "g06",
+    "title": "Mengatur minimum dan saldo gudang",
+    "subtitle": "Bedakan stok awal, target saldo, dan transaksi masuk",
+    "route": "/stock-items",
+    "image": "06-item-balances.png",
+    "html": "<p>Bagian bawah form bahan menunjukkan pengaturan untuk gudang yang sedang dipilih. Periksa nama gudang sebelum mengisi jumlah.</p>\n<ol><li>Pilih Satuan Input Stok. Pastikan satuan dasar atau kemasan sesuai angka yang akan dimasukkan.</li><li>Isi Stok Minimal sebagai batas pemantauan lokasi tersebut. Nilai ini menjadi acuan penanda stok rendah.</li><li>Pada bahan baru, Stok Awal bersifat opsional. Isi hanya jika memang sedang mencatat saldo pembukaan yang sah.</li><li>Pada edit, Sesuaikan Stok ke berarti target saldo akhir. Kosongkan jika tidak mengubah jumlah; nol berarti mengarahkan saldo menjadi nol.</li><li>Jika muncul HPP per satuan, isi sesuai dasar biaya yang dapat dipertanggungjawabkan. Periksa HPP Rata-rata gudang sebagai informasi, lalu Simpan.</li></ol>\n<p>Setelah berhasil, periksa saldo pada daftar dan histori Kartu Stok. Pengaturan minimum tidak dengan sendirinya membuat permintaan pembelian atau transfer.</p>\n<p class=\"warn\">Jangan menambah saldo lagi untuk barang yang sudah dicatat melalui GRN, penerimaan pengadaan, atau transfer. Target saldo di master juga berbeda dari Qty gerakan pada Penyesuaian Stok.</p>"
+  },
+  {
+    "id": "g07",
+    "title": "Mengelola kategori bahan",
+    "subtitle": "Pengelompokan katalog untuk pencarian dan cycle count",
+    "route": "/stock-items",
+    "image": "07-categories.png",
+    "html": "<p>Klik Kategori pada halaman Item Stok untuk membuka Manajemen Kategori Bahan Baku. Daftar kategori dipakai bersama oleh katalog.</p>\n<ol><li>Periksa Daftar Kategori di sisi kanan agar nama baru tidak menduplikasi kelompok yang sudah ada.</li><li>Untuk kategori baru, isi Nama Kategori dan Keterangan bila diperlukan, lalu Simpan Kategori.</li><li>Untuk perubahan, klik ikon Edit pada baris. Form terisi dengan kategori terpilih; ubah isian lalu Perbarui.</li><li>Gunakan Batal Edit untuk kembali ke form kategori baru tanpa menerapkan perubahan yang belum disimpan.</li><li>Jika menggunakan Hapus, baca konfirmasi browser dan pastikan kategori yang dimaksud benar. Tutup modal setelah pekerjaan selesai.</li></ol>\n<p>Hasilnya dapat dipilih pada form bahan. Pengelompokan yang konsisten membantu membaca katalog dan membatasi kategori saat membuat sesi Stock Opname.</p>\n<p class=\"note\">Pengguna tanpa kewenangan katalog dapat melihat daftar tanpa kontrol pengubahan. Kategori tidak memisahkan saldo menjadi gudang baru; barang tetap mempunyai saldo pada masing-masing lokasi penyimpanan yang digunakan.</p>"
+  },
+  {
+    "id": "g08",
+    "title": "Membaca Detail Stok",
+    "subtitle": "Lihat sebaran bahan sebelum memindahkan barang",
+    "route": "/stock-items",
+    "image": "08-stock-detail.png",
+    "html": "<p>Klik kode atau nama bahan pada Item Stok untuk membuka Detail Stok. Modal membantu melihat posisi barang yang sama di beberapa lokasi.</p>\n<ol><li>Cocokkan nama bahan pada judul dengan kebutuhan yang sedang diperiksa.</li><li>Baca Stok Global serta HPP Rata-rata. Angka global memberi gambaran total, bukan ketersediaan satu gudang tertentu.</li><li>Periksa tabel Gudang, Tipe, dan Stok. Cocokkan nama lokasi serta hubungan outlet yang ditampilkan.</li><li>Bandingkan jumlah menggunakan satuan yang sama. Gudang induk dapat menampilkan kemasan, sedangkan outlet menggunakan satuan dasar.</li><li>Jika akan memindahkan stok, pilih sumber berdasarkan saldo lokasi dan buat transaksi melalui Transfer Stok. Untuk asal perubahan saldo, buka Kartu Stok dan Histori.</li></ol>\n<p>Jika tabel menyatakan belum ada stok di gudang mana pun, periksa apakah barang baru hanya dibuat sebagai master tanpa penerimaan atau saldo awal.</p>\n<p class=\"note\">Detail Stok merupakan tampilan pemeriksaan. Membukanya tidak memesan, mencadangkan, atau mentransfer barang. Koordinasikan kebutuhan fisik, kemudian catat melalui jenis transaksi yang sesuai agar saldo dan referensinya dapat ditelusuri.</p>"
+  },
+  {
+    "id": "g11",
+    "title": "Membaca daftar Penerimaan Barang",
+    "subtitle": "Temukan dokumen GRN dan sumber barang masuk",
+    "route": "/goods-receipts",
+    "image": "11-grn.png",
+    "html": "<p>Buka Gudang → Penerimaan Barang. Daftar GRN mencatat stok masuk yang dapat berasal dari penerimaan manual maupun serah terima pengadaan.</p>\n<ol><li>Pilih gudang pada filter atau gunakan Semua gudang untuk menelusuri dokumen yang diketahui nomornya.</li><li>Periksa No. GRN, Waktu, Gudang, Vendor / PO, jumlah Item, dan Nilai.</li><li>Klik baris GRN untuk membaca rincian bahan, jumlah, satuan, biaya, dan penerima.</li><li>Gunakan + Terima Barang ketika perlu membuat penerimaan manual yang sesuai, misalnya kiriman tanpa PR atau saldo awal melalui dokumen penerimaan.</li><li>Setelah penerimaan tersimpan, cocokkan nomor GRN pada notifikasi dengan baris daftar dan pergerakan Kartu Stok.</li></ol>\n<p>Beberapa GRN dapat terkait pengajuan yang sama apabila kedatangan dicatat bertahap. Gunakan nomor dan waktu untuk membedakan setiap kejadian fisik.</p>\n<p class=\"warn\">Barang dari pengajuan pengadaan diterima melalui Penerimaan dari Pengadaan. Form manual tidak menggantikan penutupan item PR. Jangan mencatat lagi secara manual setelah Serah Terima berhasil karena dapat menggandakan stok.</p>"
+  },
+  {
+    "id": "g12",
+    "title": "Mencatat GRN manual",
+    "subtitle": "Input jumlah, satuan, biaya, dan tanggal kedaluwarsa",
+    "route": "/goods-receipts",
+    "image": "12-grn-form.png",
+    "html": "<p>Klik + Terima Barang untuk membuka form penerimaan manual. Gunakan untuk barang yang memang tidak sedang diselesaikan melalui pengajuan pengadaan.</p>\n<ol><li>Pilih Gudang tujuan. Isi Vendor / Supplier, No. PO vendor, dan Catatan bila tersedia.</li><li>Klik + Tambah item, lalu pilih Item stok yang sesuai katalog.</li><li>Isi Jumlah dan pilih Satuan penerimaan. Cocokkan padanan jumlah dasar yang ditampilkan pada baris.</li><li>Isi Harga per satuan yang sedang dipilih. Lengkapi Kadaluarsa bila tanggal batch diketahui agar dapat dipantau kemudian.</li><li>Tambahkan seluruh item, periksa Subtotal dan Total, lalu Simpan Penerimaan.</li></ol>\n<p>Minimal satu item diperlukan, setiap bahan harus dipilih, dan jumlah harus positif. Setelah berhasil, periksa nomor GRN, detail penerimaan, serta saldo pada gudang tujuan.</p>\n<p class=\"note\">Mengganti satuan akan menyesuaikan representasi jumlah dan harga di form; periksa kembali sebelum menyimpan. Kolom No. PO vendor bukan pengganti hubungan PR. Form manual ini tidak meminta foto wajib seperti serah terima pengadaan atau pemeriksaan transfer.</p>"
+  },
+  {
+    "id": "g13",
+    "title": "Memeriksa detail GRN",
+    "subtitle": "Cocokkan satuan input dengan saldo dasar",
+    "route": "/goods-receipts",
+    "image": "13-grn-detail.png",
+    "html": "<p>Klik satu baris pada Penerimaan Barang untuk membuka Detail GRN. Gunakan rincian ini untuk mencocokkan pencatatan dengan dokumen pengantar.</p>\n<ol><li>Periksa nomor GRN pada judul, Gudang, Waktu, Vendor, No. PO, dan Diterima oleh.</li><li>Jika berasal pengadaan, baca No. Pengajuan yang menghubungkan penerimaan dengan PR sumber.</li><li>Tinjau Catatan dan Total. Pastikan tidak merujuk kiriman lain yang kebetulan mempunyai pemasok sama.</li><li>Periksa setiap item: jumlah dalam satuan penerimaan, padanan satuan dasar, biaya per dasar, subtotal, dan kedaluwarsa bila tersedia.</li><li>Buka Kartu Stok untuk bahan dan gudang yang sama, lalu cocokkan pergerakan masuk berdasarkan waktu serta referensinya.</li></ol>\n<p>Perbedaan jumlah kemasan dan dasar dapat benar jika sesuai rasio katalog. Contohnya, dua dus dapat menambah empat puluh delapan botol pada saldo dasar.</p>\n<p class=\"note\">Saldo akhir mungkin sudah berubah karena transaksi sesudah penerimaan. Jangan menganggap GRN salah hanya karena saldo sekarang tidak sama dengan jumlah kiriman; periksa histori seluruh gerakan pada rentang waktu terkait.</p>"
+  },
+  {
+    "id": "g14",
+    "title": "Membuka antrean penerimaan pengadaan",
+    "subtitle": "Selesaikan jumlah PR yang benar-benar datang",
+    "route": "/gudang/penerimaan-pengadaan",
+    "image": "14-pr-receiving.png",
+    "html": "<p>Buka Gudang → Penerimaan dari Pengadaan. Judul halaman Penerimaan Barang Dapur menampilkan dokumen yang masih mempunyai barang untuk dicatat.</p>\n<ol><li>Cocokkan nomor Pengadaan, Outlet, Vendor, dan kebutuhan gudang bila ditampilkan.</li><li>Periksa Belum Diterima yang menunjukkan jumlah baris serta unit tersisa.</li><li>Baca Pembayaran untuk mengetahui apakah sudah dibayar, dibayar sebagian, atau Belum dibayar (tempo).</li><li>Klik ikon Terima Barang pada pengajuan yang sesuai kiriman fisik.</li><li>Siapkan jumlah nyata, foto penerimaan, serta pemetaan Item Stok dan Gudang pada dialog Serah Terima.</li></ol>\n<p>Barang boleh diterima sejak pengajuan disetujui, termasuk sebelum pembayaran lunas. Setelah penerimaan dicatat, antrean dimuat ulang; barang yang belum datang tetap menjadi sisa.</p>\n<p class=\"note\">Penerimaan pengadaan dan penerimaan transfer merupakan dua jalur berbeda. Dialog PR tidak mempunyai kolom Reject sekarang seperti transfer. Cocokkan sumber barang terlebih dahulu, lalu gunakan alur yang menjaga hubungan dokumen dan stoknya. Periksa baris barang, bukan hanya status pembayaran pada bagian ringkasan dokumen.</p>"
+  },
+  {
+    "id": "g15",
+    "title": "Menerima pengadaan menjadi stok",
+    "subtitle": "Periksa foto, jumlah, bahan katalog, dan lokasi",
+    "route": "/gudang/penerimaan-pengadaan",
+    "image": "15-pr-receive-form.png",
+    "html": "<p>Dialog Serah Terima menampilkan sisa bahan yang belum dicatat. Bahan baku dan barang dapur diarahkan ke tujuan Stok Gudang.</p>\n<ol><li>Periksa nomor dan nama item. Jika ada pilihan Diantar oleh, pilih vendor langsung atau pengambilan logistik yang sesuai.</li><li>Unggah Foto Barang Saat Diterima, maksimal 5MB, lalu tunggu unggahan berhasil.</li><li>Isi Jumlah sesuai kedatangan nyata. Bawaan seluruh sisa; kurangi untuk kedatangan sebagian dan isi nol pada item yang belum datang.</li><li>Pilih Item Stok yang tepat dan Gudang. Periksa satuan serta usulan pemetaan otomatis.</li><li>Klik Catat Penerimaan, lalu periksa pesan berhasil dan seluruh nomor GRN yang dihasilkan.</li></ol>\n<p>Minimal satu baris harus positif dan jumlah tidak boleh melebihi sisa. Untuk kebutuhan outlet, alur operasional mengarahkan penerimaan melalui Gudang Induk kemudian Transfer Stok.</p>\n<p class=\"note\">Pemilih gudang tidak terkunci mutlak pada tipe induk; pastikan lokasi fisik sesuai. Jika hasil masih menyebut baris menunggu pencatatan, jangan menyimpulkan seluruh saldo telah bertambah. Periksa GRN dan Kartu Stok.</p>"
+  },
+  {
+    "id": "g16",
+    "title": "Membaca daftar Transfer Stok",
+    "subtitle": "Ikuti rute dan tahap pemindahan barang",
+    "route": "/stock-transfers",
+    "image": "16-transfers.png",
+    "html": "<p>Buka Gudang → Transfer Stok. Daftar menunjukkan No. Transfer, Rute, Status, Tanggal, dan pembuat untuk setiap pemindahan atau permintaan stok.</p>\n<ol><li>Pilih Status dan Gudang untuk menyaring pekerjaan yang perlu ditindaklanjuti.</li><li>Cocokkan rute dari gudang asal menuju gudang tujuan. Jangan hanya mengandalkan nomor atau nama bahan.</li><li>Klik nomor transfer atau ikon Detail untuk membaca item dan tindakan berikutnya.</li><li>Gunakan + Buat Transfer untuk transaksi baru. Pengguna outlet melihat + Minta Stok / Transfer.</li><li>Sesudah tindakan, periksa status pada daftar dan sisa pemeriksaan dalam detail.</li></ol>\n<p>Alur umum berjalan dari Draft, Disetujui, Dikirim, lalu hasil penerimaan. Draft yang berasal dari gudang induk dapat berlabel Menunggu Gudang Induk. Kedatangan sebagian memakai Diterima Sebagian · Belum Lengkap; selesai dengan penolakan memakai Pemeriksaan Selesai · Ada Reject.</p>\n<p class=\"note\">Status Dikirim belum berarti stok tujuan siap digunakan. Penerima tetap mencatat jumlah diterima dan ditolak. Barang reject masuk karantina dan memerlukan tindak lanjut mutu stok.</p>"
+  },
+  {
+    "id": "g17",
+    "title": "Membuat transfer stok",
+    "subtitle": "Susun asal, tujuan, jumlah, dan satuan",
+    "route": "/stock-transfers",
+    "image": "17-transfer-create.png",
+    "html": "<p>Klik + Buat Transfer untuk membuka form. Pastikan pemindahan fisik memang memerlukan transaksi antara dua gudang yang berbeda.</p>\n<ol><li>Pilih Gudang Asal dan Gudang Tujuan. Periksa kartu konteks Asal/Tujuan yang menunjukkan tipe serta outlet terkait.</li><li>Isi Keterangan bila perlu menjelaskan kebutuhan atau jadwal pemindahan.</li><li>Klik + Tambah Item, pilih Bahan Baku, lalu isi Jumlah dan Satuan.</li><li>Periksa padanan jumlah dasar di sebelah item. Jika mengganti satuan, periksa kembali angka karena jumlah yang sama dapat mempunyai arti berbeda.</li><li>Lengkapi semua bahan, hapus baris keliru, kemudian klik Buat Transfer.</li></ol>\n<p>Asal dan tujuan tidak boleh sama. Minimal satu item diperlukan dan setiap baris harus memilih bahan dengan jumlah lebih dari nol. Setelah tersimpan, periksa nomor serta status Draft sebelum proses persetujuan.</p>\n<p class=\"note\">Form mendukung rute sesuai cakupan pengguna. Pembuatan dokumen bukan bukti barang sudah berangkat; persetujuan, foto pengiriman, dan penerimaan dilakukan pada tahap detail berikutnya.</p>"
+  },
+  {
+    "id": "g18",
+    "title": "Meminta stok dari Gudang Induk",
+    "subtitle": "Permintaan outlet diproses oleh gudang asal",
+    "route": "/stock-transfers",
+    "image": "18-outlet-request.png",
+    "html": "<p>Pengguna outlet membuka + Minta Stok / Transfer. Memilih Gudang Induk sebagai asal menjadikan form Minta Stok ke Gudang Induk.</p>\n<ol><li>Pilih Gudang Asal berupa induk dan Gudang Tujuan berupa gudang outlet dalam cakupan akun.</li><li>Periksa pilihan bawaan bila hanya ada satu induk dan satu outlet. Pastikan lokasi yang dimaksud benar.</li><li>Isi Keterangan kebutuhan, lalu tambahkan bahan, jumlah, dan satuannya.</li><li>Periksa padanan dasar dan klik Kirim Permintaan.</li><li>Buka detail untuk memantau Menunggu Gudang Induk. Gudang induk menyetujui dan mengirim; outlet mencatat pemeriksaan ketika barang tiba.</li></ol>\n<p>Banner pada form menjelaskan pembagian tahap tersebut. Pengguna outlet tidak mengambil alih persetujuan atau pengiriman dari induk hanya karena dapat melihat dokumennya.</p>\n<p class=\"note\">Permintaan dapat ditarik outlet selagi Draft jika akses pembatalan tersedia. Setelah disetujui, pembatalan menjadi tahap gudang induk. Jangan membuat permintaan kedua tanpa memeriksa yang pertama agar kebutuhan tidak dipenuhi dua kali. Contoh air mineral: 2 dus setara 48 botol; periksa rasio item yang dipilih.</p>"
+  },
+  {
+    "id": "g19",
+    "title": "Menyetujui transfer",
+    "subtitle": "Periksa kebutuhan dan rute sebelum barang disiapkan",
+    "route": "/stock-transfers",
+    "image": "19-transfer-draft.png",
+    "html": "<p>Buka Detail pada transfer Draft atau Menunggu Gudang Induk. Tahap ini memastikan rute dan daftar bahan layak diproses.</p>\n<ol><li>Cocokkan nomor transfer, Dari, Ke, serta identitas gudang pada detail.</li><li>Periksa nama bahan, jumlah kirim, satuan, dan padanan jumlah dasar.</li><li>Baca Keterangan permintaan. Cocokkan kebutuhan dengan stok fisik dan rencana pengiriman.</li><li>Klik ikon Setujui Transfer jika seluruh rincian sesuai. Setelah berhasil, status menjadi Disetujui dan identitas persetujuan dapat dibaca.</li><li>Jika transfer tidak jadi diproses dan tindakan tersedia, gunakan Batalkan Transfer atau Batalkan Permintaan sesuai kondisi dokumen.</li></ol>\n<p>Persetujuan menyiapkan tahap pengiriman. Petugas pengirim masih perlu mengunggah foto barang saat dimuat dan menandai pengiriman melalui detail.</p>\n<p class=\"note\">Pada permintaan dari induk, pengguna outlet melihat penjelasan menunggu gudang induk dan tidak memperoleh aksi tahap induk. Jika tombol tidak ada, periksa status serta pembagian tugas sebelum menganggap aplikasi gagal memuat tindakan. Persetujuan yang berhasil harus terlihat pada status dokumen setelah pemuatan ulang.</p>"
+  },
+  {
+    "id": "g20",
+    "title": "Mencatat pengiriman transfer",
+    "subtitle": "Foto barang berangkat sebelum menandai Dikirim",
+    "route": "/stock-transfers",
+    "image": "20-transfer-send.png",
+    "html": "<p>Pada transfer Disetujui, petugas pengirim membuka detail untuk mencatat keberangkatan barang dari gudang asal.</p>\n<ol><li>Periksa ulang Dari dan Ke, nomor transfer, serta daftar item yang sudah disetujui.</li><li>Cocokkan jumlah barang yang disiapkan dengan jumlah pada dokumen, termasuk satuan kemasan dan padanan dasar.</li><li>Pada Foto Barang Saat Dikirim, klik Ambil / Pilih Foto. Unggah foto barang saat dimuat atau berangkat, maksimal 5MB.</li><li>Tunggu foto berhasil terunggah. Gunakan Ganti foto jika bukti salah.</li><li>Klik ikon Tandai Sudah Dikirim. Periksa perubahan status, pelaku/waktu kirim, dan foto pada detail.</li></ol>\n<p>Selanjutnya penerima mencatat hasil pemeriksaan pada gudang tujuan. Pengiriman bukan konfirmasi bahwa seluruh barang telah diterima atau seluruhnya layak pakai.</p>\n<p class=\"warn\">Foto wajib untuk tahap kirim. Jangan menandai Dikirim hanya karena rencana transfer sudah dibuat. Pembatalan biasa tersedia sebelum pengiriman sesuai kondisi dokumen; sesudah barang berangkat, tindak lanjut dilakukan melalui pemeriksaan penerimaan. Pastikan foto mewakili barang pada nomor transfer yang sedang dibuka.</p>"
+  },
+  {
+    "id": "g21",
+    "title": "Memeriksa penerimaan transfer",
+    "subtitle": "Catat diterima, reject, dan sisa dalam satuan dasar",
+    "route": "/stock-transfers",
+    "image": "21-transfer-receive.png",
+    "html": "<p>Buka transfer Dikirim atau Diterima Sebagian. Kolom pemeriksaan memisahkan barang yang sudah diterima, ditolak, dan belum diperiksa.</p>\n<ol><li>Cocokkan bahan serta satuan dasar. Jika dikirim dua dus setara 48 botol, input penerimaan menggunakan botol.</li><li>Isi Terima sekarang sesuai barang layak yang tiba. Bawaan adalah seluruh sisa, sehingga wajib diperiksa.</li><li>Jika tersedia, isi Reject sekarang untuk barang ditolak dan Alasan reject. Jangan memasukkan barang yang belum datang sebagai reject.</li><li>Isi Catatan penerimaan. Unggah Foto barang saat diperiksa dalam JPG, PNG, atau WebP maksimal 5MB; tunggu bukti bertimestamp server tersimpan.</li><li>Klik Simpan Pemeriksaan Penerimaan atau Simpan Pemeriksaan Berikutnya.</li></ol>\n<p>Contoh: 20 diterima dan 2 reject dari 48 botol menyisakan 26 belum diperiksa; beras diisi 0 jika belum datang. Periksa status dan sisa setelah berhasil. Terima ditambah reject tidak boleh melampaui sisa; kedatangan berikutnya dicatat kembali hanya untuk jumlah yang belum diperiksa.</p>\n<p class=\"warn\">Barang reject masuk karantina dan tidak menambah stok siap pakai. Aksi Reject seluruh sisa barang mengisi jumlah, tetapi alasan penolakan tetap perlu dilengkapi sesuai kondisi nyata.</p>"
+  },
+  {
+    "id": "g47",
+    "title": "Menyimpan bukti pemeriksaan transfer",
+    "subtitle": "Pastikan unggahan selesai sebelum menyimpan jumlah terima dan reject",
+    "route": "/stock-transfers",
+    "image": "47-transfer-proof.png",
+    "html": "<p>Setelah mengisi kuantitas pemeriksaan, gulir ke bagian bukti pada detail transfer. Jumlah diterima dan ditolak tetap menggunakan satuan dasar masing-masing bahan.</p>\n<ol><li>Periksa kembali Terima sekarang, Reject sekarang, dan Alasan reject. Bahan yang belum datang tetap bernilai nol pada pemeriksaan ini.</li><li>Isi Catatan penerimaan untuk menjelaskan kedatangan sebagian, kondisi kemasan, atau informasi pemeriksaan yang diperlukan.</li><li>Pada Foto barang saat diperiksa, pilih foto JPG, PNG, atau WebP maksimal 5MB. Tunggu unggahan selesai dan bukti tercatat server.</li><li>Klik Simpan Pemeriksaan Penerimaan untuk pemeriksaan pertama, atau Simpan Pemeriksaan Berikutnya pada kedatangan lanjutan.</li><li>Buka kembali detail. Baca setiap Pemeriksaan: waktu, petugas, catatan, jumlah terima/reject per bahan, alasan, foto, dan waktu Dicatat server.</li></ol>\n<p>Periksa akumulasi dan sisa. Contoh 48 botol dengan 20 diterima dan 2 reject menyisakan 26 botol belum diperiksa. Jumlah reject masuk karantina.</p>\n<p class=\"warn\">Mengunggah foto belum menyimpan transaksi penerimaan. Jika penyimpanan ditolak karena sisa berubah, muat ulang detail lalu cocokkan ulang jumlah sebelum mencoba kembali.</p>"
+  },
+  {
+    "id": "g22",
+    "title": "Membaca hasil pemeriksaan transfer",
+    "subtitle": "Riwayat setiap kedatangan dan barang yang ditolak",
+    "route": "/stock-transfers",
+    "image": "22-transfer-history.png",
+    "html": "<p>Sesudah pemeriksaan penerimaan tersimpan, buka kembali detail transfer untuk memastikan hasilnya sesuai barang yang datang.</p>\n<ol><li>Baca status utama. Diterima Sebagian · Belum Lengkap berarti masih ada jumlah belum diperiksa.</li><li>Pada tabel item, bandingkan Dikirim dengan jumlah diterima, reject, dan belum diperiksa.</li><li>Gulir ke riwayat Pemeriksaan. Periksa waktu, pelaku, catatan, jumlah diterima/ditolak setiap bahan, dan alasan reject.</li><li>Buka bukti foto bila perlu. Waktu yang ditampilkan adalah waktu pencatatan server beserta identitas pengunggah.</li><li>Cocokkan barang baik dengan Kartu Stok tujuan dan barang reject dengan kasus pada Reject, Retur & Kedaluwarsa.</li></ol>\n<p>Jika seluruh jumlah telah diperiksa tetapi ada penolakan, status menjadi Pemeriksaan Selesai · Ada Reject. Status itu tidak menyatakan semua barang diterima sebagai stok baik.</p>\n<p class=\"note\">Jangan mengulang jumlah pemeriksaan yang sudah tersimpan. Bila data berubah saat bekerja, buka detail terbaru dan hitung kembali sisa sebelum mengirim pemeriksaan berikutnya agar transaksi tidak berlebih.</p>"
+  },
+  {
+    "id": "g23",
+    "title": "Mengelola Reject, Retur & Kedaluwarsa",
+    "subtitle": "Karantina, keputusan, dan penyelesaian dapat ditelusuri",
+    "route": "/stock-quality",
+    "image": "23-quality.png",
+    "html": "<p>Buka Gudang → Reject, Retur & Kedaluwarsa. Halaman memisahkan laporan kondisi barang, keputusan supervisor, dan bukti pelaksanaannya.</p>\n<ol><li>Pilih gudang dan status, lalu gunakan pencarian nomor, nama barang, atau supplier.</li><li>Baca kartu laporan: nomor, tipe gudang, nama bahan, lokasi, jumlah input dan dasar, alasan, serta status.</li><li>Klik Detail & Bukti untuk meninjau catatan dan urutan tindakan.</li><li>Untuk kejadian baru, klik + Laporkan Barang dan pilih batch fisik yang sesuai.</li><li>Gunakan ikon tindakan yang tersedia menurut tahap: keputusan, pelepasan karantina, pelaksanaan, penerimaan retur/pengganti, atau refund.</li></ol>\n<p>Barang yang dikarantina dipisahkan dari stok siap pakai. Status menunggu keputusan berbeda dari disetujui menunggu pelaksanaan, dan barang dikirim retur masih memerlukan penyelesaian.</p>\n<p class=\"note\">Pelapor tidak menyetujui atau melepas laporan sendiri. Aksi juga mengikuti tipe gudang dan cakupan pengguna. Tidak ada tombol hapus laporan umum; periksa histori agar setiap perubahan kondisi barang memiliki jejak yang jelas. Gunakan riwayat kasus untuk mengetahui tindakan terakhir yang benar-benar sudah disimpan.</p>"
+  },
+  {
+    "id": "g24",
+    "title": "Melaporkan barang dan karantina",
+    "subtitle": "Pilih batch, jumlah, alasan, dan foto kondisi",
+    "route": "/stock-quality",
+    "image": "24-quality-report.png",
+    "html": "<p>Klik + Laporkan Barang untuk membuka Laporkan Barang & Karantina. Laporan dibuat atas stok pada gudang dan batch yang benar.</p>\n<ol><li>Pilih Gudang, Barang, dan Batch stok sesuai barang fisik. Baca jumlah batch serta tanggal kedaluwarsanya.</li><li>Isi Jumlah dan Satuan. Periksa padanan Dikarantina dalam satuan dasar.</li><li>Pilih Alasan: Reject, Expired, Spoil, atau Rusak; gudang induk juga dapat menawarkan Retur ke supplier.</li><li>Isi Temuan / alasan retur, termasuk kondisi, penyebab, nomor kemasan/lot, dan detail kejadian yang relevan.</li><li>Unggah foto kondisi atau label kedaluwarsa, lalu Simpan & Karantina setelah seluruh isian sesuai.</li></ol><p>Contoh kasus memakai 1 dus = 12 botol; rasio dapat berbeda antarbahan.</p>\n<p>Foto menggunakan JPG, PNG, atau WebP maksimal 5MB dan memperoleh cap waktu pencatatan server. Hasil berhasil menyatakan barang dikarantina dan menunggu keputusan supervisor.</p>\n<p class=\"warn\">Jangan memilih batch sembarang karena jumlah, biaya, dan kedaluwarsa terkait batch tersebut. Jika batch gagal dimuat, perbaiki pemilihan atau pemuatan data dahulu; tombol simpan tidak menggantikan informasi batch yang belum tersedia.</p>"
+  },
+  {
+    "id": "g25",
+    "title": "Menelusuri detail laporan mutu",
+    "subtitle": "Baca nilai karantina dan bukti setiap tindakan",
+    "route": "/stock-quality",
+    "image": "25-quality-detail.png",
+    "html": "<p>Klik Detail & Bukti pada kartu laporan untuk membuka Riwayat Laporan & Bukti. Modal ini menjelaskan keadaan barang serta tindakan yang sudah dilakukan.</p>\n<ol><li>Cocokkan nomor kasus, bahan, gudang, jumlah dasar, status, dan catatan temuan awal.</li><li>Periksa Nilai barang dikarantina dan Kedaluwarsa batch. Nilai ini berkaitan dengan barang pada kasus, bukan seluruh saldo katalog.</li><li>Baca Keputusan, Tujuan retur, Supplier / invoice, dan Penyelesaian jika sudah tersedia.</li><li>Telusuri setiap event: nama tindakan, waktu, pelaku, catatan, referensi, jumlah, serta nilai dana bila ada.</li><li>Buka gambar bukti dan cocokkan kondisi yang didokumentasikan dengan tahap transaksinya.</li></ol>\n<p>Untuk penyelesaian bertahap, bandingkan jumlah diselesaikan dengan jumlah kasus. Retur dari outlet dapat mempunyai kasus karantina baru di induk yang perlu ditindaklanjuti tersendiri.</p>\n<p class=\"note\">Cap waktu foto menunjukkan pencatatan server dan identitas pengunggah. Itu bukan jaminan lokasi GPS atau waktu kamera mengambil gambar. Gunakan bukti bersama catatan dan hubungan dokumennya untuk pemeriksaan.</p>"
+  },
+  {
+    "id": "g26",
+    "title": "Menetapkan keputusan supervisor",
+    "subtitle": "Pilih pemusnahan atau rute retur yang sesuai",
+    "route": "/stock-quality",
+    "image": "26-quality-approve.png",
+    "html": "<p>Pada laporan Karantina · menunggu keputusan, supervisor yang berbeda dari pelapor membuka Setujui tindak lanjut.</p>\n<ol><li>Tinjau Detail & Bukti terlebih dahulu agar keputusan mengikuti kondisi barang dan batch yang dilaporkan.</li><li>Pilih Keputusan. Pemusnahan tersedia; gudang induk dapat memilih Retur supplier, sedangkan outlet dapat memilih Retur ke gudang induk.</li><li>Untuk retur supplier, pilih Supplier, isi Invoice / surat jalan supplier, dan pilih Penyelesaian berupa Barang pengganti atau Pengembalian dana.</li><li>Untuk retur outlet, pilih Gudang induk tujuan. Pastikan tujuan menerima penanganan lanjutan kasus tersebut.</li><li>Isi Catatan tindakan, lalu Konfirmasi Setujui tindak lanjut.</li></ol>\n<p>Hasil keputusan adalah Disetujui · menunggu pelaksanaan. Barang belum dianggap dimusnahkan atau dikirim hanya karena keputusan telah disetujui.</p>\n<p class=\"note\">Approval tidak meminta foto pelaksanaan baru karena tindakan fisik belum dicatat. Bila hasil pemeriksaan menyatakan barang layak digunakan, gunakan alur Lepas karantina dengan catatan serta bukti, bukan persetujuan pemusnahan. Baca kembali jumlah dan keputusan sebelum menekan tombol konfirmasi terakhir.</p>"
+  },
+  {
+    "id": "g27",
+    "title": "Mencatat pemusnahan",
+    "subtitle": "Simpan pelaksanaan nyata dan bukti setelah disetujui",
+    "route": "/stock-quality",
+    "image": "27-quality-dispose.png",
+    "html": "<p>Kasus yang sudah disetujui untuk Pemusnahan menyediakan aksi Catat pemusnahan bagi petugas pelaksana.</p>\n<ol><li>Buka kasus yang tepat dan cocokkan nomor, item, gudang, jumlah, serta keputusan Pemusnahan.</li><li>Pastikan pelaksanaan fisik sesuai barang yang dikarantina dan keputusan supervisor.</li><li>Isi Catatan tindakan yang menjelaskan pelaksanaan, bukan sekadar rencana.</li><li>Unggah Foto bukti pelaksanaan dalam JPG, PNG, atau WebP maksimal 5MB. Tunggu bukti bertimestamp dan identitas pengunggah tersedia.</li><li>Konfirmasi Catat pemusnahan, lalu periksa status Dimusnahkan dan event baru pada Detail & Bukti.</li></ol>\n<p>Selanjutnya periksa Pembuangan Stok (Waste) untuk nomor, jumlah, nilai kerugian, alasan, serta pelakunya. Gunakan histori stok bila perlu menelusuri hubungan karantina dengan penyelesaian.</p>\n<p class=\"warn\">Jangan mencatat pemusnahan untuk barang yang baru direncanakan dibuang. Hindari pemotongan saldo tambahan melalui penyesuaian setelah kasus diselesaikan, karena barang telah melalui alur karantina dan pelaksanaan yang harus ditelusuri sebagai satu rangkaian. Cocokkan bukti dengan item dan jumlah kasus, termasuk kemasan yang dimusnahkan.</p>"
+  },
+  {
+    "id": "g28",
+    "title": "Menerima retur outlet di gudang induk",
+    "subtitle": "Terima barang kembali sebagai karantina untuk pemeriksaan lanjutan",
+    "route": "/stock-quality",
+    "image": "28-quality-return-outlet.png",
+    "html": "<p>Modal Terima retur di induk dibuka saat retur outlet sudah dikirim ke gudang induk tujuan. Jalur ini memindahkan tanggung jawab penanganan, bukan langsung menjadikan barang stok baik.</p>\n<ol><li>Pada keputusan, pilih Retur ke gudang induk dan Gudang induk tujuan. Isi catatan lalu konfirmasi.</li><li>Sesudah disetujui, petugas outlet membuka Kirim retur, mencatat pelaksanaan, dan mengunggah foto bukti.</li><li>Konfirmasi pengiriman setelah barang benar-benar dikirim. Kasus masuk Dikirim · menunggu penyelesaian.</li><li>Petugas induk membuka Terima retur di induk ketika barang datang, memeriksa tujuan, lalu mengisi catatan dan foto penerimaan.</li><li>Periksa hasil: kasus asal menjadi Diterima gudang induk dan kasus baru pada induk tetap berstatus karantina untuk diperiksa.</li></ol>\n<p>Kasus lanjutan dapat memerlukan keputusan pelepasan, pemusnahan, atau retur supplier sesuai kondisinya.</p>\n<p class=\"warn\">Penerimaan retur di induk tidak otomatis menambah stok siap pakai. Jangan mencatat Retur Masuk manual untuk barang sama sebelum memeriksa kasus karantina baru dan tindakan yang diperlukan. Pada modal penerimaan, periksa catatan dan foto sebelum menekan konfirmasi.</p>"
+  },
+  {
+    "id": "g29",
+    "title": "Mengembalikan barang ke supplier",
+    "subtitle": "Tentukan bukti asal dan bentuk penyelesaian",
+    "route": "/stock-quality",
+    "image": "29-quality-return-supplier.png",
+    "html": "<p>Gudang induk dapat menindaklanjuti karantina melalui Retur supplier. Keputusan harus mengidentifikasi pemasok dan cara penyelesaian yang disepakati.</p>\n<ol><li>Pada Setujui tindak lanjut, pilih Keputusan Retur supplier.</li><li>Pilih Supplier terdaftar, lalu isi Invoice / surat jalan supplier yang menghubungkan barang dengan transaksi asal.</li><li>Pilih Penyelesaian: Barang pengganti atau Pengembalian dana. Isi Catatan tindakan dan konfirmasikan keputusan.</li><li>Petugas pelaksana membuka Kirim retur setelah barang siap dikembalikan. Isi catatan dan unggah foto bukti pelaksanaan.</li><li>Konfirmasi pengiriman nyata, lalu pantau kasus Dikirim · menunggu penyelesaian.</li></ol>\n<p>Barang pengganti dicatat oleh petugas penerima induk, sedangkan dana yang benar-benar kembali dicatat melalui aksi refund oleh keuangan. Keduanya dapat diselesaikan bertahap sesuai sisa.</p>\n<p class=\"note\">Mengirim retur belum menyelesaikan kasus. Jangan menandai seolah pemasok sudah mengganti barang atau mengembalikan dana hanya karena klaim diterima. Periksa jumlah terselesaikan dan bukti setiap penerimaan berikutnya. Supplier dan dokumen asal harus cocok dengan barang yang akan dikembalikan.</p>"
+  },
+  {
+    "id": "g30",
+    "title": "Menerima barang pengganti supplier",
+    "subtitle": "Catat jumlah yang benar-benar kembali",
+    "route": "/stock-quality",
+    "image": "30-quality-replacement.png",
+    "html": "<p>Kasus retur supplier dengan penyelesaian Barang pengganti menyediakan aksi Terima barang pengganti ketika masih ada jumlah yang belum diselesaikan.</p>\n<ol><li>Cocokkan nomor kasus, supplier, bahan, dan Sisa penyelesaian dalam satuan dasar.</li><li>Isi Jumlah barang yang diselesaikan sesuai pengganti yang tiba sekarang. Jangan menggunakan jumlah kemasan jika field meminta satuan dasar.</li><li>Isi tanggal kedaluwarsa setelah hari ini; wajib bila barang asal memiliki tanggal kedaluwarsa. Lengkapi referensi surat jalan pengganti.</li><li>Isi Catatan tindakan dan unggah Foto bukti pelaksanaan, maksimal 5MB dengan format yang didukung.</li><li>Konfirmasi Terima barang pengganti. Periksa event, jumlah terselesaikan, serta stok hasil pengganti.</li></ol>\n<p>Pencatatan dapat dilakukan beberapa kali sesuai kedatangan nyata. Jumlah setiap tindakan dibatasi sisa penyelesaian; kasus baru selesai ketika seluruh kewajiban yang terkait sudah dicatat.</p>\n<p class=\"warn\">Jangan membuat GRN manual kedua untuk pengganti yang sudah dicatat melalui aksi ini. Gunakan histori Kartu Stok dan Detail & Bukti untuk memastikan jumlah serta referensi tercatat sekali pada lokasi yang benar.</p>"
+  },
+  {
+    "id": "g31",
+    "title": "Mencatat refund yang diterima",
+    "subtitle": "Pisahkan uang kembali dari nilai klaim",
+    "route": "/stock-quality",
+    "image": "31-quality-refund.png",
+    "html": "<p>Untuk retur supplier dengan penyelesaian Pengembalian dana, bagian keuangan menggunakan Catat dana refund diterima.</p>\n<ol><li>Cocokkan kasus, supplier, barang, dan Sisa penyelesaian sebelum mencatat uang masuk.</li><li>Isi Jumlah barang yang diselesaikan dalam satuan dasar. Jumlah ini menunjukkan bagian retur yang diselesaikan oleh pembayaran tersebut.</li><li>Isi Nominal dana diterima dalam rupiah sesuai uang yang benar-benar kembali.</li><li>Isi Nomor bukti transfer dana, Catatan tindakan, dan unggah Foto bukti dana diterima.</li><li>Konfirmasi pencatatan, lalu periksa event refund, nominal, jumlah terselesaikan, dan sisa kasus.</li></ol>\n<p>Refund dapat dicatat bertahap. Gunakan jumlah dan nilai untuk kedatangan dana saat ini, bukan mengulang total klaim pada setiap pencatatan.</p>\n<p class=\"warn\">Aksi ini mencatat penyelesaian yang sudah terjadi; bukan permintaan transfer otomatis ke supplier atau bank. Janji refund belum menjadi dana diterima. Jika bukti atau nominal belum sesuai, tunda pencatatan dan periksa transaksi nyata terlebih dahulu agar histori tidak menyatakan pengembalian yang belum terjadi.</p>"
+  },
+  {
+    "id": "g32",
+    "title": "Melepas karantina",
+    "subtitle": "Kembalikan hanya barang yang dinyatakan layak",
+    "route": "/stock-quality",
+    "image": "32-quality-release.png",
+    "html": "<p>Pada kasus yang masih menunggu keputusan, supervisor dapat memilih Lepas karantina apabila pemeriksaan menyatakan barang layak digunakan kembali.</p>\n<ol><li>Buka Detail & Bukti dan periksa alasan karantina, batch, jumlah, serta foto kondisi awal.</li><li>Pastikan hasil pemeriksaan terbaru mendukung pelepasan barang yang sama, bukan barang pengganti dari kasus berbeda.</li><li>Klik Lepas karantina. Baca pengingat bahwa tindakan mengembalikan barang ke stok siap pakai.</li><li>Isi Catatan tindakan yang menjelaskan dasar kelayakan dan unggah Foto bukti pelaksanaan.</li><li>Konfirmasikan tindakan, lalu periksa status Dilepas ke stok, event baru, dan pergerakan terkait pada Kartu Stok.</li></ol>\n<p>Pelapor tidak mengambil keputusan pelepasan atas laporannya sendiri. Jika aksi tidak tersedia, periksa status serta pembagian peran.</p>\n<p class=\"warn\">Jangan memakai Lepas karantina hanya untuk menghilangkan laporan dari antrean. Barang yang perlu dimusnahkan atau diretur harus mengikuti keputusan dan penyelesaian tersebut; pelepasan menyatakan stok kembali layak tersedia bagi proses operasional. Sistem menolak pelepasan jika tanggal kedaluwarsa hari ini atau lebih awal, termasuk kasus reject transfer.</p>"
+  },
+  {
+    "id": "g33",
+    "title": "Memeriksa riwayat Waste",
+    "subtitle": "Jumlah dan nilai kerugian setelah pembuangan",
+    "route": "/stock-wastes",
+    "image": "33-waste.png",
+    "html": "<p>Buka Gudang → Stok Rusak/Hilang. Judul halaman adalah Pembuangan Stok (Waste), yang digunakan membaca histori pembuangan.</p>\n<ol><li>Pilih Gudang dan rentang tanggal. Gunakan pencarian item atau nomor bila dokumen sudah diketahui.</li><li>Periksa Nomor, Gudang, Item/kode, Jumlah input beserta padanan dasar, dan Nilai Kerugian.</li><li>Baca Alasan, Waktu & User, dan Catatan untuk memahami penyebab serta pelaku pencatatan.</li><li>Cocokkan dengan kasus mutu dan bukti pelaksanaan bila baris berasal dari pemusnahan karantina.</li><li>Untuk kejadian baru, gunakan Laporkan Reject / Expired / Spoil → menuju alur laporan mutu.</li></ol>\n<p>Riwayat dapat memuat sumber lain, termasuk waste akibat pembatalan. Label alasan lama seperti Hilang dapat tampil pada histori meskipun tidak menjadi pilihan baru pada form laporan mutu saat ini.</p>\n<p class=\"note\">Halaman ini tidak lagi menyediakan form buang langsung. Mengunjunginya atau mengklik tautan Buang dari monitor kedaluwarsa tidak otomatis mengurangi stok; tindakan nyata dicatat melalui proses yang sesuai. Gunakan nomor referensi ketika membandingkan dengan dokumen penanganan terkait.</p>"
+  },
+  {
+    "id": "g34",
+    "title": "Membaca Kartu Stok",
+    "subtitle": "Saldo lokal, biaya, dan nilai persediaan",
+    "route": "/stock-ledger",
+    "image": "34-ledger.png",
+    "html": "<p>Buka Gudang → Buku Stok. Judul halaman Kartu Stok menampilkan saldo bahan pada setiap gudang serta akses ke histori dan pengolahan.</p>\n<ol><li>Pilih Gudang dan cari nama bahan. Lepaskan filter Stok Rendah jika baris yang diperlukan tidak terlihat.</li><li>Cocokkan nama/kode, lokasi, dan tipe gudang. Baca jumlah dalam satuan yang ditampilkan beserta padanan lainnya bila tersedia.</li><li>Periksa HPP rata-rata dan Nilai Stok. Keduanya membantu membaca nilai persediaan, bukan hanya jumlah kemasan.</li><li>Klik Histori untuk menelusuri transaksi pembentuk saldo. Penyesuaian digunakan hanya jika jenis tindakan tersebut memang sesuai.</li><li>Gunakan Produksi (Masak), Pemotongan, atau Riwayat Pemotongan untuk proses pengolahan yang terkait.</li></ol>\n<p>Ringkasan Total Item, Stok Rendah, dan Nilai Aset membantu pemantauan umum. Selalu pilih lokasi yang tepat sebelum mencocokkan dengan stok fisik.</p>\n<p class=\"warn\">Saldo dapat sudah dipengaruhi penjualan, transfer, produksi, atau karantina setelah penerimaan terakhir. Jangan melakukan penyesuaian hanya karena saldo berbeda dari jumlah satu kiriman tanpa memeriksa histori lengkap.</p>"
+  },
+  {
+    "id": "g35",
+    "title": "Menelusuri histori pergerakan",
+    "subtitle": "Baca jumlah gerakan, saldo sesudah, dan referensi",
+    "route": "/stock-ledger",
+    "image": "35-movements.png",
+    "html": "<p>Klik ikon Histori pada bahan dan gudang yang benar. Modal Histori Pergerakan Stok membantu menjelaskan asal perubahan saldo.</p>\n<ol><li>Cocokkan nama item dan gudang pada bagian atas modal.</li><li>Pilih rentang tanggal yang mencakup transaksi yang ditelusuri, kemudian Tampilkan.</li><li>Baca Tanggal dan Tipe: pembelian, penyesuaian, transfer, penjualan, produksi, pemotongan, atau gerakan mutu stok.</li><li>Periksa Qty bertanda positif atau negatif dalam satuan dasar. Jika tersedia, baca jumlah pada satuan input di bawahnya.</li><li>Bandingkan Saldo setelah, Ref, dan Kadaluarsa dengan dokumen sumber seperti GRN, transfer, atau pemotongan.</li></ol>\n<p>Gerakan karantina, pelepasan karantina, dan pengganti supplier perlu dibaca sebagai bagian rangkaian penanganan mutu, bukan pembelian baru yang tidak terkait.</p>\n<p class=\"note\">Satu item dapat mempunyai beberapa gerakan pada hari sama. Gunakan waktu dan referensi, bukan tanggal saja. Jika saldo akhir tampak berbeda, telusuri gerakan setelah kejadian yang sedang diperiksa sebelum menyimpulkan bahwa penerimaan atau transfer tidak tercatat. Baca satuan dasar pada setiap baris sebelum menjumlahkan kuantitas.</p>"
+  },
+  {
+    "id": "g36",
+    "title": "Mencatat penyesuaian langsung",
+    "subtitle": "Gunakan tipe gerakan dan jumlah perubahan yang benar",
+    "route": "/stock-ledger",
+    "image": "36-adjustment.png",
+    "html": "<p>Klik Penyesuaian pada baris Kartu Stok. Form menunjukkan Item, Gudang, dan Stok saat ini agar sasaran perubahan dapat diperiksa.</p>\n<ol><li>Pilih Tipe Gerakan: Pembelian Masuk, Koreksi Stok, atau Retur Masuk sesuai kejadian yang benar.</li><li>Pilih Satuan Input, lalu isi Qty. Periksa apakah angka merupakan jumlah gerakan yang diperlukan, bukan saldo akhir yang diinginkan.</li><li>Untuk Pembelian Masuk, isi HPP per satuan yang dipilih.</li><li>Isi Tanggal Kadaluarsa bila relevan dan Keterangan untuk menjelaskan sumber perubahan.</li><li>Klik Simpan, lalu periksa saldo dan Histori Pergerakan Stok pada item/gudang yang sama.</li></ol>\n<p>Form mengonversi jumlah ke satuan dasar sebelum mengirim transaksi. Target saldo tersedia pada pengaturan master bahan, sedangkan field Qty di sini mewakili gerakan.</p>\n<p class=\"warn\">Jangan memakai penyesuaian untuk menggandakan GRN atau melewati karantina barang rusak. Untuk selisih hitung yang memerlukan pemeriksaan dan persetujuan, gunakan Stock Opname. Pastikan perubahan positif atau negatif sesuai aturan jenis transaksi sebelum menyimpan.</p>"
+  },
+  {
+    "id": "g37",
+    "title": "Mencatat produksi atau memasak",
+    "subtitle": "Resep mengurangi bahan dan menambah hasil",
+    "route": "/stock-ledger",
+    "image": "37-production.png",
+    "html": "<p>Klik Produksi (Masak) pada Kartu Stok. Pastikan resep bahan setengah jadi telah ditetapkan F &amp; B untuk barang hasil yang akan dibuat.</p>\n<ol><li>Pilih Barang yang Dibuat. Cocokkan nama dan kode hasil, bukan salah satu komponen bahan bakunya.</li><li>Pilih Gudang Tempat Produksi yang menyimpan bahan serta menerima hasil produksi.</li><li>Isi Kuantitas Hasil Produksi lebih dari nol. Gunakan acuan satuan dasar hasil pada master dan resep.</li><li>Isi Catatan Produksi bila diperlukan, kemudian baca pengingat bahwa bahan penyusun dipotong otomatis dan HPP dihitung sistem.</li><li>Klik Proses Produksi. Setelah berhasil, periksa bahan berkurang, hasil bertambah, dan histori Bahan Produksi/Hasil Produksi.</li></ol>\n<p>Pilihan barang pada form berasal dari katalog aktif; tampilnya item belum menjamin resepnya sudah ada atau bahan mencukupi. Periksa kesiapan sebelum mencatat produksi.</p>\n<p class=\"warn\">Jangan sekaligus menambah saldo hasil secara manual. Resep disusun untuk satu satuan dasar hasil; kesalahan membaca kuantitas sebagai kemasan dapat memperbesar pemakaian bahan dan mengubah pencatatan biaya produksi. Contoh satuan hasil ml: 1000 berarti 1 liter. Akses produksi memerlukan izin Penyesuaian &amp; Produksi (stockledger.adjust), tanpa memberi hak mengubah resep.</p>"
+  },
+  {
+    "id": "g38",
+    "title": "Mencatat pemotongan aktual",
+    "subtitle": "Ubah hasil standar menjadi hasil nyata",
+    "route": "/stock-ledger",
+    "image": "38-breakdown.png",
+    "html": "<p>Klik Pemotongan pada Kartu Stok untuk mengolah satu bahan menjadi beberapa hasil. Pola harus tersedia dan aktif dari pusat resep F &amp; B.</p>\n<ol><li>Pilih Gudang dan Bahan yang Dipotong / Diolah. Jika ada beberapa pola, pilih Pola Pemotongan yang digunakan.</li><li>Isi Jumlah dipakai dalam satuan kemasan input sesuai label. Periksa padanan dasar dan Stok di gudang.</li><li>Pada Hasil Aktual, periksa setiap item. Angka awal mengikuti standar pola; ubah sesuai hasil yang benar-benar diperoleh.</li><li>Bandingkan hasil dengan Standar, persentase hasil, dan Perkiraan HPP. Isi Catatan bila ada penjelasan susut atau kondisi pengolahan.</li><li>Klik Simpan Pemotongan, lalu periksa nomor transaksi dan stok sumber maupun hasil.</li></ol>\n<p>Jumlah input harus positif, hasil tidak boleh negatif, dan minimal satu hasil harus positif. Perkiraan biaya di layar menggunakan HPP rata-rata; biaya pasti dihitung saat penyimpanan.</p>\n<p class=\"note\">Jangan menyimpan angka standar otomatis tanpa mengukur hasil. Hasil mewarisi tanggal kedaluwarsa terdekat bahan yang terpakai; periksa riwayat untuk jumlah, biaya, dan susut yang tercatat. Istilah FIFO pada teks layar masih merupakan label lama; aturan batch aktual mengikuti FEFO seperti bab aturan.</p>"
+  },
+  {
+    "id": "g39",
+    "title": "Memeriksa riwayat pemotongan",
+    "subtitle": "Bandingkan input, standar, hasil, dan biaya",
+    "route": "/stock-ledger",
+    "image": "39-breakdown-history.png",
+    "html": "<p>Klik Riwayat Pemotongan pada Kartu Stok. Daftar ini menunjukkan hasil transaksi pengolahan yang sudah disimpan.</p>\n<ol><li>Pilih Gudang atau Semua Gudang sesuai cakupan pemeriksaan.</li><li>Cocokkan nomor pemotongan, tanggal/waktu, dan pelaku dengan kegiatan fisik yang dilakukan.</li><li>Baca bahan sumber, nama pola, jumlah input dalam kemasan dan satuan dasar, serta biaya bahan total.</li><li>Periksa setiap hasil: jumlah aktual dibanding standar, persentase hasil, dan biaya per satuan dasar.</li><li>Tinjau hasil keseluruhan dibanding standar, susut, tanggal kedaluwarsa hasil, dan Catatan.</li></ol>\n<p>Gunakan Kartu Stok untuk mencocokkan gerakan Pemotongan (bahan) dan Pemotongan (hasil). Nilai susut membantu menilai hasil pengolahan, sedangkan catatan menjelaskan kondisi yang memengaruhinya.</p>\n<p class=\"note\">Nama pola pada histori mencerminkan pola ketika transaksi dilakukan. Mengubah atau menghapus pola master tidak mengubah riwayat lama. Persentase hasil dan pembagian biaya perlu dibaca bersama satuan serta bobot biaya, bukan dianggap persentase berat total secara otomatis. Periksa pola dan gudang sebelum membandingkan dua transaksi yang berbeda.</p>"
+  },
+  {
+    "id": "g40",
+    "title": "Membaca daftar Stock Opname",
+    "subtitle": "Pantau sesi hitung fisik hingga persetujuan",
+    "route": "/ppic/opname",
+    "image": "40-opname.png",
+    "html": "<p>Buka PPIC → Stock Opname (Cycle Count). Halaman menampilkan sesi hitung fisik yang akan direview sebelum penyesuaian diposting.</p>\n<ol><li>Pilih Gudang dan Status untuk menemukan sesi yang sedang dikerjakan atau sudah selesai.</li><li>Periksa Nomor, gudang/kategori, Status, Progress, Selisih, Akurasi, dan informasi pembuat.</li><li>Klik baris atau Buka → untuk melihat item dalam sesi tersebut.</li><li>Gunakan + Sesi Opname Baru bila gudang belum mempunyai sesi aktif dan penghitungan baru memang diperlukan.</li><li>Setelah tindakan dalam sesi, kembali ke daftar untuk memeriksa status serta kemajuan hitungan.</li></ol>\n<p>Status berjalan dari Menghitung ke Review dan Disetujui, atau Dibatalkan. Progress menunjukkan jumlah item yang sudah dihitung dibanding total; jangan menyimpulkan seluruh bahan sudah dihitung hanya karena ada sesi.</p>\n<p class=\"note\">Opname menggunakan snapshot jumlah sistem pada saat sesi dibuat. Koordinasikan kegiatan fisik serta transaksi gudang selama penghitungan. Persetujuan merupakan tindakan posting penyesuaian; membuka sesi atau menyimpan hitungan saja belum menyatakan seluruh selisih sudah diposting.</p>"
+  },
+  {
+    "id": "g41",
+    "title": "Memulai sesi opname",
+    "subtitle": "Pilih lokasi dan batas kategori penghitungan",
+    "route": "/ppic/opname",
+    "image": "41-opname-create.png",
+    "html": "<p>Klik + Sesi Opname Baru untuk menentukan cakupan penghitungan. Form ini membuat snapshot stok sistem sebagai dasar perbandingan sesi.</p>\n<ol><li>Pilih Gudang yang benar-benar akan dihitung. Satu gudang hanya boleh mempunyai satu sesi opname aktif.</li><li>Pilih Batasi Kategori jika melakukan cycle count pada kelompok tertentu. Biarkan Semua Kategori untuk cakupan yang lebih luas.</li><li>Isi Catatan untuk menjelaskan tujuan, jadwal, atau batas pekerjaan yang perlu diketahui pemeriksa.</li><li>Klik Mulai Opname. Setelah berhasil, aplikasi membuka detail sesi dengan nomor dan jumlah item siap dihitung.</li><li>Cocokkan gudang, kategori, pembuat, serta total item sebelum petugas mulai mengisi angka fisik.</li></ol>\n<p>Jika pembuatan ditolak karena sesi aktif, buka dan selesaikan atau batalkan sesi yang tepat sesuai keputusan operasional; jangan membuat gudang duplikat agar dapat memulai hitungan lain.</p>\n<p class=\"note\">Pemilihan kategori menentukan barang yang masuk sesi. Pastikan cakupan sesuai rencana pemeriksaan, sebab bahan yang tidak termasuk tidak otomatis dihitung atau disesuaikan oleh persetujuan sesi ini.</p>"
+  },
+  {
+    "id": "g42",
+    "title": "Mengisi hitungan fisik",
+    "subtitle": "Blind count memisahkan pengukuran dari angka sistem",
+    "route": "/ppic/opname",
+    "image": "42-opname-count.png",
+    "html": "<p>Detail sesi berstatus Menghitung menyembunyikan Qty Sistem dan selisih. Petugas mengisi hasil fisik tanpa menyalin saldo sistem.</p>\n<ol><li>Periksa nomor sesi, gudang, dan kategori. Gunakan Cari item untuk menemukan bahan yang sedang dihitung.</li><li>Hitung fisik lalu isi Qty Fisik dalam satuan dasar yang tertulis pada baris.</li><li>Bedakan kosong dan nol: kosong berarti belum dihitung, sedangkan nol berarti pemeriksaan menyatakan stok fisik tidak ada.</li><li>Isi Alasan atau catatan yang diperlukan. Klik Simpan Hitungan dan pastikan jumlah perubahan yang belum tersimpan berkurang.</li><li>Setelah hitungan siap, klik Ajukan Review. Simpan seluruh perubahan sebelum melanjutkan.</li></ol>\n<p>Ringkasan Item menunjukkan kemajuan penghitungan. Baris berubah ditandai di layar agar petugas dapat mengetahui isian yang belum disimpan.</p>\n<p class=\"warn\">Jika ada hitungan belum disimpan, konfirmasi dapat mengajukan sesi tanpa menyertakan perubahan tersebut. Jangan melewati peringatan ini sebagai langkah rutin. Pastikan kuantitas kemasan telah dikonversi menjadi satuan dasar sebelum menyimpan dan menyerahkan review.</p>"
+  },
+  {
+    "id": "g43",
+    "title": "Mereview selisih opname",
+    "subtitle": "Simpan koreksi dan alasan sebelum posting",
+    "route": "/ppic/opname",
+    "image": "43-opname-review.png",
+    "html": "<p>Pada status Review, detail menampilkan Qty Sistem snapshot, Qty Fisik, Selisih, Nilai Selisih, dan Alasan.</p>\n<ol><li>Gunakan Hanya selisih untuk memusatkan pemeriksaan pada bahan yang berbeda, atau lepaskan filter untuk melihat seluruh item.</li><li>Bandingkan jumlah sistem dengan fisik dalam satuan dasar. Periksa kembali hitungan yang tampak salah satuan atau terlewat.</li><li>Lengkapi Alasan pada item berselisih. Jika hitungan dikoreksi, klik Simpan Koreksi sebelum persetujuan.</li><li>Approver membuka Approve & Posting Penyesuaian setelah seluruh data yang akan digunakan telah tersimpan.</li><li>Baca konfirmasi: saldo terkini item yang dihitung akan disetel ke jumlah fisik tersimpan, sedangkan item tidak dihitung dilewati.</li></ol>\n<p>Jika disetujui, penyesuaian diposting ke Buku Stok. Periksa hasil pada sesi dan histori item terkait.</p>\n<p class=\"warn\">Persetujuan tidak otomatis menyimpan input koreksi yang belum tersimpan. Jangan melanjutkan berdasarkan angka yang belum tersimpan. Jika gudang masih mempunyai aktivitas selama hitungan, periksa dampaknya terhadap snapshot dan hasil sesuai proses pemeriksaan yang berlaku.</p>"
+  },
+  {
+    "id": "g44",
+    "title": "Memeriksa opname yang disetujui",
+    "subtitle": "Telusuri item yang diposting dan yang dilewati",
+    "route": "/ppic/opname",
+    "image": "44-opname-approved.png",
+    "html": "<p>Detail sesi Disetujui menjadi hasil pemeriksaan yang dapat dibaca kembali. Isian hitungan tidak lagi diedit melalui tahapan biasa.</p>\n<ol><li>Cocokkan nomor opname, gudang, kategori, serta waktu dan pelaku persetujuan.</li><li>Periksa Progress item dihitung dibanding total. Item yang tidak dihitung dapat dilewati saat persetujuan.</li><li>Tinjau Qty Sistem, Qty Fisik, Selisih, Nilai Selisih, dan Alasan setiap baris yang diposting.</li><li>Buka Kartu Stok pada gudang dan bahan yang sama, kemudian Histori untuk menelusuri penyesuaian dari sesi tersebut.</li><li>Bandingkan hasil dengan dokumen hitungan fisik dan catatan pemeriksaan yang digunakan.</li></ol>\n<p>Ringkasan Akurasi membantu membaca mutu pencatatan. Angka target yang ditampilkan tidak menggantikan pemeriksaan terhadap selisih material atau item yang belum dihitung.</p>\n<p class=\"note\">Tidak ada tombol membuka kembali sesi approved pada UI biasa. Jangan melakukan penyesuaian tambahan hanya untuk mengubah angka hasil tanpa menelusuri sebabnya. Sesi Dibatalkan juga berbeda dari Disetujui: pembatalan tidak menyatakan selisih telah diposting. Saldo terkini disetel ke angka fisik tersimpan ketika persetujuan diproses.</p>"
+  },
+  {
+    "id": "g45",
+    "title": "Memantau tanggal kedaluwarsa",
+    "subtitle": "Prioritaskan batch berdasarkan kedekatan tanggal",
+    "route": "/ppic/expiry",
+    "image": "45-expiry.png",
+    "html": "<p>Buka PPIC → Monitor Kedaluwarsa (FEFO). Halaman membantu memprioritaskan batch yang paling dekat kedaluwarsa.</p>\n<ol><li>Pilih kartu Sudah Lewat, ≤ 3 Hari, ≤ 7 Hari, ≤ 30 Hari, atau Aman. Klik kartu yang sama lagi untuk melepas filter.</li><li>Pilih Gudang dan gunakan Cari item untuk menelusuri bahan tertentu.</li><li>Periksa Item, Gudang, Qty Sisa, Nilai, Kedaluwarsa, Asal, dan Penanganan.</li><li>Tinjau jumlah Tanpa Tanggal untuk mengetahui batch yang belum mempunyai informasi kedaluwarsa.</li><li>Tentukan tindakan fisik yang sesuai, kemudian catat melalui transaksi gudang yang benar dan tandai penanganannya bila sudah dilakukan.</li></ol>\n<p>FEFO merupakan pedoman mendahulukan batch yang lebih dekat kedaluwarsa. Monitor tidak otomatis memindahkan atau membuang barang hanya karena tanggalnya telah lewat.</p>\n<p class=\"note\">Tautan Buang pada batch expired menuju riwayat Waste. Untuk laporan baru, lanjutkan Laporkan Reject / Expired / Spoil ke alur karantina. Jangan menganggap klik tautan tersebut langsung mengurangi stok atau menyelesaikan kasus.</p>"
+  },
+  {
+    "id": "g46",
+    "title": "Menandai batch sudah ditindak",
+    "subtitle": "Catatan penanganan menyenyapkan alert, bukan mengubah saldo",
+    "route": "/ppic/expiry",
+    "image": "46-expiry-ack.png",
+    "html": "<p>Klik ikon Tandai Ditindak pada batch untuk membuka Tandai Batch Sudah Ditindak. Gunakan sesudah penanganan telah dilakukan dan dapat dijelaskan.</p>\n<ol><li>Cocokkan item, jumlah sisa, gudang, serta tanggal kedaluwarsa pada modal.</li><li>Pastikan tindakan fisik dan transaksi terkait sudah sesuai, misalnya transfer, pemakaian prioritas, atau proses mutu stok.</li><li>Isi Catatan penanganan dengan tindakan nyata dan referensi dokumennya bila tersedia.</li><li>Klik Simpan. Periksa kolom Penanganan yang menampilkan Ditindak oleh beserta catatan.</li><li>Jika masih perlu menelusuri stok, buka dokumen transaksi dan Kartu Stok terkait, bukan hanya status penanganan monitor.</li></ol>\n<p>Modal menjelaskan bahwa alert dashboard untuk batch tersebut akan disenyapkan. Catatan membantu petugas berikutnya memahami mengapa batch tidak lagi menjadi pengingat aktif.</p>\n<p class=\"warn\">Tandai Ditindak tidak dengan sendirinya mengurangi jumlah, memusnahkan, mentransfer, atau melepas karantina barang. Jangan memakai tanda ini untuk menyembunyikan masalah yang belum ditangani. Kondisi fisik, pencatatan transaksi, dan status penanganan harus diperiksa bersama.</p>"
+  }
+]

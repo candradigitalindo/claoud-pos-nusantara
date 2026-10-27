@@ -1,0 +1,315 @@
+{
+  "title": "Audit aturan Gudang, penerimaan, mutu stok dan PPIC terkait",
+  "basis": "Pembacaan guard route/handler/service dan form Vue pada checkout aplikasi saat audit 27 Oktober 2026. Ini dokumentasi perilaku aplikasi dan anjuran pengendalian internal, bukan sertifikasi hukum atau standar eksternal. Tidak ada transaksi live dibuat oleh audit ini.",
+  "sections": [
+    {
+      "id": "scope",
+      "rules": [
+        "Gudang memiliki type central atau outlet. Gudang outlet wajib terikat outlet valid, satu gudang per outlet; gudang central dapat lebih dari satu dan tidak menyimpan outlet_id.",
+        "Item stok adalah katalog bersama dengan nama, kode, kategori, satuan dasar, satuan kemasan/distribusi, rasio, minimum, status aktif, dan catatan. Bahan mentah dan hasil produksi sama-sama stock_items; tidak ada enum wajib raw/SFG/finished dalam model ini.",
+        "Dashboard/Kartu Stok adalah ringkasan. Stok tersedia, stok dalam pengiriman, barang karantina, dokumen waste, dan pembayaran pengadaan adalah objek berbeda; status salah satunya tidak otomatis membuktikan lainnya selesai."
+      ],
+      "sources": [
+        "models/warehouse.go:5",
+        "models/warehouse.go:71",
+        "services/warehouse.go:526",
+        "services/warehouse.go:577",
+        "services/warehouse.go:2088"
+      ]
+    },
+    {
+      "id": "permissions",
+      "rules": [
+        "Route baca lookup gudang/item/ledger/movement/GRN menerima salah satu whView; izin melihat menu bukan izin mutasi. whView: warehouse_dashboard.view, warehouses.view, stockitems.view, stocktransfers.view, stockwastes.view, stockledger.view, recipes.view, stockquality.view.",
+        "Master gudang CRUD warehouses.create/update/delete. Master item/kategori stockitems.create/update/delete; katalog global hanya getOutletScope == nil. Role outlet dapat mengatur minimum/saldo gudang outletnya melalui stockitems.update, tanpa memerlukan stockledger.adjust pada jalur itu.",
+        "Penyesuaian, manual GRN, pemotongan: stockledger.adjust. Produksi sederhana: recipes.create. Resep: recipes.view/update; master resep CRUD menuntut scope semua outlet di handler.",
+        "Transfer create stocktransfers.create; approve .approve; send/cancel .update; inspect receive stocktransfers.receive ATAU stockquality.central.receive/outlet.receive; reject tambahan stocktransfers.reject.",
+        "Mutu: stockquality.view, stockquality.central|outlet.report/approve/execute/receive sesuai tahap; refund stockquality.refund. Scope outlet tidak dapat tindakan mutu pada central. Pelapor dilarang menyetujui/melepas kasus sendiri.",
+        "Scope tidak identik antar jalur: WarehouseMutableInScope mengizinkan central dan outlet sendiri untuk pengguna terbatas; WarehouseInOutletScope hanya outlet sendiri. GRN/adjust/produksi sederhana memakai Mutable; pemotongan memakai InOutlet. Tahap approve/send central transfer wajib scope semua outlet. Warehouse CRUD handlers tidak menambah scope guard di luar izin route, jadi jangan klaim seluruh aksi selalu dibatasi outlet.",
+        "PPIC expiry view/ack; opname view/create/approve; production view/create/approve; workorders view/create/execute. Pembuatan role/nama jabatan tidak menentukan izin tanpa konfigurasi aktual."
+      ],
+      "sources": [
+        "routes/routes.go:495",
+        "routes/routes.go:525",
+        "routes/routes.go:535",
+        "routes/routes.go:555",
+        "routes/routes.go:573",
+        "handlers/warehouse.go:57",
+        "handlers/warehouse.go:237",
+        "handlers/warehouse.go:357",
+        "handlers/stock_breakdown.go:60",
+        "services/warehouse.go:1198",
+        "services/stock_quality.go:41"
+      ]
+    },
+    {
+      "id": "masters",
+      "rules": [
+        "Gudang: kode/nama wajib, type central/outlet, outlet valid untuk outlet; kode unik; hapus diblokir jika punya stock_movements. Item: nama wajib, kode otomatis jika kosong lalu uppercase, base default pcs, dist default base, rasio <=0 dinormalisasi menjadi1 oleh server (UI mengarahkan >0).",
+        "Definisi katalog global tidak dapat diubah dari konteks outlet; handler pengguna outlet hanya mengizinkan pengaturan minimum/saldo gudang sendiri. Pengubahan parsial mempertahankan field yang tidak dikirim. Aktif/nonaktif menyimpan pelaku; nonaktif bukan penghapusan saldo.",
+        "Hapus item diblokir bila mempunyai movement; kategori diblokir jika masih dipakai item. Perubahan rasio/satuan master tidak mengonversi ulang seluruh riwayat lama; SOP gunakan governance master dan verifikasi dampaknya.",
+        "Create dengan warehouse membuat ledger/minimum dan opening positif sebagai adjustment ref opening, biaya opening_cost, expiry kosong. Edit SetStock adalah target mutlak; selisih terhadap saldo menjadi adjustment ref set_stock; kosong berarti tidak mengubah stok. Tidak ada approval/foto pada jalur master."
+      ],
+      "sources": [
+        "services/warehouse.go:131",
+        "services/warehouse.go:200",
+        "services/warehouse.go:298",
+        "services/warehouse.go:329",
+        "services/warehouse.go:341",
+        "services/warehouse.go:439",
+        "services/warehouse.go:577",
+        "services/warehouse.go:682",
+        "ui/src/pages/StockItems.vue:178",
+        "ui/src/pages/StockItems.vue:218"
+      ]
+    },
+    {
+      "id": "units_valuation",
+      "rules": [
+        "stockQuantityToBase mensyaratkan input positif finite, satuan dasar atau distribusi yang dikonfigurasi. Unit kosong memakai distribusi untuk kompatibilitas. Input dasar ratio1; input distribusi dikali rasio; hasil round4 harus positif finite.",
+        "GRN/transfer/karantina menggunakan konversi server. Kartu Stok/master melakukan konversi pilihan UI ke qty_base. Harga per kemasan dibagi rasio untuk harga per dasar. Pemotongan input selalu satuan distribusi dan hasil satuan dasar.",
+        "Pemotongan batch pada applyMovementValued adalah FEFO: expiry terdekat dahulu, null expiry terakhir, lalu created_at dan id. Komentar/pesan lama FIFO tidak mengubah ORDER BY nyata. Tidak ada filter menolak batch yang tanggalnya sudah lewat; quarantine harus diposting agar tidak dapat dikonsumsi.",
+        "Pengeluaran menghitung biaya dari batch yang benar-benar dikonsumsi, kekurangan batch >0.0001 ditolak. Penerimaan menciptakan batch biaya/expiry. Mutasi normal merekonsiliasi avg_cost dari batch positif jika total batch cocok saldo; harga movement historis tidak ditulis ulang.",
+        "Pengecualian: quality_hold mengurangi batch dan ledger langsung tanpa menghitung ulang avg_cost. Jangan menjanjikan qty × avg_cost di semua ringkasan selalu sama persis nilai batch sesaat setelah karantina. Gunakan nilai kasus/batch/movement sebagai bukti rinci.",
+        "Transfer/pemotongan menyimpan tanggal terawal dari batch sumber yang dikonsumsi. Agregasi menjadi batch tujuan bukan pelacakan identitas setiap lot sumber. Tidak ada biaya tenaga kerja/overhead otomatis pada produksi sederhana."
+      ],
+      "sources": [
+        "services/stock_units.go:11",
+        "services/warehouse.go:870",
+        "services/warehouse.go:916",
+        "services/warehouse.go:956",
+        "services/warehouse.go:977",
+        "services/stock_quality.go:162",
+        "services/stock_inspection.go:74",
+        "services/stock_breakdown.go:479"
+      ]
+    },
+    {
+      "id": "adjustment",
+      "rules": [
+        "Form Kartu Stok menyediakan Pembelian Masuk, Koreksi Stok, Retur Masuk, pilihan satuan, qty, expiry, catatan opsional; HPP input hanya tampil Pembelian Masuk. Server menolak qty0, tetapi tidak memaksakan tanda positif pada purchase_in/return_in. SOP gunakan tanda sesuai tujuan, bukan klaim guard tidak ada.",
+        "Route handler menolak waste/spoiled/expired walaupun service legacy masih mengenal enum itu; kejadian tersebut melalui karantina. Pengurangan adjustment mengonsumsi batch FEFO dan ditolak jika batch kurang.",
+        "Tidak ada approval, foto, alasan wajib, kunci idempotensi permintaan atau tombol undo umum pada penyesuaian. Pembelian masuk via adjustment bukan GRN dan tidak menutup PR. Audit perlu referensi sebab/otorisasi sebagai SOP."
+      ],
+      "sources": [
+        "handlers/warehouse.go:323",
+        "services/warehouse.go:1015",
+        "ui/src/pages/StockLedger.vue:169",
+        "ui/src/pages/StockLedger.vue:739",
+        "ui/src/pages/StockLedger.vue:836"
+      ]
+    },
+    {
+      "id": "goods_receipt",
+      "rules": [
+        "Manual GRN memerlukan gudang, minimal satu item, qty>0; item harus ditemukan; unit valid; harga finite nonnegatif. Vendor_name, PORef, catatan, expiry tidak diwajibkan oleh service. UI menyediakan harga per satuan terpilih dan expiry. Tidak ada foto/approval wajib atau edit/delete GRN route.",
+        "Header, detail, batch dan movement purchase_in dibuat dalam transaksi. qtyBase × biaya dasar menjadi subtotal dibulatkan2. Harga0 diizinkan, karenanya tidak menjamin valuasi memadai secara bisnis.",
+        "Manual GRN menolak PurchaseRequestID dan PRItemKey; nomor PR barang/bahan hidup yang diketik ke PORef juga ditolak (termasuk telah received). Penerimaan PR harus melalui Penerimaan dari Pengadaan agar jumlah dan status PR direkonsiliasi. Deteksi ini tidak merupakan pemeriksa duplikasi universal untuk semua kiriman tanpa tautan.",
+        "PR bahan masuk stock. Nama katalog aktif menentukan cabang dapur/perlengkapan pada penerimaan pengadaan. Penerima dengan stockledger.adjust memposting stok/GRN; tanpa izin itu dapat tercatat stok_tunda untuk tahap berikutnya. PR receiving UI tidak punya input expiry maupun unit terpisah; jangan instruksikan mengisi field tersebut.",
+        "Penerimaan PR memakai harga final jika tersedia, selain itu HPS, qty ditafsir distribusi katalog. Pengisian final belakangan tidak otomatis menilai ulang batch GRN. Penerimaan fisik dapat terjadi sebelum lunas; status fisik dan pembayaran harus diperiksa terpisah."
+      ],
+      "sources": [
+        "services/goods_receipt.go:33",
+        "services/goods_receipt.go:62",
+        "services/goods_receipt.go:94",
+        "services/goods_receipt.go:128",
+        "handlers/warehouse.go:713",
+        "ui/src/pages/GoodsReceipt.vue:90",
+        "services/asset_receiving.go:616",
+        "ui/src/components/ReceivingDialog.vue"
+      ]
+    },
+    {
+      "id": "transfer_before_receipt",
+      "rules": [
+        "Create memerlukan asal/tujuan berbeda, minimal satu barang, barang unik, qty positif dan unit valid. Draft langsung dibuat; tidak ada status submitted terpisah. Tahap aktual draft -> approved -> sent -> pemeriksaan.",
+        "Approval belum memindahkan stok. Pengiriman dari approved menuntut foto upload valid; mengurangi stok asal dengan transfer_out dan biaya aktual, mencatat earliest expiry sumber. Barang belum menjadi stok tujuan sebelum diterima. Tidak ada guard berbeda pembuat/approver pada tahap ini.",
+        "Cancel hanya draft/approved. Pengguna outlet dapat membuat permintaan terkait outlet sendiri, tetapi tidak boleh menyetujui/mengirim asal central; hanya dapat membatalkan central-origin saat draft. Scope/izin tahap diperiksa server.",
+        "Perubahan status mengunci dokumen dan memeriksa status lama. Metadata foto kirim disimpan sesudah transaksi stok/status, sehingga jangan klaim seluruh lampiran pengiriman atomic. Foto kirim memakai upload lama bukan evidence bertimestamp baru.",
+        "Handler menolak status received via endpoint lama: wajib pemeriksaan baru. Service lama yang mengubah kekurangan menjadi waste bukan perilaku penerimaan UI current. Tidak ada edit baris transfer/undo sesudah sent di route saat audit."
+      ],
+      "sources": [
+        "services/warehouse.go:1295",
+        "services/warehouse.go:1402",
+        "services/warehouse.go:1427",
+        "handlers/warehouse.go:357",
+        "handlers/warehouse.go:435",
+        "handlers/warehouse.go:483",
+        "ui/src/pages/StockTransfers.vue:354"
+      ]
+    },
+    {
+      "id": "transfer_inspection",
+      "rules": [
+        "Hanya sent/partial_received, receipt_version sama, pengirim (username sent_by) tidak boleh menjadi penerima. Tujuan harus aktif dan dalam scope tahap receive; evidence wajib same actor+warehouse unused<24jam.",
+        "1..500 item, unik, accepted/rejected finite nonnegatif round4; total perbaris <=sisa qty kirim - accepted kumulatif - rejected kumulatif. Minimal satu qty>0; reason reject wajib max2000 dan stocktransfers.reject. Notes keseluruhan opsional max10000.",
+        "Accepted menambah stok tujuan dengan biaya transfer_out. Rejected membuat kasus pending karantina di tujuan bernilai biaya yang sama; tidak menambah stok tersedia dan tidak mengurangi asal lagi. Undelivered tetap sisa dalam perjalanan.",
+        "Masih sisa -> partial_received; semua diperiksa tanpa reject -> received; semua diperiksa dengan reject -> received_rejected. received_rejected tidak berarti kasus mutu sudah settled/disposed.",
+        "Penerimaan menambah version, menyimpan history/evidence dan qty secara satu transaksi. Replay versi lama ditolak409. UI default semua sisa accepted; pengguna harus menyesuaikan qty yang benar-benar diperiksa; input satuan dasar."
+      ],
+      "sources": [
+        "services/stock_inspection.go:14",
+        "services/stock_inspection.go:46",
+        "services/stock_inspection.go:77",
+        "services/stock_inspection.go:99",
+        "ui/src/pages/StockTransfers.vue:591"
+      ]
+    },
+    {
+      "id": "quarantine_evidence",
+      "rules": [
+        "Report reason reject/expired/spoiled/damaged/return, catatan wajib <=10000; return supplier hanya central. Gudang/item aktif, batch harus cocok item+gudang, qty positif terkonversi <=batch dan ledger. Harga/expiry disalin dari batch dipilih.",
+        "Lapor mengurangi batch tertentu dan qty ledger sekali, movement quality_hold, status pending. Untuk reject transfer kasus dibuat langsung dari barang perjalanan tanpa stok tersedia terlebih dahulu. Karantina logis perlu pemisahan fisik sebagai SOP.",
+        "Foto evidence JPG/PNG/WebP valid <=5MiB, <=25MP, ditransformasi max1600, dicap SERVER UTC waktu pencatatan, uploader dan ID; hash SHA256 disimpan. Cap tidak membuktikan waktu pengambilan asli/EXIF, kondisi barang, atau keaslian lokasi.",
+        "Claim evidence wajib same gudang dan actor, unused, recorded<24jam. Report/inspection/release/execute/replacement/refund/receive_return perlu evidence; approve tidak perlu (server mengosongkannya). Evidence terikat transaksi, gagal aksi rollback claim.",
+        "Tidak semua Gudang action mensyaratkan bukti foto: GRN manual, master saldo, adjustment, produksi, pemotongan, opname tidak mempunyai guard evidence ini. Backup file jika diaktifkan konfigurasi merupakan proses terpisah; jangan jamin selalu sukses."
+      ],
+      "sources": [
+        "services/stock_quality.go:85",
+        "services/stock_quality.go:114",
+        "services/stock_evidence.go:27",
+        "services/stock_evidence.go:79",
+        "services/stock_quality.go:310"
+      ]
+    },
+    {
+      "id": "quality_decisions",
+      "rules": [
+        "Status pending -> released ATAU approved. Approve/release harus petugas berbeda actor_id dari pelapor. Catatan tindakan wajib <=10000, version cocok; foto baru semua aksi selain approve.",
+        "Release hanya pending; bila expiry terisi <=tanggal aplikasi hari ini ditolak. Mengembalikan qty penuh ke stok dengan biaya/expiry kasus; tidak ada pelepasan sebagian.",
+        "Approve pilih dispose; return_supplier (central, active vendor, reference invoice/suratjalan wajib, settlement replacement/refund); atau return_warehouse (outlet ke central aktif). Approval tidak melaksanakan tindakan fisik.",
+        "Execute hanya approved: dispose menghasilkan dokumen waste dan status disposed, tanpa stok-out kedua; return menjadi in_transit. Tidak ada guard approver harus berbeda executor; pisahkan sebagai SOP bila diperlukan.",
+        "Status akhir released/disposed/returned/settled berbeda. Tidak ada cancel/delete/reopen kasus pada action service. Jangan memperbaiki kasus dengan mengulangi adjustment tanpa audit terotorisasi."
+      ],
+      "sources": [
+        "services/stock_quality.go:296",
+        "services/stock_quality.go:310",
+        "services/stock_quality.go:353",
+        "services/stock_quality.go:403",
+        "ui/src/utils/stockQuality.js"
+      ]
+    },
+    {
+      "id": "return_settlement",
+      "rules": [
+        "receive_return hanya in_transit+return_warehouse; akses/evidence di central tujuan. Seluruh qty membuat child case pending central dan parent returned. Tidak ada penerimaan returncentral parsial; barang tetap karantina sampai keputusan child.",
+        "Supplier replacement/refund hanya in_transit, disposition return_supplier dan action sesuai settlement yang disetujui. Qty positif finite round4 <=sisa; reference penyelesaian wajib, notes+evidence wajib. Dapat bertahap, settled saat seluruh qty teralokasi.",
+        "Replacement menambah item sama, biaya satuan kasus asli; expiry wajib jika kasus asal memilikinya, supplied expiry harus valid dan >hari ini. Tidak ada opsi item pengganti lain di jalur ini.",
+        "Refund amount >0 finite <=1e12; jumlah rupiah tidak otomatis dipaksa sama qty×HPP. Refund tidak menambah stok. finance_journal memproyeksikan refund sebagai kas terhadap karantina dan selisih nilai, bukan sekadar catatan tanpa dampak akuntansi. Jangan klaim tindakan ini mentransfer uang bank atau otomatis melunasi PR/invoice.",
+        "Kasus reject transfer memiliki link sumber sehingga nilai dalam pengiriman/karantina dapat direkonsiliasi. Nomor bukti, actual cash dan qty settled perlu dicocokkan oleh keuangan sebagai SOP."
+      ],
+      "sources": [
+        "services/stock_quality.go:415",
+        "services/stock_quality.go:429",
+        "services/finance_journal.go:255",
+        "services/finance_journal.go:307"
+      ]
+    },
+    {
+      "id": "waste_pos_void",
+      "rules": [
+        "Menu Waste saat ini report; POST stock-wastes legacy mengembalikan410 dan meminta pelaporan melalui mutu dengan evidence/approval. Service CreateStockWaste legacy bukan aksi UI aktif.",
+        "Pemilihan execute dispose membuat waste dari kasus sudah dikurangi saat hold, tidak memotong stok lagi. Tidak ada tombol undo/void waste pada menu tersebut.",
+        "POS void dapat mencatat waste konsumsi, bukan pengembalian bahan ke stok. Bila sale movement sudah ada, recordPOSVoidWaste mengubah movement sale menjadi waste sambil mempertahankan qty/biaya, tanpa deduksi ulang. Bila belum dikurangi, sisa kebutuhan bahan dipotong sekali sebagai waste.",
+        "Event POS void diklaim dengan insert unique ON CONFLICT DO NOTHING dan waste source_movement unik; pengulangan sync tidak dimaksudkan menduplikasi konsumsi. Audit dokumen otomatis lebih dulu sebelum membuat koreksi manual.",
+        "Rekonsiliasi ledger/batch/movement, in-transit, quality cases dan waste dalam filter gudang/periode yang sama. HPP bukan bukti pembayaran aktual."
+      ],
+      "sources": [
+        "routes/routes.go:555",
+        "handlers/stock_quality.go:210",
+        "ui/src/pages/StockWastes.vue",
+        "services/stock_quality.go:296",
+        "services/pos_void_stock.go:189",
+        "services/pos_void_stock.go:209",
+        "services/pos_void_stock.go:238"
+      ]
+    },
+    {
+      "id": "recipes_production",
+      "rules": [
+        "Master resep shared: nama/visibility(public|secret)/durasi>=0 valid, minimal1 bahan unik qty>0 finite. Secret master list/detail dibatasi outlet akses, CRUD semuaoutlet. Resep internal stock_item berbeda dari master recipe; jangan samakan struktur/validasi semua resep.",
+        "Produksi (Masak) di Kartu Stok menggunakan internal stock_item_recipe, qty hasil>0, resep harus ada. Bahan qty resep×hasil dikurangi satu gudang, stok cukup; hasil ditambahkan gudang sama, HPP jumlah biaya aktual bahan/hasil. Single transaction, tanpa approval/foto atau expiry hasil; permintaan baru dapat membuat produksi kedua, bukan idempotensi umum.",
+        "PPIC rencana produksi draft->approved->released; cancel draft/approved. Release membuat workorders, tetapi loop creation dan status plan tidak satu transaksi; jangan janji retry release bebas duplikasi tanpa memeriksa hasil.",
+        "WO planned->in_progress->done; finish juga menerima planned; cancel planned/in_progress. Finish mengunci WO, validasi status, output positif; material default snapshot skala output/planned atau actual submitted nonnegatif, omitted0. Stok baru diposting saat finish, bukan start. HPP aktual, expiry hasil jika ShelfLifeDays>0, yield actual/planned×100. Plan closed saat semua WO done/cancelled.",
+        "Tidak ada kewajiban pelapor/approver berbeda pada rencana/WO; tidak semua bahan actual wajib >0. SOP review hasil/komposisi dan jangan jalankan Produksi Masak kedua kali untuk hasil yang sama sudah WO done."
+      ],
+      "sources": [
+        "services/warehouse.go:1652",
+        "services/warehouse.go:1734",
+        "services/warehouse.go:1833",
+        "services/warehouse.go:1856",
+        "handlers/warehouse.go:621",
+        "ui/src/pages/StockLedger.vue:13",
+        "services/ppic_production.go:183",
+        "services/ppic_production.go:198",
+        "services/ppic_production.go:415"
+      ]
+    },
+    {
+      "id": "breakdown",
+      "rules": [
+        "Pola di Item Stok dikelola recipes.update+alloutlet. Nama pola nonempty<=100 unik, minimal1 hasil unik bukan input; qty standar dan costWeight>0. Pola aktif dipilih eksplisit jika lebih dari1 aktif.",
+        "Posting dari Kartu Stok oleh stockledger.adjust, gudang aktif dan dalam scope, bahan/pola valid, input qty distribusi>0. Hasil hanya anggota pola, tidak duplikat, nonnegatif; omitted0; minimal1 hasilpositif. Tidak ada guard batas massa total dibanding input/standar.",
+        "Input = qtydist×ratio, pengeluaran FEFO dengan biaya aktual. Alokasi biaya hasil menurut qty_actual×(weight/qty_standard), normalisasi total biaya, rounding sen dengan residu baris terbesar. Total nilai hasil=biaya sumber. Yield rendah menyebar cost ke hasil, bukan otomatis mencatat waste tambahan.",
+        "Output qty dalam satuan dasar masing-masing; positif menjadi batch di gudang yang sama dan expiry terawal sumber. Seluruh doc/movements satu transaksi. Tidak ada approval/foto/undo route. SOP catat hasil nyata dan validasi rasio/satuan/bobot."
+      ],
+      "sources": [
+        "handlers/stock_breakdown.go:43",
+        "services/stock_breakdown.go:158",
+        "services/stock_breakdown.go:307",
+        "services/stock_breakdown.go:356",
+        "services/stock_breakdown.go:406",
+        "ui/src/pages/StockLedger.vue:293"
+      ]
+    },
+    {
+      "id": "opname",
+      "rules": [
+        "Create warehouse, optional category; snapshot activeitems dengan ledger, termasuk saldo0. Memeriksa sesi counting/review aktif lebih dulu; jangan menyebut unique transaction constraint karena check terpisah. Tidak membuat snapshot semua katalog yang belum punya ledger.",
+        "counting -> review -> approved; cancel counting/review. Counts boleh nullable atau >=0, editable counting maupun review. Submit perlu minimal1 hitung, bukan semua baris. Blank tidak sama0: blank dilewati approval;0 menetapkan stok habis.",
+        "Approval mengunci sesi/revalidasi review untuk menghindari posting approval ganda, kemudian menghitung diff physical - saldo saat approval, bukan qty_system snapshot. Positive memakai biaya snapshot dan expiry kosong, negative FEFO. Semua perbaris terhitung diposting transaksi dan approved.",
+        "Tidak freeze stock, alasan/foto tidak diwajibkan, tidak ada pemisahan actor count/approve, tidak ada version token edit counts. UI blindcount menyembunyikan saldo during counting tetapi bukan pembatasan data server.",
+        "SOP jadwal cut-off/koordinasi mutasi, hitung ulang sebelum approve jika ada transaksi sela, dokumentasi alasan perbedaan, review petugas lain. Jangan submit kosong untuk barang yang seharusnya dihitung0."
+      ],
+      "sources": [
+        "services/ppic_opname.go:22",
+        "services/ppic_opname.go:225",
+        "services/ppic_opname.go:262",
+        "services/ppic_opname.go:285",
+        "services/ppic_opname.go:357",
+        "ui/src/pages/ppic/StockOpname.vue:45"
+      ]
+    },
+    {
+      "id": "expiry",
+      "rules": [
+        "Monitor menampilkan batch qty>0 expiry nonnull warehouseaktif; jumlah batch tanpaexpiry terpisah. Bucket berdasarkan CURRENT_DATE database: expired<today; d3 hari0–2; d7 hari3–6; d30 hari7–29; safe30+. Label UI/komentar <=3/7/30 adalah ringkas dan jangan dijadikan batas eksak.",
+        "Acknowledgement mencatat waktu/pelaku/catatan, menyenyapkan alert batch, tidak mengubah qty/expiry dan tidak quarantine/dispose. Scope ack permits central+ownoutlet. Sudah ack bukan berarti barang aman.",
+        "Guard release/replacement mutu menolak expiry <=hari ini di timezone aplikasi, berbeda monitor expired<today database. Tanggal hariini belum bucket expired tetapi tak dapat release; jangan samakan kedua kriteria.",
+        "Expiry opsional manualGRN/adjustment; tidak ada field expiry pada masteropening, PR receiving, ProduksiMasak. WO dapat pakai ShelfLifeDays. Transfer/breakdown meneruskan earliest knownexpiry. SOP review data tanpaexpiry tanpa mengarang tanggal."
+      ],
+      "sources": [
+        "services/ppic_expiry.go:12",
+        "services/ppic_expiry.go:21",
+        "services/ppic_expiry.go:107",
+        "services/stock_quality.go:361",
+        "services/stock_quality.go:441",
+        "ui/src/pages/ppic/ExpiryMonitor.vue:83"
+      ]
+    }
+  ],
+  "material_limitations": [
+    "Klaim FIFO murni tidak akurat untuk pengeluaran stok current: implementasi FEFO.",
+    "Tidak ada submitted transfer; penerimaan lama langsung status received ditolak handler.",
+    "Tidak semua kekurangan kiriman menjadi waste; sisa undelivered tetap pending, reject menjadi karantina.",
+    "Tidak semua mutasi memerlukan foto/approval/dua aktor; batas masing-masing jalur harus dibedakan.",
+    "Foto timestamp merekam waktu server mengolah unggahan, bukan bukti mutlak waktu foto diambil.",
+    "Monitor expiry dan FEFO tidak otomatis mencegah pemakaian barang lewat tanggal; report quarantine diperlukan.",
+    "Karantina langsung tidak menghitung ulang avg_cost; ringkasan nilai perlu direkonsiliasi dengan batch.",
+    "Tidak ada jaminan idempotensi universal untuk POST manualGRN/adjust/simpleproduction/breakdown; cek dokumen sebelum retry.",
+    "Opname tidak freeze mutasi dan tidak mensyaratkan semua item dihitung; approval set physical terhadap saldo terkini.",
+    "Tidak ada field expiry di UI PR receiving/master opening/ProduksiMasak; jangan dokumentasikan sebagai langkah UI.",
+    "Refund memiliki proyeksi jurnal finance tetapi bukan integrasi transfer uang bank atau penutupan invoice PR.",
+    "Batas izin/cakupan tidak seragam, beberapa mutasi legacy mengizinkan central bagi outletscope; dokumentasi tidak boleh mengklaim scope paling ketat pada semua endpoint."
+  ]
+}

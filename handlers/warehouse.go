@@ -533,7 +533,7 @@ func UpdateReceivedQty(c *fiber.Ctx) error {
 
 // GetProductRecipes mengambil daftar resep (kebutuhan bahan baku) untuk sebuah produk.
 func GetProductRecipes(c *fiber.Ctx) error {
-	recipes, err := services.GetProductRecipes(c.Params("productId"))
+	recipes, err := services.GetProductRecipes(c.Params("id"))
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -542,11 +542,14 @@ func GetProductRecipes(c *fiber.Ctx) error {
 
 // SaveProductRecipes menyimpan atau memperbarui daftar resep untuk sebuah produk.
 func SaveProductRecipes(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Resep produk dikelola F&B dengan cakupan semua outlet"})
+	}
 	var req models.ProductRecipeRequest
-	req.ProductID = c.Params("productId")
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
 	}
+	req.ProductID = c.Params("id")
 	if err := services.SaveProductRecipes(req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -564,11 +567,14 @@ func GetStockItemRecipes(c *fiber.Ctx) error {
 }
 
 func SaveStockItemRecipes(c *fiber.Ctx) error {
+	if !catalogManager(c) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Resep bahan setengah jadi dikelola F&B dengan cakupan semua outlet"})
+	}
 	var req models.StockItemRecipeRequest
-	req.ParentItemID = c.Params("id")
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
 	}
+	req.ParentItemID = c.Params("id")
 	if err := services.SaveStockItemRecipes(req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -582,8 +588,8 @@ func ProduceStockItem(c *fiber.Ctx) error {
 	}
 	// Item yang diproduksi mengikuti path (/stock-items/:id/produce), bukan body.
 	req.ItemID = c.Params("id")
-	if !services.WarehouseMutableInScope(req.WarehouseID, getOutletScope(c)) {
-		return c.Status(403).JSON(models.APIResponse{Error: "Akses gudang tidak diizinkan"})
+	if !services.WarehouseInOutletScope(req.WarehouseID, getOutletScope(c)) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Produksi hanya bisa dicatat di gudang outlet Anda sendiri; Gudang Induk memerlukan cakupan semua outlet"})
 	}
 	actor, _ := c.Locals("admin_username").(string)
 	if err := services.ProduceStockItem(req, actor); err != nil {

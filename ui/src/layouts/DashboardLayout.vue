@@ -453,7 +453,7 @@ const NAV_ITEMS_DATA = [
       { to: '/fnb/dashboard', label: 'Dashboard', permission: 'fnb.dashboard.view' },
       { to: '/fnb/development', label: 'Pengembangan Produk', permission: 'fnb.development.view' },
       { to: '/fnb/costing', label: 'HPP Menu', permission: 'fnb.costing.view' },
-      { to: '/fnb/recipes', label: 'Resep & SOP', permission: 'recipes.view' },
+      { to: '/fnb/recipes', label: 'Resep & Formula', permission: 'recipes.view' },
     ],
   },
   {

@@ -1,0 +1,436 @@
+{
+  "title": "Panduan Pengadaan sampai Penerimaan — Cloud POS",
+  "document_date": "2026-10-26",
+  "timezone": "Asia/Jakarta",
+  "application_revision": "67092f2",
+  "data": "simulasi terisolasi",
+  "pages": [
+    {
+      "page": 1,
+      "title": "Panduan pengadaan sampai penerimaan",
+      "id": "sampul",
+      "image": null
+    },
+    {
+      "page": 2,
+      "title": "Cara menggunakan panduan ini",
+      "id": "cara-baca",
+      "image": null
+    },
+    {
+      "page": 3,
+      "title": "Daftar isi · aturan",
+      "id": "daftar-isi",
+      "image": null
+    },
+    {
+      "page": 4,
+      "title": "Daftar isi · penggunaan",
+      "id": "daftar-isi-layar",
+      "image": null
+    },
+    {
+      "page": 5,
+      "title": "Alur pengadaan sesuai jenis",
+      "id": "aturan-alur",
+      "image": null
+    },
+    {
+      "page": 6,
+      "title": "Membaca status tanpa salah menyimpulkan",
+      "id": "aturan-status",
+      "image": null
+    },
+    {
+      "page": 7,
+      "title": "Peran, hak akses, dan cakupan",
+      "id": "aturan-peran",
+      "image": null
+    },
+    {
+      "page": 8,
+      "title": "Aturan pengisian pengajuan",
+      "id": "aturan-pengajuan",
+      "image": null
+    },
+    {
+      "page": 9,
+      "title": "Verifikasi dan persetujuan",
+      "id": "aturan-verifikasi",
+      "image": null
+    },
+    {
+      "page": 10,
+      "title": "Harga final, vendor, dan pecah per vendor",
+      "id": "aturan-pembelian",
+      "image": null
+    },
+    {
+      "page": 11,
+      "title": "Struk pembelian dan pengambilan logistik",
+      "id": "aturan-struk-pickup",
+      "image": null
+    },
+    {
+      "page": 12,
+      "title": "Pembayaran, cicilan, dan rekening vendor",
+      "id": "aturan-bayar",
+      "image": null
+    },
+    {
+      "page": 13,
+      "title": "Penerimaan fisik dan tujuan pencatatan",
+      "id": "aturan-terima",
+      "image": null
+    },
+    {
+      "page": 14,
+      "title": "Stok, GRN, dan pembelian tempo",
+      "id": "aturan-stok-tempo",
+      "image": null
+    },
+    {
+      "page": 15,
+      "title": "Pengadaan untuk projek dan RAB",
+      "id": "aturan-projek",
+      "image": null
+    },
+    {
+      "page": 16,
+      "title": "Koreksi, pembatalan, dan kasus khusus",
+      "id": "aturan-koreksi",
+      "image": null
+    },
+    {
+      "page": 17,
+      "title": "Masuk dan mengenali navigasi",
+      "id": "G01",
+      "image": "01-login.png"
+    },
+    {
+      "page": 18,
+      "title": "Memantau Dashboard Pengadaan",
+      "id": "G02",
+      "image": "02-dashboard.png"
+    },
+    {
+      "page": 19,
+      "title": "Mengatur role dan cakupan",
+      "id": "G03",
+      "image": "03b-role-izin.png"
+    },
+    {
+      "page": 20,
+      "title": "Menyiapkan Unit Kerja",
+      "id": "G04",
+      "image": "04-unit-kerja.png"
+    },
+    {
+      "page": 21,
+      "title": "Mencari dan memeriksa vendor",
+      "id": "G05",
+      "image": "05-vendor.png"
+    },
+    {
+      "page": 22,
+      "title": "Membuat atau mengubah vendor",
+      "id": "G06",
+      "image": "06-form-vendor.png"
+    },
+    {
+      "page": 23,
+      "title": "Membaca detail vendor",
+      "id": "G07",
+      "image": "06b-detail-vendor.png"
+    },
+    {
+      "page": 24,
+      "title": "Menyiapkan rekening perusahaan",
+      "id": "G08",
+      "image": "07-rekening.png"
+    },
+    {
+      "page": 25,
+      "title": "Membuat dan memilih projek",
+      "id": "G09",
+      "image": "08-projek.png"
+    },
+    {
+      "page": 26,
+      "title": "Menyusun RAB dan belanja tahap",
+      "id": "G10",
+      "image": "09-detail-rab.png"
+    },
+    {
+      "page": 27,
+      "title": "Memeriksa master gudang",
+      "id": "G11",
+      "image": "35-gudang.png"
+    },
+    {
+      "page": 28,
+      "title": "Menyiapkan katalog Item Stok",
+      "id": "G12",
+      "image": "34-stok.png"
+    },
+    {
+      "page": 29,
+      "title": "Membuat PR dari MRP",
+      "id": "G13",
+      "image": "37-mrp.png"
+    },
+    {
+      "page": 30,
+      "title": "Mengelola daftar Pengadaan Barang",
+      "id": "G14",
+      "image": "10-daftar-barang.png"
+    },
+    {
+      "page": 31,
+      "title": "Mengisi pengajuan Barang",
+      "id": "G15",
+      "image": "11-form-barang.png"
+    },
+    {
+      "page": 32,
+      "title": "Mengajukan Jasa",
+      "id": "G16",
+      "image": "13-form-jasa.png"
+    },
+    {
+      "page": 33,
+      "title": "Mengajukan Bahan Baku",
+      "id": "G17",
+      "image": "15-form-bahan.png"
+    },
+    {
+      "page": 34,
+      "title": "Membaca detail dan mengoreksi awal",
+      "id": "G18",
+      "image": "16-detail-pengajuan.png"
+    },
+    {
+      "page": 35,
+      "title": "Memverifikasi kebutuhan",
+      "id": "G19",
+      "image": "17b-verifikasi-aksi.png"
+    },
+    {
+      "page": 36,
+      "title": "Menyetujui atau menolak pengadaan",
+      "id": "G20",
+      "image": "18-persetujuan.png"
+    },
+    {
+      "page": 37,
+      "title": "Menyetujui Bahan Baku",
+      "id": "G21",
+      "image": "24-persetujuan-bahan.png"
+    },
+    {
+      "page": 38,
+      "title": "Memilih pola pembelian",
+      "id": "G22",
+      "image": "19-purchasing.png"
+    },
+    {
+      "page": 39,
+      "title": "Mengisi harga final",
+      "id": "G23",
+      "image": "20-harga-final.png"
+    },
+    {
+      "page": 40,
+      "title": "Memecah pembelian ke vendor lain",
+      "id": "G24",
+      "image": "21-split-vendor.png"
+    },
+    {
+      "page": 41,
+      "title": "Menindaklanjuti hasil split",
+      "id": "G25",
+      "image": "21b-hasil-split.png"
+    },
+    {
+      "page": 42,
+      "title": "Mengajukan pembayaran",
+      "id": "G26",
+      "image": "20b-ajukan-bayar.png"
+    },
+    {
+      "page": 43,
+      "title": "Mencatat Struk Pembelian",
+      "id": "G27",
+      "image": "22-struk.png"
+    },
+    {
+      "page": 44,
+      "title": "Mencatat Pengambilan Barang",
+      "id": "G28",
+      "image": "23-pengambilan.png"
+    },
+    {
+      "page": 45,
+      "title": "Mengelola antrean Pembayaran",
+      "id": "G29",
+      "image": "25-pembayaran.png"
+    },
+    {
+      "page": 46,
+      "title": "Mengisi pembayaran dan bukti",
+      "id": "G30",
+      "image": "26b-form-bayar-bukti.png"
+    },
+    {
+      "page": 47,
+      "title": "Memeriksa riwayat pembayaran",
+      "id": "G31",
+      "image": "27-riwayat-bayar.png"
+    },
+    {
+      "page": 48,
+      "title": "Membuka antrean Penerimaan Peralatan",
+      "id": "G32",
+      "image": "28-antrean-peralatan.png"
+    },
+    {
+      "page": 49,
+      "title": "Menerima peralatan sebagai aset",
+      "id": "G33",
+      "image": "29b-rincian-aset.png"
+    },
+    {
+      "page": 50,
+      "title": "Membuka antrean barang dapur",
+      "id": "G34",
+      "image": "30-antrean-dapur.png"
+    },
+    {
+      "page": 51,
+      "title": "Memeriksa kiriman bahan sebelum dicatat",
+      "id": "G35",
+      "image": "31-form-terima-stok.png"
+    },
+    {
+      "page": 52,
+      "title": "Memetakan penerimaan ke stok",
+      "id": "G36",
+      "image": "31b-rincian-stok.png"
+    },
+    {
+      "page": 53,
+      "title": "Menerima Material Projek",
+      "id": "G37",
+      "image": "38-material-projek.png"
+    },
+    {
+      "page": 54,
+      "title": "Mencatat Habis Pakai",
+      "id": "G38",
+      "image": "39-habis-pakai.png"
+    },
+    {
+      "page": 55,
+      "title": "Menyelesaikan Jasa",
+      "id": "G39",
+      "image": "32b-konfirmasi-jasa.png"
+    },
+    {
+      "page": 56,
+      "title": "Memeriksa daftar GRN",
+      "id": "G40",
+      "image": "33-grn.png"
+    },
+    {
+      "page": 57,
+      "title": "Memeriksa detail GRN",
+      "id": "G41",
+      "image": "33b-detail-grn.png"
+    },
+    {
+      "page": 58,
+      "title": "Memeriksa Kartu Stok",
+      "id": "G42",
+      "image": "40-kartu-stok.png"
+    },
+    {
+      "page": 59,
+      "title": "Memeriksa aset hasil penerimaan",
+      "id": "G43",
+      "image": "36-aset.png"
+    },
+    {
+      "page": 60,
+      "title": "Checklist sebelum menutup pekerjaan",
+      "id": "checklist",
+      "image": null
+    },
+    {
+      "page": 61,
+      "title": "Contoh hitungan dan pemeriksaan",
+      "id": "contoh",
+      "image": null
+    },
+    {
+      "page": 62,
+      "title": "Istilah dan sumber pemeriksaan",
+      "id": "istilah",
+      "image": null
+    }
+  ],
+  "screenshots": {
+    "05-vendor.png": "dde9da6ffbb039ec7c28ecaedc449bd63541b113aba3f2d053448cf3504ade53",
+    "07b-form-rekening.png": "a0a9a3857f06011470bc9292cc12d7f911712ac032e91d2127c71782bac004b9",
+    "17b-verifikasi-aksi.png": "f13787e23964736edec315913b7b2b8b3d7a20beb38a181d5d8092c214de5682",
+    "21-split-vendor.png": "d410b42229469c67f2ae5062755158847da0de55c341fac91fce1e809ac269ed",
+    "13-form-jasa.png": "700a95d2b04f531fa608a5f45a84a9f9c490b95e14862a2ca6cf05dda7c4997f",
+    "17-verifikasi.png": "b9de4cf6e3c1dfec7c75df220291772bb995a3e6d5c63c278e08969da1293151",
+    "26b-form-bayar-bukti.png": "512dcd70243d07a5dc86002f9bab3fe6d71fe146fd19fa654efbb783eff27832",
+    "33-grn.png": "d297276dcfd92b55a55026f9c4c5524823d41d9b76ef88a561cf70ffbda55d19",
+    "39-habis-pakai.png": "991c97e6ae6a585b482f7c5fce484f19378058376abcb3f344c86164fc71f520",
+    "34-stok.png": "458c6c4d18fb87d01305e1c37c0e5cfa662bb287b6aedad636279b0a2489c07c",
+    "31b-rincian-stok.png": "6c1765301cc83bf829395877747553f0ce0d282f1001b7b9602bb47de85e6e4f",
+    "08-projek.png": "daeb57e7616cb62084f4082f358ae7c8699029cb92dade8fe0aa6e55c9ffb5b0",
+    "36-aset.png": "19132e19ed1ae862a85bcf7d99b4f83c350ab55d1869cc232d13bbf2dc563619",
+    "12-daftar-jasa.png": "655ea65047b1a21984e26342367d4445cfb1e46484602afc0932bca3e11ce1a9",
+    "18-persetujuan.png": "7ac0fdd361bb0c2a77cc9da5afdf8e4c4b7858855b8c088150ea9ffdf2ed8ab2",
+    "29b-rincian-aset.png": "991c97e6ae6a585b482f7c5fce484f19378058376abcb3f344c86164fc71f520",
+    "04-unit-kerja.png": "a920c10083d994df09a716636d55a34eb00d9f9b03dc60f4bc7d09ce437390c0",
+    "33b-detail-grn.png": "3549442307effae46ce587b29d43ca07ebc503b4994fc39dda6c502d0373966b",
+    "22-struk.png": "b62ad1d26aa442e5e905d59f27d567d408589c59116d4e5b6e50b315fff5f056",
+    "27-riwayat-bayar.png": "4d911a0ab575328701fefac6ea9364c62ee57eea4fa576f9d9c70631605babcd",
+    "04b-unit-penugasan.png": "368bd274986ad2bc538b72723be8e3c7164edfe5ee36e4c4e197c4e567fa07ea",
+    "07-rekening.png": "c03e128a6592fea37558602c7ca51f998bd460711285b799c69f54da1becb163",
+    "40-kartu-stok.png": "10bf85209b396c4b9786a26d8049a9c653487b3ea600eafb21e5d724d655d108",
+    "31-form-terima-stok.png": "0ad9758f95bcbbd93333fd9862bbf2f043610e5de72867d5761638af077aa522",
+    "10-daftar-barang.png": "841e5b21e279e28cb757921052efaf7d936b2ac9a6abb8cf0bfa25525127fe21",
+    "21b-hasil-split.png": "33df991a2c305376e7c1e4718f96be0f539861f05a70a360f6e497fd6e21766d",
+    "35-gudang.png": "80bec17d60fb9fdc917e6828f16e9b5946ecb0389fb5cd055d146142d5534fea",
+    "24-persetujuan-bahan.png": "b53e91b26739e3e8fbc775401504081c7b5d9fa352357232ec66042bdedbc8ab",
+    "32b-konfirmasi-jasa.png": "1be788e3d79aa5f03ad9f6240e0c710b2e62b8f4624c0067d9e1ab7807135035",
+    "32-jasa-selesai.png": "e713e180b15e489870f37e531d1152d51f01ccd760567c72cf7444c01e5bf21f",
+    "03-role.png": "0e1a3ffc6df223a928b697d3fe3e4c7d946722f6b73bc87f5d0165f607185bb3",
+    "06b-detail-vendor.png": "d105b0fef8804efb44e8711108d26108acac257189955610566e34122fd663b9",
+    "40b-histori-stok.png": "86e183e497ae09c411b6856a2948ddfa600144fec12d115f79f875fac08d48b6",
+    "26-form-bayar.png": "512dcd70243d07a5dc86002f9bab3fe6d71fe146fd19fa654efbb783eff27832",
+    "16-detail-pengajuan.png": "b9de4cf6e3c1dfec7c75df220291772bb995a3e6d5c63c278e08969da1293151",
+    "11-form-barang.png": "c9034ae81870e848c3d90b7bb38e3577862bc00855645173b5593930ae215703",
+    "02-dashboard.png": "c7bcdf68bfaaa424b476a5d3e1062eeb9cab35b44a61cc0f19e53bbd98d763aa",
+    "14-daftar-bahan.png": "f02e69eb0eb025f3c8f29d84e3f6307aa1d9c2aa18337a28085c6a75da7dbe12",
+    "25-pembayaran.png": "9735d6c6eb6e7804dfba0a0aed1a6c21949070e349c9644259bb098398e681e4",
+    "20-harga-final.png": "da870a6f7826aa269e001e4df109449b5dd61bdeb64a4d29247a948cf6ae6d8d",
+    "28-antrean-peralatan.png": "1558113aeef9e6a6fddd346810e8569f9f176d64974da5664cb2b59e99132990",
+    "23-pengambilan.png": "349ee7c55e3a298b890b226e812fb8996f09413f7c9b65e44745438b0f112234",
+    "29-form-terima-aset.png": "66b031ae6f512799e46d5aa9d2743d2fe63d5385ca35d66cdc2a8f7b873e3b40",
+    "30-antrean-dapur.png": "c420b559a72ed6e7f49e824d19e6efd6aaddc74886d53ecb0a3031308c5f4f2d",
+    "19-purchasing.png": "1a35ae78ef5939a052e292d47248c7e424d28b4cb7c503abbd459aa4126b0e56",
+    "06-form-vendor.png": "617e4c614b2e403aac78faa8a71a3f5cb485fd8ec6a1dac99de567aa51cc5b29",
+    "03b-role-izin.png": "c743eeacb6a6878c6c3b9468dc4ec8a9e2372c8bc8c360471de01fce59eb4f6c",
+    "15-form-bahan.png": "8904117d92f4f267ab4485b1ffc5dca3f6c83782b1bc6fbaabf49eb81d796147",
+    "01-login.png": "3d37ca5fee3c0f35d8857a27b55f6e633331feb9c4dca03c7c958eab680f1df1",
+    "20b-ajukan-bayar.png": "e02ad56677ff204934efe16dac12a9f6c85ad20d0ec43397dd57e8f1bd9f890e",
+    "38-material-projek.png": "43b7df54dacc91d9b16ea3e824948bff47075abc9148601eb0ce285f38c3470d",
+    "09-detail-rab.png": "a82907af859240904c695061c42369ed874458448df30d4fb2d7cb5574036991",
+    "37-mrp.png": "03c3563ebd159a82ae18333a1adcc053b870ac1b092a0a725347c80cf85d3a95"
+  }
+}

@@ -11,12 +11,12 @@ import (
 //
 // Pola pemotongan per bahan (bisa beberapa, mis. ayam "Per Bagian" dan
 // "Potong 8") adalah definisi katalog global yang berlaku di semua gudang,
-// jadi hanya dikelola role bercakupan semua outlet — aturan yang sama dengan
-// katalog stok (T-20). Transaksinya dicatat di gudang tempat bahan dipotong:
+// jadi hanya dikelola F&B dengan izin resep dan cakupan semua outlet.
+// Transaksinya dicatat di gudang tempat bahan dipotong:
 // role per outlet hanya di gudang OUTLET-nya sendiri, Gudang Induk hanya role
 // semua outlet (WarehouseInOutletScope tidak menghitung Gudang Induk).
 
-const breakdownTemplateDeniedMsg = "Pola pemotongan termasuk katalog stok global — hanya dikelola Gudang Induk (role dengan cakupan semua outlet)."
+const breakdownTemplateDeniedMsg = "Pola pemotongan dikelola F&B dengan izin resep dan cakupan semua outlet."
 
 // ListStockItemBreakdowns: bahan yang punya pola pemotongan aktif beserta
 // pola-polanya, untuk pilihan bahan & pola di form Pemotongan.

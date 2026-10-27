@@ -683,7 +683,7 @@ const routes = [
         path: 'fnb/recipes',
         name: 'Recipes',
         component: Recipes,
-        meta: { title: 'Resep — Cloud POS', requiresAuth: true, permission: 'recipes.view' },
+        meta: { title: 'Resep & Formula — Cloud POS', requiresAuth: true, permission: 'recipes.view' },
       },
     ],
   },

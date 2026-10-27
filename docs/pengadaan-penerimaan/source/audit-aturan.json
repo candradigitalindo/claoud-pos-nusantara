@@ -1,0 +1,410 @@
+{
+  "audit": {
+    "tanggal": "26 Oktober 2026",
+    "basis": "Audit guard service, handler, model dan UI aktual repository. Tidak memutasi aplikasi/data. Komentar hanya digunakan bila cocok dengan implementasi.",
+    "cakupan": "Barang/Jasa/Bahan Baku, RAB, verifikasi, approval, pembelian, vendor/split, struk, pickup, pembayaran, penerimaan aset/material/habis/stok dan siklus koreksi."
+  },
+  "alur": [
+    {
+      "aturan": "Barang dan jasa lahir pending (Menunggu Verifikasi), verify → verified (Menunggu Persetujuan), approve → approved, request_payment → payment_requested. Pay menghasilkan partial atau paid; penyelesaian/penerimaan dapat menghasilkan received.",
+      "ref": "services/purchase.go:34; services/purchase.go:776"
+    },
+    {
+      "aturan": "Bahan baku lahir verified tanpa tahap verifikasi; pengaju boleh mengubah isi sampai disetujui. Bahan tidak boleh terkait projek atau RAB. Hak approve bahan terpisah.",
+      "ref": "services/purchase.go:725; services/purchase.go:777; services/purchase.go:2096; handlers/purchase.go:360"
+    },
+    {
+      "aturan": "Barang/bahan boleh diterima secara fisik sejak approved, sebelum/sesudah pembayaran dan bahkan sebelum harga final ada. Jasa tidak memiliki serah terima barang, diselesaikan via tombol Selesai (receive) hanya dari paid/partial.",
+      "ref": "services/asset_receiving.go:319; services/purchase.go:1192; services/purchase.go:46"
+    },
+    {
+      "aturan": "Tolak pending dilakukan pemegang verify; tolak verified pemegang approve. Alasan seluruh dokumen wajib. Tidak ada transisi membuka ulang rejected/cancelled; buat pengajuan baru.",
+      "ref": "services/procurement_types.go:147; services/purchase.go:34; services/purchase.go:1133"
+    },
+    {
+      "aturan": "Batal hanya dari pending/verified/approved, selama belum ada penerimaan. payment_requested belum dibayar pun tidak mempunyai transisi batal.",
+      "ref": "services/purchase.go:48; services/purchase.go:1284"
+    }
+  ],
+  "izin": [
+    [
+      "Barang/jasa",
+      "procurement.requests.view / submit / verify / approve / purchasing / pickup",
+      "services/procurement_types.go:60; routes/routes.go:337"
+    ],
+    [
+      "Bahan baku",
+      "procurement.rawmaterials.view / submit / approve / purchasing / pickup; tanpa langkah verify",
+      "services/procurement_types.go:60; handlers/purchase.go:360"
+    ],
+    [
+      "Keuangan semua jenis",
+      "finance.payments.view untuk baca; finance.payments.pay untuk bayar",
+      "handlers/purchase.go:150; handlers/purchase.go:384"
+    ],
+    [
+      "Terima peralatan",
+      "assets.create atau submit sesuai jenis; bagian aset menangani aset/habis/material",
+      "handlers/asset_receiving.go:30; services/asset_receiving.go:389"
+    ],
+    [
+      "Terima stok langsung menjadi GRN",
+      "stockledger.adjust; submit tanpa hak ini hanya stok_tunda, belum dianggap selesai",
+      "services/asset_receiving.go:837"
+    ],
+    [
+      "Struk",
+      "purchasing ATAU pickup sesuai jenis",
+      "routes/routes.go:344; handlers/purchase_struk.go:1"
+    ],
+    [
+      "Projek/RAB",
+      "procurement.projects.manage untuk kelola/susun/tetapkan RAB",
+      "routes/routes.go:303; routes/routes.go:310"
+    ]
+  ],
+  "identitas_dan_scope": [
+    {
+      "aturan": "Pengajuan manual wajib unit kerja dalam cakupan. Outlet diturunkan dari unit; kombinasi yang bertentangan ditolak. Pelaku diambil dari akun login, bukan nama kiriman klien. Pengajuan pusat tanpa outlet hanya dapat diterima role cakupan semua outlet.",
+      "ref": "handlers/purchase.go:231; services/purchase.go:826; services/purchase.go:84; services/asset_receiving.go:301"
+    },
+    {
+      "aturan": "Pemegang aksi lain dalam modul memenuhi izin .view modul itu. Superadmin melewati pemeriksaan izin. Nama jabatan di panduan hanya contoh SOP, tidak di-hardcode.",
+      "ref": "services/procurement_types.go:87; handlers/purchase.go:42"
+    },
+    {
+      "aturan": "Tidak ada cek pengaju berbeda akun dari verifikator/penyetuju dalam flow pengadaan. Pemisahan tugas perlu diatur lewat pembagian role. Jangan gambarkan sebagai blokir otomatis.",
+      "ref": "handlers/purchase.go:371; services/purchase.go:1505; services/purchase.go:1754"
+    }
+  ],
+  "pengajuan_verifikasi": [
+    {
+      "aturan": "Minimal satu kelompok bernama, tiap kelompok minimal satu item; nama item wajib; qty integer >0; harga HPS/final tidak negatif. Total selalu dihitung server: qty × harga. Batas teks barang: nama item 150, satuan 20, nama kelompok 200 karakter; bahan nama item/kelompok 200.",
+      "ref": "models/purchase.go:4; services/purchase.go:400; services/purchase.go:448; services/purchase.go:484"
+    },
+    {
+      "aturan": "HPS 0 dan sumber HPS kosong diterima guard aktual UI dan server. Secara SOP sangat dianjurkan mengisi HPS realistis dan sumber yang dapat diperiksa, tetapi jangan menyebut wajib validasi aplikasi.",
+      "ref": "handlers/purchase.go:207; services/purchase.go:448; ui/src/pages/PurchaseGoods.vue:1540; ui/src/pages/PurchaseServices.vue:1367"
+    },
+    {
+      "aturan": "Harga final kiriman pengaju saat create/edit sebelum approval diabaikan. Invoice sebelum approved juga diabaikan. Sampai persetujuan nilai pengajuan memakai HPS.",
+      "ref": "services/purchase.go:424; services/purchase.go:715; services/purchase.go:2145; services/purchase.go:2199"
+    },
+    {
+      "aturan": "Barang dicocokkan namanya dengan katalog stok AKTIF (kapital dan spasi berlebih diabaikan): cocok → dapur, lainnya → perlengkapan. Campuran dalam pengajuan baru ditolak. Bahan selalu dapur meskipun belum ada di katalog. Jenis per baris dibekukan saat create/edit praapproval; perubahan katalog kemudian tidak mengubah meja penerimaan.",
+      "ref": "services/asset_receiving.go:1345; services/asset_receiving.go:1391; services/asset_receiving.go:1448"
+    },
+    {
+      "aturan": "Verifikator boleh menolak beberapa item; alasan tiap item minimal 5 karakter. Item ditolak dipindah ke rejected_items, tidak ikut total/pembelian, tetap terlihat dalam riwayat. Semua item ditolak → rejected, total nol.",
+      "ref": "services/purchase.go:1692; services/purchase.go:1717; services/purchase.go:1754"
+    },
+    {
+      "aturan": "Verify wajib version terbaru. Jika berubah, 409 'Pengajuan berubah, muat ulang'. UI edit/approval juga mengirim version; periksa ulang setelah reload.",
+      "ref": "services/purchase.go:1137; services/purchase.go:1176; ui/src/pages/PurchaseGoods.vue:1644"
+    },
+    {
+      "aturan": "Barang/jasa verified terkunci, pembetulan isi perlu batal lalu buat baru. Bahan verified masih boleh diedit sebelum approved.",
+      "ref": "services/purchase.go:2096; handlers/purchase.go:442"
+    }
+  ],
+  "projek": [
+    {
+      "aturan": "Projek opsional barang/jasa. Jika dipilih pada pengajuan baru: RAB wajib sudah ditetapkan, projek belum selesai/batal, unit/outlet sesuai pemilik projek. Bahan baku tidak boleh terkait projek.",
+      "ref": "services/purchase.go:746; services/purchase.go:854; services/project_rab.go:412"
+    },
+    {
+      "aturan": "Baris RAB per item OPSIONAL: kosong berarti belanja luar RAB, tetap dihitung ke projek secara terpisah. Jika diisi, harus milik projek terpilih dan kind umum/cocok jenis pengajuan. Tidak boleh RAB tanpa projek.",
+      "ref": "models/purchase.go:20; services/project_rab.go:414; services/project_rab.go:446"
+    },
+    {
+      "aturan": "Memilih RAB membantu isi nama/satuan/HPS/sumber. Anggaran terpakai ketika approved; nilai final bila ada selain itu HPS. Melebihi sisa RAB hanya peringatan UI, bukan larangan approval otomatis.",
+      "ref": "ui/src/pages/PurchaseGoods.vue:1356; ui/src/pages/PurchaseGoods.vue:1395; services/project_rab.go:79"
+    },
+    {
+      "aturan": "Perlengkapan projek diterima sebagai aset/material; tidak boleh habis pakai. Material menjadi catatan projek untuk proses penggunaan berikutnya.",
+      "ref": "services/asset_receiving.go:425; services/asset_receiving.go:875"
+    },
+    {
+      "aturan": "Verify dan approve memvalidasi ulang status projek/RAB dengan requireSet true. RAB dibuka atau projek selesai/batal menghalangi tahap lanjut sampai kondisi sah.",
+      "ref": "services/purchase.go:1355; services/purchase.go:1364; services/purchase.go:1799; services/purchase.go:1291"
+    }
+  ],
+  "pembelian_split": [
+    {
+      "aturan": "Pada approved pembelian hanya boleh mengubah harga final/vendor/invoice; struktur kelompok/item, qty, satuan, HPS/sumber, RAB terkunci. Harga boleh disimpan bertahap; request_payment mensyaratkan setiap harga final >0 dan vendor_id terdaftar. Invoice tersedia tetapi tidak diwajibkan guard.",
+      "ref": "services/purchase.go:2029; services/purchase.go:1201; services/purchase.go:1533; ui/src/pages/PurchaseGoods.vue:1792"
+    },
+    {
+      "aturan": "Vendor ber-id harus ada/aktif; nama diambil master, bukan ketikan. Vendor tanpa rekening boleh (tunai). Vendor terdaftar wajib sebelum diajukan pembayaran.",
+      "ref": "services/purchase.go:207; services/purchase.go:234; services/purchase.go:271"
+    },
+    {
+      "aturan": "Pecah per Vendor hanya induk approved sebelum penerimaan baris induk. Pecahan tidak boleh dipecah lagi. Item yang dipilih dipindah SELURUH baris ke anak (bukan copy atau membagi qty); anak mewarisi pemilik, jenis, projek, verifikasi/approval dan approved.",
+      "ref": "services/purchase.go:938; services/purchase.go:964; services/purchase.go:991; services/purchase.go:1045"
+    },
+    {
+      "aturan": "Induk masih punya item boleh dibayar hanya tagihannya sendiri. Induk kosong hanya ringkasan keluarga, tidak dapat diberi struk/dibayar; bayar anak. Jangan menjumlahkan ringkasan induk lagi dengan anak.",
+      "ref": "services/purchase.go:1225; services/purchase.go:1080; services/purchase_struk.go:108; services/procurement_finance.go:135"
+    },
+    {
+      "aturan": "Request_payment induk meneruskan anak approved yang lengkap harga/vendor; anak belum lengkap dilewati untuk diajukan sendiri kemudian. Status induk agregasi sisa item dan anak hidup, excluding rejected/cancelled.",
+      "ref": "services/purchase.go:1392; services/purchase.go:1430; services/purchase.go:1855"
+    },
+    {
+      "aturan": "Penerimaan tempo tidak menghalangi pengisian harga final/vendor/invoice selama approved, struktur tetap terkunci. Harga aset/material ikut disesuaikan hanya bila nilai lama masih sama dengan harga penerimaan. GRN dan biaya rata-rata stok TIDAK otomatis dinilai ulang.",
+      "ref": "services/purchase.go:2107; services/purchase.go:2224; services/asset_receiving.go:1050"
+    }
+  ],
+  "struk_pickup": [
+    {
+      "aturan": "Struk sejak approved: nomor wajib/unik dalam pengajuan, tanggal sah tidak masa depan, total >0, foto unggahan wajib. Tidak boleh tambah jika tagihan sudah lunas (total_final >0 dan paid >= total), atau induk kosong.",
+      "ref": "services/purchase_struk.go:74; services/purchase_struk.go:105"
+    },
+    {
+      "aturan": "Struk belum pernah dibayar boleh dihapus; ada histori bayar tidak boleh. Total struk vs final dibandingkan UI, tetapi perbedaan total bukan blokir service. Struk bukan prasyarat wajib request_payment/pay.",
+      "ref": "services/purchase_struk.go:150; services/purchase_struk.go:74; services/purchase.go:1533; services/purchase_struk.go:232"
+    },
+    {
+      "aturan": "Pickup untuk barang/bahan sejak approved, sebelum receipt received; jasa tidak bisa. Foto wajib, catatan opsional, akun/waktu otomatis. Tampil Dalam pengantaran.",
+      "ref": "services/purchase_struk.go:299"
+    },
+    {
+      "aturan": "Penerimaan pilih vendor langsung atau pickup terbuka dalam keluarga dokumen; pickup dipilih ditutup dengan penerima/waktu. Saat receipt lengkap, pickup tersisa yang masih terbuka ikut ditutup.",
+      "ref": "services/purchase_struk.go:359; services/purchase_struk.go:391; services/asset_receiving.go:939"
+    }
+  ],
+  "pembayaran": [
+    {
+      "aturan": "Pay hanya dari payment_requested/partial/received yang punya sisa. Tidak bisa langsung approved meskipun muncul dalam daftar keuangan.",
+      "ref": "services/purchase.go:40; services/purchase.go:1186"
+    },
+    {
+      "aturan": "Negatif ditolak; nominal 0/kosong = lunasi sisa pengajuan atau struk dipilih (dibatasi sisa pengajuan). Tidak boleh melebihi sisa tagihan maupun sisa struk dipilih. UI mewajibkan rekening asal dan tujuan/cara bayar.",
+      "ref": "services/purchase.go:1575; services/purchase_struk.go:232; ui/src/pages/ProcurementPayments.vue:1128"
+    },
+    {
+      "aturan": "Tujuan rekening otomatis dari master vendor saat membayar; bila nomor ada, ketikan tujuan diabaikan. Potret vendor/bank/nomor/pemilik disimpan setiap pembayaran, histori tidak berubah saat master diganti. Vendor tanpa rekening: keterangan tujuan/cara bayar manual wajib.",
+      "ref": "services/purchase.go:250; services/purchase.go:1600"
+    },
+    {
+      "aturan": "Referensi, catatan dan unggah bukti disediakan tetapi bukti/nomor referensi TIDAK diwajibkan guard UI/server. Bila berkas diberikan harus unggahan aplikasi sah, tidak boleh URL eksternal. Bedakan dari foto struk/pickup/penerimaan yang wajib.",
+      "ref": "services/upload_url.go:104; ui/src/pages/ProcurementPayments.vue:1128; services/purchase.go:1112"
+    },
+    {
+      "aturan": "Struk dipilih → seluruh bayar ke struk itu. Tidak memilih → otomatis ke struk belum lunas terlama; kelebihan terhadap total struk tercatat tanpa struk. Tanpa struk tetap bisa membayar.",
+      "ref": "services/purchase_struk.go:40; services/purchase_struk.go:226"
+    },
+    {
+      "aturan": "Utang = total_final − paid_amount pada status committed termasuk received. Received tidak menghapus utang. Arus kas mengambil setiap payment_histories agar tanggal cicilan benar.",
+      "ref": "services/procurement_finance.go:115; services/procurement_finance.go:168"
+    },
+    {
+      "aturan": "Pembayaran massal UI berulang per dokumen dan tidak atomik seluruh pilihan; bila sebagian gagal periksa riwayat sebelum ulang.",
+      "ref": "ui/src/pages/ProcurementPayments.vue:1150"
+    },
+    {
+      "aturan": "Rekening sumber wajib pada UI submitPay. Guard server applyStatusUpdateTx tidak mewajibkan sumber terisi/terdaftar, hanya menyimpan teks kiriman. Panduan penggunaan normal tetap pilih rekening asal; jangan mengklaim validasi server yang tidak ada.",
+      "ref": "ui/src/pages/ProcurementPayments.vue:1136; services/purchase.go:1616"
+    }
+  ],
+  "penerimaan": [
+    {
+      "aturan": "Antrean: Perlengkapan → Penerimaan Peralatan; Gudang → Penerimaan dari Pengadaan. Sejak approved sampai received dengan sisa baris. Foto unggahan wajib, minimal satu qty >0, qty integer tidak negatif/tidak melebihi remaining, baris tak boleh duplikat.",
+      "ref": "services/asset_receiving.go:319; services/asset_receiving.go:616; services/asset_receiving.go:726; routes/routes.go:409"
+    },
+    {
+      "aturan": "Sisa qty dihitung per sumber/baris. Penerimaan induk menggabungkan anak aktif tetapi aset/GRN/material ditautkan ke sumber sebenarnya; mencegah terima ganda via induk dan anak.",
+      "ref": "services/asset_receiving.go:155; services/asset_receiving.go:205; services/asset_receiving.go:778"
+    },
+    {
+      "aturan": "Dapur/bahan hanya stok. Perlengkapan boleh aset/habis; material hanya projek. Perlengkapan tidak stok, projek tidak habis.",
+      "ref": "services/asset_receiving.go:425"
+    },
+    {
+      "aturan": "Usulan: dapur → stok berapa pun harga; perlengkapan >= ambang → aset; di bawah ambang dengan projek → material; selain itu habis. Default ambang Rp500.000, configurable asset_capitalization_min. Usulan bukan kewajiban absolut aset.",
+      "ref": "services/asset_receiving.go:21; services/asset_receiving.go:308; services/asset_receiving.go:350"
+    },
+    {
+      "aturan": "Aset wajib outlet tujuan sah bila belum ada. Nama kosong memakai nama item. Kategori/mode/serial/merek/model/lokasi/umur manfaat/nilai sisa tersedia. Mode tunggal qty N membuat N register qty1, massal satu register qtyN. Default tunggal bila qty1 atau harga >=5 juta, lainnya massal.",
+      "ref": "services/asset_receiving.go:752; services/asset_receiving.go:801; models/asset_receiving.go:97"
+    },
+    {
+      "aturan": "Aset baru aktif/kondisi baik/sumber pengadaan; tanggal perolehan hari tiba zona aplikasi, bukan tanggal pengajuan. Nomor pengadaan dan movement penerimaan tercatat.",
+      "ref": "services/asset_receiving.go:1007"
+    },
+    {
+      "aturan": "Habis pakai: tidak membuat aset/stok, tetap catatan qty/keputusan/pelaku/foto; alasan >=10 karakter wajib semua nilai. Material menambah catatan material projek dengan jumlah/biaya.",
+      "ref": "services/asset_receiving.go:745; services/asset_receiving.go:875"
+    },
+    {
+      "aturan": "Stock adjust: item katalog dan gudang dalam cakupan wajib; kedaluwarsa tersedia. Gudang induk aktif pertama default, tetapi UI/service tidak mengunci tipe central dan bisa memilih gudang lain dalam cakupan. Gudang Induk dulu adalah pola SOP, bukan larangan teknis absolut.",
+      "ref": "services/asset_receiving.go:762; services/asset_receiving.go:1428; ui/src/components/ReceivingDialog.vue:136; ui/src/components/ReceivingDialog.vue:349"
+    },
+    {
+      "aturan": "Tanpa stockledger.adjust, pengaju mencatat stok_tunda saja, belum menambah stok/belum dianggap selesai; menunggu gudang. Jangan GRN manual.",
+      "ref": "services/asset_receiving.go:837"
+    },
+    {
+      "aturan": "Satu GRN per (gudang, dokumen sumber). Qty beli dikonversi ke satuan dasar memakai rasio distribusi; harga unit dibagi rasio. Posting purchase_in dan batch FIFO. Pastikan item/satuan/rasio katalog sesuai.",
+      "ref": "services/asset_receiving.go:853; services/asset_receiving.go:895; services/goods_receipt.go:94"
+    },
+    {
+      "aturan": "Nilai penerimaan dari final baris, fallback HPS; nilai kiriman klien diabaikan. Semua pencatatan serta status dalam satu transaksi dengan kunci keluarga dokumen/perhitungan sisa terkini.",
+      "ref": "services/asset_receiving.go:105; services/asset_receiving.go:641; services/asset_receiving.go:798"
+    },
+    {
+      "aturan": "GRN manual menolak purchase_request_id/pr_item_key, serta nomor dokumen fisik committed pada kolom PO (termasuk sudah diterima). Gunakan Penerimaan dari Pengadaan.",
+      "ref": "services/goods_receipt.go:53; services/goods_receipt.go:63; services/goods_receipt.go:85"
+    },
+    {
+      "aturan": "Foto tersimpan dengan backup pending. Pencadangan Drive butuh rclone dan remote terkonfigurasi; jangan menjamin setiap instalasi/foto sudah dibackup.",
+      "ref": "services/handover.go:18; services/photo_drive.go:75"
+    },
+    {
+      "aturan": "Teks PhotoCapture menyebut email cadangan, tetapi scheduler aktif main.go menjalankan BackupPhotosToDrive melalui rclone tiap 15 menit. Ini ketidaksesuaian teks UI; bukan bukti ada kiriman email. Backup bersyarat konfigurasi dan hasil aktual, tidak menjamin otomatis sukses.",
+      "ref": "ui/src/components/PhotoCapture.vue:9; main.go:94; services/photo_drive.go:197"
+    }
+  ],
+  "status": {
+    "daftar": [
+      [
+        "pending",
+        "Menunggu Verifikasi",
+        "Barang/jasa baru, isi dapat diedit"
+      ],
+      [
+        "verified",
+        "Menunggu Persetujuan",
+        "Barang/jasa sudah diverifikasi; bahan baru tanpa verifikasi masih dapat diedit"
+      ],
+      [
+        "approved",
+        "Disetujui",
+        "Isi harga/vendor, split, struk, pickup; penerimaan fisik boleh; pay belum boleh"
+      ],
+      [
+        "payment_requested",
+        "Menunggu Pembayaran",
+        "Harga final semua item/vendor lengkap; pay boleh"
+      ],
+      [
+        "partial",
+        "Dibayar Sebagian",
+        "Ada cicilan, cek sisa serta penanda penerimaan"
+      ],
+      [
+        "paid",
+        "Dibayar",
+        "Tagihan lunas, cek penerimaan"
+      ],
+      [
+        "received",
+        "Diterima / jasa selesai",
+        "Tidak menjamin lunas; cek sisa tagihan"
+      ],
+      [
+        "rejected",
+        "Ditolak",
+        "Berhenti; pengajuan baru bila tetap perlu"
+      ],
+      [
+        "cancelled",
+        "Dibatalkan",
+        "Berhenti sebelum request_payment dan sebelum penerimaan"
+      ]
+    ],
+    "receipt": [
+      [
+        "kosong",
+        "Belum tercatat lengkap/sebagian sesuai perhitungan"
+      ],
+      [
+        "partial",
+        "Baru sebagian selesai atau masih tertunda"
+      ],
+      [
+        "received",
+        "Seluruh qty baris aktif sudah tercatat"
+      ]
+    ],
+    "nuance": [
+      "Penerimaan lengkap saat status paid ATAU partial → received; karena partial boleh, received tidak menjamin lunas.",
+      "Penerimaan lengkap saat approved/payment_requested: status dokumen tetap, hanya receipt_status received.",
+      "Jika barang lengkap dulu lalu bayar sebagian, pay menghasilkan partial; pelunasan barulah menghasilkan received. Urutan aksi memengaruhi label, jadi baca penanda penerimaan dan sisa nominal.",
+      "Jasa receive dari paid/partial menutup jasa tanpa receipt_status atau register barang.",
+      "Induk split agregasi keluarga: semua anak received bisa received; semua lunas paid; ada pembayaran partial. Induk dengan sisa item dan belum request tetap approved."
+    ],
+    "ref": "services/purchase.go:34; services/purchase.go:1630; services/asset_receiving.go:580; services/purchase.go:1855; models/purchase.go:97"
+  },
+  "koreksi_hapus": [
+    {
+      "aturan": "Batal pending/verified/approved selama belum menerima. Tidak ada buka ulang rejected/cancelled.",
+      "ref": "services/purchase.go:34; services/purchase.go:1284"
+    },
+    {
+      "aturan": "Sudah ada penerimaan: tidak boleh batal/hapus/split atau ubah struktur. Pengecualian harga/vendor/invoice selama approved untuk tempo.",
+      "ref": "services/purchase.go:175; services/purchase.go:972; services/purchase.go:2107; services/purchase.go:2277"
+    },
+    {
+      "aturan": "Hapus perlu submit jenis. Non-admin hanya pending/rejected/cancelled tanpa pembayaran/penerimaan. Admin/superadmin lebih luas namun tidak boleh yang ada pembayaran/penerimaan. Induk diperiksa bersama anak.",
+      "ref": "handlers/purchase.go:478; services/purchase.go:2284; services/purchase.go:2302"
+    },
+    {
+      "aturan": "Hapus anak mengembalikan item ke induk hanya bila induk approved/cancelled/rejected. Jika induk maju pembayaran, biarkan anak cancelled. Demi audit, batal lebih dianjurkan daripada hapus (SOP, bukan hilangnya fitur hapus).",
+      "ref": "services/purchase.go:2340"
+    }
+  ],
+  "panduan_lama_tidak_akurat": [
+    {
+      "lama": "§5/§8: Diterima selalu seluruh barang DAN lunas",
+      "koreksi": "Salah; receive lengkap setelah partial → received dengan utang. Status ganda/sisa harus dibaca.",
+      "ref": "services/asset_receiving.go:588"
+    },
+    {
+      "lama": "HPS dan sumber HPS wajib",
+      "koreksi": "SOP yang dianjurkan; guard menerima HPS0/sumber kosong.",
+      "ref": "services/purchase.go:448; ui/src/pages/PurchaseGoods.vue:1540"
+    },
+    {
+      "lama": "Semua item projek wajib baris RAB",
+      "koreksi": "Boleh kosong (luar RAB), projek baru tetap butuh RAB ditetapkan.",
+      "ref": "services/project_rab.go:446"
+    },
+    {
+      "lama": "Mulai diterima tidak dapat diubah sama sekali",
+      "koreksi": "Struktur terkunci; approved masih bisa harga/vendor/invoice; aset/material bisa diperbarui, GRN tidak.",
+      "ref": "services/purchase.go:2107; services/asset_receiving.go:1050"
+    },
+    {
+      "lama": "Pengaju tidak bisa menjadi verifikator/penyetuju",
+      "koreksi": "Kebijakan role, bukan cek identitas otomatis.",
+      "ref": "handlers/purchase.go:371; services/purchase.go:1505"
+    },
+    {
+      "lama": "Foto pasti dicadangkan Drive",
+      "koreksi": "Bersyarat konfigurasi dan keberhasilan backup.",
+      "ref": "services/photo_drive.go:75"
+    },
+    {
+      "lama": "Tujuan dapur selalu terkunci Gudang Induk",
+      "koreksi": "Default/pola SOP; gudang lain dalam cakupan dapat dipilih.",
+      "ref": "services/asset_receiving.go:765"
+    },
+    {
+      "lama": "Dokumen tidak dapat dihapus",
+      "koreksi": "Aksi hapus ada dengan batas status/pembayaran/penerimaan/anak.",
+      "ref": "services/purchase.go:2242"
+    },
+    {
+      "lama": "Bukti transfer wajib",
+      "koreksi": "UI/service tidak mewajibkan berkas; jika diberikan wajib unggahan sah.",
+      "ref": "ui/src/pages/ProcurementPayments.vue:1128; services/upload_url.go:104"
+    },
+    {
+      "lama": "Semua jenis alur sama persis",
+      "koreksi": "Bahan tanpa verifikasi, jasa tanpa penerimaan fisik. Komentar atas procurement_types.go juga tertinggal; ikuti guard.",
+      "ref": "services/purchase.go:28; handlers/asset_receiving.go:59"
+    }
+  ],
+  "catatan": "Audit ini hanya pola aplikasi; bukan pernyataan kepatuhan hukum/akuntansi eksternal. Ambang pada screenshot harus dibaca dari setting saat capture. Role aktif dan integrasi produksi tidak divalidasi dengan mutasi/E2E oleh subagen ini."
+}

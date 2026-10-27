@@ -412,7 +412,7 @@ const CATEGORIES = [
       { type: 'toggles', label: 'HPP Menu', icon: IC.ledger, toggles: [
         { key: 'fnb.costing.view', label: 'Lihat' }, { key: 'fnb.costing.update', label: 'Atur Kategori & Biaya' },
       ] },
-      { type: 'crud', module: 'recipes', label: 'Resep & SOP', icon: IC.recipe },
+      { type: 'crud', module: 'recipes', label: 'Resep Menu, Bahan Setengah Jadi & Pola', icon: IC.recipe },
     ],
   },
   {
@@ -451,7 +451,7 @@ const CATEGORIES = [
         type: 'toggles', label: 'Buku Stok', icon: IC.ledger,
         toggles: [
           { key: 'stockledger.view',   label: 'Lihat' },
-          { key: 'stockledger.adjust', label: 'Penyesuaian' },
+          { key: 'stockledger.adjust', label: 'Penyesuaian & Produksi' },
         ],
       },
     ],

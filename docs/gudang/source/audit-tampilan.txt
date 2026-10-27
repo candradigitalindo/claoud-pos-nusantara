@@ -1,0 +1,234 @@
+AUDIT UI GUDANG — CLOUD POS
+Tanggal acuan pengguna: 27 Oktober 2026, Asia/Jakarta. Audit kode UI di /home/candra/projects/cloud-pos. Tidak mengubah aplikasi atau data transaksi. Aturan final validasi/akuntansi perlu diselaraskan audit backend; catatan batasan UI tercantum di akhir.
+
+1. INVENTARIS HALAMAN DAN IZIN
+Menu Gudang:
+- Dashboard: /warehouse-dashboard; WarehouseDashboard.vue; warehouse_dashboard.view.
+- Item Stok: /stock-items; StockItems.vue; stockitems.view. Judul halaman Bahan Baku. CRUD memakai stockitems.create/update/delete; katalog global terbatas role cakupan semua outlet. Kategori mengikuti izin item. Pola pemotongan memerlukan recipes.update dan pengelola katalog global.
+- Penerimaan Barang: /goods-receipts; GoodsReceipt.vue; stockledger.view. Daftar GRN; + Terima Barang memerlukan stockledger.adjust.
+- Penerimaan dari Pengadaan: /gudang/penerimaan-pengadaan; ReceivingQueue.vue+ReceivingDialog.vue; stockledger.adjust. Judul Penerimaan Barang Dapur.
+- Transfer Stok: /stock-transfers; StockTransfers.vue; stocktransfers.view. Buat stocktransfers.create; Setujui stocktransfers.approve; Kirim/Batalkan stocktransfers.update; Terima stocktransfers.receive atau stockquality.<tipe tujuan>.receive; Reject Barang stocktransfers.reject.
+- Reject, Retur & Kedaluwarsa: /stock-quality; StockQuality.vue; stockquality.view. Mutu stok dibedakan per gudang central/outlet: report, approve, execute, receive. Finance refund memakai stockquality.refund. Aksi central/refund tidak untuk role scope specific.
+- Stok Rusak/Hilang: /stock-wastes; StockWastes.vue; stockwastes.view. Judul aktual Pembuangan Stok (Waste). Halaman hanya riwayat, tidak lagi menyediakan form pembuangan langsung; link Laporkan Reject / Expired / Spoil → menuju /stock-quality.
+- Buku Stok: /stock-ledger; StockLedger.vue; stockledger.view. Judul Kartu Stok. Penyesuaian dan pemotongan memakai stockledger.adjust; produksi memakai recipes.create (POST /stock-items/:id/produce) (UI beberapa tombol masih tampil tanpa guard, server tetap memeriksa). Riwayat pemotongan baca dari halaman ini.
+Master pendukung:
+- /warehouses; Warehouses.vue; warehouses.view/create/update/delete (menu Gudang master berada kelompok pengaturan). Judul Gudang.
+- /roles dan /work-units bila menyiapkan hak akses; kaitan sama seperti dokumen pengadaan sebelumnya.
+PPIC penunjang yang termasuk lingkup:
+- Monitor Kedaluwarsa: /ppic/expiry; ppic/ExpiryMonitor.vue; ppic.expiry.view; Tandai Ditindak ppic.expiry.ack.
+- Stock Opname: /ppic/opname; ppic/StockOpname.vue; ppic.opname.view; Buat/Hitung ppic.opname.create; Approve ppic.opname.approve.
+Tidak perlu membahas full forecast, MRP, purchasing, aset, POS dalam PDF Gudang ini; sebut keterkaitannya hanya saat menentukan sumber gerakan.
+
+2. JENIS GUDANG, KONTEKS SALDO, DAN SATUAN
+Gudang Induk (central) dapat lebih dari satu, tidak terikat satu outlet, dan dapat memasok outlet mana pun. Gudang Outlet (outlet) harus memilih Outlet Terkait. Form secara eksplisit menyatakan setiap outlet hanya boleh memiliki satu gudang outlet. Transfer didukung antarinduk, induk ke outlet, dan antaroutlet. Role outlet mempunyai lingkup lebih sempit dan tidak mengambil alih tindakan milik induk.
+Definisi bahan (nama, kategori, satuan, rasio, status aktif) merupakan katalog global. Saldo, minimum stok, dan HPP adalah konteks per gudang. Jangan membuat bahan baru per outlet bila sebenarnya barang sama; pilih gudang untuk membaca saldo lokal.
+Saldo stok, minimum, dan HPP disimpan berbasis satuan dasar. Satuan kemasan/distribusi mengubah cara input/tampilan. Contoh 1 dus=24 botol, berarti 2 dus=48 botol. Gudang Induk secara bawaan menampilkan satuan kemasan bila tersedia; Gudang Outlet satuan dasar. Label Kemasan hanya nama tampilan; rasio harus benar.
+Penerimaan GRN dan master/penyesuaian memiliki konversi saat mengganti satuan. Pada form transfer, pilihan Satuan mengubah pemaknaan jumlah yang diketik; selalu periksa padanan '= … satuan dasar' sebelum kirim. Penerimaan TRANSFER khususnya memakai satuan dasar di kolom Terima sekarang dan Reject sekarang, bukan jumlah kemasan asal.
+
+3. MEMBACA DASHBOARD GUDANG
+Buka Gudang → Dashboard. Tombol Refresh memuat ulang (kode tidak menunjukkan polling berkala otomatis walau subtitle menyebut real-time).
+Kartu: Total Gudang (Induk/Outlet), Total Item Bahan (item ada stok), Stok Rendah (item habis), Nilai Aset Stok (berdasarkan rata-rata biaya), Transfer Pending, Pergerakan Hari Ini (beserta 7 hari).
+Bagian Stok per Gudang membandingkan jumlah item, jumlah rendah dan nilai tiap gudang. Pergerakan Stok 14 Hari mempunyai batang Masuk/Keluar. Stok Rendah / Habis memuat Item, Gudang, Stok, Min, Status (Habis jika <=0, Rendah). Klik Lihat Semua → ke Kartu Stok. Transfer Pending mempunyai nomor, status, rute, tanggal; Lihat Semua → ke Transfer Stok. Pergerakan Stok Terkini memuat Waktu, Item, Gudang, Tipe, Qty, Referensi, Oleh; Buku Stok → untuk detail.
+Tidak ada panel kedaluwarsa di WarehouseDashboard saat ini. Monitor kedaluwarsa berada PPIC. Jangan menjanjikan klik pada seluruh kartu KPI; sebagian hanya informasi.
+
+4. MASTER GUDANG: DAFTAR DAN FORM
+Daftar Gudang: filter Semua Tipe/Gudang Induk/Gudang Outlet, tabel kode/nama/tipe/outlet/status/aksi menurut tampilan. + Tambah Gudang; ikon Edit; ikon Hapus membuka konfirmasi.
+Form Tambah Gudang/Edit Gudang:
+1) Isi Kode (mis. GDG-INDUK), Nama Gudang.
+2) Pilih Tipe Gudang. Jika Gudang Induk, outlet_id dikosongkan. Jika Gudang Outlet, pilih Outlet Terkait; tidak boleh kosong.
+3) Isi Keterangan opsional, Simpan.
+4) Periksa daftar setelah berhasil. Backend dapat menolak duplikasi/penghapusan; jangan menganggap izin tampil sama dengan semua kondisi data dapat dihapus.
+Beri screenshot daftar + form induk/outlet untuk menunjukkan perbedaan jenis yang pengguna minta.
+
+5. ITEM STOK / BAHAN BAKU
+Header Bahan Baku. Tombol Kategori; + Tambah Bahan hanya konteks Gudang Induk dan izin tambah katalog. Pilihan Kelola stok untuk gudang wajib diperhatikan sebelum koreksi. Filter Cari nama / kode; Aktif saja.
+Daftar: kode/nama dapat diklik Detail Stok; kategori, satuan (1 kemasan=rasio dasar), Stok gudang, minimum, HPP gudang, stok global, aktif/nonaktif, aksi. Role per outlet melihat pemberitahuan katalog global hanya dikelola induk; dapat mengatur minimum/saldo gudang outlet sendiri sesuai izin.
+Form Tambah Bahan/Edit Bahan Baku:
+- Definisi Bahan: Nama Bahan, Kategori (Tanpa Kategori tersedia), Satuan Dasar / Pemakaian Outlet, Satuan Kemasan / Gudang Induk, Isi 1 [kemasan] dalam [dasar], Label Kemasan (opsional), Keterangan.
+- Per gudang: Satuan Input Stok; Stok Minimal; Tambah = Stok Awal opsional; Edit = Sesuaikan Stok ke (kosongkan jika tidak mengubah); HPP per unit bila menambah/mengubah saldo; HPP Rata-rata (gudang ini) dibaca saja.
+- Simpan. Definisi katalog editable hanya pengelola global di konteks induk; dari outlet payload tidak menyentuh definisi global.
+Cara: pilih gudang → cari bahan/klik tambah → isi definisi & rasio → isi minimum dan saldo hanya bila memang pembukaan/koreksi → periksa padanan unit → Simpan → cek daftar dan Buku Stok. Sesuaikan Stok ke adalah target saldo, berbeda dari gerakan Qty penyesuaian ledger.
+Aktif/nonaktif dan Hapus adalah definisi global. Jangan menambah saldo kembali setelah GRN/transfer masuk. Jangan gunakan perubahan saldo untuk menyembunyikan karantina/waste tanpa alurnya.
+
+6. KATEGORI DAN DETAIL STOK
+Kategori membuka Manajemen Kategori Bahan Baku. Form kiri Nama Kategori, Keterangan, Simpan Kategori. Edit kategori mengisi form lalu Perbarui; Batal Edit kembali baru. Daftar kanan Nama, Keterangan, ikon Edit/Hapus; hapus dikonfirmasi browser. Role tanpa kelola katalog hanya melihat daftar. Kategori membantu pengelompokan dan cycle count opname.
+Klik kode/nama bahan membuka Detail Stok: [nama], ringkasan Stok Global dan HPP Rata-rata, tabel Gudang, Tipe, Stok. Gudang ditampilkan sesuai konteks jenis/outlet, jumlah mengikuti satuan untuk tipe gudang. Gunakan untuk menentukan sumber transfer; untuk histori transaksi buka Kartu Stok. Pastikan user paham stok global bukan seluruhnya tersedia di gudang yang sedang dipilih.
+
+7. RESEP BAHAN SETENGAH JADI (SFG)
+Pada Item Stok klik ikon Atur Resep (Bahan Setengah Jadi)/Resep. Modal Resep Bahan Setengah Jadi menampilkan Bahan yang Dibuat dan Satuan Produksi = 1 satuan dasar hasil. Visibilitas Resep: Public (Semua Outlet) atau Rahasia (Hanya Saya). Komponen Bahan Baku: pilih bahan, isi Jumlah, satuan otomatis dari bahan; + Tambah Komponen; Hapus komponen; Simpan Resep.
+Isi kebutuhan komponen untuk menghasilkan SATU satuan dasar produk jadi, bukan satu batch keseluruhan. Contoh jika hasil dasar kg, resep per 1 kg. Di form save, UI menyaring hanya komponen terpilih dan qty>0; jangan membiarkan baris invalid karena bisa tidak ikut kiriman. Siapkan hasil dan komponen sebagai item katalog terlebih dahulu. Setelah resep tersimpan, jalankan Produksi (Masak) di Kartu Stok; jangan mengubah saldo manual untuk mensimulasikan produksi.
+Batas akses resep rahasia mengikuti backend; UI hanya menawarkan dua label tersebut. Periksa backend untuk aturan kepemilikan dan produksi resep tersembunyi.
+
+8. POLA PEMOTONGAN
+Item Stok → ikon Atur Pemotongan pada bahan sumber. Pengelola katalog global dengan recipes.update. Modal mengatur satu bahan menjadi beberapa hasil, satu bahan dapat beberapa pola bernama (mis. Per Bagian/Potong 8).
+Per pola: Nama pola wajib unik tanpa beda huruf besar saja; Aktif; Catatan pola opsional; daftar hasil Item hasil, Hasil standar per 1 [kemasan input] (dalam satuan dasar hasil), Bobot biaya >0. + Tambah Hasil; + Tambah Pola; Hapus baris/Hapus pola; Simpan Pola.
+Pemilih hasil tidak mengizinkan sumber menjadi hasil dan menghindari hasil ganda dalam pola yang sama; item sama boleh di pola lain. Semua pola wajib nama, minimal satu hasil, hasil standar>0, bobot>0. Porsi biaya pada standar ditampilkan bobot dibagi total bobot; ini bukan persentase berat fisik. Pola nonaktif tidak ditawarkan saat eksekusi. Simpan tanpa pola menghapus semua pola bahan; histori tetap menyimpan nama saat transaksi. Jangan menganggap mengedit pola mengubah histori pemotongan lama.
+
+9. PENERIMAAN MANUAL / GRN
+Gudang → Penerimaan Barang: daftar No. GRN, Waktu, Gudang, Vendor / PO, Item, Nilai; filter Semua gudang. Klik baris membuka Detail GRN. + Terima Barang membuka form manual bila punya adjust.
+Form Terima Barang:
+1) Pilih Gudang tujuan *; isi Vendor / Supplier, No. PO vendor opsional, Catatan opsional.
+2) + Tambah item; pilih Item stok; isi Jumlah, pilih Satuan penerimaan (dasar/kemasan); isi Harga per satuan yang dipilih; Kadaluarsa opsional.
+3) Cek konversi '= qty dasar', Subtotal dan Total. Minimal satu item, semua item dipilih dan qty>0.
+4) Simpan Penerimaan. Periksa nomor GRN, daftar, detail dan Kartu Stok.
+Detail GRN: Gudang, Waktu, Vendor, No. PO, No. Pengajuan jika berasal PR, Diterima oleh, Total, Catatan; item menampilkan qty unit_used = qty_base, cost_per_base, expiry, subtotal.
+Peringatan form: barang dari pengajuan pengadaan dicatat lewat Penerimaan dari Pengadaan, bukan sini, supaya pengajuan ikut tertutup. Memasukkan nomor PR ke No. PO vendor bukan pengganti hubungan PR; server menolak nomor pengajuan aktif. Penerimaan manual tidak memiliki foto wajib di UI.
+
+10. PENERIMAAN DARI PENGADAAN
+Antrean /gudang/penerimaan-pengadaan berjudul Penerimaan Barang Dapur. Tabel Pengadaan, Outlet (kebutuhan gudang jika ada), Vendor, Belum Diterima baris/unit, Pembayaran, Nilai, Terima Barang. Badge Sudah dibayar/Dibayar sebagian/Belum dibayar (tempo). Penerimaan boleh sejak disetujui, sebelum lunas.
+Serah Terima [nomor] membuka sisa setiap item:
+- Periksa nomor, item, jumlah sudah dicatat dan sisa. Bahan baku/jenis dapur hanya Stok Gudang.
+- Jika ada pengambilan logistik, Diantar oleh Vendor langsung atau petugas tertentu.
+- Foto Barang Saat Diterima wajib, PhotoCapture <=5MB; tunggu berhasil. Jangan menjamin backup email hanya dari teks UI lama.
+- Jumlah bawaan seluruh sisa; ubah sesuai fisik sekarang, 0 untuk belum datang; minimal satu positif dan tidak melebihi sisa.
+- Pilih Item Stok dan Gudang. Rekomendasi Gudang Induk berasal server/SOP, pilihan tidak secara teknis dikunci tipe induk. Gudang kebutuhan dapat outlet; biasanya terima pusat lalu Transfer Stok.
+- Catat Penerimaan; hasil bisa beberapa GRN per gudang dan dokumen sumber; periksa semua nomor dan saldo. Jika outstanding lines, dokumen belum semua selesai.
+Dialog ini tidak mempunyai input reject/QC rinci seperti penerimaan transfer. Untuk barang bermasalah gunakan alur mutu stok sesuai status fisik/pencatatan dan aturan backend; jangan mengarang checkbox reject di dialog PR.
+
+11. TRANSFER: DAFTAR, RUTE, PERMINTAAN OUTLET
+Daftar Transfer Stok: filter Semua Status, Semua Gudang; No. Transfer dapat diklik, Rute, Status, Tanggal, Dibuat oleh, Detail.
+Tombol + Buat Transfer untuk umum; role scope specific '+ Minta Stok / Transfer'. Form Gudang Asal, Gudang Tujuan, kartu konteks Asal/Tujuan, Keterangan, Daftar Item. + Tambah Item → Bahan Baku, Jumlah, Satuan, padanan dasar; hapus baris; Buat Transfer. Sumber dan tujuan wajib berbeda, minimal 1 item, item dipilih dan qty>0.
+Role outlet yang memilih Gudang Induk sebagai asal membuka judul Minta Stok ke Gudang Induk dan tombol Kirim Permintaan. Banner: induk menyetujui/mengirim, outlet menerima saat tiba. Tujuan role outlet hanya gudang outlet dalam cakupannya; sumber induk bisa dipilih dari daftar tambahan. Jika satu induk/satu outlet tersedia, terpilih otomatis. Role outlet tidak boleh menyetujui/mengirim permintaan dari induk atau menerima ke gudang induk walaupun pill izin ada.
+Status: Draft; jika sumber induk label daftar Menunggu Gudang Induk; Disetujui; Dikirim; Diterima Sebagian · Belum Lengkap; Diterima; Pemeriksaan Selesai · Ada Reject; Dibatalkan.
+
+12. TRANSFER: SETUJUI DAN KIRIM
+Buka Detail Transfer [nomor]. Periksa Dari/Ke, item, satuan kemasan dan padanan dasar, catatan, serta waktu/pelaku tahap.
+Draft dengan izin Setujui → ikon Setujui Transfer. Approved dengan izin Kirim → Foto Barang Saat Dikirim wajib (PhotoCapture maksimal5MB), lalu ikon Tandai Sudah Dikirim. Foto harus menunjukkan barang yang dimuat/berangkat; periksa rute sebelum status kirim. Setelah kirim, foto terlihat pada detail.
+Pembatalan tersedia pada Draft/Disetujui dengan izin Kirim & Batalkan. Khusus permintaan outlet ke induk, outlet hanya menarik saat Draft; setelah approved menjadi urusan induk. Label Batalkan Permintaan/Transfer. Tidak ditawarkan pembatalan normal setelah dikirim.
+Beri screenshot draft approve, approved dengan foto+aksi kirim, sent siap diterima. Pergerakan stok aktual saat sent/received perlu mengikuti audit backend, bukan hanya badge.
+
+13. TRANSFER: TERIMA BERTAHAP DAN REJECT
+Pada Dikirim/partial_received, detail menunjukkan Dikirim, Sudah diperiksa (diterima, reject, belum diperiksa), Terima sekarang, dan jika izin Reject ada, Reject sekarang.
+1) Cocokkan barang dan satuan. Input Terima/Reject adalah SATUAN DASAR. Contoh dikirim 2dus=48botol; terima 40 dan reject8, bukan angka dus.
+2) Bawaan Terima sekarang = seluruh sisa; ubah sesuai pemeriksaan nyata. Reject sekarang default0; isi jumlah ditolak dan Alasan reject wajib. Aksi Reject seluruh sisa barang mengisi terima0/rejectseluruh sisa; masih isi alasan.
+3) Untuk kedatangan parsial, hanya isi yang diperiksa sekarang; sisa menunggu. Periksa jumlah diterima+reject tidak melampaui sisa (validasi server).
+4) Isi Catatan penerimaan; unggah Foto barang saat diperiksa memakai StockEvidenceCapture (JPG/PNG/WebP<=5MB, cap waktu SERVER dan identitas). Harus memilih gudang tujuan yang sah untuk unggahan; bukti terikat gudang.
+5) Klik Simpan Pemeriksaan Penerimaan atau Simpan Pemeriksaan Berikutnya. Periksa status dan sisa. Jika selesai ada reject, status Pemeriksaan Selesai · Ada Reject, bukan seolah semuanya siap pakai.
+6) Riwayat Pemeriksaan pada detail mencatat waktu/pelaku, catatan, qty accepted/rejected per item, alasan dan bukti bertimestamp. Barang reject masuk karantina dan tidak menambah stok siap pakai. Tindak lanjuti kasus di Reject, Retur & Kedaluwarsa.
+Transfer memakai receipt_version untuk mencegah transaksi pemeriksaan saling menimpa. Jika server menyatakan berubah, buka ulang detail; jangan mengirim jumlah yang sudah diterima.
+
+14. BUKTI FOTO MUTU STOK: BEDAKAN DENGAN FOTO BIASA
+StockEvidenceCapture dipakai penerimaan transfer, laporan karantina, pelaksanaan mutu dan refund. Teks: cap waktu pencatatan server dan identitas pengunggah; JPG, PNG, WebP maksimal5MB. Tombol Ambil / pilih foto; sesudah upload tampil gambar, waktu dan oleh; Ganti foto mengganti bukti. Jika gudang diganti, bukti dihapus dari form agar tidak memakai bukti lokasi salah. Simpan menunggu evidence.id.
+Ini bukan jaminan waktu foto sebenarnya diambil atau geolokasi; yang dijamin tampilan adalah pencatatan server. Foto kirim transfer dan foto penerimaan pengadaan menggunakan PhotoCapture biasa, bukan komponen timestamp stok yang sama. Jangan samakan spesifikasi dua jalur tanpa melihat backend.
+
+15. MUTU STOK: LAPORAN DAN KARANTINA
+Halaman Reject, Retur & Kedaluwarsa merangkum 3 tahap: periksa/karantina → keputusan supervisor → selesai/buktikan. Filter gudang dalam akses, status, Cari nomor/nama/supplier; daftar kartu menampilkan nomor, tipe gudang, item, gudang, qty input dan dasar, alasan, status, supplier/settlement bila ada.
++ Laporkan Barang membuka Laporkan Barang & Karantina:
+1) Gudang *; Barang *; Batch stok * sesuai lot fisik. Pilihan batch menunjukkan potongan ID, jumlah dasar, ED atau Tanpa tanggal ED. Jangan asal memilih batch karena biaya/ED melekat padanya.
+2) Jumlah * dan Satuan dasar/kemasan; periksa hasil Dikarantina dalam dasar.
+3) Alasan: Reject / tidak sesuai; Expired / kedaluwarsa; Spoil / basi atau busuk; Rusak / pecah; khusus induk Retur ke supplier.
+4) Temuan / alasan retur *: kondisi, sebab, nomor kemasan/lot, kejadian; Foto kondisi barang / label kedaluwarsa * memakai evidence bertimestamp.
+5) Simpan & Karantina. Hasil pesan 'Barang dikarantina; menunggu keputusan supervisor'. Stok bermasalah dipisahkan dari stok siap pakai.
+Batch gagal muat menonaktifkan simpan; pilih gudang/barang sesuai lalu ulangi. Laporan tanpa gudang/item/batch/catatan/foto ditolak UI. Qty positivity/batas diperiksa server.
+
+16. MUTU STOK: KEPUTUSAN SUPERVISOR DAN LEPAS KARANTINA
+Pending = Karantina · menunggu keputusan. Pelapor (created_by sama id akun) tidak mendapat aksi approve/release untuk laporannya sendiri.
+Klik Setujui tindak lanjut: Keputusan * Pemusnahan atau, jika induk, Retur supplier; jika outlet, Retur ke gudang induk. Retur supplier perlu Supplier *, Invoice / surat jalan supplier *, Penyelesaian * Barang pengganti/Pengembalian dana. Retur induk perlu Gudang induk tujuan *. Catatan tindakan * selalu wajib. Approval tidak meminta foto pelaksanaan baru; ini keputusan, belum kejadian fisik. Konfirmasi Setujui tindak lanjut → Disetujui · menunggu pelaksanaan.
+Alternatif Lepas karantina untuk barang dinyatakan layak: banner menjelaskan kembali ke stok siap pakai. Isi Catatan tindakan dan Foto bukti pelaksanaan wajib, konfirmasi. Hasil Dilepas ke stok. Jangan memakai release sekadar menutup kasus barang rusak.
+
+17. MUTU STOK: LAKSANAKAN PEMUSNAHAN / RETUR
+Approved dengan izin execute memberi aksi:
+- disposition dispose: Catat pemusnahan. Isi Catatan tindakan dan foto bukti pelaksanaan, konfirmasi setelah kejadian nyata. Status Dimusnahkan; periksa riwayat waste.
+- disposition return_warehouse/return_supplier: Kirim retur. Catatan dan foto pelaksanaan wajib; konfirmasi setelah barang dikirim. Status Dikirim · menunggu penyelesaian.
+Tidak perlu mengarang field berat/nomor kendaraan pada modal karena saat ini tidak tersedia. Referensi supplier sudah dipilih pada approval.
+
+18. MUTU STOK: RETUR OUTLET KE INDUK
+Kasus outlet dikirim retur ke gudang induk, bukan langsung dikembalikan ke stok baik. Petugas induk klik Terima retur di induk, baca tujuan, isi catatan dan bukti foto, konfirmasi. Banner eksplisit: diterima sebagai KARANTINA BARU untuk diperiksa Gudang Induk. Kasus asal menjadi Diterima gudang induk dan kasus anak menampilkan 'Retur dari outlet · tetap dikarantina'. Tindak lanjut kasus induk melalui keputusan supervisor berikutnya sesuai kondisi, pelepasan, pemusnahan, atau retur supplier. Jangan menganggap received return langsung ready stock.
+
+19. MUTU STOK: PENGGANTI SUPPLIER DAN REFUND
+Kasus return_supplier in_transit mempunyai penyelesaian yang sudah dipilih saat approval.
+- Barang pengganti: petugas induk Terima barang pengganti. Isi Jumlah barang yang diselesaikan dalam satuan dasar, Tanggal kedaluwarsa barang pengganti opsional, Nomor bukti transfer dana / surat jalan pengganti *, Catatan tindakan *, foto bukti pelaksanaan *. Bisa bertahap sesuai barang benar-benar diterima, maksimum sisa penyelesaian. Periksa hasil stok/riwayat.
+- Refund: finance Catat dana refund diterima. Isi jumlah barang yang diselesaikan (dasar), Nominal dana diterima Rp *, Nomor bukti transfer dana *, Catatan tindakan *, Foto bukti dana diterima *. Catat uang yang benar-benar kembali, bukan nilai klaim yang baru dijanjikan. Bisa bertahap dan tetap menunggu sampai selesai; status akhir Retur selesai.
+Laporan detail menampilkan Sisa/settled qty, nilai refund atau barang pengganti. Tidak ada aksi otomatis transfer bank pada UI.
+
+20. MUTU STOK: DETAIL, EVENT DAN STATUS
+Detail & Bukti membuka Riwayat Laporan & Bukti: nomor/item/gudang/status/qty/catatan, Nilai barang dikarantina, Kedaluwarsa batch, Keputusan, Tujuan retur, Supplier/invoice, Penyelesaian. Setiap event memuat aksi, waktu, pelaku, catatan, referensi, qty/amount bila ada, gambar bukti dan waktu pencatatan server.
+Status lengkap: pending Karantina · menunggu keputusan; approved Disetujui · menunggu pelaksanaan; in_transit Dikirim · menunggu penyelesaian; disposed Dimusnahkan; released Dilepas ke stok; returned Diterima gudang induk; settled Retur selesai.
+Aksi disembunyikan menurut status, role, tipe gudang dan pemisahan pelapor-penyetuju. Kasus memakai version; jika perubahan bersamaan ditolak server, muat detail terbaru sebelum mengulang. Tidak ada tombol hapus kasus generik di halaman ini.
+
+21. RIWAYAT PEMBUANGAN / WASTE
+Gudang → Stok Rusak/Hilang membuka Pembuangan Stok (Waste). Filter Semua Gudang, rentang tanggal, Cari item atau nomor. Tabel Nomor, Gudang, Item/kode, Jumlah input+padanan dasar, Nilai Kerugian+biaya per dasar, Alasan, Waktu & User, Catatan; pagination. Label alasan: Waste akibat pembatalan, Reject, Retur, Rusak, Kadaluarsa, Basi/Busuk, Hilang, Lainnya.
+Tidak ada form + Buang langsung. Untuk kasus mutu baru klik Laporkan Reject / Expired / Spoil →, ikuti karantina/approval/pelaksanaan. Riwayat dapat juga berisi sumber sistem lain (mis. pembatalan), sehingga jangan menganggap seluruh baris dibuat manual petugas gudang.
+
+22. KARTU STOK DAN HISTORI
+Gudang → Buku Stok berjudul Kartu Stok. Ringkasan Total Item, Stok Rendah, Nilai Aset; filter Semua Gudang, Cari bahan baku, checkbox Stok Rendah. Daftar nama/kode, gudang+tipe, jumlah (satuan lazim induk/outlet beserta padanan), HPP rata-rata, Nilai Stok, ikon Histori/Penyesuaian. Pilih gudang untuk memastikan saldo lokal; stok global bukan saldo satu lokasi.
+Histori Pergerakan Stok: pilih rentang tanggal, Tampilkan, tabel Tanggal, Tipe, Qty (+/- dasar; qty_dist/unit bila berbeda), Saldo setelah, Ref, Kadaluarsa. Saldo dapat dipengaruhi pembelian, adjustment, retur, transfer, penjualan, produksi, pemotongan, karantina/release/pengganti supplier. Baca Ref untuk hubungan dokumen, jangan cocokkan akhir saldo dengan satu transaksi tanpa melihat gerakan setelahnya.
+MOVEMENT_LABELS: purchase_in Pembelian; adjustment Penyesuaian; waste Pemborosan; spoiled Rusak; expired Kadaluarsa; return_in Retur Masuk; transfer_in/transfer_out; sale Penjualan; production_in Hasil Produksi; production_out Bahan Produksi; breakdown_out Pemotongan (bahan); breakdown_in Pemotongan (hasil); quality_hold Masuk Karantina; quality_release Lepas Karantina; supplier_replacement Pengganti Supplier.
+
+23. PENYESUAIAN STOK LANGSUNG
+Klik ikon Penyesuaian pada item/gudang. Form Penyesuaian Stok menunjukkan Item, Gudang, Stok saat ini; Tipe Gerakan pilihan Pembelian Masuk, Koreksi Stok, Retur Masuk; Satuan Input; Qty; HPP per unit hanya purchase_in; Tanggal Kadaluarsa ketiga jenis; Keterangan opsional; Simpan.
+Form mengirim qty_base yang dihitung dari Qty×rasio, bukan target saldo master; pastikan audit backend menjelaskan tanda +/− dan efek adjustment secara tepat. Jangan mengajarkan memasukkan saldo akhir pada field gerakan Qty. Jangan memakai Pembelian Masuk untuk menduplikasi GRN/PR, Retur Masuk untuk melewati kasus mutu yang masih karantina, atau Koreksi Stok untuk membuang barang tanpa jejak kualitas.
+UI saat ini tidak menyediakan waste/spoiled/expired pada pilihan penyesuaian. Alur baru untuk mutu berada StockQuality. Untuk selisih fisik terkontrol, gunakan Stock Opname yang memiliki review dan approval.
+
+24. PRODUKSI / MEMASAK
+Tombol Produksi (Masak) pada Kartu Stok membuka Produksi / Memasak. Server memerlukan recipes.create pada POST /stock-items/:id/produce; bukan cukup stockledger.adjust:
+1) Pilih Barang yang Dibuat (katalog aktif; UI tidak memfilter hanya item yang punya resep, jadi pastikan resep SFG ada).
+2) Pilih Gudang Tempat Produksi, Kuantitas Hasil Produksi >0, Catatan Produksi opsional.
+3) Baca info: bahan penyusun otomatis terpotong sesuai resep, HPP dihitung otomatis.
+4) Proses Produksi; cek pesan, stok bahan berkurang, hasil bertambah, histori production_out/in.
+Resep yang disiapkan per 1 satuan dasar hasil digunakan untuk skala produksi. UI label qty tidak mencetak satuan hasil dinamis; baca satuan master/resep agar tidak memasukkan kemasan keliru. Validasi stok/resep biaya ada di server. Jangan tambah saldo hasil manual dan sekaligus produksi.
+
+25. PEMOTONGAN AKTUAL
+Tombol Pemotongan pada Kartu Stok (adjust) membuka Pemotongan Bahan. Beda dengan SFG: satu bahan menjadi beberapa hasil berdasar pola.
+1) Pilih Gudang aktif dalam cakupan. Role outlet hanya gudang outletnya. Pilih Bahan yang Dipotong / Diolah dengan pola aktif. Jika kosong, siapkan Item Stok → Atur Pemotongan.
+2) Jika ada beberapa pola, pilih Pola Pemotongan. Periksa catatan pola.
+3) Isi Jumlah dipakai dalam label kemasan input (input_qty_dist), periksa padanan dasar dan Stok di gudang. UI menandai stok kurang merah.
+4) Hasil Aktual terisi standar × jumlah input sebagai bawaan; ubah masing-masing ke hasil nyata. Per baris terlihat Standar, yield%, Hasil aktual (satuan dasar hasil), perkiraan HPP.
+5) Periksa perkiraan biaya bahan (HPP rata-rata), hasil dibanding standar (ditimbang bobot biaya), susut perkiraan. Teks UI masih menyebut biaya FIFO sebagai label lama. Audit backend warehouse.go:919 menunjukkan konsumsi batch aktual mengikuti FEFO; biaya pasti mengikuti batch yang terpakai saat simpan. Hasil mewarisi tanggal kedaluwarsa terdekat bahan yang terpotong.
+6) Catatan opsional, Simpan Pemotongan. Minimal input>0, ada pola, output tidak negatif, minimal satu hasil>0. Jangan menyimpan standar otomatis tanpa menimbang hasil sebenarnya.
+Riwayat Pemotongan: filter gudang, nomor, waktu/pelaku, bahan sumber, pola, input kemasan+dasar, biaya total, gudang, ED hasil, setiap output aktual/standar/hasil%/biaya dasar, total yield dan susut, catatan. Riwayat menyimpan identitas pola saat transaksi.
+
+26. STOCK OPNAME: PEMBUATAN DAN HITUNG
+PPIC → Stock Opname (Cycle Count): list filter Gudang, Status; Nomor, Gudang/kategori, Status, Progress, Selisih, Akurasi, Dibuat. + Sesi Opname Baru.
+Form Sesi Opname Baru: Gudang wajib, Batasi Kategori opsional (cycle count), Catatan, Mulai Opname. Teks: qty sistem di-snapshot saat dibuat; satu gudang hanya boleh satu sesi aktif.
+Status counting=Menghitung, review=Review, approved=Disetujui, cancelled=Dibatalkan.
+Detail mengganti isi halaman (bukan dialog): nomor/status/gudang/kategori/pembuat. Ringkasan Item dihitung/total, Selisih, Nilai Selisih, Akurasi IRA (target tampilan>=97%). Pada counting, blind count menyembunyikan Qty Sistem dan selisih; hitung fisik tanpa menyalin angka sistem.
+Tabel: Item/kode/kategori, Qty Fisik (satuan DASAR), Alasan. Input kosong=null (belum dihitung), input0 berarti benar-benar dihitung nol. Isi nilai nyata lalu Simpan Hitungan (n). Cari item membantu menghitung kelompok. Hitungan kotor ditandai row-dirty.
+Klik Ajukan Review setelah simpan. Jika ada perubahan belum disimpan, konfirmasi browser memperingatkan dapat diajukan TANPA menyimpannya. Untuk panduan, selalu simpan hitungan terlebih dahulu.
+
+27. STOCK OPNAME: REVIEW, APPROVE, BATAL
+Review membuka Qty Sistem snapshot, Qty Fisik, Selisih, Nilai Selisih, Alasan, checkbox Hanya selisih. Penghitung masih dapat mengoreksi pada status review; Simpan Koreksi (n), isi alasan untuk item berbeda (placeholder wajib bila selisih; server menetapkan validasinya).
+Approver klik ikon Approve & Posting Penyesuaian. Konfirmasi menjelaskan stok item yang dihitung akan DISETEL ke qty fisik dan penyesuaian diposting buku stok; item yang tidak dihitung dilewati. Periksa seluruh perubahan tersimpan sebelum approver melanjutkan (fungsi approve tidak otomatis save input kotor).
+Setelah approved, tampil waktu/pelaku, input readonly, periksa ledger adjustment dan nilai selisih. Jangan menganggap semua item dihitung karena satu sesi approved; progress mengungkap yang dilewati.
+Batalkan tersedia saat counting/review bagi pembuat izin; konfirmasi menyebut hitungan ikut hangus, sesi Dibatalkan. Tidak ada reopen approved dari UI. Snapshot sistem dibuat awal; aturan jika ada gerakan stok bersamaan harus mengikuti server (penting backend audit).
+
+28. MONITOR KEDALUWARSA DAN ACK
+PPIC → Monitor Kedaluwarsa (FEFO). Kartu filter: Sudah Lewat, <=3 Hari, <=7 Hari, <=30 Hari, Aman. Kartu Tanpa Tanggal hanya ringkasan jumlah batch tanpa ED, bukan filter tombol. Klik bucket yang sama lagi melepas filter. Gudang dan Cari item menyaring. Tabel Item/kode/kategori, Gudang, Qty Sisa dasar, Nilai, Kedaluwarsa+hari, Asal, Penanganan, aksi.
+Tujuan operasional FEFO: dahulukan batch yang lebih dekat kedaluwarsa. UI monitor tidak memindahkan/mengurangi stok otomatis hanya karena tanggal lewat.
+Tandai Ditindak membuka Tandai Batch Sudah Ditindak, menampilkan item/qty/gudang/ED dan bahwa ALERT DASHBOARD batch disenyapkan. Isi Catatan penanganan, Simpan. UI tidak memvalidasi catatan wajib; sebaiknya tulis tindakan nyata dan dokumen referensinya. Setelah ack tampil Ditindak oleh dan catatan, tombol hilang. ACK TIDAK SAMA DENGAN BUANG/TRANSFER/PAKAI, tidak mengurangi qty dengan sendirinya.
+Batch expired mempunyai tautan Buang ke /stock-wastes. Halaman waste sekarang hanya riwayat, jadi lanjut Laporkan Reject / Expired / Spoil ke StockQuality untuk karantina dan keputusan/pelaksanaan. Jangan memberi instruksi klik Buang lalu barang langsung dipotong.
+
+29. MASALAH DAN PEMULIHAN
+- Dropdown gudang kosong/aksi hilang: periksa cakupan, izin, tipe gudang dan status; error akses tidak selesai dengan mengetik route langsung.
+- Katalog readonly pada outlet: definisi diubah dari konteks induk oleh pengelola global; saldo minimum per gudang berbeda.
+- Satuan salah: baca padanan dasar sebelum simpan; input penerimaan transfer/opname memakai dasar, bukan kemasan.
+- Item produksi tidak punya resep: siapkan SFG dulu; pola pemotongan bukan resep produksi.
+- Tidak ada pola aktif: aktifkan pola dengan hasil valid di Item Stok.
+- Transfer parsial belum hilang: sisa belum diperiksa masih menunggu; jangan ulang jumlah yang sudah dicatat.
+- Reject masuk karantina: belum siap pakai; buka kasus mutu, jangan manual tambah stok.
+- Pelapor tidak melihat approval: pemisahan tugas, gunakan supervisor yang berbeda.
+- Ganti gudang saat upload bukti: bukti form dikosongkan; unggah kembali untuk lokasi benar.
+- Opname ada hitungan unsaved: Simpan Hitungan/Koreksi terlebih dulu, baru review/approve.
+- Expiry ditandai ditindak tetapi stok tetap ada: ACK hanya menyenyapkan alert; tindak fisik dicatat melalui transaksi sesuai jenis.
+
+30. DAFTAR SCREENSHOT UNTUK CAPTURE
+A. Orientasi/master: dashboard atas; dashboard bawah rendah/transfer/gerakan; master Gudang list; form induk; form outlet; Item Stok konteks induk; form definisi/satuan; form saldo per gudang; kategori; Detail Stok sebaran; konteks outlet readonly bila memungkinkan; Resep SFG; Pola Pemotongan.
+B. Penerimaan: list GRN; form GRN manual terisi dengan satuan/expiry; detail GRN; antrean PR; Serah Terima stok dengan foto/pemetaan.
+C. Transfer: list berbagai status; form Buat Transfer; form Minta Stok ke Induk dari akun outlet jika bisa; detail draft approval; approved foto kirim; sent pemeriksaan accept/reject; partial_received dengan sisa; received_rejected riwayat.
+D. Mutu: list kartu status; report dengan gudang/item/batch/reason/evidence; detail event+bukti; approve pemusnahan; approve retur supplier+settlement; approve retur outlet+induk; execute pemusnahan; kirim retur; terima retur di induk; replacement; refund; release; waste list.
+E. Buku stok/olah: Kartu Stok; Histori; Penyesuaian; Produksi; Pemotongan dengan pola dan hasil aktual; Riwayat Pemotongan.
+F. Audit stok: opname list; create; counting blind; review alasan; approved; expiry buckets/list; ack modal.
+Bisa digabung sehingga PDF sekitar40–50 halaman panduan. Tiap route utama harus sekurangnya satu screenshot browser nyata. Screenshot modal panjang perlu scroll bagian bawah untuk tombol/hasil. Data simulasi diberi caption dan tidak menyatakan foto proof transaksi produksi.
+
+31. POTENSI KETIDAKSELARASAN UI / JANGAN DIJADIKAN JAMINAN
+- Toolbar beberapa halaman belum menyembunyikan semua tombol tanpa izin (Warehouses, transfer create, ledger adjust/produce); backend tetap otoritas.
+- Expiry Buang mengarah waste read-only, bukan form disposal.
+- Label menu Stok Rusak/Hilang berbeda judul Pembuangan Stok (Waste), dan tidak ada input laporan hilang generik baru pada QualityReasons (hanya reject,expired,spoiled,damaged,return). Jangan menambahkan 'Hilang' sebagai alasan tersedia pada form quality walau historinya dapat berlabel Hilang.
+- WarehouseDashboard subtitle real-time tidak berarti auto-refresh terus-menerus; ada tombol Refresh dan load saat mount.
+- PhotoCapture penerimaan PR/kirim transfer menampilkan teks cadangan email lama; jangan menjamin email berhasil terkirim.
+- Expiry menampilkan FEFO sebagai pedoman mengambil barang. Pemotongan aktual juga mengonsumsi batch menurut FEFO sesuai audit backend; tulisan FIFO yang masih terlihat pada form adalah label lama, bukan aturan aktual.
+- Qty pada penyesuaian ledger dan target saldo pada master berbeda; konfirmasi detail sign/effect melalui backend.
+
+SUMBER: ui/src/pages/WarehouseDashboard.vue; Warehouses.vue; StockItems.vue; GoodsReceipt.vue; ReceivingQueue.vue; StockTransfers.vue; StockQuality.vue; StockWastes.vue; StockLedger.vue; ppic/StockOpname.vue; ppic/ExpiryMonitor.vue; components/ReceivingDialog.vue; StockEvidenceCapture.vue; PhotoCapture.vue; PermissionMatrix.vue; utils/warehouse.js; utils/stockQuality.js; utils/stockUnits.js; router/index.js; layouts/DashboardLayout.vue.
+
+Koreksi backend final: penerimaan barang pengganti mewajibkan tanggal kedaluwarsa jika batch asal memiliki expiry, dan tanggal pengganti harus setelah hari ini. Pelepasan karantina ditolak jika expiry hari ini atau lebih awal. Persetujuan opname menyetel saldo terkini item yang dihitung ke Qty Fisik tersimpan, bukan hanya menerapkan selisih snapshot.

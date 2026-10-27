@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-27",
+  "document_revision": 3,
+  "application_base": "67092f2",
+  "application_changes": "Pemusatan seluruh editor resep di F&B pada working tree; belum diterapkan ke produksi saat dokumentasi dibuat.",
+  "ownership": {
+    "F&B": [
+      "Resep Menu & SOP",
+      "Resep Bahan Setengah Jadi",
+      "Pola Pemotongan"
+    ],
+    "Gudang": [
+      "Master bahan baku dan saldo",
+      "Penerimaan, penyimpanan dan transfer bahan",
+      "Mutasi dan pemeriksaan stok",
+      "Pencatatan pemakaian serta hasil aktual pengolahan sesuai formula F&B, tanpa mengubah resep"
+    ]
+  },
+  "permissions": {
+    "authoring": "Izin resep sesuai tindakan, cakupan semua outlet",
+    "read_only": "recipes.view tanpa izin tulis hanya baca",
+    "production": "stockledger.adjust",
+    "legacy_warehouse_grants": "Tidak lagi memberikan recipes.view/create/update/delete otomatis dari izin Gudang; grant granular eksplisit dipertahankan"
+  },
+  "data": "Data resep dan pola existing tetap menggunakan tabel serta endpoint yang sama. Tidak ada migrasi atau penyalinan komposisi.",
+  "sources": [
+    "ui/src/pages/Recipes.vue",
+    "ui/src/pages/fnb/FnbMenuRecipes.vue",
+    "ui/src/pages/fnb/FnbStockFormulas.vue",
+    "ui/src/components/StockRecipeEditors.vue",
+    "ui/src/pages/StockItems.vue",
+    "ui/src/pages/StockLedger.vue",
+    "routes/routes.go",
+    "handlers/warehouse.go",
+    "handlers/stock_breakdown.go",
+    "database/migrations.go"
+  ],
+  "publication_status": "lokal, belum diterbitkan",
+  "document_changes": [
+    "Gudang mengelola bahan baku dan persediaannya tanpa membuat atau mengubah resep.",
+    "Tutorial pusat resep F&B, resep bahan setengah jadi dan pengaturan pola pemotongan dikeluarkan dari panduan Gudang.",
+    "Alur transaksi stok yang tersedia tetap dijelaskan menggunakan formula yang sudah ditetapkan F&B."
+  ],
+  "archived_screenshots": [
+    "48-fnb-recipe-center.png",
+    "09-sfg-recipe.png",
+    "10-breakdown-pattern.png"
+  ]
+}

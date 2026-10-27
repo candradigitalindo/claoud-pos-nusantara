@@ -10,7 +10,7 @@
           </svg>
           Pemotongan
         </AppButton>
-        <AppButton @click="openProduceModal" variant="primary">
+        <AppButton v-if="canProduce" @click="openProduceModal" variant="primary">
           <svg class="h-4 w-4 mr-1.5 -ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
           </svg>
@@ -18,6 +18,11 @@
         </AppButton>
       </div>
     </div>
+
+    <p class="rounded-lg bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+      Pantau saldo dan mutasi bahan baku di Gudang. Pencatatan pemakaian dan hasil pengolahan
+      mengikuti formula yang sudah ditetapkan F &amp; B.
+    </p>
 
     <!-- Summary Stats -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -271,7 +276,7 @@
         <div v-if="!bdTemplatesLoading && bdInputOptions.length === 0"
           class="flex items-start gap-2 rounded-lg bg-amber-50 ring-1 ring-amber-100 px-3 py-2 text-xs text-amber-800">
           <svg class="h-4 w-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          <span>Belum ada bahan dengan pola pemotongan aktif. Pola diatur Gudang Induk di <b>Item Stok › Atur Pemotongan</b>.</span>
+          <span>Belum ada bahan dengan pola pemotongan aktif. Pola dikelola F &amp; B di <b>Resep &amp; Formula › Pola Pemotongan</b>.</span>
         </div>
 
         <!-- Pola: tampil hanya bila bahan punya lebih dari satu pola aktif. -->
@@ -426,7 +431,8 @@ import debounce from 'lodash/debounce'
 const toast = useToastStore()
 const auth = useAuthStore()
 // Pemotongan dicatat pemegang stockledger.adjust (sama dengan penyesuaian stok).
-const canBreakdown = auth.hasPermission('stockledger.adjust')
+const canBreakdown = computed(() => auth.hasPermission('stockledger.adjust'))
+const canProduce = computed(() => auth.hasPermission('stockledger.adjust'))
 const loading = ref(false)
 const saving = ref(false)
 const rows = ref([])
@@ -476,6 +482,7 @@ const produceItemOptions = computed(() =>
 )
 
 function openProduceModal() {
+  if (!canProduce.value) return
   produceForm.value = { item_id: '', warehouse_id: filterWarehouse.value, qty_produce: 0, notes: '' }
   showProduce.value = true
   if (allStockItems.value.length === 0) loadAllItems()
@@ -489,6 +496,7 @@ async function loadAllItems() {
 }
 
 async function submitProduce() {
+  if (!canProduce.value || saving.value) return
   if (!produceForm.value.item_id || !produceForm.value.warehouse_id || produceForm.value.qty_produce <= 0) {
     toast.error('Data produksi tidak lengkap')
     return
@@ -508,7 +516,7 @@ async function submitProduce() {
 
 // ── Pemotongan (satu bahan → beberapa hasil) ──────────────────
 // Pola pemotongan (hasil standar + bobot biaya; satu bahan bisa beberapa
-// pola) diatur Gudang Induk di Item Stok. Form ini mengisi hasil standar pola
+// pola) dikelola F & B di pusat resep. Form ini mengisi hasil standar pola
 // terpilih × qty sebagai awal; petugas mengubahnya ke hasil nyata. Server
 // menghitung biaya pasti dari FIFO; angka di sini perkiraan dari HPP
 // rata-rata gudang dengan rumus pembagian yang sama.

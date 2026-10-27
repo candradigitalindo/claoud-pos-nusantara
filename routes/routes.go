@@ -537,7 +537,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Put("/products/:id/recipes", middleware.RequirePermission("recipes.update"), handlers.SaveProductRecipes)
 	admin.Get("/stock-items/:id/recipes", middleware.RequirePermission("recipes.view"), handlers.GetStockItemRecipes)
 	admin.Put("/stock-items/:id/recipes", middleware.RequirePermission("recipes.update"), handlers.SaveStockItemRecipes)
-	admin.Post("/stock-items/:id/produce", middleware.RequirePermission("recipes.create"), handlers.ProduceStockItem)
+	admin.Post("/stock-items/:id/produce", middleware.RequirePermission("stockledger.adjust"), handlers.ProduceStockItem)
 	// Pemotongan (satu bahan → beberapa hasil, mis. ayam utuh → paha/dada/sayap).
 	// Template dibaca juga oleh pemegang stockledger.adjust (form Pemotongan
 	// butuh hasil standar & bobotnya); diubah hanya pengelola katalog (handler).

@@ -77,6 +77,28 @@ POS Outlet (pos-app.exe)
     └─ Pull: GET /updates?since=... ←── Cloud API ←── PostgreSQL
 ```
 
+## Pengelolaan resep F & B
+
+Pembuatan dan perubahan seluruh resep berada di **F & B → Resep & Formula**:
+tab **Resep Menu & SOP**, **Resep Bahan Setengah Jadi**, dan **Pola Pemotongan**.
+Pengelola memerlukan izin resep yang sesuai dan cakupan semua outlet.
+Pengguna dengan izin `recipes.view` saja dapat membaca; izin operasional Gudang
+tidak memberikan hak mengubah komposisi atau pola.
+
+**Gudang hanya mengelola bahan baku dan persediaannya, tanpa membuat atau mengubah resep.**
+**Gudang → Bahan Baku** mengelola katalog, satuan, stok minimal, dan saldo.
+**Gudang → Kartu Stok** mencatat mutasi bahan, termasuk pemakaian dan hasil
+produksi/pemotongan dengan komposisi yang ditetapkan F & B.
+Produksi (Masak) menggunakan `stockledger.adjust`, sehingga petugas tidak perlu
+mendapat izin membuat resep untuk memproduksi stok.
+
+Resep menu, komposisi bahan setengah jadi, dan pola pemotongan yang sudah ada
+tetap menggunakan data semula. Pemusatan editor tidak menyalin atau menyamakan
+komposisi ketiganya secara otomatis. Perubahan hak role tetap diatur melalui
+kelompok F & B pada halaman Role. Izin Gudang tidak otomatis memberikan akses
+resep; jangan memberikan hak tulis resep hanya untuk mengizinkan petugas
+menjalankan transaksi stok.
+
 ## Resep produk (opsional)
 
 Di **Produk & Kategori → Tambah/Edit Produk**, pilih **Resep (opsional)**.

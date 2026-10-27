@@ -1,0 +1,346 @@
+[
+  {
+    "id": "G01",
+    "title": "Masuk dan mengenali navigasi",
+    "subtitle": "Mulai dengan akun serta cakupan kerja yang benar",
+    "route": "/login",
+    "image": "01-login.png",
+    "html": "<p>Gunakan alamat Cloud POS yang berlaku di organisasi. Halaman masuk meminta identitas akun; transaksi berikutnya akan mencatat pelaku dari sesi login ini. Contoh tampilan dalam panduan menggunakan lingkungan dokumentasi.</p>\n<ol><li>Isi Username dan Password. Periksa huruf besar, spasi yang tidak sengaja, serta akun yang digunakan. Ikon mata membantu memeriksa pengetikan password.</li><li>Tekan tombol masuk pada form. Jika muncul pesan kesalahan, periksa isian dan ulangi setelah penyebabnya jelas.</li><li>Sesudah berhasil, kenali kelompok menu Pengadaan, Keuangan, Gudang, dan Perlengkapan pada sisi kiri. Halaman pertama dapat mengikuti pengaturan role.</li><li>Buka menu sesuai tugas. Petugas pengajuan, pembelian, pembayaran, dan penerimaan dapat melihat pilihan berbeda karena aksesnya berbeda.</li></ol>\n<h3>Cara membaca tombol</h3><p>Banyak aksi baris berupa ikon kecil. Arahkan pointer untuk melihat tooltip, misalnya Lihat, Edit, Setujui, atau Terima Barang. Tombol simpan pada modal biasanya berupa teks. Gulir isi modal untuk menemukan bagian lanjutan; footer menyimpan tombol tindakan.</p>\n<p class=\"note\">Jika menu tidak muncul atau halaman menampilkan Akses Ditolak, periksa role dan cakupan unit bersama admin. Mengetik alamat halaman secara langsung tidak memberikan hak akses tambahan.</p>"
+  },
+  {
+    "id": "G02",
+    "title": "Memantau Dashboard Pengadaan",
+    "subtitle": "Ringkasan untuk menentukan pekerjaan berikutnya",
+    "route": "/procurement-dashboard",
+    "image": "02-dashboard.png",
+    "html": "<p>Buka Pengadaan → Dashboard. Halaman ini merangkum pengadaan yang dapat dilihat oleh akun, kemudian memisahkannya menurut status, jenis, waktu, dan unit kerja.</p>\n<ol><li>Baca Total Pengadaan dan Nominal Total untuk memahami volume dokumen dan nilainya.</li><li>Periksa Menunggu Verifikasi dan Menunggu Persetujuan untuk mengetahui antrean keputusan. Bahan baku masuk persetujuan tanpa verifikasi walaupun ringkasan menggunakan kelompok status yang sama.</li><li>Baca Ditolak / Dibatalkan dan Tagihan. Nilai tagihan membantu menindaklanjuti pembayaran, bukan bukti bahwa barang sudah diterima.</li><li>Tinjau grafik Status Pengadaan, Jenis Pengadaan, dan Tren Pengadaan (12 Bulan Terakhir).</li><li>Gulir ke Pengadaan per Unit Kerja untuk melihat konsentrasi transaksi dan status tiap unit. Tekan Refresh setelah ada pekerjaan baru yang perlu ditampilkan.</li></ol>\n<h3>Tindak lanjut</h3><p>Pekerjaan dilakukan pada halaman Barang, Bahan Baku, Jasa, Pembayaran, atau antrean penerimaan. Dashboard membantu menemukan kebutuhan pemeriksaan; detail dokumen tetap menjadi tempat membaca item, pelaku, bukti, dan sisa transaksi.</p>\n<p class=\"note\">Status pembayaran dan penerimaan memiliki arti berbeda. Dokumen yang belum lunas dapat sudah diterima secara fisik. Periksa badge penerimaan dan riwayat pembayaran sebelum menyimpulkan pekerjaan selesai.</p>"
+  },
+  {
+    "id": "G03",
+    "title": "Mengatur role dan cakupan",
+    "subtitle": "Akses tindakan serta unit kerja yang dapat digunakan",
+    "route": "/roles",
+    "image": "03b-role-izin.png",
+    "html": "<p>Admin membuka Role & Hak Akses, lalu memilih role dan ikon Kelola Akses. Pengaturan ini menentukan menu yang terlihat dan tindakan yang dapat dilakukan pengguna role tersebut.</p>\n<ol><li>Pada Batasan Unit Kerja, pilih Semua Unit Kerja atau Unit Kerja Tertentu. Untuk pilihan tertentu, centang unit yang sesuai lalu Simpan Perubahan.</li><li>Pada Hak Akses, aktifkan pill yang diperlukan. Perubahan otomatis tersimpan; tunggu indikator Menyimpan selesai sebelum melanjutkan.</li><li>Barang, perlengkapan, dan jasa menggunakan kelompok yang sama: Lihat, Buat/Hapus, Verifikasi, Approval, Pembelian Barang & Perlengkapan, serta Pengambilan Barang.</li><li>Bahan baku mempunyai kelompok sendiri: Lihat, Buat/Hapus, Approval, Pembelian Bahan Baku, dan Pengambilan Barang. Tidak ada tahap Verifikasi untuk bahan baku.</li><li>Lengkapi akses halaman pembayaran, gudang, aset, atau projek sesuai tanggung jawab sebenarnya. Periksa kembali tampilan dengan akun pengguna yang bersangkutan.</li></ol>\n<p>Aktifkan akses berdasarkan tugas. Mengaktifkan aksi dapat sekaligus menambahkan Lihat; mematikan Lihat juga mematikan aksi modul terkait. Role sistem mempunyai pembatasan perubahan di layar.</p>\n<p class=\"warn\">Perubahan Batasan Unit Kerja langsung berlaku dan mengeluarkan pengguna role tersebut dari sesi. Mereka perlu login ulang. Unit kosong pada form pengajuan sering berkaitan dengan cakupan ini.</p>"
+  },
+  {
+    "id": "G04",
+    "title": "Menyiapkan Unit Kerja",
+    "subtitle": "Sumber unit pengaju dan keterkaitan outlet",
+    "route": "/work-units",
+    "image": "04-unit-kerja.png",
+    "html": "<p>Halaman Unit Kerja menampilkan unit yang dipakai sebagai asal pengajuan. Outlet otomatis terdaftar sebagai unit kerja; organisasi dapat menambahkan unit mandiri seperti bagian administrasi.</p>\n<ol><li>Periksa Nama Unit Kerja, outlet terkait, dan user yang ditugaskan. Pastikan unit yang akan mengajukan belanja sudah tersedia.</li><li>Untuk unit mandiri baru, klik + Tambah Unit Kerja, isi Nama Unit Kerja, lalu Simpan.</li><li>Klik ikon Tugaskan User atau Ubah User pada baris. Modal Tugaskan User Pengadaan meminta User Pengadaan yang bertanggung jawab.</li><li>Pilih akun yang tepat lalu Simpan. Periksa nama user pada daftar setelah modal tertutup.</li><li>Cocokkan penugasan ini dengan Batasan Unit Kerja pada role. Penugasan langsung ke unit dan cakupan role adalah dua informasi yang perlu diperiksa bersama.</li></ol>\n<h3>Pengaruh pada form pengajuan</h3><p>Jika akun hanya mempunyai satu unit dalam cakupan, unit dipilih otomatis. Jika beberapa, pengguna memilih Unit Kerja Pengaju; unit yang ditugaskan dapat menjadi pilihan bawaan. Nama pengaju mengikuti akun login dan outlet mengikuti unit yang dipilih.</p>\n<p class=\"note\">Form tidak dapat dikirim jika tidak ada unit yang dapat digunakan. Hindari membuat unit duplikat hanya untuk mengatasi akses; periksa cakupan terlebih dahulu. Penghapusan di halaman ini ditujukan untuk unit mandiri.</p>"
+  },
+  {
+    "id": "G05",
+    "title": "Mencari dan memeriksa vendor",
+    "subtitle": "Gunakan vendor terdaftar untuk purchasing dan pembayaran",
+    "route": "/vendors",
+    "image": "05-vendor.png",
+    "html": "<p>Buka Pengadaan → Vendor. Vendor Directory menyediakan daftar pemasok yang akan dipilih pada pengisian harga final dan dibaca kembali saat keuangan mencatat pembayaran.</p>\n<ol><li>Gunakan pencarian nama vendor, email, telepon, atau bank. Tinjau filter status untuk memastikan vendor tidak tersembunyi karena kondisi aktif/nonaktif.</li><li>Cocokkan nama dan kontak, terutama jika ada vendor dengan nama mirip. Identitas vendor yang dipilih lebih penting daripada kemiripan namanya.</li><li>Buka detail vendor untuk memeriksa alamat, kontak, rekening, dan histori pengadaan.</li><li>Gunakan Tambah Vendor untuk pemasok yang belum tercatat. Gunakan ikon Edit vendor bila informasi pemasok yang sama perlu diperbaiki.</li><li>Aksi Aktifkan/Nonaktifkan tersedia pada daftar. Periksa dampaknya terhadap pemilihan vendor sebelum mengubah status.</li></ol>\n<h3>Pemeriksaan sebelum pembelian</h3><p>Vendor harus dipilih dari daftar pada tahap Isi Harga. Menulis nama pemasok pada catatan tidak menggantikan pemilihan vendor. Rekening tujuan pembayaran akan berasal dari data vendor yang berlaku saat pembayaran dicatat.</p>\n<p class=\"note\">Pembayaran beberapa pengajuan sekaligus hanya menggabungkan dokumen milik vendor yang sama. Dua entri master yang kebetulan mempunyai nama sama tetap merupakan vendor berbeda; periksa detail sebelum membuat entri baru.</p>"
+  },
+  {
+    "id": "G06",
+    "title": "Membuat atau mengubah vendor",
+    "subtitle": "Identitas, kontak, dan tujuan pembayaran",
+    "route": "/vendors",
+    "image": "06-form-vendor.png",
+    "html": "<p>Klik Tambah Vendor untuk membuka Tambah Vendor Baru. Pada vendor yang sudah ada, ikon Edit vendor membuka form dengan isian saat ini.</p>\n<ol><li>Isi Nama Vendor. Nama wajib diisi dan harus cukup jelas untuk membedakan pemasok.</li><li>Lengkapi Telepon, Email, dan Alamat sesuai informasi yang tersedia. Data ini membantu pembelian dan keuangan menelusuri transaksi.</li><li>Pada Detail Pembayaran, isi Nama Bank, Nomor Rekening, dan Atas Nama Rekening untuk vendor yang dibayar melalui rekening.</li><li>Jika pembayaran dilakukan tunai, data rekening dapat dibiarkan kosong. Saat pembayaran, keuangan perlu mengisi cara bayar manual yang sesuai.</li><li>Isi Catatan bila ada informasi kontrak, kesepakatan harga, atau keterangan operasional. Tekan Tambah Vendor untuk data baru atau Simpan Perubahan untuk pembaruan.</li></ol>\n<h3>Hasil yang diperiksa</h3><p>Pastikan vendor muncul di daftar dan identitasnya benar. Buka detail untuk meninjau kembali informasi pembayaran sebelum dipakai pada pengajuan. Nama bank saja belum cukup; cocokkan nomor rekening dan pemiliknya.</p>\n<p class=\"warn\">Perubahan rekening dicatat bersama pelaku dan waktu. Riwayat pembayaran lama tetap menyimpan rekening yang dipakai saat dibayar. Jangan menganggap perubahan master memperbaiki atau memindahkan transaksi pembayaran yang sudah tercatat.</p>"
+  },
+  {
+    "id": "G07",
+    "title": "Membaca detail vendor",
+    "subtitle": "Rekening, perubahan rekening, dan histori belanja",
+    "route": "/vendors/:id",
+    "image": "06b-detail-vendor.png",
+    "html": "<p>Detail vendor menggabungkan Informasi Vendor, Detail Pembayaran, ringkasan belanja, tren, dan Histori Pengadaan. Gunakan halaman ini ketika memeriksa pemasok sebelum pembelian atau menelusuri transaksi.</p>\n<ol><li>Periksa nama dan status Aktif/Nonaktif di bagian atas, lalu cocokkan Alamat, Telepon, Email, dan Catatan.</li><li>Tinjau Bank, No. Rekening, serta Atas Nama. Jika belum ada data pembayaran, periksa apakah pemasok memang dibayar tunai atau master perlu dilengkapi.</li><li>Jika tersedia, baca Riwayat Perubahan Rekening: tanggal, pelaku, rekening sebelumnya, dan rekening pengganti.</li><li>Bandingkan Total Belanja, Sudah Dibayar, Hutang, dan Menunggu. Gulir ke Tren Belanja untuk konteks aktivitas dua belas bulan.</li><li>Pada Histori Pengadaan, pilih Status untuk menyaring transaksi. Periksa jenis, pengadaan, nominal, tanggal, dan status; gunakan halaman berikutnya jika tersedia.</li></ol>\n<h3>Pemakaian praktis</h3><p>Riwayat ini membantu memastikan belanja memang tercatat pada vendor yang dimaksud. Untuk tindakan pembayaran atau penerimaan, kembali ke halaman transaksi yang sesuai dan buka dokumennya.</p>\n<p class=\"note\">Rekening yang terlihat sekarang dapat berbeda dari rekening pada pembayaran lama. Gunakan riwayat pembayaran untuk mengetahui tujuan yang tersimpan pada transaksi tertentu, kemudian cocokkan dengan perubahan master bila diperlukan.</p>"
+  },
+  {
+    "id": "G08",
+    "title": "Menyiapkan rekening perusahaan",
+    "subtitle": "Rekening asal pada pencatatan pembayaran",
+    "route": "/bank-accounts",
+    "image": "07-rekening.png",
+    "html": "<p>Buka Keuangan → Data Rekening. Judul halaman adalah Rekening Perusahaan. Daftar ini menyediakan pilihan Rekening Asal (Perusahaan) ketika keuangan membayar pengadaan.</p>\n<ol><li>Periksa Nama Bank, Nomor Rekening, Atas Nama, dan status Aktif pada daftar. Bedakan rekening perusahaan ini dari rekening tujuan milik vendor.</li><li>Klik + Tambah Rekening. Isi Nama Bank, Nomor Rekening, dan Atas Nama sesuai rekening yang benar-benar digunakan.</li><li>Tekan Simpan, kemudian periksa entri baru pada daftar agar pengetikan nomor dan pemilik tidak keliru.</li><li>Untuk perbaikan, klik ikon Edit. Form edit juga menyediakan pilihan Aktif untuk mengatur ketersediaan rekening.</li><li>Kembali ke Pembayaran, buka form pembayaran, dan pastikan rekening tersebut tersedia pada Rekening Asal (Perusahaan).</li></ol>\n<h3>Jika pilihan rekening kosong</h3><p>Periksa apakah master rekening sudah ada dan aktif. Jika terjadi galat pemuatan, tangani galat terlebih dahulu dan buka ulang form pembayaran. Form bayar memerlukan rekening asal yang dipilih; nomor rekening tujuan vendor tidak menggantikan isian ini.</p>\n<p class=\"note\">Halaman ini menyimpan data referensi rekening. Mencatat rekening atau mengonfirmasi pembayaran di Cloud POS bukan perintah transfer otomatis ke bank; lakukan transaksi nyata sesuai prosedur perusahaan dan cocokkan bukti sebelum mencatatnya.</p>"
+  },
+  {
+    "id": "G09",
+    "title": "Membuat dan memilih projek",
+    "subtitle": "Belanja pembangunan atau renovasi secara bertahap",
+    "route": "/projects",
+    "image": "08-projek.png",
+    "html": "<p>Buka Pengadaan → Projek jika belanja merupakan bagian pembangunan atau renovasi. Projek menjadi pengelompokan RAB dan belanja tahap; pengadaan umum dapat dibuat tanpa projek.</p>\n<ol><li>Cari projek menggunakan nama, nomor, atau PIC. Pilih Status dan gunakan tombol tampilkan pada area filter untuk menyaring daftar.</li><li>Klik + Buat Projek untuk pekerjaan baru. Isi Nama Projek, Unit Kerja sesuai cakupan, PIC / Penanggung Jawab, tanggal Mulai, Target Selesai, Status, dan Catatan.</li><li>Simpan, lalu buka ikon Lihat pada projek. Periksa identitas, unit, PIC, dan jadwal sebelum menyusun RAB.</li><li>Gunakan ikon Ubah untuk memperbaiki data projek apabila tersedia. Projek selesai atau batal tidak menjadi pilihan belanja baru seperti projek draft/berjalan.</li></ol>\n<h3>Langkah sesudah pembuatan</h3><p>RAB disusun pada halaman detail, kemudian ditetapkan. Membuat nama projek saja belum membuatnya siap menerima pengajuan belanja. Detail memisahkan anggaran, komitmen yang terpakai, pembayaran, dan sisa.</p>\n<p class=\"note\">Projek digunakan oleh pengadaan Barang dan Jasa. Bahan Baku tidak ditautkan ke projek. Jika kebutuhan bahan muncul dari perencanaan produksi, gunakan pengadaan bahan atau jalur MRP; jangan memilih projek untuk memaksa kategori berbeda.</p>"
+  },
+  {
+    "id": "G10",
+    "title": "Menyusun RAB dan belanja tahap",
+    "subtitle": "Tetapkan anggaran sebelum membuat pengajuan projek",
+    "route": "/projects/:id",
+    "image": "09-detail-rab.png",
+    "html": "<p>Detail projek memperlihatkan susunan RAB, serapan anggaran, dan Belanja Tahap. RAB yang belum ditetapkan perlu diselesaikan sebelum pengajuan terkait projek dikirim.</p>\n<ol><li>Klik ikon Susun RAB atau Ubah RAB. Buat Nama bagian pekerjaan, kemudian isi Uraian pekerjaan / barang pada setiap baris.</li><li>Pilih Jenis Barang, Jasa, atau Umum. Isi Volume, Satuan, Harga Satuan, serta spesifikasi/catatan bila perlu. Jumlah dihitung dari volume dikali harga satuan.</li><li>Gunakan + Tambah baris dan + Tambah bagian pekerjaan untuk melengkapi susunan. Tinjau Total RAB lalu Simpan RAB.</li><li>Klik Tetapkan RAB. Setelah ditetapkan, perubahan dilakukan melalui Buka Revisi RAB, kemudian simpan dan tetapkan kembali sesuai kebutuhan.</li><li>Klik + Belanja Tahap Baru, pilih Barang atau Jasa. Aplikasi membuka form pengadaan biasa dengan projek terpilih; pilih baris RAB yang diserap oleh item.</li></ol>\n<p>Periksa kolom RAB, Terpakai, Terbayar, dan Sisa secara terpisah. Pecahan vendor tampil sebagai dokumen tersendiri pada Belanja Tahap. Saat pengajuan disetujui, komitmen anggaran mulai terpakai.</p>\n<p class=\"warn\">Baris RAB yang sudah dipakai pengajuan tidak dapat dihapus. Melebihi sisa RAB memunculkan peringatan; pengguna tetap perlu memutuskan tindak lanjut berdasarkan anggaran yang disetujui.</p>"
+  },
+  {
+    "id": "G11",
+    "title": "Memeriksa master gudang",
+    "subtitle": "Tentukan lokasi fisik penerimaan dengan benar",
+    "route": "/warehouses",
+    "image": "35-gudang.png",
+    "html": "<p>Halaman Gudang mencatat lokasi penyimpanan yang akan digunakan pada penerimaan stok. Tipe Gudang Induk dan Gudang Outlet membantu membedakan alur penerimaan pusat serta distribusi ke outlet.</p>\n<ol><li>Gunakan filter Tipe untuk melihat Gudang Induk atau Gudang Outlet. Periksa kode, nama, tipe, dan hubungan outlet sebelum transaksi dimulai.</li><li>Jika perlu membuat lokasi baru, buka Tambah Gudang. Isi Kode dan Nama Gudang yang mudah dibedakan.</li><li>Pilih Tipe. Gudang Outlet memerlukan outlet tujuan; Gudang Induk tidak melekat pada satu outlet dan dapat memasok outlet lain.</li><li>Isi Keterangan bila diperlukan, simpan, lalu periksa daftar. Gunakan Edit untuk memperbaiki master yang sama tanpa membuat lokasi duplikat.</li><li>Pastikan penerima mengetahui gudang mana yang dituju oleh kebutuhan dan gudang mana yang benar-benar menerima kiriman.</li></ol>\n<h3>Hubungan dengan pengadaan</h3><p>Alur operasional aplikasi mengarahkan bahan dapur ke Gudang Induk terlebih dahulu, kemudian diteruskan melalui Transfer Stok bila untuk outlet. Gudang induk dapat lebih dari satu; gunakan gudang yang sesuai penugasan.</p>\n<p class=\"note\">Dialog penerimaan mengusulkan gudang dari server dan tetap menyediakan pilihan gudang. Tipe induk bukan kunci teknis mutlak pada pemilih tersebut; periksa lokasi aktual dan ikuti alur yang ditetapkan organisasi.</p>"
+  },
+  {
+    "id": "G12",
+    "title": "Menyiapkan katalog Item Stok",
+    "subtitle": "Nama, satuan, dan rasio untuk pemetaan penerimaan",
+    "route": "/stock-items",
+    "image": "34-stok.png",
+    "html": "<p>Buka Gudang → Item Stok; judul halaman adalah Bahan Baku. Halaman master ini berbeda dari Pengadaan → Bahan Baku yang dipakai membuat permintaan pembelian.</p>\n<ol><li>Pilih konteks Kelola stok untuk gudang. Cari nama atau kode dan periksa filter Aktif saja.</li><li>Pastikan bahan yang akan dibeli sudah mempunyai nama yang konsisten. Nama ini membantu saran pada form pengajuan dan pemetaan Item Stok saat penerimaan.</li><li>Jika menambah bahan, isi Nama Bahan, Kategori, Satuan Dasar / Pemakaian Outlet, Satuan Kemasan / Gudang Induk, serta isi kemasan dalam satuan dasar. Label Kemasan bersifat opsional.</li><li>Contoh: satuan dasar botol, kemasan dus, isi 24 berarti satu dus setara 24 botol. Periksa rasio sebelum menyimpan.</li><li>Bagian per gudang mengatur Satuan Input Stok dan Stok Minimal; Stok Awal atau penyesuaian saldo digunakan hanya bila memang diperlukan.</li></ol>\n<p>Definisi katalog global dikelola melalui Gudang Induk oleh pengguna yang sesuai. Pada gudang outlet, definisi dapat tampil hanya-baca sedangkan stok minimal/saldo lokal mengikuti cakupan.</p>\n<p class=\"warn\">Jangan menaikkan saldo master untuk menggantikan penerimaan PR. Setelah Serah Terima sudah menambah stok, pencatatan ulang melalui saldo awal atau penyesuaian dapat menggandakan jumlah.</p>"
+  },
+  {
+    "id": "G13",
+    "title": "Membuat PR dari MRP",
+    "subtitle": "Sumber alternatif untuk pengadaan bahan baku",
+    "route": "/ppic/mrp",
+    "image": "37-mrp.png",
+    "html": "<p>Buka PPIC → Kebutuhan Bahan (MRP). Halaman menghitung saran beli, transfer, atau produksi berdasarkan perencanaan serta posisi stok, kemudian menyimpan hasil sebagai snapshot run.</p>\n<ol><li>Pilih Gudang Tujuan dan Horizon (hari), antara 1–28 hari. Periksa pilihan Isi ulang sampai Par Level.</li><li>Klik Hitung Kebutuhan. Untuk membaca perhitungan terdahulu, pilih Riwayat Run.</li><li>Tinjau Kotor, Stok, On-Order, Transit, Buffer, Bersih, Saran, Qty Saran, serta Vendor / Harga Terakhir. Jika produk tanpa resep diperingatkan, lengkapi sumber perhitungan sebelum mengandalkan hasil.</li><li>Gunakan Hanya yang perlu tindakan dan Cari item. Pilih baris dengan saran Beli yang belum mempunyai tindak lanjut.</li><li>Klik Buat Draft PR, baca konfirmasi browser, lalu lanjutkan jika jumlah item sudah sesuai. PR masuk Pengadaan → Bahan Baku dan langsung menunggu persetujuan.</li></ol>\n<p>Pembelian tetap melengkapi vendor dan harga final. Periksa referensi PR pada kolom Tindak Lanjut setelah berhasil; baris yang sudah dieksekusi tidak dipilih lagi untuk membuat PR berulang.</p>\n<p class=\"note\">Buat Draft Transfer digunakan untuk saran transfer dari gudang pusat. Jangan memilih jalur beli jika kebutuhan sebenarnya akan dipenuhi dari stok internal yang tersedia.</p>"
+  },
+  {
+    "id": "G14",
+    "title": "Mengelola daftar Pengadaan Barang",
+    "subtitle": "Mencari dokumen dan membuka aksi sesuai status",
+    "route": "/purchase-goods",
+    "image": "10-daftar-barang.png",
+    "html": "<p>Buka Pengadaan → Barang. Daftar memuat Nomor, Nama Pengadaan, Unit Kerja, Pengaju, Total, Status, dan Tanggal. Pada layar kecil informasi disajikan sebagai kartu.</p>\n<ol><li>Pilih Unit Kerja dan Status sesuai pekerjaan, lalu klik Tampilkan. Gunakan pagination jika hasil lebih dari satu halaman.</li><li>Cocokkan nomor dan nama pengadaan sebelum membuka ikon Lihat. Dua dokumen bernama mirip dapat mempunyai status atau vendor berbeda.</li><li>Klik + Buat Pengajuan untuk kebutuhan baru. Persiapkan kelompok pengadaan, rincian item, jumlah, satuan, dan informasi estimasi harga sebelum mengisi form.</li><li>Ikon Edit muncul pada fase yang masih memperbolehkan koreksi. Ikon Hapus hanya muncul jika kondisi dokumen dan akses memungkinkan.</li><li>Sesudah tindakan pada detail, periksa kembali status serta total pada daftar. Muat ulang jika informasi belum sesuai hasil terbaru.</li></ol>\n<h3>Membaca nominal</h3><p>Nilai pengajuan berubah konteks dari estimasi HPS menuju harga final saat purchasing. Dokumen induk hasil split dapat menampilkan agregat keluarga, sedangkan pembayaran dilakukan pada bagian dokumen masing-masing.</p>\n<p class=\"note\">Ikon baris mempunyai tooltip. Hindari menafsirkan tidak adanya tombol sebagai galat tampilan sebelum memeriksa status, akses, dan apakah dokumen sudah dibayar atau diterima.</p>"
+  },
+  {
+    "id": "G15",
+    "title": "Mengisi pengajuan Barang",
+    "subtitle": "Susun kebutuhan dan bukti estimasi sebelum dikirim",
+    "route": "/purchase-goods",
+    "image": "11-form-barang.png",
+    "html": "<p>Klik + Buat Pengajuan untuk membuka Pengajuan Pembelian Barang. Nama Pengaju mengikuti akun login; unit kerja menjadi asal kebutuhan dan menentukan outlet terkait.</p>\n<ol><li>Pilih Unit Kerja Pengaju bila tersedia lebih dari satu. Jika satu, periksa unit yang otomatis terpilih.</li><li>Projek bersifat opsional. Jika dipilih, pastikan RAB telah ditetapkan; pilih baris RAB pada item bila belanja menyerap pos tersebut.</li><li>Isi Nama Pengadaan sebagai kelompok kebutuhan. Pada Detail Item isi Nama item, Qty, Satuan, HPS satuan, dan Sumber HPS bila tersedia.</li><li>Gunakan + Tambah Item untuk rincian dalam kelompok yang sama atau + Tambah Pengadaan untuk kelompok berikutnya. Periksa subtotal dan Total HPS.</li><li>Isi Catatan / Alasan Pembelian bila diperlukan. Klik Kirim Pengajuan lalu pastikan dokumen muncul sebagai Menunggu Verifikasi.</li></ol>\n<p>HPS nol dan sumber HPS kosong diperbolehkan aplikasi; untuk estimasi yang berguna, isi nilai dan sumber yang memang tersedia. Harga final akan dilengkapi setelah persetujuan.</p>\n<p class=\"warn\">Jika peringatan campuran barang dapur dan peralatan muncul, pisahkan pengajuan sesuai jenis. Jangan mengganti nama katalog hanya untuk menghindari pemeriksaan; nama membantu menentukan jalur penerimaan yang tepat.</p>"
+  },
+  {
+    "id": "G16",
+    "title": "Mengajukan Jasa",
+    "subtitle": "Jelaskan pekerjaan, volume, dan ruang lingkup",
+    "route": "/purchase-services",
+    "image": "13-form-jasa.png",
+    "html": "<p>Buka Pengadaan → Jasa. Filter Unit Kerja dan Status serta ikon Lihat mengikuti pola daftar barang. Klik + Buat Pengajuan untuk membuka Pengajuan Jasa / Layanan.</p>\n<ol><li>Periksa Pengaju dan pilih Unit Kerja Pengaju jika diperlukan. Pilih Projek hanya bila pekerjaan merupakan belanja tahap pembangunan atau renovasi.</li><li>Isi Nama Pengadaan Jasa, kemudian Nama item, Qty, Satuan, dan HPS satuan setiap rincian pekerjaan. Gunakan satuan yang mencerminkan volume pekerjaan, misalnya paket atau kunjungan.</li><li>Isi Sumber HPS jika tersedia. Pada pengajuan projek, pilih baris RAB jenis Jasa atau Umum yang sesuai.</li><li>Tambahkan rincian lewat + Tambah Item atau kelompok lewat + Tambah Pengadaan. Periksa Total HPS.</li><li>Isi Catatan / Scope of Work untuk menjelaskan lingkup, jadwal, atau hasil pekerjaan yang dibutuhkan. Klik Kirim Pengajuan.</li></ol>\n<p>Dokumen masuk Menunggu Verifikasi. Verifikator memeriksa apakah pekerjaan memang perlu dibeli, misalnya belum tercakup kontrak lain dan tidak dapat dipenuhi teknisi internal. Sesudah itu baru persetujuan, purchasing, dan pembayaran.</p>\n<p class=\"note\">Penyelesaian jasa dilakukan lewat Selesaikan Jasa setelah status Dibayar. Jasa tidak diterima melalui antrean barang dan tindakan selesai tidak menambah stok atau membuat aset.</p>"
+  },
+  {
+    "id": "G17",
+    "title": "Mengajukan Bahan Baku",
+    "subtitle": "Langsung ke persetujuan tanpa tahap verifikasi",
+    "route": "/purchase-materials",
+    "image": "15-form-bahan.png",
+    "html": "<p>Buka Pengadaan → Bahan Baku, lalu + Buat Pengajuan. Daftar dan filter mengikuti pola barang, tetapi modal menjelaskan alur khusus bahan baku.</p>\n<ol><li>Periksa Pengaju dan Unit Kerja Pengaju. Pilih unit jika akun mencakup beberapa unit kerja.</li><li>Isi Nama Pengadaan untuk kelompok pembelian. Pada Nama bahan, ketik nama lalu pilih saran katalog bila tersedia agar nama dan satuan konsisten.</li><li>Periksa Qty, Satuan, HPS satuan, dan Sumber HPS. Tambahkan rincian bahan dengan + Tambah Item, kemudian periksa total.</li><li>Isi Catatan / Alasan Pembelian bila perlu. Tidak ada pilihan Projek karena bahan baku tidak ditautkan ke projek.</li><li>Klik Kirim Pengajuan. Periksa bahwa statusnya langsung Menunggu Persetujuan. Koreksi jumlah/sumber HPS atau hapus item masih tersedia selama belum disetujui.</li></ol>\n<p>HPS nol dan sumber kosong diperbolehkan; lengkapi estimasi sesuai informasi yang tersedia. Jika katalog gagal dimuat, gunakan nama bahan persis seperti master stok agar pemetaan penerimaan mudah diperiksa.</p>\n<p class=\"note\">Seluruh bahan baku diterima melalui tujuan Stok Gudang, berapa pun nilainya. Gudang Induk menjadi tujuan operasional yang disarankan; pemilihan gudang harus tetap diperiksa terhadap lokasi fisik penerimaan.</p>"
+  },
+  {
+    "id": "G18",
+    "title": "Membaca detail dan mengoreksi awal",
+    "subtitle": "Periksa identitas dokumen sebelum mengambil keputusan",
+    "route": "/purchase-goods",
+    "image": "16-detail-pengajuan.png",
+    "html": "<p>Klik ikon Lihat pada pengajuan. Detail menampilkan status, nomor, unit, tanggal, identitas pengaju, ringkasan nilai, daftar pengadaan, dan bagian tindakan sesuai fase dokumen.</p>\n<ol><li>Cocokkan nomor dan unit kerja dengan kebutuhan yang sedang diproses. Baca Catatan dan hubungan Projek bila ada.</li><li>Periksa nama item, Qty, Satuan, HPS, sumber HPS, serta harga final jika sudah tersedia. Akses tertentu dapat menyembunyikan kolom HPS.</li><li>Pada barang/jasa Menunggu Verifikasi, pengaju dapat mengubah Qty atau Sumber HPS dan menghapus baris melalui ikon yang tersedia.</li><li>Perubahan input disimpan saat nilai berubah. Penghapusan menampilkan konfirmasi Hapus Item; baca nama item sebelum melanjutkan.</li><li>Sesudah tersimpan, periksa kembali data yang dimuat ulang. Detail bukan form penambahan item baru; susunan awal dibuat melalui form pengajuan.</li></ol>\n<p>Barang dan jasa terkunci setelah diverifikasi. Bahan baku tetap dapat dikoreksi selama Menunggu Persetujuan karena tidak mempunyai verifikasi.</p>\n<p class=\"warn\">Jika muncul pesan pengajuan berubah, aplikasi memuat data terbaru. Baca kembali jumlah dan status sebelum mengulang aksi. Jangan menganggap perubahan sebelumnya tersimpan hanya karena sempat terlihat pada input.</p>"
+  },
+  {
+    "id": "G19",
+    "title": "Memverifikasi kebutuhan",
+    "subtitle": "Teruskan item yang layak dan catat alasan penolakan",
+    "route": "/purchase-goods",
+    "image": "17b-verifikasi-aksi.png",
+    "html": "<p>Verifikator membuka detail berstatus Menunggu Verifikasi, lalu menggulir ke Verifikasi Ketersediaan. Untuk barang, pemeriksaan mencakup kemungkinan ketersediaan di outlet lain; untuk jasa, kebutuhan dibandingkan dengan kontrak atau kemampuan internal.</p>\n<ol><li>Periksa satu per satu item, jumlah, satuan, estimasi, dan alasan pengajuan. Pastikan keputusan berlaku pada dokumen terbaru.</li><li>Untuk item yang tidak perlu dibeli, centang Tolak item ini. Isi alasan minimal lima huruf, misalnya lokasi barang yang tersedia atau pekerjaan sudah tercakup kontrak.</li><li>Isi Catatan verifikasi bila ada penjelasan umum yang perlu diteruskan kepada penyetuju.</li><li>Klik ikon Verifikasi & Teruskan ke Persetujuan. Item yang tidak ditolak tetap aktif dan pengajuan masuk Menunggu Persetujuan.</li><li>Periksa panel Item ditolak saat verifikasi; alasan, pelaku, waktu, dan jumlahnya tetap dapat dibaca sebagai histori keputusan.</li></ol>\n<p>Jika semua item ditandai ditolak, banner menjelaskan hasilnya menjadi Ditolak dan aksi berubah Tolak Semua Item. Alternatif Tolak Seluruh Pengajuan meminta alasan penolakan seluruh dokumen.</p>\n<p class=\"note\">Verifikasi tidak sekaligus menyetujui pengadaan. Hanya item aktif yang diteruskan ke tahap persetujuan dan pembelian; item ditolak tidak ikut total pembelian aktif.</p>"
+  },
+  {
+    "id": "G20",
+    "title": "Menyetujui atau menolak pengadaan",
+    "subtitle": "Keputusan atas item yang sudah diverifikasi",
+    "route": "/purchase-goods",
+    "image": "18-persetujuan.png",
+    "html": "<p>Penyetuju membuka detail berstatus Menunggu Persetujuan. Bagian persetujuan menunjukkan verifikator, waktu pemeriksaan, dan jumlah item yang ditolak bila ada.</p>\n<ol><li>Cocokkan kebutuhan aktif dengan hasil verifikasi. Baca panel item ditolak agar item tersebut tidak dianggap masih termasuk pembelian.</li><li>Periksa Qty, Satuan, total estimasi, Catatan, unit kerja, serta keterkaitan projek.</li><li>Jika projek terkait, tinjau peringatan sisa RAB. Persetujuan dapat tetap dilakukan saat melebihi sisa; keputusan perlu mengikuti penetapan anggaran yang berlaku.</li><li>Untuk menerima pengajuan, klik ikon Setujui. Pada panel ini tindakan langsung menyimpan keputusan; setelah berhasil status berubah Disetujui.</li><li>Untuk menolak, klik ikon Tolak, isi Alasan Penolakan, lalu Konfirmasi Tolak. Pastikan alasan menjelaskan keputusan kepada pengaju.</li></ol>\n<h3>Sesudah keputusan</h3><p>Dokumen Disetujui siap diproses purchasing. Nama, jumlah, satuan, dan HPS tidak lagi diubah melalui pengisian harga final. Dokumen Ditolak tidak diteruskan otomatis sebagai pengajuan baru.</p>\n<p class=\"warn\">Jika data berubah saat keputusan diproses, baca kembali versi terbaru yang dimuat aplikasi. Untuk projek, perhatikan bahwa persetujuan mulai menyerap komitmen anggaran; pembayaran dicatat sebagai tahap terpisah.</p>"
+  },
+  {
+    "id": "G21",
+    "title": "Menyetujui Bahan Baku",
+    "subtitle": "Periksa kebutuhan langsung dari pengajuan atau MRP",
+    "route": "/purchase-materials",
+    "image": "24-persetujuan-bahan.png",
+    "html": "<p>Pengajuan bahan baku langsung masuk Menunggu Persetujuan. Panel detail menyebut pengaju dan waktu pembuatan, disertai penjelasan bahwa bahan baku tidak melalui verifikasi.</p>\n<ol><li>Buka Pengadaan → Bahan Baku dan saring Status Menunggu Persetujuan. Klik ikon Lihat pada dokumen yang sesuai.</li><li>Periksa nama bahan terhadap katalog stok, Qty, Satuan, estimasi, catatan, dan unit peminta. Untuk PR dari MRP, cocokkan kebutuhan dengan run serta referensi yang digunakan.</li><li>Jika perlu koreksi sebelum keputusan, pastikan pengaju menyelesaikannya ketika status masih menunggu persetujuan. Buka ulang detail agar penilaian memakai angka terbaru.</li><li>Klik ikon Setujui untuk meneruskan ke Disetujui. Jika tidak disetujui, pilih Tolak, isi alasan, lalu Konfirmasi Tolak.</li><li>Sesudah disetujui, purchasing memilih vendor, mengisi harga final, dan memproses pengajuan pembayaran menurut alur bahan baku.</li></ol>\n<p>Nama status Menunggu Persetujuan sama dengan barang/jasa, tetapi asal tahapnya berbeda. Tidak perlu mencari tombol Verifikasi pada bahan baku.</p>\n<p class=\"note\">Penerimaan bahan tetap menuju stok gudang; nilai pembelian tinggi tidak mengubah bahan menjadi aset. Pembayaran dan penerimaan dapat berjalan sesuai kondisi transaksi, termasuk barang datang sebelum lunas.</p>"
+  },
+  {
+    "id": "G22",
+    "title": "Memilih pola pembelian",
+    "subtitle": "Satu vendor atau pecahan sesuai pemasok",
+    "route": "/purchase-goods",
+    "image": "19-purchasing.png",
+    "html": "<p>Buka detail Disetujui, lalu gulir ke Proses Pembelian (Purchasing). Pilihan pada bagian ini menentukan bagaimana item dan tagihan ditempatkan pada vendor.</p>\n<ol><li>Periksa kembali daftar item yang disetujui. Nama, jumlah, satuan, dan HPS sudah terkunci untuk fase pembelian.</li><li>Jika seluruh item dibeli dari satu pemasok, pilih Beli Semua di 1 Vendor. Lengkapi vendor dan harga per satuan melalui Isi Harga (Purchasing).</li><li>Jika beberapa item dibeli dari pemasok berbeda, pilih Pecah ke Vendor Berbeda. Pilih item dan vendor tujuan pada modal split.</li><li>Sesudah ada pecahan, tinjau Item Belum Dipecah pada induk dan Pecahan Vendor. Lengkapi masing-masing dokumen agar tagihan mengikuti pemasok yang benar.</li><li>Baca banner Pembayaran belum bisa diajukan jika muncul. Vendor terdaftar dan harga final setiap item harus lengkap sebelum pengajuan bayar siap.</li></ol>\n<p>Pola yang sama digunakan bahan baku dan jasa dengan nama jenis serta akses masing-masing. Dokumen pecahan mempunyai pengisian harga dan pengajuan pembayaran sendiri.</p>\n<p class=\"warn\">Sesudah split, jangan menghitung total induk sebagai tagihan tambahan di atas seluruh pecahan. Item benar-benar dipindahkan ke pecahan; pembayaran menggunakan nilai milik masing-masing dokumen.</p>"
+  },
+  {
+    "id": "G23",
+    "title": "Mengisi harga final",
+    "subtitle": "Pilih vendor terdaftar dan harga setiap item",
+    "route": "/purchase-goods",
+    "image": "20-harga-final.png",
+    "html": "<p>Modal Isi Harga (Purchasing) dibuka dari Beli Semua di 1 Vendor atau Isi Harga Sekarang pada pecahan. Halaman ini melengkapi hasil pembelian tanpa mengubah kebutuhan yang telah disetujui.</p>\n<ol><li>Pilih Vendor / Supplier Utama dari daftar. Pastikan identitasnya benar karena data pembayaran akan diambil dari vendor ini.</li><li>Isi No. Invoice Vendor bila tersedia. Nomor invoice membantu pencocokan, sedangkan struk transaksi dicatat pada bagian Struk Pembelian.</li><li>Masukkan Harga/satuan setiap item. Periksa Qty dan Satuan yang ditampilkan agar harga tidak tertukar antara kemasan dan satuan dasar.</li><li>Tinjau Harga pengadaan per kelompok serta Total Harga. Nilai dihitung dari jumlah dikali harga satuan.</li><li>Klik Simpan Harga, lalu periksa hasil pada detail. Untuk mengajukan pembayaran, semua item aktif yang ditagih memerlukan harga final lebih dari nol.</li></ol>\n<p>Nama item, Qty, Satuan, HPS, penambahan, dan penghapusan baris terkunci pada tahap ini. Jika ada item yang tidak jadi dibeli, gunakan pemisahan dan penghentian dokumen sesuai kondisi yang diizinkan, bukan mengosongkan harga lalu menganggapnya selesai.</p>\n<p class=\"note\">Jika vendor belum ada, siapkan master vendor terlebih dahulu. Nama pemasok pada catatan atau invoice tidak menggantikan pilihan Vendor / Supplier Utama.</p>"
+  },
+  {
+    "id": "G24",
+    "title": "Memecah pembelian ke vendor lain",
+    "subtitle": "Pindahkan item menjadi dokumen pemasok tersendiri",
+    "route": "/purchase-goods",
+    "image": "21-split-vendor.png",
+    "html": "<p>Pada detail Disetujui, klik Pecah ke Vendor Berbeda. Modal Split Barang ke Vendor Lain menampilkan rincian yang masih dipegang dokumen tersebut; judul mengikuti jenis pengadaannya.</p>\n<ol><li>Centang item yang benar-benar akan dibeli dari pemasok lain. Cocokkan nama kelompok, nama item, Qty, dan Satuan.</li><li>Pilih Vendor Tujuan dari daftar vendor terdaftar.</li><li>Tinjau Total Harga Dipindah. Nilai ini mengikuti harga final yang sudah tersedia; jika harga belum diisi, nilai dapat belum mencerminkan tagihan akhir.</li><li>Klik Eksekusi Split Vendor. Setelah berhasil, periksa kartu Pecahan Vendor pada induk.</li><li>Buka detail pecahan, isi harga final untuk pemasok tersebut, lalu lanjutkan pengajuan pembayaran saat sudah siap.</li></ol>\n<h3>Batas pemilihan</h3><p>Checkbox memindahkan satu baris item yang dipilih beserta jumlahnya. Modal tidak mempunyai input untuk membagi sebagian Qty dari satu baris menjadi dua vendor. Susun kebutuhan secara tepat sebelum tahap penguncian bila pembagian volume perlu dibedakan.</p>\n<p class=\"warn\">Split memindahkan item, bukan menyalin. Periksa sisa induk setelah eksekusi. Jangan membuat pengajuan baru untuk item yang sudah muncul pada pecahan karena dapat menimbulkan pembelian ganda.</p>"
+  },
+  {
+    "id": "G25",
+    "title": "Menindaklanjuti hasil split",
+    "subtitle": "Selesaikan sisa induk dan setiap pecahan vendor",
+    "route": "/purchase-goods",
+    "image": "21b-hasil-split.png",
+    "html": "<p>Detail induk hasil split menampilkan Pecahan Vendor beserta nomor, pemasok, status, dan nilai. Item Belum Dipecah menunjukkan kebutuhan yang masih berada pada induk.</p>\n<ol><li>Periksa jumlah pecahan dan nama vendor. Cocokkan item yang dipindahkan dengan dokumen sumber.</li><li>Klik ikon Lihat Detail → pada kartu pecahan. Gunakan Isi Harga Sekarang untuk melengkapi harga final dan vendor bila masih diperlukan.</li><li>Ajukan pembayaran pecahan setelah seluruh itemnya berharga final positif dan vendor terdaftar dipilih.</li><li>Gunakan Kembali ke Pengajuan Induk untuk memeriksa sisa. Sesudah pecahan terbentuk, sisa item dapat diproses dengan split berikutnya.</li><li>Jika mengajukan pembayaran dari induk, baca catatan pecahan mana yang ikut diajukan dan mana yang belum siap.</li></ol>\n<p>Pecahan yang belum lengkap tidak otomatis ikut pengajuan pembayaran induk. Sesudah dilengkapi, ajukan dari detail pecahannya. Induk tanpa item sendiri memerlukan setidaknya satu pecahan siap agar pengajuan pembayaran mempunyai sasaran.</p>\n<p class=\"note\">Total induk dapat merangkum keluarganya. Untuk pembayaran dan sisa tagihan, gunakan bagian dokumen masing-masing pada halaman Pembayaran; jangan mengurangkan pembayaran induk saja dari agregat seluruh pecahan.</p>"
+  },
+  {
+    "id": "G26",
+    "title": "Mengajukan pembayaran",
+    "subtitle": "Kirim tagihan siap kepada bagian keuangan",
+    "route": "/purchase-goods",
+    "image": "20b-ajukan-bayar.png",
+    "html": "<p>Sesudah vendor dan harga final lengkap, detail Disetujui menyediakan ikon pembayaran. Klik ikon tersebut untuk membuka modal Ajukan Pembayaran.</p>\n<ol><li>Pastikan dokumen yang sedang terbuka benar, termasuk apakah induk atau pecahan vendor. Periksa nama pengaju dan nomor pengadaan.</li><li>Baca pesan pengajuan ke tim keuangan. Jika ada pemblokir, lengkapi vendor terdaftar atau harga final item yang disebut sebelum melanjutkan.</li><li>Pada induk hasil split, baca catatan pecahan yang ikut diajukan. Pecahan belum siap tetap memerlukan tindakan dari detailnya sendiri.</li><li>Klik Ajukan Pembayaran. Periksa status setiap dokumen yang berhasil diajukan. Dokumen biasa atau pecahan menjadi <strong>Menunggu Pembayaran</strong>; status induk split mengikuti kondisi gabungan keluarganya.</li><li>Buka Keuangan → Pembayaran untuk memastikan dokumen yang sesuai muncul sebagai tagihan yang dapat ditindaklanjuti.</li></ol>\n<p>Seluruh item yang ditagih harus memiliki harga final lebih dari nol. Dokumen yang masih memegang item tanpa harga tidak dianggap siap hanya karena item lain sudah berharga. Sisa induk juga diperiksa.</p>\n<p class=\"note\">Pengajuan bayar tidak mencatat transfer bank dan tidak berarti barang sudah datang. Penerimaan fisik dicatat tersendiri ketika barang benar-benar diterima, termasuk bila transaksi menggunakan tempo. Gunakan Batal pada modal bila keputusan belum siap.</p>"
+  },
+  {
+    "id": "G27",
+    "title": "Mencatat Struk Pembelian",
+    "subtitle": "Satu bukti untuk setiap transaksi di vendor",
+    "route": "/purchase-goods",
+    "image": "22-struk.png",
+    "html": "<p>Pada detail pengajuan yang telah disetujui, bagian Struk Pembelian mencatat transaksi di pemasok. Satu pengajuan dapat mempunyai beberapa struk dan pembayarannya dapat dicicil per struk.</p>\n<ol><li>Klik + Tambah Struk. Isi Nomor Struk sesuai bukti vendor.</li><li>Pilih Tanggal Struk. Tanggal wajib dan tidak boleh melewati hari ini menurut tanggal aplikasi.</li><li>Isi Total Struk lebih dari nol. Cocokkan dengan nominal pada foto bukti.</li><li>Klik Ambil / Pilih Foto pada Foto Struk, unggah gambar maksimal 5MB, lalu tunggu tanda foto berhasil terunggah. Gunakan Ganti foto jika bukti keliru.</li><li>Isi Catatan bila diperlukan, kemudian Simpan Struk. Periksa nomor, tanggal, nilai, sisa, dan pembuat pada daftar.</li></ol>\n<p>Bandingkan total semua struk dengan harga final dokumen. Peringatan selisih berarti data perlu diperiksa, misalnya masih ada struk belum dicatat atau harga final belum sesuai. Struk pecahan dicatat pada dokumen pecahannya.</p>\n<p class=\"warn\">Nomor, tanggal, total positif, dan foto wajib. Struk yang sudah dibayar tidak dapat dihapus; struk belum dibayar dapat dihapus setelah konfirmasi. Tambah struk baru tidak tersedia ketika tagihan dokumen sudah lunas.</p>"
+  },
+  {
+    "id": "G28",
+    "title": "Mencatat Pengambilan Barang",
+    "subtitle": "Bukti dari vendor sampai proses pengantaran",
+    "route": "/purchase-goods",
+    "image": "23-pengambilan.png",
+    "html": "<p>Gunakan Pengambilan Barang bila petugas logistik mengambil kiriman dari vendor. Jika vendor mengantar langsung, penerima dapat mencatat serah terima tanpa membuat pengambilan.</p>\n<ol><li>Buka detail barang atau bahan baku yang sudah disetujui dan belum seluruhnya diterima.</li><li>Pada Pengambilan Barang, klik Catat Pengambilan.</li><li>Unggah Foto Barang Saat Diambil melalui Ambil / Pilih Foto. Foto wajib dan berkas maksimal 5MB; pastikan gambar menunjukkan barang di titik pengambilan.</li><li>Isi Catatan bila ada rincian kemasan, jumlah angkut, atau dokumen yang dibawa. Nama pengambil dan waktu dicatat oleh sistem.</li><li>Klik Simpan Pengambilan. Periksa entri baru dengan status Dalam pengantaran serta foto yang dapat dibuka.</li></ol>\n<h3>Hubungan dengan penerima</h3><p>Saat barang sampai, penerima memilih pengambilan ini pada Diantar oleh di dialog Serah Terima. Pengaitan tersebut mencatat siapa/waktu penerimaan dan mengubah pengambilan menjadi Sudah diterima.</p>\n<p class=\"note\">Pengambilan belum menambah stok dan belum mencatat aset. Penerima tetap menghitung barang yang datang, mengunggah foto penerimaan, menentukan tujuan, dan menyimpan Catat Penerimaan. Jangan menggunakan foto pengambilan sebagai pengganti pemeriksaan fisik di lokasi penerimaan.</p>"
+  },
+  {
+    "id": "G29",
+    "title": "Mengelola antrean Pembayaran",
+    "subtitle": "Pisahkan tagihan, cicilan, dan penerimaan fisik",
+    "route": "/procurement-payments",
+    "image": "25-pembayaran.png",
+    "html": "<p>Buka Keuangan → Pembayaran. Halaman menampilkan tagihan tiap vendor, ringkasan nilai menunggu, pembayaran, penerimaan, dan Hutang Usaha.</p>\n<ol><li>Gunakan Cari untuk nomor, nama pengadaan, atau vendor. Pilih Status, Projek, dan Tipe bila perlu, lalu Tampilkan.</li><li>Cocokkan Nomor, Tipe, Pengadaan, Vendor, Unit Kerja, Nominal, Status, dan Tanggal. Periksa sisa bila sudah ada pembayaran.</li><li>Baca badge Barang belum diterima, Barang diterima sebagian, atau Barang sudah diterima secara terpisah dari status pembayaran.</li><li>Klik Lihat Detail untuk memeriksa rincian dan histori. Klik Bayar hanya pada tagihan yang masih memiliki sisa dan tersedia tindakannya.</li><li>Gunakan Download Excel untuk mengekspor daftar sesuai filter bila dibutuhkan untuk pemeriksaan.</li></ol>\n<p>Pembayaran tersedia pada Menunggu Pembayaran, Dibayar Sebagian, serta Diterima yang masih berutang. Barang diterima tidak otomatis berarti tagihan lunas.</p>\n<p class=\"note\">Bayar beberapa pengajuan tersedia saat filter status yang dapat dibayar mengaktifkan checkbox. Pilih vendor yang sama, lalu Bayar n Pengajuan. Batch melunasi sisa tiap dokumen; untuk cicilan tertentu gunakan pembayaran satu pengajuan.</p>"
+  },
+  {
+    "id": "G30",
+    "title": "Mengisi pembayaran dan bukti",
+    "subtitle": "Rekening, struk, jumlah, dan konfirmasi pencatatan",
+    "route": "/procurement-payments",
+    "image": "26b-form-bayar-bukti.png",
+    "html": "<p>Klik Bayar untuk membuka Pembayaran Pengajuan. Periksa vendor dan nominal sebelum mengisi; form ini mencatat transaksi yang telah sesuai dengan pembayaran nyata.</p>\n<ol><li>Tinjau Rekening Vendor. Rekening Tujuan diambil dari master dan tersimpan sebagai snapshot. Jika vendor tanpa rekening, isi Rekening Tujuan / Cara Bayar, misalnya Tunai.</li><li>Pilih Rekening Asal (Perusahaan) yang aktif. Tujuan/cara bayar dan rekening asal wajib terisi.</li><li>Jika tersedia, pilih Struk yang Dibayar. Opsi pembagian otomatis mengalokasikan pembayaran ke struk belum lunas dari yang terlama.</li><li>Isi Jumlah Bayar untuk cicilan. Kosong atau nol berarti melunasi sisa struk yang dipilih, atau sisa tagihan bila tanpa struk khusus. Nominal tidak boleh melampaui sisa terkait.</li><li>Isi No. Referensi Transfer dan Keterangan bila ada. Upload bukti transfer bersifat opsional: JPG, PNG, WEBP, atau PDF maksimal 5MB.</li><li>Setelah pemeriksaan selesai, klik Konfirmasi Pembayaran, lalu periksa hasil dan sisa tagihan.</li></ol>\n<p class=\"warn\">Jika rekening vendor gagal dimuat, tutup lalu buka kembali form. Bila ada peringatan rekening baru berubah, periksa perubahan sebelum transfer. Jangan menganggap konfirmasi Cloud POS mengirim uang secara otomatis.</p>"
+  },
+  {
+    "id": "G31",
+    "title": "Memeriksa riwayat pembayaran",
+    "subtitle": "Pastikan cicilan dan tujuan bayar tercatat sesuai bukti",
+    "route": "/procurement-payments",
+    "image": "27-riwayat-bayar.png",
+    "html": "<p>Buka Lihat Detail dari halaman Pembayaran, lalu gulir ke bagian pembayaran dan Riwayat Pembayaran. Setiap transaksi perlu dicocokkan dengan bukti serta sisa tagihan.</p>\n<ol><li>Baca nominal tagihan, jumlah dibayar, dan sisa. Pada dokumen induk hasil split, bedakan nominal sendiri dari informasi total keluarga.</li><li>Periksa waktu dan pelaku pembayaran. Cocokkan rekening tujuan, rekening asal, dan keterangan dengan transaksi yang dilakukan.</li><li>Jika pembayaran terkait struk, periksa nomor struk pada entri riwayat. Pastikan cicilan dibebankan ke bukti yang benar.</li><li>Buka Lihat Bukti Transfer apabila berkas tersedia. Nomor referensi dan berkas merupakan bukti yang berbeda dan dapat diperiksa bersama.</li><li>Jika tagihan masih bersisa, lanjutkan pembayaran berikutnya hanya sebesar kebutuhan yang sah. Bila sudah lunas, ikon Bayar tidak lagi tersedia untuk sisa nol.</li></ol>\n<p>Rekening dalam riwayat adalah snapshot saat pembayaran. Perubahan rekening master vendor berikutnya tidak mengubah tujuan yang tersimpan pada entri lama.</p>\n<p class=\"note\">Pada pembayaran batch, hasil dapat sebagian berhasil dan sebagian gagal. Periksa daftar serta riwayat setiap dokumen sebelum mengulang; jangan mengirim ulang seluruh kelompok berdasarkan asumsi bahwa semua transaksi sebelumnya gagal.</p>"
+  },
+  {
+    "id": "G32",
+    "title": "Membuka antrean Penerimaan Peralatan",
+    "subtitle": "Dokumen yang masih memiliki barang untuk dicatat",
+    "route": "/perlengkapan/penerimaan",
+    "image": "28-antrean-peralatan.png",
+    "html": "<p>Buka Perlengkapan → Penerimaan Peralatan. Antrean menampilkan belanja peralatan yang masih membutuhkan pencatatan penerimaan oleh bagian aset.</p>\n<ol><li>Cocokkan nomor Pengadaan, Outlet, Vendor, serta kolom Belum Diterima. Angka baris dan unit membantu menentukan dokumen yang sesuai kiriman.</li><li>Baca kolom Pembayaran: Sudah dibayar, Dibayar sebagian, atau Belum dibayar (tempo). Informasi ini tidak menggantikan pemeriksaan fisik.</li><li>Bandingkan nama vendor dan kebutuhan dengan dokumen pengantar yang datang. Buka ikon Terima Barang pada baris yang tepat.</li><li>Dalam dialog Serah Terima, periksa rincian sisa, pengantar, foto, jumlah, dan tujuan pencatatan sebelum menyimpan.</li><li>Sesudah berhasil, periksa antrean kembali. Jika masih ada sisa, dokumen dapat tetap muncul untuk penerimaan berikutnya.</li></ol>\n<p>Barang dapat diterima sejak pengajuan disetujui. Pembayaran lunas bukan prasyarat umum untuk menerima barang tempo. Dokumen sebelum persetujuan, ditolak, atau dibatalkan tidak diproses sebagai penerimaan normal.</p>\n<p class=\"note\">Jika antrean kosong, periksa dokumen dan sisa penerimaannya. Sebagian teks kosong lama menyebut pengadaan sudah dibayar; acuan operasional tetap kelayakan dokumen dan barang yang belum dicatat, termasuk transaksi tempo.</p>"
+  },
+  {
+    "id": "G33",
+    "title": "Menerima peralatan sebagai aset",
+    "subtitle": "Jumlah nyata, foto, kategori, mode, dan lokasi",
+    "route": "/perlengkapan/penerimaan",
+    "image": "29b-rincian-aset.png",
+    "html": "<p>Dialog Serah Terima menampilkan barang yang belum dicatat. Untuk peralatan yang akan dipakai berulang, pilih tujuan Aset dan lengkapi informasi penyimpanannya.</p>\n<ol><li>Periksa nomor pengajuan dan nama item. Bila pengajuan tidak terikat outlet, pilih Outlet tujuan aset.</li><li>Pada Diantar oleh, pilih Vendor langsung atau pengambilan petugas logistik yang sesuai. Pilihan muncul bila ada pengambilan yang dapat dikaitkan.</li><li>Unggah Foto Barang Saat Diterima, maksimal 5MB, dan tunggu foto berhasil terunggah.</li><li>Isi Jumlah sesuai fisik yang datang. Bawaan seluruh sisa; kurangi bila datang sebagian dan isi nol untuk item yang belum datang.</li><li>Pilih Aset. Isi Kategori bila tersedia, pilih Mode Tunggal (bernomor per unit) atau Massal (satu baris), kemudian Lokasi.</li><li>Klik Catat Penerimaan. Periksa notifikasi dan lanjutkan pengecekan pada Daftar Aset.</li></ol>\n<p>Mode bawaan dapat mengikuti jumlah dan harga item, tetapi tetap perlu diperiksa sesuai cara pelacakan barang. Jumlah tidak boleh melebihi sisa dan minimal satu baris harus positif.</p>\n<p class=\"note\">Foto penerimaan wajib. Barang yang belum datang tetap menjadi sisa untuk penerimaan berikutnya. Jika ada baris di luar kewenangan meja ini, ikuti penjelasan bahwa bagian lain harus mencatatnya.</p>"
+  },
+  {
+    "id": "G34",
+    "title": "Membuka antrean barang dapur",
+    "subtitle": "Penerimaan stok yang berasal dari pengajuan",
+    "route": "/gudang/penerimaan-pengadaan",
+    "image": "30-antrean-dapur.png",
+    "html": "<p>Buka Gudang → Penerimaan dari Pengadaan. Judul halaman adalah Penerimaan Barang Dapur. Jalur ini mengaitkan barang masuk dengan pengajuan dan sisa itemnya.</p>\n<ol><li>Cari dokumen pada antrean dengan mencocokkan nomor pengadaan, outlet, vendor, jumlah baris/unit belum diterima, dan nilai.</li><li>Baca tujuan kebutuhan bila ditampilkan. Gudang yang membutuhkan bahan dapat berbeda dari gudang yang menerima kiriman pertama kali.</li><li>Periksa badge pembayaran untuk mengetahui apakah sudah lunas, sebagian dibayar, atau tempo. Barang tempo tetap dapat diterima jika dokumennya memenuhi tahap penerimaan.</li><li>Klik ikon Terima Barang. Tinjau rincian stok yang masih tersisa dan cocokkan dengan barang datang.</li><li>Siapkan foto penerimaan serta pemetaan Item Stok dan Gudang sebelum menyimpan.</li></ol>\n<p>Setelah penerimaan, antrean dimuat ulang. Penerimaan sebagian menyisakan barang yang belum dicatat; satu pengajuan dapat diselesaikan melalui beberapa kedatangan fisik.</p>\n<p class=\"warn\">Menu Gudang → Penerimaan Barang berbeda: itu daftar GRN dan form penerimaan manual. Untuk barang dari PR, gunakan Penerimaan dari Pengadaan agar jumlah yang diterima terkait ke item pengajuan. Jangan mencatat ulang melalui form manual setelah serah terima berhasil.</p>"
+  },
+  {
+    "id": "G35",
+    "title": "Memeriksa kiriman bahan sebelum dicatat",
+    "subtitle": "Foto, pengantar, dan jumlah penerimaan bertahap",
+    "route": "/gudang/penerimaan-pengadaan",
+    "image": "31-form-terima-stok.png",
+    "html": "<p>Dialog Serah Terima bahan baku menjelaskan bahwa seluruh barisnya dicatat sebagai stok gudang. Mulai dengan pemeriksaan kiriman, kemudian lengkapi pemetaan item dan lokasi pada bagian berikutnya.</p>\n<ol><li>Pastikan nomor pengajuan sesuai dokumen pengantar. Periksa nama bahan, satuan, harga, jumlah yang sudah dicatat, dan sisa.</li><li>Jika Diantar oleh tersedia, pilih Vendor langsung atau petugas logistik yang membawa barang ini. Jangan membiarkan pilihan bawaan jika kiriman yang datang berbeda.</li><li>Unggah Foto Barang Saat Diterima melalui Ambil / Pilih Foto. Gunakan gambar yang benar dan maksimal 5MB; tunggu tanda unggahan berhasil.</li><li>Ubah Jumlah menjadi kuantitas yang benar-benar diterima sekarang. Nilai bawaan adalah seluruh sisa, sehingga wajib diperiksa saat barang datang bertahap.</li><li>Isi nol pada baris yang belum datang. Pastikan setidaknya satu baris bernilai positif dan tidak ada jumlah melampaui sisa.</li></ol>\n<p>Dialog tidak menyediakan kolom pemeriksaan kualitas, kerusakan, atau retur khusus. Pemeriksaan fisik tetap dilakukan petugas sesuai prosedur, kemudian jumlah yang sah dicatat.</p>\n<p class=\"note\">Foto saat pengambilan dan foto saat penerimaan adalah bukti berbeda. Menyimpan pengambilan saja belum menghasilkan penerimaan stok; lanjutkan pemetaan Item Stok dan Gudang sebelum Catat Penerimaan.</p>"
+  },
+  {
+    "id": "G36",
+    "title": "Memetakan penerimaan ke stok",
+    "subtitle": "Item katalog dan gudang menentukan saldo yang bertambah",
+    "route": "/gudang/penerimaan-pengadaan",
+    "image": "31b-rincian-stok.png",
+    "html": "<p>Setiap baris bahan baku atau barang dapur mempunyai tujuan Stok Gudang. Pemetaan yang tepat memastikan stok bertambah pada bahan dan lokasi yang benar.</p>\n<ol><li>Pada Item Stok, periksa usulan otomatis jika tersedia. Pilih bahan katalog yang benar; cocokkan nama, satuan pengadaan, dan satuan/rasio master.</li><li>Pada Gudang, periksa pilihan bawaan dari server. Alur operasional mengarahkan penerimaan ke Gudang Induk, kemudian distribusi ke outlet melalui Transfer Stok bila diperlukan.</li><li>Baca keterangan Kebutuhan bila gudang peminta berbeda. Jangan menganggap kebutuhan outlet berarti kiriman sudah diterima langsung di outlet tersebut.</li><li>Tinjau kembali Jumlah setiap baris dan foto penerimaan. Klik Catat Penerimaan ketika seluruh pemetaan sesuai.</li><li>Periksa pesan berhasil dan nomor GRN yang dihasilkan. Buka Penerimaan Barang untuk rincian dokumen, lalu Kartu Stok untuk memeriksa saldo.</li></ol>\n<p>Pilihan gudang tidak terkunci mutlak pada tipe induk. Karena itu, pilih sesuai lokasi fisik dan prosedur organisasi. Barang diterima pada beberapa dokumen sumber dapat menghasilkan lebih dari satu GRN.</p>\n<p class=\"warn\">Jika baris hanya diteruskan ke antrean gudang karena belum dicatat petugas stok, jangan menyimpulkan saldo sudah bertambah. Periksa hasil transaksi dan sisa yang masih menunggu pencatatan.</p>"
+  },
+  {
+    "id": "G37",
+    "title": "Menerima Material Projek",
+    "subtitle": "Catat material pada buku projek dan titik simpan",
+    "route": "/purchase-goods",
+    "image": "38-material-projek.png",
+    "html": "<p>Pilihan Material Projek tersedia untuk baris yang sesuai pada pengadaan terkait projek. Gunakan pilihan ini untuk material yang akan dikonsumsi dalam pelaksanaan projek, dengan titik simpan yang dapat ditelusuri.</p>\n<ol><li>Buka Serah Terima pengajuan projek yang sudah disetujui. Cocokkan nomor, projek, nama material, satuan, dan jumlah sisa.</li><li>Unggah Foto Barang Saat Diterima. Periksa pilihan pengantar jika tersedia.</li><li>Isi Jumlah sesuai material yang benar-benar datang saat ini. Kurangi dari bawaan sisa penuh bila pengiriman bertahap.</li><li>Pilih Material Projek, lalu isi Titik simpan di lokasi, misalnya gudang sementara atau area penyimpanan projek yang jelas.</li><li>Klik Catat Penerimaan, periksa hasil, kemudian gunakan Perlengkapan → Penggunaan Barang Projek untuk mencatat pemakaian dan bukti berikutnya.</li></ol>\n<p>Material diterima belum berarti langsung habis digunakan. Pisahkan waktu penerimaan dari pemakaian di projek sehingga sisa material tetap dapat ditelusuri. Peralatan yang tetap menjadi barang inventaris dapat memerlukan tujuan Aset sesuai sifat barangnya.</p>\n<p class=\"note\">Pada pengadaan projek, Habis Pakai tidak ditawarkan untuk baris nonstok. Jangan mengubah kategori pengajuan sekadar untuk melewati pencatatan material; gunakan tujuan yang tersedia sesuai penggunaan barang.</p>"
+  },
+  {
+    "id": "G38",
+    "title": "Mencatat Habis Pakai",
+    "subtitle": "Alasan jelas untuk barang yang langsung dikonsumsi",
+    "route": "/purchase-goods",
+    "image": "39-habis-pakai.png",
+    "html": "<p>Tujuan Habis Pakai tersedia untuk baris peralatan nonprojek yang memenuhi pilihan tujuan pada dialog. Pilihan ini memerlukan penjelasan agar barang tidak hilang dari pencatatan tanpa dasar.</p>\n<ol><li>Buka Serah Terima pada dokumen yang sesuai dan periksa barang serta sisa jumlahnya.</li><li>Unggah Foto Barang Saat Diterima, kemudian isi Jumlah yang benar-benar diterima sekarang.</li><li>Pilih Habis Pakai. Isi Alasan habis pakai dengan keterangan konkret, minimal sepuluh huruf setelah spasi tepi dihapus.</li><li>Jelaskan penggunaan langsungnya, lokasi atau kebutuhan yang dipenuhi, sesuai keadaan sebenarnya. Hindari alasan singkat yang tidak menjelaskan mengapa barang tidak menjadi aset.</li><li>Tinjau kembali jumlah dan alasan, lalu Catat Penerimaan. Periksa notifikasi serta sisa penerimaan pada dokumen.</li></ol>\n<p>Nilai penerimaan yang besar dapat memunculkan pengingat agar barang dicatat sebagai aset bila masih digunakan berulang. Pengingat membantu keputusan; pilihan tetap harus mengikuti sifat barang dan kebijakan yang diterapkan.</p>\n<p class=\"warn\">Bahan baku dan barang dapur menggunakan Stok Gudang, bukan Habis Pakai. Baris projek menggunakan tujuan yang disediakan untuk projek. Jangan memakai Habis Pakai untuk menghindari pemetaan stok atau pencatatan aset yang seharusnya dilakukan.</p>"
+  },
+  {
+    "id": "G39",
+    "title": "Menyelesaikan Jasa",
+    "subtitle": "Konfirmasi pekerjaan selesai pada dokumen yang sudah dibayar",
+    "route": "/purchase-services",
+    "image": "32b-konfirmasi-jasa.png",
+    "html": "<p>Sesudah jasa berstatus Dibayar, pengaju dapat mengonfirmasi penyelesaian pekerjaan dari detail Pengadaan Jasa. Tindakan ini berbeda dari penerimaan barang fisik.</p>\n<ol><li>Buka Pengadaan → Jasa dan cari dokumen yang sudah dibayar. Klik ikon Lihat untuk memeriksa nomor, vendor, item pekerjaan, dan Catatan / Scope of Work.</li><li>Pastikan pekerjaan telah selesai sesuai ruang lingkup. Cocokkan hasil nyata dengan yang diminta sebelum mengubah status.</li><li>Klik ikon Selesaikan Jasa pada detail. Modal Selesaikan Jasa menampilkan pertanyaan konfirmasi dan nama pengaju.</li><li>Klik Selesai jika pemeriksaan telah sesuai. Gunakan Batal jika masih perlu peninjauan pekerjaan.</li><li>Periksa status pada daftar atau detail; halaman jasa menampilkan hasil akhirnya sebagai Selesai.</li></ol>\n<p>Di UI saat ini, tombol penyelesaian jasa muncul ketika status utama Dibayar. Pengajuan yang masih menunggu pembayaran atau dibayar sebagian tidak menggunakan tombol yang sama sebelum memenuhi status tersebut.</p>\n<p class=\"note\">Modal ini tidak mempunyai form penerimaan barang, input BAST jasa khusus, atau foto serah terima stok. Menyelesaikan jasa tidak otomatis membuat aset maupun menambah saldo stok. Bukti pekerjaan lain dikelola sesuai proses organisasi yang berlaku.</p>"
+  },
+  {
+    "id": "G40",
+    "title": "Memeriksa daftar GRN",
+    "subtitle": "Bukti stok masuk yang terkait ke penerimaan",
+    "route": "/goods-receipts",
+    "image": "33-grn.png",
+    "html": "<p>Buka Gudang → Penerimaan Barang setelah serah terima stok berhasil. Halaman ini menampilkan dokumen GRN untuk stok masuk, termasuk yang dihasilkan dari pengadaan.</p>\n<ol><li>Pilih gudang pada filter atau gunakan Semua gudang untuk menemukan dokumen yang dimaksud.</li><li>Cocokkan No. GRN dari notifikasi penerimaan dengan daftar. Periksa Waktu, Gudang, Vendor / PO, jumlah Item, dan Nilai.</li><li>Klik baris GRN untuk membuka detail. Pastikan penerimaan merujuk pengajuan yang benar dan jumlah bahan sesuai barang yang dicatat.</li><li>Jika satu serah terima menghasilkan beberapa GRN, periksa seluruh nomor yang disebut pada hasil transaksi.</li><li>Setelah rincian sesuai, lanjutkan ke Buku Stok untuk memeriksa saldo dan pergerakan bahan pada gudang yang sama.</li></ol>\n<h3>Penerimaan manual</h3><p>Tombol + Terima Barang membuka form manual untuk stok awal atau kiriman yang tidak dicatat melalui PR. Form memuat gudang tujuan, vendor, No. PO vendor, catatan, serta item/jumlah/harga.</p>\n<p class=\"warn\">Barang dari pengajuan harus diproses melalui Penerimaan dari Pengadaan. Menulis nomor PR pada No. PO vendor di form manual tidak menggantikan hubungan penerimaan item; pencatatan manual setelah serah terima dapat menggandakan stok.</p>"
+  },
+  {
+    "id": "G41",
+    "title": "Memeriksa detail GRN",
+    "subtitle": "Cocokkan pengajuan, penerima, satuan, dan nilai",
+    "route": "/goods-receipts",
+    "image": "33b-detail-grn.png",
+    "html": "<p>Klik satu baris pada Penerimaan Barang untuk membuka Detail GRN. Dokumen ini menjadi jejak stok masuk yang dapat dibandingkan dengan pengajuan dan kondisi fisik penerimaan.</p>\n<ol><li>Cocokkan nomor GRN pada judul dengan notifikasi hasil serah terima atau daftar penerimaan.</li><li>Periksa Gudang, Waktu, Vendor, No. PO, Diterima oleh, dan Total. Untuk GRN dari pengadaan, tinjau No. Pengajuan yang menghubungkannya ke dokumen pembelian.</li><li>Baca Catatan bila ada. Pastikan keterangan tidak merujuk kiriman atau vendor yang berbeda.</li><li>Periksa setiap Item: jumlah dalam satuan yang digunakan, padanan jumlah satuan dasar, biaya, subtotal, dan kedaluwarsa bila tersedia.</li><li>Cocokkan hasil konversi satuan dengan rasio katalog. Bila membeli satu kemasan berisi beberapa unit dasar, jumlah dasar memang berbeda dari jumlah kemasan.</li></ol>\n<p>Gunakan rincian ini bersama histori Kartu Stok untuk menelusuri perubahan saldo. Pada pengiriman bertahap, beberapa GRN dapat merujuk pengajuan yang sama dan masing-masing mencatat kedatangan berbeda.</p>\n<p class=\"note\">Jika nomor pengajuan tidak tampil, periksa asal GRN; dokumen mungkin merupakan penerimaan manual. Jangan menyimpulkan PR telah selesai hanya dari nama vendor atau No. PO yang mirip.</p>"
+  },
+  {
+    "id": "G42",
+    "title": "Memeriksa Kartu Stok",
+    "subtitle": "Pastikan saldo dan histori sesuai penerimaan",
+    "route": "/stock-ledger",
+    "image": "40-kartu-stok.png",
+    "html": "<p>Buka Gudang → Buku Stok; judul halaman adalah Kartu Stok. Pemeriksaan dilakukan pada bahan dan gudang yang digunakan saat Catat Penerimaan.</p>\n<ol><li>Pilih gudang pada filter, lalu cari nama bahan. Matikan filter Stok Rendah bila membuat baris yang dicari tersembunyi.</li><li>Cocokkan nama/kode bahan dan gudangnya. Periksa jumlah, satuan, HPP rata-rata, serta nilai stok.</li><li>Jika terdapat satuan kemasan dan dasar, baca padanan yang ditampilkan. Bandingkan pada satuan yang sama dengan rincian GRN.</li><li>Klik ikon Histori untuk membuka Histori Pergerakan Stok. Pilih rentang tanggal yang mencakup penerimaan, kemudian Tampilkan.</li><li>Periksa pergerakan masuk, waktu, jumlah, dan referensi/keterangan yang tersedia. Cocokkan dengan GRN dan pengajuan sumber.</li></ol>\n<p>Saldo saat ini dapat berbeda dari jumlah satu penerimaan karena sudah ada pemakaian, transfer, atau transaksi lain. Gunakan histori untuk menelusuri urutan perubahan, bukan membandingkan saldo akhir dengan satu kiriman saja.</p>\n<p class=\"warn\">Penyesuaian bukan langkah rutin setelah penerimaan berhasil. Jangan menambah stok lagi untuk membuat angka terlihat cocok sebelum memeriksa satuan, gudang, dan seluruh pergerakan terkait.</p>"
+  },
+  {
+    "id": "G43",
+    "title": "Memeriksa aset hasil penerimaan",
+    "subtitle": "Tutup pemeriksaan sampai inventaris tercatat",
+    "route": "/perlengkapan",
+    "image": "36-aset.png",
+    "html": "<p>Buka Perlengkapan → Daftar Aset. Judul halaman Manajemen Perlengkapan menampilkan inventaris beserta jumlah, nilai, kondisi, dan lokasi.</p>\n<ol><li>Pilih outlet yang digunakan saat penerimaan. Gunakan pencarian nama, nomor, atau seri; periksa filter status dan kondisi agar hasil tidak tersembunyi.</li><li>Temukan barang hasil serah terima. Cocokkan nomor aset, nama, Qty/Satuan, outlet, lokasi, serta nilai perolehan yang tersedia.</li><li>Buka nama aset atau ikon Detail untuk meninjau informasi serta riwayatnya lebih lanjut.</li><li>Periksa hasil mode pelacakan: Tunggal menggunakan nomor per unit, sedangkan Massal menyimpan jumlah dalam satu baris.</li><li>Jika diperlukan untuk inventaris, pilih aset dan gunakan Label 50×25 atau Cetak Label 70×40 sesuai kebutuhan penandaan.</li></ol>\n<p>Ringkasan Jumlah Aset, Nilai Perolehan, Nilai Buku, dan Perlu Perhatian membantu pemeriksaan umum. Pencatatan penerimaan selesai harus tetap dapat ditelusuri ke barang fisik dan penempatan yang benar.</p>\n<p class=\"note\">+ Tambah Perlengkapan dan Impor Excel adalah jalur pembuatan aset tersendiri. Jangan membuat ulang barang yang sudah menjadi aset melalui Serah Terima. Jika aset belum ditemukan, periksa outlet, tujuan penerimaan, dan sisa pencatatan terlebih dahulu.</p>"
+  }
+]

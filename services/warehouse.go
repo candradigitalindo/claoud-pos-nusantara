@@ -1831,11 +1831,36 @@ func GetStockItemRecipes(parentID string) ([]models.StockItemRecipe, error) {
 }
 
 func SaveStockItemRecipes(req models.StockItemRecipeRequest) error {
+	req.ParentItemID = strings.TrimSpace(req.ParentItemID)
+	if req.ParentItemID == "" {
+		return Invalid("bahan hasil produksi wajib dipilih")
+	}
+	if req.Visibility == "" {
+		req.Visibility = "public"
+	}
+	if req.Visibility != "public" && req.Visibility != "secret" {
+		return Invalid("visibilitas resep tidak valid")
+	}
+	seen := make(map[string]bool, len(req.Items))
+	for i := range req.Items {
+		it := &req.Items[i]
+		it.ItemID = strings.TrimSpace(it.ItemID)
+		if it.ItemID == "" || it.ItemID == req.ParentItemID || seen[it.ItemID] || !fnbFinite(it.QtyBase) || round4(it.QtyBase) <= 0 {
+			return Invalid("bahan resep harus unik, berbeda dari hasil produksi, dan jumlahnya lebih dari nol")
+		}
+		seen[it.ItemID] = true
+	}
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	// Empty items intentionally clears a formula. Lock its parent so two F&B
+	// edits replace the complete definition instead of interleaving rows.
+	var parentID string
+	if err = tx.QueryRow(`SELECT id FROM stock_items WHERE id=$1 FOR UPDATE`, req.ParentItemID).Scan(&parentID); err != nil {
+		return Invalid("bahan hasil produksi tidak ditemukan")
+	}
 	_, err = tx.Exec(`DELETE FROM stock_item_recipes WHERE parent_item_id = $1`, req.ParentItemID)
 	if err != nil {
 		return err
@@ -1854,7 +1879,7 @@ func SaveStockItemRecipes(req models.StockItemRecipeRequest) error {
 
 // ProduceStockItem creates a semi-finished good from raw components.
 func ProduceStockItem(req models.ProduceRequest, createdBy string) error {
-	if req.QtyProduce <= 0 {
+	if !fnbFinite(req.QtyProduce) || round4(req.QtyProduce) <= 0 {
 		return fmt.Errorf("kuantitas produksi harus lebih dari 0")
 	}
 
@@ -1882,6 +1907,9 @@ func ProduceStockItem(req models.ProduceRequest, createdBy string) error {
 	// 1. Deduct all components (FIFO) and calculate total cost
 	for _, r := range recipes {
 		qtyToDeduct := r.QtyBase * req.QtyProduce
+		if r.ChildItemID == req.ItemID || !fnbFinite(qtyToDeduct) || qtyToDeduct <= 0 {
+			return Invalid("resep produksi tidak valid; minta F&B memperbaiki komposisinya")
+		}
 		
 		// Lock and check stock first (FOR UPDATE untuk cegah race condition)
 		var available float64

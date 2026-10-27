@@ -1,0 +1,39 @@
+{
+  "pages": 69,
+  "expected_pages": 69,
+  "pages_with_screenshots": 45,
+  "file_bytes": 9763099,
+  "sha256": "c9af13491ff01fea1511e54c8a57d67856f8d4c948bb88553ea2eac068093613",
+  "internal_and_external_links": 134,
+  "html_links": 134,
+  "external_link_targets": [
+    "https://pos.nbp.co.id/uploads/panduan/Panduan-Pengadaan-sampai-Penerimaan-Cloud-POS-2026-10-26.pdf"
+  ],
+  "external_link_validation": "Target URI diperiksa dari struktur PDF; ketersediaan jaringan tidak diuji ulang.",
+  "text_characters": 108560,
+  "issues": [],
+  "revision": "Revisi 3 lokal — Gudang mengelola bahan baku; resep dikelola F&B (dasar 67092f2 + workspace)",
+  "document_revision": 3,
+  "screen_data": "simulasi terisolasi; menggunakan screenshot revisi sebelumnya",
+  "date": "2026-10-27",
+  "publication": {
+    "status": "local_only",
+    "uploaded": false,
+    "note": "PDF revisi 3 belum diterbitkan. URL edisi sebelumnya tidak mewakili file lokal ini."
+  },
+  "application_deployed": false,
+  "checks": [
+    "HTML dan manifest dibangun ulang dari sumber JSON revisi 3.",
+    "69 halaman / 45 screenshot; jumlah halaman dan halaman bergambar PDF cocok dengan manifest.",
+    "Tidak ada overflow halaman pada render Chromium (ambang jarak konten-footer 6 px).",
+    "Semua target anchor HTML dan target halaman tautan PDF valid; URI eksternal dipertahankan.",
+    "Checksum seluruh gambar dalam manifest sesuai aset lokal.",
+    "Tutorial g48/g09/g10 dan instruksi Simpan Resep/Simpan Pola tidak ada dalam HTML terbitan.",
+    "PDF berisi penegasan bahwa Gudang tidak membuat atau mengubah resep.",
+    "Pemeriksaan visual sampul, pengantar, pembagian tugas, daftar isi langkah dan halaman penerimaan: teks, gambar dan footer tidak terpotong."
+  ],
+  "validation_tools": {
+    "pdf": "PyMuPDF",
+    "render": "Playwright 1.47.2 / Chromium di container lokal"
+  }
+}
