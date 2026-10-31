@@ -14,11 +14,11 @@
             <div class="classification-counts" aria-label="Ringkasan seluruh katalog">
               <div><strong>{{ report.totals.total }}</strong><span>Total produk</span></div>
               <div><strong>{{ report.totals.existing }}</strong><span>Sudah ditentukan</span></div>
-              <div><strong>{{ report.totals.suggested }}</strong><span>Saran keyakinan tinggi</span></div>
+              <div><strong>{{ report.totals.suggested }}</strong><span>Saran siap diterapkan</span></div>
               <div class="review-count"><strong>{{ report.totals.needs_review }}</strong><span>Perlu ditinjau</span></div>
             </div>
             <p class="kind-counts"><span v-for="kind in PRODUCT_KINDS" :key="kind.value">{{ kind.label }}: <strong>{{ report.totals[kind.value] || 0 }}</strong></span></p>
-            <p class="classification-help">Saran berasal dari bukti katalog. Produk yang belum jelas perlu ditinjau manual. Jenis yang sudah ditentukan tetap dipertahankan. Jumlah jenis mencakup jenis saat ini dan saran.</p>
+            <p class="classification-help">Saran mengikuti bukti katalog dan ketentuan outlet. Produk yang belum masuk Makanan, Minuman, atau Aktivitas dikelompokkan sebagai Lainnya. Jenis yang sudah ditentukan tetap dipertahankan; data jenis lama yang tidak valid perlu ditinjau. Jumlah jenis mencakup jenis saat ini dan saran.</p>
             <p v-if="canUpdate && eligible.length > APPLY_LIMIT" class="notice selection-limit" role="status">Maksimal 1.000 saran per penerapan. Pilihan awal berisi 1.000 saran pertama sesuai urutan laporan; {{ eligible.length - APPLY_LIMIT }} saran sisanya tidak ikut dipilih. Anda dapat mengganti pilihan. Setelah diterapkan, analisis dimuat ulang untuk meninjau saran berikutnya.</p>
             <div class="classification-filters">
               <input v-model="search" type="search" aria-label="Cari produk dalam analisis" placeholder="Cari nama, kategori, atau outlet…" />
@@ -28,7 +28,7 @@
                 <option value="unclassified">Belum ditentukan</option>
               </select>
               <select v-model="statusFilter" aria-label="Filter status analisis">
-                <option value="">Semua status</option><option value="suggested">Saran keyakinan tinggi</option><option value="needs_review">Perlu ditinjau</option><option value="existing">Sudah ditentukan</option>
+                <option value="">Semua status</option><option value="suggested">Saran siap diterapkan</option><option value="needs_review">Perlu ditinjau</option><option value="existing">Sudah ditentukan</option>
               </select>
             </div>
             <div class="classification-selection">
@@ -56,7 +56,7 @@
             <div><button type="button" class="secondary" :disabled="applying" @click="confirming = false">Batal</button><button type="button" class="primary" :disabled="applying || stale || !selectedRows.length || !canUpdate" @click="apply">{{ applying ? 'Menerapkan…' : 'Ya, terapkan jenis' }}</button></div>
           </div>
           <template v-else>
-            <p>{{ canUpdate ? 'Hanya saran berkeyakinan tinggi untuk produk tanpa jenis yang dapat diterapkan.' : 'Akses lihat saja. Izin ubah produk diperlukan untuk menerapkan saran.' }}</p>
+            <p>{{ canUpdate ? 'Saran hanya diterapkan untuk produk yang belum memiliki jenis. Lainnya mencakup produk di luar tiga kelompok utama.' : 'Akses lihat saja. Izin ubah produk diperlukan untuk menerapkan saran.' }}</p>
             <button v-if="canUpdate" type="button" class="primary" :disabled="loading || applying || stale || !selectedRows.length" @click="confirming = true">Terapkan {{ selectedRows.length }} saran</button>
           </template>
         </footer>
@@ -94,6 +94,7 @@ watch([search, kindFilter, statusFilter], () => { page.value = 1 })
 watch(() => props.outletId, () => { success.value = ''; load() })
 function statusLabel(row) {
   if (row.status === 'existing') return 'Jenis saat ini · dipertahankan'
+  if (row.status === 'suggested' && row.suggested_kind === 'other') return 'Saran · kelompok Lainnya'
   if (row.status === 'suggested' && row.confidence === 'high') return 'Saran · keyakinan tinggi'
   return 'Perlu ditinjau · bukti belum cukup'
 }

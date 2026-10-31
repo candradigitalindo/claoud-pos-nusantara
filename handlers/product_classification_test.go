@@ -29,7 +29,7 @@ func TestProductClassificationHandlerRejectsUnsafeRequestsBeforeDatabase(t *test
 		models.ApplyProductClassificationRequest{},
 		models.ApplyProductClassificationRequest{Items: []models.ApplyProductClassificationItem{item, item}},
 		map[string]interface{}{"items": []models.ApplyProductClassificationItem{item}, "actor": "forged"},
-		map[string]interface{}{"items": []map[string]string{{"product_id": item.ProductID, "fingerprint": item.Fingerprint, "suggested_kind": "other"}}},
+		map[string]interface{}{"items": []map[string]string{{"product_id": item.ProductID, "fingerprint": item.Fingerprint, "suggested_kind": "invalid"}}},
 		models.ApplyProductClassificationRequest{Items: make([]models.ApplyProductClassificationItem, services.MaxProductClassificationApply+1)},
 	} {
 		if code, _ := doJSON(t, app, "POST", "/classification", body); code != 400 {

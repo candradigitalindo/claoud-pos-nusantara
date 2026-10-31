@@ -2,6 +2,7 @@ export const PRODUCT_KINDS = [
   { value: 'food', label: 'Makanan' },
   { value: 'beverage', label: 'Minuman' },
   { value: 'activity', label: 'Aktivitas' },
+  { value: 'other', label: 'Lainnya' },
 ]
 
 export function productKindLabel(value) {

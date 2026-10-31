@@ -16,7 +16,7 @@ func TestOfflineClassificationReportsWithoutDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	var report models.ProductClassificationReport
-	if err := json.Unmarshal(output.Bytes(), &report); err != nil || report.Totals.Total != 3 || report.Totals.NeedsReview != 1 {
+	if err := json.Unmarshal(output.Bytes(), &report); err != nil || report.Totals.Total != 3 || report.Totals.Suggested != 3 || report.Totals.Other != 1 || report.Totals.NeedsReview != 0 {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
 	output.Reset()

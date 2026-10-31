@@ -8,10 +8,12 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     const page = await browser.newPage({ viewport: { width: 1366, height: 900 } })
     const errors = [], productWrites = [], applyWrites = [], previews = [], lists = []
     let revision = 1, staleApply = true
+    const knownKinds = ['food', 'beverage', 'activity', 'other']
     const catalog = Array.from({ length: 883 }, (_, index) => ({
       id: `p${index}`, outlet_id: index % 2 ? 'o2' : 'o1', outlet_name: index % 2 ? 'Outlet Timur' : 'Outlet Pusat',
       name: `Produk ${String(index).padStart(3, '0')}`, code: `SKU-${index}`, category_id: 'c1', category_name: 'Kategori Asli', price: 15000,
-      menu_kind: index % 5 === 0 ? 'food' : '', suggested_kind: index % 5 === 0 || index % 4 === 3 ? '' : ['food', 'beverage', 'activity'][index % 3],
+      menu_kind: index % 10 === 5 ? 'other' : index % 5 === 0 ? 'food' : index % 17 === 0 ? 'legacy' : '',
+      suggested_kind: index % 5 === 0 || index % 17 === 0 ? '' : knownKinds[index % 4],
       stock_type: 'none', recipes: [],
     }))
     const scoped = outlet => catalog.filter(row => !outlet || row.outlet_id === outlet)
@@ -19,13 +21,13 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
       const rows = scoped(outlet).map(product => ({
         product_id: product.id, outlet_id: product.outlet_id, outlet_name: product.outlet_name, name: product.name, category_name: product.category_name,
         current_kind: product.menu_kind, suggested_kind: product.menu_kind ? '' : product.suggested_kind,
-        status: product.menu_kind ? 'existing' : product.suggested_kind ? 'suggested' : 'needs_review',
-        confidence: product.menu_kind || product.suggested_kind ? 'high' : 'none',
-        reason: product.menu_kind ? 'Jenis produk sudah ditentukan.' : product.suggested_kind ? 'Bukti nama dan kategori sesuai.' : 'Nama dan kategori belum memberikan bukti yang cukup.',
+        status: knownKinds.includes(product.menu_kind) ? 'existing' : product.suggested_kind ? 'suggested' : 'needs_review',
+        confidence: knownKinds.includes(product.menu_kind) || product.suggested_kind ? 'high' : 'none',
+        reason: knownKinds.includes(product.menu_kind) ? 'Jenis produk sudah ditentukan.' : product.suggested_kind === 'other' ? 'Sesuai ketentuan, produk yang belum masuk jenis utama dikelompokkan sebagai Lainnya.' : product.suggested_kind ? 'Bukti nama dan kategori sesuai.' : 'Jenis lama tidak dikenal; perlu ditinjau.',
         fingerprint: `fp-${revision}-${product.id}`,
       }))
-      const totals = { total: rows.length, existing: 0, suggested: 0, needs_review: 0, food: 0, beverage: 0, activity: 0 }
-      for (const row of rows) { totals[row.status]++; const kind = row.current_kind || row.suggested_kind; if (kind) totals[kind]++ }
+      const totals = { total: rows.length, existing: 0, suggested: 0, needs_review: 0, food: 0, beverage: 0, activity: 0, other: 0 }
+      for (const row of rows) { totals[row.status]++; const kind = row.current_kind || row.suggested_kind; if (knownKinds.includes(kind)) totals[kind]++ }
       return { rows, totals }
     }
     page.on('pageerror', error => errors.push(error.message))
@@ -72,11 +74,15 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     await page.goto(base + '/tests/fixtures/product-kinds.html')
     await page.locator('.desktop-only .tr-data').first().waitFor()
     const filter = page.getByRole('combobox', { name: 'Filter jenis produk', exact: true })
-    for (const kind of ['food', 'beverage', 'activity', 'unclassified']) {
+    for (const kind of [...knownKinds, 'unclassified']) {
       const response = page.waitForResponse(response => new URL(response.url()).searchParams.get('menu_kind') === kind)
       await filter.selectOption(kind); await response
       assert.equal(lists.at(-1).menu_kind, kind)
       assert.equal(lists.at(-1).page, '1')
+      if (kind === 'other') {
+        await page.locator('.desktop-only .product-kind--other').first().waitFor()
+        assert((await page.locator('.desktop-only .product-kind').allTextContents()).every(label => label === 'Lainnya'))
+      }
     }
     const resetFilter = page.waitForResponse(response => { const url = new URL(response.url()); return url.pathname.endsWith('/admin/products') && !url.searchParams.has('menu_kind') })
     await filter.selectOption(''); await resetFilter
@@ -89,27 +95,27 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     assert(!Object.hasOwn(productWrites.at(-1), 'menu_kind'), 'Unrelated edits must preserve newer shared F&B/classifier type')
     assert.equal(productWrites.at(-1).category_id, 'c1')
     await page.locator('.desktop-only').getByRole('button', { name: 'Edit', exact: true }).first().click()
-    await edit.locator('#product-kind').selectOption('activity')
+    await edit.locator('#product-kind').selectOption('other')
     await edit.getByRole('button', { name: 'Simpan Perubahan' }).click(); await edit.waitFor({ state: 'hidden' })
-    assert.equal(productWrites.at(-1).menu_kind, 'activity')
+    assert.equal(productWrites.at(-1).menu_kind, 'other')
     assert.equal(productWrites.at(-1).category_id, 'c1')
     assert.equal(productWrites.at(-1).category_name, 'Kategori Asli')
     assert.equal(productWrites.at(-1).price, 15000)
     assert(!Object.hasOwn(productWrites.at(-1), 'recipes'))
-    console.log('PASS server menu_kind filters, edit type payload, category/price/recipe preservation')
+    console.log('PASS server menu_kind filters including other, Lainnya badge, edit type payload and category/price/recipe preservation')
 
     await page.getByRole('button', { name: 'Tambah Produk', exact: true }).click()
     const create = page.getByRole('dialog', { name: 'Tambah Produk', exact: true })
     await create.locator('#product-outlet').click()
     await page.getByRole('option', { name: 'Outlet Pusat', exact: true }).click()
-    await create.locator('#product-name').fill('Aktivitas Uji')
+    await create.locator('#product-name').fill('Produk Lainnya Uji')
     await create.locator('#product-price').fill('50000')
-    await create.locator('#product-kind').selectOption('activity')
+    await create.locator('#product-kind').selectOption('other')
     await create.locator('#product-category').click()
     await page.getByRole('option', { name: 'Kategori Asli', exact: true }).click()
     await create.getByRole('button', { name: 'Tambah Produk', exact: true }).click(); await create.waitFor({ state: 'hidden' })
-    assert.equal(productWrites.at(-1).menu_kind, 'activity'); assert.equal(productWrites.at(-1).category_id, 'c1'); assert.equal(productWrites.at(-1).outlet_id, 'o1')
-    console.log('PASS create type and category remain separate')
+    assert.equal(productWrites.at(-1).menu_kind, 'other'); assert.equal(productWrites.at(-1).category_id, 'c1'); assert.equal(productWrites.at(-1).outlet_id, 'o1')
+    console.log('PASS create Lainnya while type and category remain separate')
 
     await page.getByRole('button', { name: 'Analisis jenis', exact: true }).click()
     const modal = page.getByRole('dialog', { name: 'Analisis jenis produk', exact: true })
@@ -131,6 +137,11 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('activity')
     await modal.locator('.classification-row').first().waitFor()
     assert((await modal.locator('.product-kind').allTextContents()).every(label => label === 'Aktivitas'))
+    await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('other')
+    await modal.locator('.product-kind--other').first().waitFor()
+    assert((await modal.locator('.product-kind').allTextContents()).every(label => label === 'Lainnya'))
+    assert.equal(await modal.locator('.kind-counts > span').filter({ hasText: 'Lainnya:' }).locator('strong').textContent(), String(report('').totals.other))
+    await modal.getByText('Saran · kelompok Lainnya', { exact: true }).first().waitFor()
     await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('')
     await modal.getByRole('button', { name: 'Next ›', exact: true }).click()
     await modal.locator('[data-product-id="p40"]').waitFor()
@@ -159,6 +170,7 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     await modal.getByRole('button', { name: 'Muat ulang analisis', exact: true }).click()
     await modal.locator('.classification-row').first().waitFor()
     await modal.getByRole('button', { name: 'Kosongkan pilihan', exact: true }).click()
+    await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('other')
     await modal.getByRole('checkbox').first().check()
     await modal.getByRole('button', { name: 'Terapkan 1 saran', exact: true }).click()
     await modal.getByRole('button', { name: 'Ya, terapkan jenis', exact: true }).click()
@@ -166,6 +178,13 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     assert.equal(applyWrites.at(-1).items.length, 1)
     assert(applyWrites.at(-1).items[0].fingerprint.startsWith('fp-2-'))
     assert.equal(applyWrites.at(-1).outlet, '')
+    assert.equal(applyWrites.at(-1).items[0].suggested_kind, 'other')
+    const appliedOtherId = applyWrites.at(-1).items[0].product_id
+    const appliedOther = modal.locator(`[data-product-id="${appliedOtherId}"]`)
+    await appliedOther.getByText('Jenis saat ini · dipertahankan', { exact: true }).waitFor()
+    assert.equal(await appliedOther.locator('.product-kind').textContent(), 'Lainnya')
+    assert.equal(await appliedOther.getByRole('checkbox').count(), 0)
+    assert.equal(catalog.find(row => row.id === 'p5').menu_kind, 'other', 'Existing Lainnya remains unchanged')
     await modal.getByRole('button', { name: 'Tutup analisis jenis' }).click()
     console.log('PASS explicit confirmation, exact eligible fingerprints, stale409 lock and reload-before-apply')
 
@@ -186,8 +205,8 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     console.log('PASS outlet-scoped review/apply and mobile type badge')
 
     await page.goto(base + '/tests/fixtures/product-kinds.html?outlet=o2&readonly')
-    const outletFiltered = page.waitForResponse(response => { const url = new URL(response.url()); return url.pathname.endsWith('/admin/products') && url.searchParams.get('menu_kind') === 'activity' && url.searchParams.get('outlet_id') === 'o2' })
-    await page.getByRole('combobox', { name: 'Filter jenis produk outlet' }).selectOption('activity')
+    const outletFiltered = page.waitForResponse(response => { const url = new URL(response.url()); return url.pathname.endsWith('/admin/products') && url.searchParams.get('menu_kind') === 'other' && url.searchParams.get('outlet_id') === 'o2' })
+    await page.getByRole('combobox', { name: 'Filter jenis produk outlet' }).selectOption('other')
     await outletFiltered
     assert.equal(lists.at(-1).outlet_id, 'o2')
     await page.getByRole('button', { name: 'Analisis jenis', exact: true }).click()

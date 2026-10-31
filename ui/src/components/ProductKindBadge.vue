@@ -12,4 +12,5 @@ defineProps({ kind: { type: String, default: '' } })
 .product-kind--food { background: #eaf5e8; color: #38652c; }
 .product-kind--beverage { background: #e6f2fa; color: #225e81; }
 .product-kind--activity { background: #f1eafa; color: #704b94; }
+.product-kind--other { background: #f5eddf; color: #775a2d; }
 </style>

@@ -13,7 +13,7 @@ import (
 	"unicode"
 )
 
-const rulesVersion = "menu-kind-v2-atv-overland"
+const rulesVersion = "menu-kind-v3-other"
 
 var nameRules = map[string][]string{
 	"food": {
@@ -92,7 +92,7 @@ func evidence(text string, rules map[string][]string) map[string]bool {
 }
 
 func knownKind(kind string) bool {
-	return kind == "food" || kind == "beverage" || kind == "activity"
+	return kind == "food" || kind == "beverage" || kind == "activity" || kind == "other"
 }
 
 // Fingerprint binds a suggestion to its inputs and the rules version. Recipe
@@ -116,11 +116,23 @@ func Fingerprint(in models.ProductClassificationInput) string {
 }
 
 func Classify(in models.ProductClassificationInput) models.ProductClassificationRow {
+	r := classifyEvidence(in)
+	// The owner assigns every remaining unclassified product to Lainnya.
+	// High confidence here reflects that explicit grouping policy, not an
+	// inference that ambiguous food/drink or recipe evidence became certain.
+	if r.CurrentKind == "" && r.Status == "needs_review" {
+		r.SuggestedKind, r.Status, r.Confidence = "other", "suggested", "high"
+		r.Reason = "Ketentuan Lainnya: produk yang belum masuk Makanan, Minuman, atau Aktivitas dikelompokkan sebagai Lainnya. " + r.Reason
+	}
+	return r
+}
+
+func classifyEvidence(in models.ProductClassificationInput) models.ProductClassificationRow {
 	r := models.ProductClassificationRow{
 		ProductID: in.ProductID, OutletID: in.OutletID, OutletName: in.OutletName,
 		Name: in.Name, CategoryName: in.CategoryName, CurrentKind: in.CurrentKind,
 		Status: "needs_review", Confidence: "none", Fingerprint: Fingerprint(in),
-		Reason: "Belum ada bukti nama atau kategori yang cukup jelas; tinjau manual.",
+		Reason: "Belum ada bukti nama atau kategori yang cukup jelas.",
 	}
 	if knownKind(in.CurrentKind) {
 		r.Status, r.Confidence = "existing", "high"
@@ -141,7 +153,7 @@ func Classify(in models.ProductClassificationInput) models.ProductClassification
 	}
 	for _, recipe := range in.RecipeEvidence {
 		if recipe.MenuKind != "" {
-			r.Reason = "Ada jenis pada resep tetapi jenis efektif produk kosong; periksa profil dan urutan resep."
+			r.Reason = "Ada jenis pada resep tetapi jenis efektif produk kosong."
 			return r
 		}
 	}
@@ -152,21 +164,21 @@ func Classify(in models.ProductClassificationInput) models.ProductClassification
 	if hasPhrase(name, "amer") || hasPhrase(name, "jasmine") {
 		for _, meal := range []string{"ayam", "chicken", "mie", "mi", "noodle", "noodles", "nasi", "rice", "bihun", "bakmi"} {
 			if hasPhrase(name, meal) {
-				r.Reason = "Nama makanan memuat singkatan atau nama minuman; periksa apakah ini paket gabungan."
+				r.Reason = "Nama makanan memuat singkatan atau nama minuman yang dapat menunjukkan paket gabungan."
 				return r
 			}
 		}
 	}
 	for _, ambiguous := range []string{"bundling", "jas hujan", "raincoat", "merchandise", "kaos", "t shirt", "custom payment"} {
 		if hasPhrase(name, ambiguous) {
-			r.Reason = "Paket gabungan, barang, atau pembayaran umum memerlukan peninjauan manual."
+			r.Reason = "Nama menunjukkan paket gabungan, barang, atau pembayaran umum."
 			return r
 		}
 	}
 	// These Indonesian dishes can be served as a drink or a bowl dessert.
 	for _, ambiguous := range []string{"es buah", "es campur", "es teler", "sop buah", "soup buah"} {
 		if hasPhrase(name, ambiguous) {
-			r.Reason = "Menu dapat berupa minuman atau hidangan penutup; tinjau cara penyajiannya."
+			r.Reason = "Menu dapat berupa minuman atau hidangan penutup."
 			return r
 		}
 	}
@@ -177,12 +189,12 @@ func Classify(in models.ProductClassificationInput) models.ProductClassification
 		for _, component := range strings.Split(in.Name, "+") {
 			componentKinds := evidence(normalize(component), nameRules)
 			if len(componentKinds) != 1 {
-				r.Reason = "Ada komponen paket yang belum jelas atau memuat beberapa jenis; tinjau seluruh paket."
+				r.Reason = "Ada komponen paket yang belum jelas atau memuat beberapa jenis."
 				return r
 			}
 			for kind := range componentKinds {
 				if comboKind != "" && comboKind != kind {
-					r.Reason = "Paket menggabungkan beberapa jenis; tinjau manual."
+					r.Reason = "Paket menggabungkan beberapa jenis."
 					return r
 				}
 				comboKind = kind
@@ -191,7 +203,7 @@ func Classify(in models.ProductClassificationInput) models.ProductClassification
 	}
 	signals := evidence(name, nameRules)
 	if (hasPhrase(category, "add on") || hasPhrase(category, "komplemen")) && len(signals) == 0 {
-		r.Reason = "Kategori tambahan dapat berisi topping atau bahan; nama tambahan perlu ditinjau."
+		r.Reason = "Kategori tambahan dapat berisi topping atau bahan dan nama tambahan belum menunjukkan jenis."
 		return r
 	}
 	// Matcha can be a pastry flavour. Only ignore that single drink cue when
@@ -214,12 +226,12 @@ func Classify(in models.ProductClassificationInput) models.ProductClassification
 		signals[kind] = true
 	}
 	if len(signals) > 1 {
-		r.Reason = "Nama atau kategori memuat beberapa jenis (termasuk paket campuran); tinjau manual."
+		r.Reason = "Nama atau kategori memuat beberapa jenis (termasuk paket campuran)."
 		return r
 	}
 	if len(signals) == 0 {
 		if len(evidence(normalize(in.Description), nameRules)) > 0 {
-			r.Reason = "Petunjuk hanya terdapat pada deskripsi; konfirmasikan jenis secara manual."
+			r.Reason = "Petunjuk jenis hanya terdapat pada deskripsi."
 		}
 		return r
 	}
@@ -254,6 +266,8 @@ func Report(inputs []models.ProductClassificationInput) models.ProductClassifica
 			r.Totals.Beverage++
 		case "activity":
 			r.Totals.Activity++
+		case "other":
+			r.Totals.Other++
 		}
 	}
 	return r

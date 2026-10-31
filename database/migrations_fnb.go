@@ -49,11 +49,11 @@ func RunFnbMigrations() error {
 			overhead_cost NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK(overhead_cost >= 0),
 			updated_by VARCHAR(100) NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
-		// Product classification also covers non-F&B activities. Recipe and
+		// Product classification also covers activities and other items. Recipe and
 		// development constraints deliberately remain food/beverage-only.
 		`ALTER TABLE fnb_product_profiles DROP CONSTRAINT IF EXISTS fnb_product_profiles_menu_kind_check`,
 		`ALTER TABLE fnb_product_profiles ADD CONSTRAINT fnb_product_profiles_menu_kind_check
-			CHECK(menu_kind IN ('','food','beverage','activity'))`,
+			CHECK(menu_kind IN ('','food','beverage','activity','other'))`,
 		`CREATE OR REPLACE VIEW product_menu_kinds AS
 			SELECT p.id AS product_id,COALESCE(f.menu_kind,r.menu_kind,'') AS menu_kind,
 				CASE WHEN f.product_id IS NOT NULL THEN 'profile'

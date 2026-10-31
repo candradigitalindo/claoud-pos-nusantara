@@ -22,8 +22,10 @@ func TestProductKindRejectsInvalidFilterAndCreationBeforeDatabaseAccess(t *testi
 	}{
 		{"GET", "/products?menu_kind=service", nil, 400},
 		{"GET", "/products?outlet_id=other&menu_kind=activity", nil, 403},
+		{"GET", "/products?outlet_id=other&menu_kind=other", nil, 403},
 		{"POST", "/products", map[string]any{"outlet_id": "allowed", "name": "Uji", "menu_kind": "service"}, 400},
 		{"POST", "/products", map[string]any{"outlet_id": "other", "name": "Uji", "menu_kind": "activity"}, 403},
+		{"POST", "/products", map[string]any{"outlet_id": "other", "name": "Uji", "menu_kind": "other"}, 403},
 	} {
 		status, _ := doJSON(t, app, tc.method, tc.path, tc.body)
 		if status != tc.want {

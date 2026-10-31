@@ -247,8 +247,8 @@ dibangun/dirilis, dan pengujian tablet fisik tetap diperlukan sebelum rilis.
 
 ## Jenis produk dan analisis katalog
 
-Halaman Produk Cloud menyediakan jenis **Makanan**, **Minuman**, dan
-**Aktivitas**, termasuk filter serta penanda pada daftar global dan per outlet.
+Halaman Produk Cloud menyediakan jenis **Makanan**, **Minuman**, **Aktivitas**,
+dan **Lainnya**, termasuk filter serta penanda pada daftar global dan per outlet.
 Jenis produk terpisah dari kategori POS. Form edit yang hanya mengubah nama,
 harga, atau kategori tidak mengirim ulang jenis lama, sehingga perubahan jenis
 terbaru dari F&B atau analisis tetap dipertahankan.
@@ -256,16 +256,21 @@ terbaru dari F&B atau analisis tetap dipertahankan.
 Jenis memakai profil F&B yang sama, dengan fallback ke resep utama jika belum
 ada profil. Migrasi `RunFnbMigrations` memperluas jenis profil dan menyediakan
 view `product_menu_kinds`; startup backend gagal bila migrasi ini gagal.
-Aktivitas tidak masuk perhitungan costing/dashboard F&B. Pengaturan target HPP,
+Aktivitas dan Lainnya tidak masuk perhitungan costing/dashboard F&B. Pengaturan target HPP,
 kemasan, dan overhead yang sudah tersimpan tetap dipertahankan. Klasifikasi
 resep serta pengembangan menu F&B tetap Makanan/Minuman.
 
 Tombol **Analisis jenis** membaca seluruh produk yang belum dihapus dalam
 cakupan akses pengguna, bukan hanya halaman daftar yang terbuka. Laporan
 menampilkan jenis saat ini, saran, alasan, dan produk yang perlu ditinjau.
-Analisis menggunakan aturan nama/kategori/resep yang dapat diperiksa; nama
-tidak dikenal, barang di luar tiga jenis, serta paket campuran tidak dipaksa
-menjadi Aktivitas. Jenis yang sudah ditentukan tidak ditimpa.
+Analisis menggunakan aturan nama/kategori/resep yang dapat diperiksa. Sesuai
+ketentuan pemilik, produk yang belum masuk tiga jenis utama, termasuk nama
+tidak dikenal dan paket campuran, dikelompokkan sebagai **Lainnya** (`other`).
+Alasan menyebutkan ketentuan ini bersama bukti katalog yang mendasarinya;
+penetapan Lainnya tidak menyatakan isi paket sudah dapat dipastikan.
+Jenis yang sudah ditentukan, termasuk Lainnya, tidak ditimpa. Nilai jenis lama
+yang tidak valid tetap perlu ditinjau. Nilai kosong/Belum ditentukan berbeda
+dari Lainnya dan tetap tersedia untuk form serta filter.
 
 Sesuai ketentuan pemilik, analisis outlet **ATV Overland** mengelompokkan semua
 produk yang belum memiliki jenis sebagai Aktivitas, termasuk barang pendukung.
@@ -275,7 +280,7 @@ dipertahankan sesuai kontrak analisis; aturan ini bukan pembatas form edit.
 Perubahan nama outlet setelah pratinjau membatalkan penerapan dengan 409.
 
 Pratinjau memerlukan `products.view`; penerapan memerlukan `products.update`
-dan konfirmasi pilihan di dialog. Maksimal 1.000 saran berkeyakinan tinggi
+dan konfirmasi pilihan di dialog. Maksimal 1.000 saran siap diterapkan
 diterapkan dalam satu transaksi. Server memeriksa ulang sumber, fingerprint,
 jenis, serta akses outlet; perubahan katalog membatalkan seluruh pilihan
 dengan respons 409. Pelaku tercatat dari sesi login, bukan kiriman browser.
@@ -318,8 +323,9 @@ tanpa jaringan eksternal/port host. Dependensi `npm ci` memakai cache ketika
 
 Analisis snapshot katalog pada 31 Oktober 2026 mencakup **883 produk yang belum
 dihapus di 11 outlet**; 234 produk yang sudah dihapus tidak disertakan.
-Setelah ketentuan ATV Overland, hasilnya **442 usulan Makanan, 336 Minuman,
-11 Aktivitas**, serta **94 perlu ditinjau**. Keempat produk ATV Overland
+Setelah ketentuan ATV Overland dan Lainnya, hasilnya **442 usulan Makanan,
+336 Minuman, 11 Aktivitas, dan 94 Lainnya**. Seluruh 883 produk mendapat usulan
+jenis; tidak ada yang tersisa untuk ditinjau pada snapshot ini. Keempat produk ATV Overland
 seluruhnya mendapat usulan Aktivitas.
 Ini merupakan usulan berdasarkan bukti katalog, belum penerapan ke database
 produksi. Laporan seluruh baris, alasan, dan ringkasan per outlet tersimpan di
@@ -353,3 +359,14 @@ dan pembatalan seluruh pilihan setelah outlet berganti nama. Artefak tersimpan
 di `atv-overland-backend`. Laporan sebelumnya dicadangkan dengan nama
 `analysis-before-atv-overland.*`; hasil untuk 879 produk outlet lain tetap.
 Tidak ada perubahan UI atau deployment produksi pada penyesuaian ini.
+
+Penambahan Lainnya diuji pada database dan respons browser sintetis: build API,
+**543 tes Go lulus, 3 dilewati**, build Vue, serta seluruh skenario browser
+jenis produk, resep, dan costing F&B lulus. Pengujian mencakup tambah/edit dan
+filter Lainnya, penerapan massal dengan batas akses, biaya dan kategori tetap,
+migrasi ulang, full/incremental sync, serta pengecualian dari costing F&B.
+Artefak berada di `other-kind-backend` dan `other-kind-browser`; sumber Go
+akhir cocok dengan 318 berkas pada snapshot uji. Laporan sebelum penyesuaian
+tersimpan sebagai `analysis-before-other.*`; 789 jenis sebelumnya tetap,
+sedangkan 94 produk sisanya mendapat usulan Lainnya. Seluruh sumber daya uji
+dibersihkan dan produksi tidak dideploy.

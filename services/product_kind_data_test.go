@@ -47,12 +47,14 @@ func TestProductKindEffectiveViewAndScopedFilters(t *testing.T) {
 	changeProductKind(t, unknown, productKindPtr(""))
 	activity := f.product(t, "")
 	changeProductKind(t, activity, productKindPtr("activity"))
+	misc := f.product(t, "")
+	changeProductKind(t, misc, productKindPtr("other"))
 	foreign := other.product(t, "")
 	changeProductKind(t, foreign, productKindPtr("activity"))
 
 	for _, want := range []struct{ id, kind, source string }{
 		{food.ID, "food", "recipe"}, {beverage.ID, "beverage", "recipe"},
-		{unknown.ID, "", "profile"}, {activity.ID, "activity", "profile"},
+		{unknown.ID, "", "profile"}, {activity.ID, "activity", "profile"}, {misc.ID, "other", "profile"},
 	} {
 		var kind, source string
 		if err := database.DB.QueryRow(`SELECT menu_kind,menu_kind_source FROM product_menu_kinds WHERE product_id=$1`, want.id).Scan(&kind, &source); err != nil {
@@ -62,14 +64,14 @@ func TestProductKindEffectiveViewAndScopedFilters(t *testing.T) {
 			t.Fatalf("effective kind: %s got %q/%q want %q/%q", want.id, kind, source, want.kind, want.source)
 		}
 	}
-	for filter, id := range map[string]string{"food": food.ID, "beverage": beverage.ID, "unclassified": unknown.ID, "activity": activity.ID} {
+	for filter, id := range map[string]string{"food": food.ID, "beverage": beverage.ID, "unclassified": unknown.ID, "activity": activity.ID, "other": misc.ID} {
 		rows, count, err := GetAllProducts("", "", []string{f.outlet}, 1, 100, filter)
 		if err != nil || count != 1 || len(rows) != 1 || rows[0].ID != id {
 			t.Fatalf("filter %s scope mismatch: rows=%+v total=%d err=%v", filter, rows, count, err)
 		}
 	}
 	rows, count, err := GetAllProducts(f.outlet, "", nil, 1, 100)
-	if err != nil || count != 4 || len(rows) != 4 {
+	if err != nil || count != 5 || len(rows) != 5 {
 		t.Fatalf("legacy call signature: %+v %d %v", rows, count, err)
 	}
 	rows, count, err = GetAllProducts("", "", []string{}, 1, 100, "activity")
@@ -87,7 +89,7 @@ func TestProductKindEffectiveViewAndScopedFilters(t *testing.T) {
 	for _, row := range posRows {
 		got[row.ID] = row.MenuKind
 	}
-	if got[activity.ID] != "activity" || got[food.ID] != "food" || got[beverage.ID] != "beverage" {
+	if got[activity.ID] != "activity" || got[food.ID] != "food" || got[beverage.ID] != "beverage" || got[misc.ID] != "other" {
 		t.Fatalf("POS list missing effective kind: %+v", got)
 	}
 }
@@ -118,7 +120,7 @@ func TestProductKindEditsPreserveFnbCostsAndIgnorePOSClassification(t *testing.T
 	if kind != "activity" || target != 28 || packaging != 500 || overhead != 700 || actor != "Cost owner" {
 		t.Fatalf("product/POS edit changed cost setup: %s %v %v %v %s", kind, target, packaging, overhead, actor)
 	}
-	bad := "other"
+	bad := "service"
 	if err := AdminUpdateProduct(p.ID, models.AdminUpdateProductRequest{Name: "Should not save", MenuKind: &bad}); !errors.Is(err, ErrProductMenuKind) {
 		t.Fatalf("invalid kind accepted: %v", err)
 	}
@@ -327,6 +329,62 @@ func TestProductKindRecipeFallbackChangesPublishUpdates(t *testing.T) {
 		if kind != wantKind || target != 27 || packaging != 200 || overhead != 300 || actor != "Cost owner" {
 			t.Fatalf("recipe lifecycle changed explicit profile: %q %v %v %v %q", kind, target, packaging, overhead, actor)
 		}
+	}
+}
+
+func TestProductKindOtherRoundTripAndFnbBoundary(t *testing.T) {
+	f := newProductRecipeFixture(t)
+	p, err := AdminCreateProduct(models.AdminCreateProductRequest{OutletID: f.outlet, Name: "Produk Lainnya " + NewULID(), CategoryName: "Kategori tetap", Price: 12000, MenuKind: productKindPtr("other")})
+	if err != nil || p.MenuKind != "other" {
+		t.Fatalf("create other: %+v %v", p, err)
+	}
+	if err := SaveFnbProfile(p.ID, models.FnbProfile{MenuKind: "food", TargetCostPct: 27, PackagingCost: 500, OverheadCost: 300}, nil, "Cost owner"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE cloud_products SET updated_at='2000-01-01' WHERE id=$1`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := AdminUpdateProduct(p.ID, models.AdminUpdateProductRequest{Name: p.Name, Code: p.Code, CategoryName: p.CategoryName, Price: p.Price, MenuKind: productKindPtr("other")}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := database.RunFnbMigrations(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var kind, actor string
+	var target, packaging, overhead float64
+	if err := database.DB.QueryRow(`SELECT menu_kind,target_cost_pct,packaging_cost,overhead_cost,updated_by FROM fnb_product_profiles WHERE product_id=$1`, p.ID).
+		Scan(&kind, &target, &packaging, &overhead, &actor); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "other" || target != 27 || packaging != 500 || overhead != 300 || actor != "Cost owner" {
+		t.Fatalf("other edit/migration changed costs: %s %v %v %v %s", kind, target, packaging, overhead, actor)
+	}
+	rows, _, err := GetProducts(f.outlet, 1, 100)
+	if err != nil || len(rows) != 1 || rows[0].MenuKind != "other" || rows[0].CategoryName != p.CategoryName || rows[0].Price != p.Price {
+		t.Fatalf("full pull other: %+v %v", rows, err)
+	}
+	updates, err := GetUpdatesSince(f.outlet, "2001-01-01T00:00:00Z")
+	if err != nil || len(updates.Products) != 1 || updates.Products[0].MenuKind != "other" || updates.Products[0].Version != 3 {
+		t.Fatalf("incremental other: %+v %v", updates, err)
+	}
+	costs, err := GetFnbCosting(f.outlet, nil)
+	if err != nil || len(costs) != 0 {
+		t.Fatalf("other included in F&B costing: %+v %v", costs, err)
+	}
+	overview, err := GetFnbOverview(f.outlet, nil)
+	if err != nil || overview.ProductCount != 0 || overview.Unclassified != 0 {
+		t.Fatalf("other inflated F&B dashboard: %+v %v", overview, err)
+	}
+	if err := SaveFnbProfile(p.ID, models.FnbProfile{MenuKind: "other", TargetCostPct: 30}, nil, "F&B"); err == nil {
+		t.Fatal("F&B cost editor accepted other")
+	}
+	if _, err := SaveRecipeMaster("", models.RecipeMasterRequest{Name: "Invalid other recipe", Visibility: "public", MenuKind: productKindPtr("other"), Items: []models.RecipeItemReq{{ItemID: f.itemID, QtyBase: 1}}}); err == nil {
+		t.Fatal("recipe accepted other")
+	}
+	if _, err := SaveFnbDevelopment("", models.FnbDevelopment{OutletID: f.outlet, Name: "Invalid other development", MenuKind: "other", TargetCostPct: 35}, nil, "F&B"); err == nil {
+		t.Fatal("development accepted other")
 	}
 }
 

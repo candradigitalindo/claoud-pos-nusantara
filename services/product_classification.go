@@ -85,7 +85,7 @@ func ValidateProductClassificationApply(items []models.ApplyProductClassificatio
 		if _, err := hex.DecodeString(item.Fingerprint); err != nil {
 			return Invalid("fingerprint pratinjau tidak valid")
 		}
-		if item.SuggestedKind != "food" && item.SuggestedKind != "beverage" && item.SuggestedKind != "activity" {
+		if item.SuggestedKind != "food" && item.SuggestedKind != "beverage" && item.SuggestedKind != "activity" && item.SuggestedKind != "other" {
 			return Invalid("jenis usulan tidak valid")
 		}
 	}

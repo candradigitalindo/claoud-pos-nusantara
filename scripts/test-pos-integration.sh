@@ -311,6 +311,7 @@ if phase in ('all', 'backend'):
                 'TestProductKindEditsPreserveFnbCostsAndIgnorePOSClassification',
                 'TestProductKindFnbEditPublishesUpdatesAndActivityIsOutsideCosting',
                 'TestProductKindMigrationIsIdempotentAndKeepsExistingProfile',
+                'TestProductKindOtherRoundTripAndFnbBoundary',
                 'TestProductKindRecipeFallbackChangesPublishUpdates',
                 'TestProductKindRecipeConcurrentLinkRequiresRetry',
                 'TestProductClassificationPreviewScopedCompleteAndConservative',
@@ -318,6 +319,7 @@ if phase in ('all', 'backend'):
                 'TestProductClassificationApplyRejectsTamperingAndStaleAtomically',
                 'TestProductClassificationConcurrentApplyHasSingleWinner',
                 'TestProductClassificationATVOverlandPolicyApplyAndRename',
+                'TestProductClassificationOtherFallbackPreservesScopeCostsAndSync',
                 'TestProductClassificationRoutesRequireUpdatePermissionToApply'}
     if not required <= passed:
         raise SystemExit('Required integration tests did not pass (possibly skipped): ' + ', '.join(sorted(required-passed)))

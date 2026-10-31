@@ -109,7 +109,7 @@ func TestProductClassificationPreviewScopedCompleteAndConservative(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Totals != (models.ProductClassificationTotals{Total: 108, Existing: 2, Suggested: 105, NeedsReview: 1, Food: 1, Beverage: 105, Activity: 1}) || len(report.Rows) != 108 {
+	if report.Totals != (models.ProductClassificationTotals{Total: 108, Existing: 2, Suggested: 106, Food: 1, Beverage: 105, Activity: 1, Other: 1}) || len(report.Rows) != 108 {
 		t.Fatalf("preview truncated or incorrectly classified: %+v rows=%d", report.Totals, len(report.Rows))
 	}
 	for _, row := range report.Rows {
@@ -296,12 +296,66 @@ func TestProductClassificationATVOverlandPolicyApplyAndRename(t *testing.T) {
 		}
 	}
 	report, err := PreviewProductClassification("", []string{f.outlet, f.foreign})
-	if err != nil || report.Totals != (models.ProductClassificationTotals{Total: 5, Existing: 4, Activity: 4, NeedsReview: 1}) {
+	if err != nil || report.Totals != (models.ProductClassificationTotals{Total: 5, Existing: 4, Suggested: 1, Activity: 4, Other: 1}) {
 		t.Fatalf("policy scope/retry result: %+v %v", report.Totals, err)
 	}
 	for _, row := range report.Rows {
-		if row.ProductID == foreign && (row.CurrentKind != "" || row.Status != "needs_review") {
+		if row.ProductID == foreign && (row.CurrentKind != "" || row.Status != "suggested" || row.SuggestedKind != "other") {
 			t.Fatalf("policy changed another outlet: %+v", row)
 		}
+	}
+}
+
+func TestProductClassificationOtherFallbackPreservesScopeCostsAndSync(t *testing.T) {
+	f := newClassificationFixture(t)
+	id := f.product(t, f.outlet, "Paket Nasi + Ice Tea")
+	foreign := f.product(t, f.foreign, "Nama belum dikenal")
+	recipe := f.recipe(t, id, "beverage")
+	if _, err := database.DB.Exec(`INSERT INTO fnb_product_profiles(product_id,menu_kind,target_cost_pct,packaging_cost,overhead_cost,updated_by)
+		VALUES($1,'',22.5,1200,350,'previous actor')`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE cloud_products SET category_name='Paket asli' WHERE id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+	selection := classificationSelection(t, f.outlet, []string{f.outlet}, id)
+	if selection[0].SuggestedKind != "other" {
+		t.Fatalf("unclassified product not grouped into Lainnya: %+v", selection)
+	}
+	foreignSelection := classificationSelection(t, f.foreign, nil, foreign)
+	if _, err := ApplyProductClassification("", []string{f.outlet}, "owner policy", append(selection, foreignSelection...)); !errors.Is(err, ErrFnbScope) {
+		t.Fatalf("Lainnya fallback bypassed outlet scope: %v", err)
+	}
+	var kind string
+	if err := database.DB.QueryRow(`SELECT menu_kind FROM fnb_product_profiles WHERE product_id=$1`, id).Scan(&kind); err != nil || kind != "" {
+		t.Fatalf("foreign selection partially applied: %q %v", kind, err)
+	}
+	if n, err := ApplyProductClassification(f.outlet, []string{f.outlet}, "owner policy", selection); err != nil || n != 1 {
+		t.Fatalf("apply Lainnya=%d err=%v", n, err)
+	}
+	var actor string
+	var target, packaging, overhead float64
+	if err := database.DB.QueryRow(`SELECT menu_kind,target_cost_pct,packaging_cost,overhead_cost,updated_by FROM fnb_product_profiles WHERE product_id=$1`, id).
+		Scan(&kind, &target, &packaging, &overhead, &actor); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "other" || target != 22.5 || packaging != 1200 || overhead != 350 || actor != "owner policy" {
+		t.Fatalf("Lainnya lost profile data/audit: %s %.2f %.2f %.2f %s", kind, target, packaging, overhead, actor)
+	}
+	products, _, err := GetProducts(f.outlet, 1, 100)
+	if err != nil || len(products) != 1 {
+		t.Fatalf("full sync: %+v %v", products, err)
+	}
+	p := products[0]
+	if p.MenuKind != "other" || p.Price != 10000 || p.CategoryName != "Paket asli" || p.StockType != "recipe" || p.RecipeMasterID != recipe || p.Version != 2 {
+		t.Fatalf("Lainnya changed unrelated product fields: %+v", p)
+	}
+	updates, err := GetUpdatesSince(f.outlet, "2021-01-01T00:00:00Z")
+	if err != nil || len(updates.Products) != 1 || updates.Products[0].MenuKind != "other" || updates.Products[0].Version != 2 {
+		t.Fatalf("incremental sync lost Lainnya: %+v %v", updates, err)
+	}
+	report, err := PreviewProductClassification(f.outlet, []string{f.outlet})
+	if err != nil || report.Totals != (models.ProductClassificationTotals{Total: 1, Existing: 1, Other: 1}) {
+		t.Fatalf("applied Lainnya must be preserved on next preview: %+v %v", report.Totals, err)
 	}
 }

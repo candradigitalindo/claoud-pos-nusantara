@@ -44,6 +44,7 @@ type ProductClassificationTotals struct {
 	Food        int `json:"food"`
 	Beverage    int `json:"beverage"`
 	Activity    int `json:"activity"`
+	Other       int `json:"other"`
 }
 
 type ProductClassificationReport struct {

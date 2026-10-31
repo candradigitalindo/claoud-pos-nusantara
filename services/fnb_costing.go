@@ -102,7 +102,7 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 		FROM cloud_products p JOIN outlets o ON o.id=p.outlet_id
 		LEFT JOIN fnb_product_profiles f ON f.product_id=p.id LEFT JOIN fnb_outlet_policies op ON op.outlet_id=p.outlet_id
 		LEFT JOIN product_menu_kinds mk ON mk.product_id=p.id
-		WHERE NOT p.is_deleted AND COALESCE(mk.menu_kind,'') <> 'activity' AND o.is_active AND ($1 OR p.outlet_id=ANY($2)) ORDER BY o.name,p.name`, filter == nil, pq.Array(filter), scope == nil)
+		WHERE NOT p.is_deleted AND COALESCE(mk.menu_kind,'') NOT IN ('activity','other') AND o.is_active AND ($1 OR p.outlet_id=ANY($2)) ORDER BY o.name,p.name`, filter == nil, pq.Array(filter), scope == nil)
 	if err != nil {
 		return nil, err
 	}

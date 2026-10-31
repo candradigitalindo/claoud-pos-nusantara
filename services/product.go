@@ -13,10 +13,10 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-var ErrProductMenuKind = errors.New("jenis produk harus food, beverage, activity, atau kosong")
+var ErrProductMenuKind = errors.New("jenis produk harus food, beverage, activity, other, atau kosong")
 
 func validProductMenuKind(kind string) bool {
-	return kind == "" || kind == "food" || kind == "beverage" || kind == "activity"
+	return kind == "" || kind == "food" || kind == "beverage" || kind == "activity" || kind == "other"
 }
 
 // The product and F&B screens share one classification; menu edits must not
