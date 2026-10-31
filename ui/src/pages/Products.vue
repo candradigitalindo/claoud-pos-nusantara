@@ -54,11 +54,11 @@
           @change="onOutletChange"
         />
       </div>
-      <select v-if="tab === 'products'" v-model="menuKind" class="kind-filter" aria-label="Filter jenis produk" @change="onKindChange">
+      <SearchableSelect v-if="tab === 'products'" v-model="menuKind" search-placeholder="Cari jenis produk…" class="kind-filter" aria-label="Filter jenis produk" @change="onKindChange">
         <option value="">Semua jenis</option>
         <option v-for="kind in PRODUCT_KINDS" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
         <option value="unclassified">Belum ditentukan</option>
-      </select>
+      </SearchableSelect>
       <button v-if="tab === 'products' && auth.hasPermission('products.view')" class="btn-cancel" @click="showClassification = true">Analisis jenis</button>
       <button v-if="tab === 'categories' || auth.hasPermission('products.create')" class="btn-add" @click="tab === 'products' ? openCreateProd() : openCreateCat()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -316,11 +316,11 @@
                   </div>
                   <div class="form-group product-field-wide">
                     <label for="product-kind">Jenis produk</label>
-                    <select id="product-kind" v-model="formProd.menu_kind" class="form-input">
+                    <SearchableSelect id="product-kind" v-model="formProd.menu_kind" search-placeholder="Cari jenis produk…" class="form-input">
                       <option value="">Belum ditentukan</option>
                       <option v-for="kind in PRODUCT_KINDS" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
-                    </select>
-                    <p class="product-kind-help">Pengelompokan Makanan, Minuman, atau Aktivitas. Kategori produk tetap terpisah.</p>
+                    </SearchableSelect>
+                    <p class="product-kind-help">Pengelompokan Makanan, Minuman, Aktivitas, atau Lainnya. Kategori produk tetap terpisah.</p>
                   </div>
                   <div class="form-group product-field-wide">
                     <label for="product-price">Harga jual <span class="req">*</span><span class="product-field-note">Rupiah per produk</span></label>
@@ -447,6 +447,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import RupiahInput from '@/components/ui/RupiahInput.vue'
 import ProductRecipePicker from '@/components/ProductRecipePicker.vue'
@@ -1121,6 +1122,7 @@ watch(pageCat,  fetchCategories)
 .product-modal .form-group label { display: flex; align-items: baseline; gap: 4px; font-size: .75rem; }
 .product-field-note { margin-left: auto; font-size: .65rem; font-weight: 400; color: #7b8b81; }
 .product-modal .form-input, .product-modal :deep(.ss-trigger) { width: 100%; min-width: 0; min-height: 38px; border-radius: 8px; font-size: .82rem; background-color: #fff; }
+.product-modal .form-input :deep(.searchable-select-trigger) { min-height: 0; }
 .product-modal .form-input--code { background: #f5f7f6; font-size: .76rem; }
 .product-modal :deep(.product-price-input) { font-weight: 700; color: #185b35; }
 .product-outlet-readonly { display: flex; align-items: center; gap: 8px; min-height: 38px; border: 1px solid #dce6df; padding: 8px 11px; border-radius: 8px; background: #f6f9f7; font-size: .82rem; color: #385e47; }

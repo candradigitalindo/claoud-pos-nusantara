@@ -22,14 +22,14 @@
             <p v-if="canUpdate && eligible.length > APPLY_LIMIT" class="notice selection-limit" role="status">Maksimal 1.000 saran per penerapan. Pilihan awal berisi 1.000 saran pertama sesuai urutan laporan; {{ eligible.length - APPLY_LIMIT }} saran sisanya tidak ikut dipilih. Anda dapat mengganti pilihan. Setelah diterapkan, analisis dimuat ulang untuk meninjau saran berikutnya.</p>
             <div class="classification-filters">
               <input v-model="search" type="search" aria-label="Cari produk dalam analisis" placeholder="Cari nama, kategori, atau outlet…" />
-              <select v-model="kindFilter" aria-label="Filter jenis dalam analisis">
+              <SearchableSelect v-model="kindFilter" class="classification-filter" search-placeholder="Cari jenis…" aria-label="Filter jenis dalam analisis">
                 <option value="">Semua jenis</option>
                 <option v-for="kind in PRODUCT_KINDS" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
                 <option value="unclassified">Belum ditentukan</option>
-              </select>
-              <select v-model="statusFilter" aria-label="Filter status analisis">
+              </SearchableSelect>
+              <SearchableSelect v-model="statusFilter" class="classification-filter" search-placeholder="Cari status…" aria-label="Filter status analisis">
                 <option value="">Semua status</option><option value="suggested">Saran siap diterapkan</option><option value="needs_review">Perlu ditinjau</option><option value="existing">Sudah ditentukan</option>
-              </select>
+              </SearchableSelect>
             </div>
             <div class="classification-selection">
               <span>{{ filtered.length }} hasil · {{ selectedRows.length }} dipilih dari seluruh laporan</span>
@@ -66,6 +66,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { productsApi } from '@/api/products.js'
 import { useAuthStore } from '@/stores/auth.js'
@@ -132,7 +133,7 @@ async function apply() {
 }
 function close() { if (!applying.value) emit('close') }
 function trapFocus(event) {
-  const elements = [...dialog.value.querySelectorAll('button, input, select, [tabindex="0"]')].filter(el => !el.disabled && el.getClientRects().length)
+  const elements = [...dialog.value.querySelectorAll('button, input, select, [tabindex="0"]')].filter(el => !el.disabled && el.getAttribute('tabindex') !== '-1' && el.getClientRects().length)
   const first = elements[0], last = elements.at(-1)
   if (!first) { event.preventDefault(); dialog.value.focus(); return }
   if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.value)) { event.preventDefault(); last.focus() }
@@ -161,8 +162,8 @@ button { cursor: pointer; } button:disabled { opacity: .45; cursor: not-allowed;
 .kind-counts { display: flex; flex-wrap: wrap; gap: 16px; font-size: .8rem; margin: 14px 0 8px; }
 .classification-help { font-size: .78rem; color: #64766a; line-height: 1.6; }
 .classification-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 10px; }
-.classification-filters input, .classification-filters select { min-width: 0; padding: 9px 10px; border: 1px solid #ccd9d1; border-radius: 8px; background: white; font-size: .8rem; }
-.classification-filters input { flex: 1 1 250px; } .classification-filters select { flex: 1 1 150px; }
+.classification-filters input, .classification-filter { min-width: 0; padding: 9px 10px; border: 1px solid #ccd9d1; border-radius: 8px; background: white; font-size: .8rem; }
+.classification-filters input { flex: 1 1 250px; } .classification-filter { flex: 1 1 150px; }
 .classification-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; font-size: .75rem; }
 .classification-selection > span { margin-right: auto; } .text-button { font-size: .75rem; color: #246142; text-decoration: underline; }
 .classification-rows { border: 1px solid #e1e8e3; border-radius: 10px; overflow: hidden; }

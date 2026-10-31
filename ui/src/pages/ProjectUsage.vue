@@ -7,8 +7,8 @@
     <AppAlert type="error" :message="error" />
     <AppCard>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div class="lg:col-span-2"><label for="usage-project" class="lbl">Projek</label><select id="usage-project" v-model="projectId" class="field"><option value="">Semua projek</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.project_number }} · {{ p.name }}</option></select></div>
-        <div><label for="usage-status" class="lbl">Status laporan</label><select id="usage-status" v-model="status" class="field"><option value="">Semua status</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option></select></div>
+        <div class="lg:col-span-2"><label for="usage-project" class="lbl">Projek</label><SearchableSelect id="usage-project" search-placeholder="Cari nomor atau nama projek…" v-model="projectId" class="field"><option value="">Semua projek</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.project_number }} · {{ p.name }}</option></SearchableSelect></div>
+        <div><label for="usage-status" class="lbl">Status laporan</label><SearchableSelect id="usage-status" search-placeholder="Cari status laporan…" v-model="status" class="field"><option value="">Semua status</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option></SearchableSelect></div>
         <div><label for="usage-from" class="lbl">Dari tanggal</label><input id="usage-from" v-model="from" type="date" class="field" /></div>
         <div><label for="usage-to" class="lbl">Sampai tanggal</label><input id="usage-to" v-model="to" type="date" class="field" /></div>
       </div>
@@ -48,7 +48,7 @@
       <form id="usage-form" class="modal-form-grid" @submit.prevent="save">
         <AppAlert class="modal-span-full" type="error" :message="formError" />
         <div class="modal-form-grid modal-form-grid--three modal-span-full">
-          <div><label for="report-kind" class="lbl">Jenis laporan</label><select id="report-kind" v-model="form.kind" :disabled="!!editingId || saving" class="field"><option value="pemakaian">Pemakaian material</option><option value="susut">Susut / rusak / terbuang</option></select></div>
+          <div><label for="report-kind" class="lbl">Jenis laporan</label><SearchableSelect id="report-kind" search-placeholder="Cari jenis laporan…" v-model="form.kind" :disabled="!!editingId || saving" class="field"><option value="pemakaian">Pemakaian material</option><option value="susut">Susut / rusak / terbuang</option></SearchableSelect></div>
           <div><label for="report-date" class="lbl">Tanggal penggunaan</label><input id="report-date" v-model="form.usage_date" type="date" required :max="today" class="field" /></div>
           <div><label for="report-location" class="lbl">Lokasi pekerjaan</label><input id="report-location" v-model="form.location" maxlength="200" class="field" placeholder="Contoh: dapur lantai 1" /></div>
           <div><label for="report-performer" class="lbl">Pelaksana</label><input id="report-performer" v-model="form.performer" maxlength="150" class="field" /></div>
@@ -57,7 +57,7 @@
 
         <fieldset class="modal-span-full modal-form-grid"><legend class="modal-span-full text-sm font-semibold mb-2">Barang yang dilaporkan</legend>
           <div v-for="(item, i) in form.items" :key="i" class="rounded-lg bg-gray-50 p-3 space-y-2">
-            <label :for="`item-${i}`" class="lbl">Barang {{ i + 1 }}</label><select :id="`item-${i}`" v-model="item.material_id" required class="field"><option value="">Pilih material</option><option v-for="m in editorMaterials" :key="m.id" :value="m.id">{{ m.name }} · {{ m.request_number || 'Pindahan' }} · sisa {{ qty(m.remaining) }} {{ m.unit }}</option></select>
+            <label :for="`item-${i}`" class="lbl">Barang {{ i + 1 }}</label><SearchableSelect :id="`item-${i}`" search-placeholder="Cari material atau nomor permintaan…" v-model="item.material_id" required class="field"><option value="">Pilih material</option><option v-for="m in editorMaterials" :key="m.id" :value="m.id">{{ m.name }} · {{ m.request_number || 'Pindahan' }} · sisa {{ qty(m.remaining) }} {{ m.unit }}</option></SearchableSelect>
             <div class="flex gap-3 items-end"><div class="flex-1"><label :for="`qty-${i}`" class="lbl">Jumlah {{ i + 1 }}</label><input :id="`qty-${i}`" v-model.number="item.qty" type="number" min="0.0001" step="0.0001" required class="field" /></div><button v-if="form.items.length > 1" type="button" class="text-sm text-red-600 pb-2" @click="form.items.splice(i, 1)">Hapus</button></div>
           </div>
           <AppButton class="justify-self-start" type="button" size="sm" variant="secondary" @click="form.items.push({ material_id: '', qty: 1 })">Tambah barang</AppButton>
@@ -94,6 +94,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { projectUsageApi } from '@/api/projectUsage.js'

@@ -6,6 +6,15 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
   const browser = await chromium.launch({ args: ['--no-sandbox'] })
   try {
     const page = await browser.newPage({ viewport: { width: 1366, height: 900 } })
+    async function choose(trigger, label) {
+      await trigger.click()
+      const search = page.getByRole('combobox', { name: 'Cari pilihan', exact: true })
+      assert.equal(await search.inputValue(), '', 'Reopening a picker resets its search')
+      await search.fill(label.toLocaleLowerCase('id'))
+      assert.equal(await page.getByRole('option').count(), 1, 'Search narrows the visible options')
+      await page.getByRole('option', { name: label, exact: true }).click()
+    }
+    const kindLabels = { food: 'Makanan', beverage: 'Minuman', activity: 'Aktivitas', other: 'Lainnya', unclassified: 'Belum ditentukan', '': 'Semua jenis' }
     const errors = [], productWrites = [], applyWrites = [], previews = [], lists = []
     let revision = 1, staleApply = true
     const knownKinds = ['food', 'beverage', 'activity', 'other']
@@ -76,7 +85,7 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     const filter = page.getByRole('combobox', { name: 'Filter jenis produk', exact: true })
     for (const kind of [...knownKinds, 'unclassified']) {
       const response = page.waitForResponse(response => new URL(response.url()).searchParams.get('menu_kind') === kind)
-      await filter.selectOption(kind); await response
+      await choose(filter, kindLabels[kind]); await response
       assert.equal(lists.at(-1).menu_kind, kind)
       assert.equal(lists.at(-1).page, '1')
       if (kind === 'other') {
@@ -85,17 +94,17 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
       }
     }
     const resetFilter = page.waitForResponse(response => { const url = new URL(response.url()); return url.pathname.endsWith('/admin/products') && !url.searchParams.has('menu_kind') })
-    await filter.selectOption(''); await resetFilter
+    await choose(filter, 'Semua jenis'); await resetFilter
     await page.locator('.desktop-only .tr-data').first().waitFor()
     await page.locator('.desktop-only').getByRole('button', { name: 'Edit', exact: true }).first().click()
     const edit = page.getByRole('dialog', { name: 'Edit Produk', exact: true })
-    assert.equal(await edit.locator('#product-kind').inputValue(), 'food')
+    assert.equal((await edit.locator('#product-kind').innerText()).trim(), 'Makanan')
     await edit.locator('#product-name').fill('Nama produk diperbarui')
     await edit.getByRole('button', { name: 'Simpan Perubahan' }).click(); await edit.waitFor({ state: 'hidden' })
     assert(!Object.hasOwn(productWrites.at(-1), 'menu_kind'), 'Unrelated edits must preserve newer shared F&B/classifier type')
     assert.equal(productWrites.at(-1).category_id, 'c1')
     await page.locator('.desktop-only').getByRole('button', { name: 'Edit', exact: true }).first().click()
-    await edit.locator('#product-kind').selectOption('other')
+    await choose(edit.locator('#product-kind'), 'Lainnya')
     await edit.getByRole('button', { name: 'Simpan Perubahan' }).click(); await edit.waitFor({ state: 'hidden' })
     assert.equal(productWrites.at(-1).menu_kind, 'other')
     assert.equal(productWrites.at(-1).category_id, 'c1')
@@ -110,7 +119,7 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     await page.getByRole('option', { name: 'Outlet Pusat', exact: true }).click()
     await create.locator('#product-name').fill('Produk Lainnya Uji')
     await create.locator('#product-price').fill('50000')
-    await create.locator('#product-kind').selectOption('other')
+    await choose(create.locator('#product-kind'), 'Lainnya')
     await create.locator('#product-category').click()
     await page.getByRole('option', { name: 'Kategori Asli', exact: true }).click()
     await create.getByRole('button', { name: 'Tambah Produk', exact: true }).click(); await create.waitFor({ state: 'hidden' })
@@ -129,20 +138,20 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     assert.equal(await modal.locator('.classification-row').count(), 1)
     await modal.locator('[data-product-id="p882"]').waitFor()
     await modal.getByRole('searchbox', { name: 'Cari produk dalam analisis' }).fill('')
-    await modal.getByRole('combobox', { name: 'Filter status analisis' }).selectOption('needs_review')
+    await choose(modal.getByRole('combobox', { name: 'Filter status analisis' }), 'Perlu ditinjau')
     await modal.locator('.classification-row.uncertain').first().waitFor()
     assert.equal(await modal.getByRole('checkbox').count(), 0)
     assert.equal(await modal.locator('.classification-counts > div').last().locator('strong').textContent(), String(report('').totals.needs_review))
-    await modal.getByRole('combobox', { name: 'Filter status analisis' }).selectOption('')
-    await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('activity')
+    await choose(modal.getByRole('combobox', { name: 'Filter status analisis' }), 'Semua status')
+    await choose(modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }), 'Aktivitas')
     await modal.locator('.classification-row').first().waitFor()
     assert((await modal.locator('.product-kind').allTextContents()).every(label => label === 'Aktivitas'))
-    await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('other')
+    await choose(modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }), 'Lainnya')
     await modal.locator('.product-kind--other').first().waitFor()
     assert((await modal.locator('.product-kind').allTextContents()).every(label => label === 'Lainnya'))
     assert.equal(await modal.locator('.kind-counts > span').filter({ hasText: 'Lainnya:' }).locator('strong').textContent(), String(report('').totals.other))
     await modal.getByText('Saran · kelompok Lainnya', { exact: true }).first().waitFor()
-    await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('')
+    await choose(modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }), 'Semua jenis')
     await modal.getByRole('button', { name: 'Next ›', exact: true }).click()
     await modal.locator('[data-product-id="p40"]').waitFor()
     console.log('PASS complete 883-row report, page-independent search, type filter and uncertain review')
@@ -170,7 +179,7 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
     await modal.getByRole('button', { name: 'Muat ulang analisis', exact: true }).click()
     await modal.locator('.classification-row').first().waitFor()
     await modal.getByRole('button', { name: 'Kosongkan pilihan', exact: true }).click()
-    await modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }).selectOption('other')
+    await choose(modal.getByRole('combobox', { name: 'Filter jenis dalam analisis' }), 'Lainnya')
     await modal.getByRole('checkbox').first().check()
     await modal.getByRole('button', { name: 'Terapkan 1 saran', exact: true }).click()
     await modal.getByRole('button', { name: 'Ya, terapkan jenis', exact: true }).click()
@@ -206,7 +215,7 @@ const base = process.env.PRODUCT_KIND_TEST_URL || 'http://127.0.0.1:4189'
 
     await page.goto(base + '/tests/fixtures/product-kinds.html?outlet=o2&readonly')
     const outletFiltered = page.waitForResponse(response => { const url = new URL(response.url()); return url.pathname.endsWith('/admin/products') && url.searchParams.get('menu_kind') === 'other' && url.searchParams.get('outlet_id') === 'o2' })
-    await page.getByRole('combobox', { name: 'Filter jenis produk outlet' }).selectOption('other')
+    await choose(page.getByRole('combobox', { name: 'Filter jenis produk outlet' }), 'Lainnya')
     await outletFiltered
     assert.equal(lists.at(-1).outlet_id, 'o2')
     await page.getByRole('button', { name: 'Analisis jenis', exact: true }).click()

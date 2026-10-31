@@ -6,11 +6,11 @@
     <template v-else>
       <div class="outlet-product-tools">
         <input v-model="search" type="search" aria-label="Cari produk outlet" placeholder="Cari nama, kode, atau kategori…" />
-        <select v-model="menuKind" aria-label="Filter jenis produk outlet">
+        <SearchableSelect v-model="menuKind" class="kind-filter" search-placeholder="Cari jenis produk…" aria-label="Filter jenis produk outlet">
           <option value="">Semua jenis</option>
           <option v-for="kind in PRODUCT_KINDS" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
           <option value="unclassified">Belum ditentukan</option>
-        </select>
+        </SearchableSelect>
         <button type="button" @click="showClassification = true">Analisis jenis</button>
       </div>
       <AppCard :padding="false">
@@ -32,6 +32,7 @@
 </template>
 
 <script setup>
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, watch, onBeforeUnmount, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { productsApi } from '@/api/products.js'
@@ -88,6 +89,6 @@ async function fetchProducts() {
 
 <style scoped>
 .outlet-product-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.outlet-product-tools input, .outlet-product-tools select, .outlet-product-tools button { min-width: 0; max-width: 100%; border: 1px solid #d4e0d8; border-radius: 9px; padding: 9px 12px; font-size: .8rem; background: white; color: #345742; }
+.outlet-product-tools input, .outlet-product-tools .kind-filter, .outlet-product-tools button { min-width: 0; max-width: 100%; border: 1px solid #d4e0d8; border-radius: 9px; padding: 9px 12px; font-size: .8rem; background: white; color: #345742; }
 .outlet-product-tools input { flex: 1 1 220px; } .outlet-product-tools button { cursor: pointer; font-weight: 650; }
 </style>
