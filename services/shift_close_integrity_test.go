@@ -20,8 +20,11 @@ func TestPOSClosedShiftRejectsStaleOpenAndDuplicateClose(t *testing.T) {
 	closed.CarryOverCash, closed.Notes = 250000, "Tutup harian"
 	closed.Report = map[string]any{
 		"sales_total": 240000, "expected_cash": 250000,
-		"by_day":    []map[string]any{{"date": "2026-10-21", "sales_total": 240000}},
-		"by_method": map[string]any{"cash": map[string]any{"count": 3, "total": 150000}},
+		"by_day":        []map[string]any{{"date": "2026-10-21", "sales_total": 240000}},
+		"by_method":     map[string]any{"cash": map[string]any{"count": 3, "total": 150000}},
+		"menu_quantity": 2,
+		"menu_items_by_kind": []map[string]any{{"menu_kind": "food", "label": "Makanan", "quantity": 2,
+			"items": []map[string]any{{"product_id": "sold-product", "product_name": "Nasi", "quantity": 2}}}},
 	}
 	if got, err := SaveCashierShift(outlet, closed); err != nil || got != id {
 		t.Fatalf("close identity: %q %v", got, err)

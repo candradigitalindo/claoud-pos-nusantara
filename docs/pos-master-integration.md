@@ -416,3 +416,63 @@ Artefak ada di `shift-close-backend`, `shift-close-flutter`, dan
 `shift-close-precheck` pada direktori artefak staging. Pemeriksaan ini belum
 mencakup APK rilis, pemasangan pada perangkat kasir, atau printer fisik.
 Tidak ada deployment ataupun perubahan data produksi.
+
+## Rincian menu pada struk tutup kasir
+
+Struk tutup kasir dan serah-terima menambahkan bagian `MENU TERJUAL`, berisi
+nama menu dari pesanan, jumlah unit, subtotal jumlah per jenis, dan total unit.
+Urutan jenis selalu **Makanan, Minuman, Aktivitas, Lainnya**. Jenis kosong atau
+tidak dikenal masuk Lainnya. Nama panjang dibungkus untuk kertas 58 mm/32 kolom
+dan 80 mm/48 kolom. Laporan lama yang belum mempunyai rincian menu tetap bisa
+dicetak tanpa menyatakan bahwa jumlah menunya nol.
+Karakter di luar encoding satu byte printer ditampilkan sebagai `?` pada nama
+menu, agar tidak berubah menjadi byte perintah printer; nama asli tetap tersimpan.
+
+Jumlah dihitung dari item pesanan yang transaksinya selesai dalam rentang
+`[opened_at, closed_at)` shift. Pembayaran parsial atau multi-metode tidak
+menggandakan jumlah item. Pesanan belum lunas, titipan, dan transaksi batal
+tidak dihitung; transaksi selesai yang digratiskan tetap mencatat jumlah menu.
+Jumlah menu memakai waktu pelunasan, sedangkan rincian pembayaran memakai
+waktu tiap pembayaran. Pada shift lintas tanggal, bagian ini mencakup seluruh
+periode shift yang tercetak di kepala struk.
+
+Flutter memakai skema SQLite v16 untuk menyimpan `products.menu_kind` dan
+snapshot `order_items.menu_kind`. Jenis mengikuti katalog Cloud; edit produk
+lokal tidak menimpa jenis dari Cloud. Setelah upgrade, checkpoint katalog
+diulang sekali agar produk yang tidak berubah juga memperoleh jenisnya.
+Pesanan baru menyimpan jenis saat item dibuat, termasuk saat item dipisah atau
+dipindahkan. Snapshot jenis dipertahankan saat sinkronisasi dan pemulihan.
+Item lama tanpa snapshot pada shift terbuka memakai jenis katalog yang
+tersedia, lalu dibekukan saat penutupan berhasil. Item pada shift yang sudah
+tertutup sebelum fitur ini dan tidak punya snapshot masuk Lainnya; sistem
+tidak menebak jenis historis dari nama menu.
+
+Payload laporan Cloud menambahkan `menu_items_by_kind` dan `menu_quantity`.
+Tidak ada perubahan perhitungan nominal penjualan atau saldo laci. Pengujian
+memakai data sintetis di staging; penerapan jenis katalog ke data produksi,
+build APK rilis, pemasangan perangkat, dan deployment tetap langkah terpisah.
+Cetak ulang lokal tetap membutuhkan detail transaksi yang masih tersimpan;
+setelah detail dihapus oleh retensi, rincian aslinya tersedia pada payload
+laporan shift di Cloud, bukan hasil rekonstruksi lokal.
+
+Validasi fitur rincian menu:
+
+- Build API serta **547 tes Go lulus, 3 dilewati** dengan alasan eksternal/data
+  yang sama. Tes baru memeriksa empat jenis menu melewati sync dan restore;
+  retry penutupan juga mempertahankan rincian menu pada laporan Cloud.
+- **203 tes Flutter lulus** pada suite lengkap, termasuk integrasi API nyata
+  untuk pemulihan jenis item. Setelah perapian karakter printer, **19 tes cetak
+  dan penutupan lulus ulang**, termasuk satu regresi Unicode tambahan.
+- Analyzer suite lengkap tidak menemukan error atau warning; 21 info
+  `avoid_print` pada utilitas lama tetap ada. Analyzer ulang pada dua berkas
+  cetak yang disempurnakan tidak menemukan masalah. Sintaks runner dan whitespace
+  bersih. Migrasi SQLite, replay katalog, batas shift, pembayaran terpisah,
+  pemecahan/penggabungan item, transaksi gratis/batal, dan kegagalan penutupan
+  memakai database sintetis.
+
+Artefak: `shift-menu-backend`, `shift-menu-flutter`, `shift-menu-precheck.log`,
+`shift-menu-report-precheck.log`, `shift-menu-final-print.log`, dan
+`shift-menu-final-analyze.log` serta `shift-menu-final-verification.json`
+di direktori artefak staging. Uji format
+memeriksa byte ESC/POS untuk dua lebar kertas; printer fisik dan APK rilis belum
+diuji atau dipasang. Tidak ada deployment produksi.

@@ -9,6 +9,7 @@ type OrderItem struct {
 	ID           string  `json:"id,omitempty"`
 	ProductID    string  `json:"product_id,omitempty"`
 	ProductName  string  `json:"product_name"`
+	MenuKind     string  `json:"menu_kind,omitempty"` // POS item snapshot; keep on restore
 	Category     string  `json:"category"`
 	CategoryID   string  `json:"category_id,omitempty"`
 	Qty          int     `json:"qty"`
