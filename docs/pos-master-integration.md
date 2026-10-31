@@ -476,3 +476,54 @@ Artefak: `shift-menu-backend`, `shift-menu-flutter`, `shift-menu-precheck.log`,
 di direktori artefak staging. Uji format
 memeriksa byte ESC/POS untuk dua lebar kertas; printer fisik dan APK rilis belum
 diuji atau dipasang. Tidak ada deployment produksi.
+
+## Rilis produksi — 31 Oktober 2026
+
+**Status terbaru ini menggantikan keterangan “belum dideploy” pada catatan
+historis di atas.** Cloud API dan dashboard Vue dari commit `79b10ba` telah
+dibangun dan dipasang di [pos.nbp.co.id](https://pos.nbp.co.id) pada **11:17 WIB**.
+Homepage, ping API, dan aset frontend melalui HTTPS publik berhasil diperiksa.
+Sumber Flutter untuk rilis pendamping adalah commit `2472e19`.
+
+Sebelum pemasangan, database, uploads, dan dokumen dicadangkan serta image
+sebelumnya disimpan untuk rollback. Backup database dipulihkan pada lingkungan
+Docker terisolasi tanpa koneksi layanan produksi. Image baru berhasil menjalankan
+migrasi dan boot dua kali; image lama juga berhasil boot pada salinan database
+yang sudah dimigrasikan dan diklasifikasikan. Pada setiap tahap, jumlah baris
+dan total nominal ledger keuangan, harga/stok produk, serta kebijakan PPIC tetap
+sama. Seluruh sumber daya rehearsal telah dibersihkan. Migrasi produksi kemudian
+berhasil membuat tabel integrasi, view jenis produk, dan constraint yang diperlukan.
+
+Klasifikasi **883 produk aktif** diterapkan ke produksi pada **11:19 WIB**:
+**442 Makanan, 336 Minuman, 11 Aktivitas, dan 94 Lainnya**. Keempat produk
+**ATV Overland** masuk Aktivitas. Pemeriksaan endpoint katalog/sinkronisasi
+memverifikasi jenis seluruh **883 produk di 11 outlet**.
+
+Validasi sumber rilis tetap mengacu pada **547 tes Go lulus, 3 dilewati**,
+**203 tes Flutter lulus**, serta **19 tes cetak dan penutupan lulus ulang**
+yang dijelaskan sebelumnya. Bukti deployment, backup, rehearsal, dan pemeriksaan
+sinkronisasi disimpan secara privat di
+`/home/candra/projects/pos-integration-staging/releases/20261031-79b10ba/`,
+termasuk `release-status.json`, `rehearsal/summary.json`, dan
+`production-catalog-sync-check.json`.
+
+APK universal **v10.18** berhasil dibangun dari `2472e19` dan dipublikasikan
+pada **11:45 WIB**: [unduh APK](https://pos.nbp.co.id/uploads/apps/app-universal-release-v10.18.apk).
+Paket berukuran **64.178.671 byte** mencakup `armeabi-v7a`, `arm64-v8a`, dan
+`x86_64`, dengan minimum Android 7.0/API 24. Identitas aplikasi tetap
+`com.candradigital.pos_resto`, versionName `1.2.0`, dan versionCode meningkat
+dari `88512350` ke `93421153`. Tanda tangan cocok dengan APK sebelumnya;
+paket rilis tidak debuggable, integritas ZIP dan alignment 16 KB lulus.
+Seluruh 220 berkas sumber terlacak dibandingkan dengan commit rilis; satu-satunya
+penyesuaian adalah batas resource Gradle pada salinan build terisolasi.
+Unduhan HTTPS publik sudah diverifikasi ukuran, MIME, dan SHA-256:
+`0c75448f46fb9df9298195b42bf19cb1f8ca959d57298664dbd59ecb41ebd17d`.
+
+Artefak dan audit APK tersimpan secara privat di
+`/home/candra/projects/pos-integration-staging/releases/20261031-2472e19/artifacts/`.
+Build pertama melewati batas memori kontainer; pengulangan dengan Kotlin
+in-process dan batas heap lebih kecil berhasil tanpa mengganggu produksi.
+Pasang APK sebagai pembaruan aplikasi yang ada, lalu sinkronkan katalog Cloud
+agar jenis produk tersedia pada tablet. Sesuai pilihan pengguna, distribusi
+hanya melalui tautan unduh; pemasangan perangkat dan pengujian printer fisik
+belum dilakukan.
