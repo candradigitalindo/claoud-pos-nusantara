@@ -39,6 +39,7 @@ type UpdateEntity struct {
 	CategoryID   string   `json:"category_id,omitempty"`
 	CategoryName string   `json:"category_name,omitempty"`
 	Price        *float64 `json:"price,omitempty"`
+	PhotoURL     string   `json:"photo_url"` // empty is an explicit photo deletion
 	Version      int      `json:"version"`
 	UpdatedAt    string   `json:"updated_at"`
 	Action       string   `json:"action"`

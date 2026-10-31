@@ -73,7 +73,7 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 		`SELECT id, local_id, outlet_id, name, COALESCE(code,''), COALESCE(description,''),
 			COALESCE((SELECT c.local_id FROM cloud_categories c WHERE c.outlet_id=cloud_products.outlet_id AND c.id=cloud_products.category_id),
 			 (SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='category' AND i.outlet_id=cloud_products.outlet_id AND i.cloud_id=cloud_products.category_id), category_id,''),
-			COALESCE(category_name,''), price, COALESCE(destination,''),
+			COALESCE(category_name,''), price, COALESCE(destination,''), COALESCE(photo_url,''),
 			stock_type, COALESCE(recipe_master_id,''),
 			COALESCE((SELECT r.name FROM recipe_masters r WHERE r.id = cloud_products.recipe_master_id),''),
 			is_deleted, version, created_at, updated_at, synced_at
@@ -90,7 +90,7 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 	for rows.Next() {
 		var p models.CloudProduct
 		if err := rows.Scan(&p.ID, &p.LocalID, &p.OutletID, &p.Name, &p.Code, &p.Description,
-			&p.CategoryID, &p.CategoryName, &p.Price, &p.Destination,
+			&p.CategoryID, &p.CategoryName, &p.Price, &p.Destination, &p.PhotoURL,
 			&p.StockType, &p.RecipeMasterID, &p.RecipeMasterName,
 			&p.IsDeleted, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.SyncedAt); err != nil {
 			return nil, 0, err

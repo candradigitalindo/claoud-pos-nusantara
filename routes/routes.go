@@ -15,6 +15,11 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// APK saves as ".apk" (not ".zip"). Registered before the static handler so it
 	// takes precedence for /uploads/apps/<name>.
 	app.Get("/uploads/apps/:name", handlers.DownloadAppFile)
+	// Product photos must reflect deletion immediately, without the generic
+	// static handler's cache of open file descriptors. The wildcard also ends
+	// malformed/missing photo requests here instead of falling through to it.
+	app.Get("/uploads/products/:name", handlers.ServeProductPhoto)
+	app.Get("/uploads/products/*", handlers.ServeProductPhoto)
 
 	// Serve uploaded files
 	app.Static("/uploads", "./uploads")

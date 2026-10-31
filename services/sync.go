@@ -700,7 +700,7 @@ func GetUpdatesSince(outletID, since string) (*models.UpdatesResponse, error) {
 		`SELECT id, local_id, name, COALESCE(code,''), COALESCE(description,''),
 			COALESCE((SELECT c.local_id FROM cloud_categories c WHERE c.outlet_id=cloud_products.outlet_id AND c.id=cloud_products.category_id),
 			 (SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='category' AND i.outlet_id=cloud_products.outlet_id AND i.cloud_id=cloud_products.category_id), category_id,''), COALESCE(category_name,''),
-			price, version, updated_at::text
+			price, COALESCE(photo_url,''), version, updated_at::text
 		FROM cloud_products
 		WHERE outlet_id = $1 AND updated_at > $2 AND is_deleted = false
 		ORDER BY updated_at ASC`,
@@ -715,7 +715,7 @@ func GetUpdatesSince(outletID, since string) (*models.UpdatesResponse, error) {
 		var price float64
 		if err := rows.Scan(&e.CloudID, &e.LocalID, &e.Name, &e.Code, &e.Description,
 			&e.CategoryID, &e.CategoryName,
-			&price, &e.Version, &e.UpdatedAt); err != nil {
+			&price, &e.PhotoURL, &e.Version, &e.UpdatedAt); err != nil {
 			return nil, err
 		}
 		e.Price = &price

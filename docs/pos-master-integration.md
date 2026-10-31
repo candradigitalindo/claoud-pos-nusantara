@@ -72,8 +72,8 @@ Pemulihan lengkap baru tersedia setelah backend ini dan APK baru digunakan
 serta order aktif disinkronkan ulang. Saat rilis terpisah, backend dipasang
 lebih dahulu agar snapshot dari APK baru tidak dibuang oleh server lama.
 
-Sinkronisasi foto, pengaturan printer/dapur dari cloud, serta penyedia
-pembayaran nyata merupakan pekerjaan lanjutan. Pembaruan DP lokal dilakukan
+Pengaturan printer/dapur dari cloud serta penyedia pembayaran nyata masih
+merupakan pekerjaan lanjutan. Pembaruan DP lokal dilakukan
 saat reservasi dibuka/dipilih kembali. Pengujian otomatis tidak menggantikan
 uji tablet, cetak printer, laci uang, dan pembayaran nyata sebelum rilis APK.
 
@@ -135,7 +135,8 @@ produksi. Kontainer dibatasi CPU/memorinya dan dibersihkan berdasarkan ID/label
 run sendiri. Artefak pemeriksaan disimpan setelah kontainer dihentikan.
 
 Pemeriksaan mencakup build Go dan Vue, seluruh tes Go dengan database nyata,
-tes Flutter, serta E2E Flutter melawan API uji untuk pesanan online dan reservasi.
+tes Flutter, serta E2E Flutter melawan API uji untuk pesanan online, reservasi,
+restore, dan siklus unggah/ganti/hapus foto produk.
 Tes wajib yang terlewati tidak dianggap lulus. Gunakan `--phase backend`,
 `--phase frontend`, atau `--phase flutter` untuk mengulang bagian yang gagal;
 `--offline` memakai cache yang sudah disiapkan. Lihat `--help` untuk lokasi SDK
@@ -181,3 +182,65 @@ Artefak berada di
 dan `restore-flutter-final`. Tidak ada perubahan UI Vue pada tahap ini.
 Kontainer/database uji dibersihkan setelah pengujian; production dan APK yang
 sedang digunakan tidak diubah oleh pemeriksaan ini.
+
+## Sinkronisasi foto produk Cloud → Flutter
+
+- Foto tetap dikelola melalui unggah/hapus produk di dashboard Cloud. Push
+  perubahan produk dari POS tidak mengambil alih atau mengosongkan foto Cloud.
+  Penyimpanan form edit produk lama juga tidak menimpa URL yang sudah diganti
+  atau dihapus oleh sinkronisasi di SQLite.
+  Full pull dan incremental pull mengirim `photo_url`; string kosong berarti
+  foto dihapus. Penggantian foto menghasilkan URL baru agar cache lama tidak
+  dipakai untuk gambar baru. File lama dibersihkan setelah perubahan database
+  berhasil; kegagalan penulisan mempertahankan foto sebelumnya.
+  Jalur unduh foto membaca berkas terkini sehingga URL yang telah dihapus
+  langsung mengembalikan 404, tanpa sisa cache file terbuka dari server.
+- SQLite Flutter v15 menambah kolom foto tanpa menghapus produk/transaksi
+  sebelumnya. Cursor sinkronisasi diberi versi `photos-v1` per URL/outlet
+  agar aplikasi yang diperbarui menarik foto yang sudah ada sebelum upgrade.
+  Respons server lama yang tidak memiliki field foto mempertahankan nilai lokal.
+- Foto tampil pada daftar produk, kasir, waiter, dan station. URL relatif
+  `/uploads/...` diubah menjadi URL pada host Cloud yang dikonfigurasi, termasuk
+  konfigurasi yang berakhiran `/api/v1`. Foto kosong/gagal diunduh memakai
+  placeholder; daftar menu tetap dapat digunakan.
+  Menu yang sedang terbuka memperbarui foto setelah sinkronisasi, termasuk
+  penghapusan, tanpa mengubah harga atau jumlah barang dalam keranjang aktif.
+  Gambar pada tile di-decode sesuai ukuran tampilan dengan batas 768 piksel
+  agar gambar kamera beresolusi besar tidak memenuhi memori tablet.
+- Cache berkas lokal bertahan setelah aplikasi ditutup, dibatasi 100 MiB/256
+  gambar dengan batas 10 MiB per gambar serta validasi format/resolusi. Unduhan
+  berjalan di latar belakang dan dicoba lagi pada siklus sinkron berikutnya.
+  Foto yang sudah tersimpan dapat tampil tanpa internet; foto yang belum
+  diunduh atau sudah dikeluarkan dari cache memerlukan koneksi kembali.
+- Station dapat mengambil foto yang tersimpan di Main POS melalui route LAN
+  dengan sesi yang sama seperti akses menu. URL versi lama, produk terhapus,
+  atau sesi tidak valid ditolak. Kredensial API/sesi tidak dikirim ke URL gambar
+  publik. Koneksi internet tidak diperlukan bila foto tersedia di cache Main POS
+  atau station dan jaringan lokal tetap terhubung.
+
+Backend dan aplikasi Flutter baru perlu dirilis untuk mengaktifkan alur ini
+di perangkat operasional, dengan backend dipasang lebih dahulu. Perubahan
+sumber dan pengujian terisolasi tidak memperbarui container production maupun
+APK yang sedang digunakan.
+
+## Hasil uji sinkronisasi foto — 31 Oktober 2026
+
+- Build API dan seluruh tes Go dengan PostgreSQL sintetis: **456 lulus,
+  3 dilewati**, dengan alasan eksternal/data yang sama seperti sebelumnya.
+- Seluruh tes Flutter: **142 lulus, 0 dilewati**. Empat E2E wajib benar-benar
+  dijalankan: pesanan online, reservasi, restore, dan foto produk melalui API.
+- Analyzer Flutter: **0 error, 0 warning**; 21 informasi `avoid_print` lama.
+  Pemeriksaan whitespace dan sintaks runner juga lulus.
+- Siklus foto diuji dari login admin sintetis, unggah, full pull, edit produk
+  dari POS, ganti foto, incremental pull, cache setelah restart tanpa HTTP,
+  hapus foto, sampai penolakan file bukan gambar. URL lama langsung 404.
+  Uji terpisah mencakup batas cache/berkas, cache LAN dengan sesi, unduhan
+  lambat tanpa menahan menu, upgrade database/cursor, pembaruan widget,
+  serta keranjang kasir/waiter/station yang tetap utuh.
+
+Artefak akhir berada di
+`/home/candra/projects/pos-integration-staging/artifacts/photo-backend-final`
+dan `photo-flutter-verified`. Manifest `source-verification.json` memastikan
+103 berkas Dart pada snapshot uji sama dengan sumber akhir. Semua container,
+database, dan jaringan uji dibersihkan. Production tidak dideploy, APK belum
+dibangun/dirilis, dan pengujian tablet fisik tetap diperlukan sebelum rilis.
