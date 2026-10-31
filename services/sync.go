@@ -103,7 +103,14 @@ func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (stri
 
 	var closedAt interface{}
 	if req.ClosedAt != "" {
-		closedAt = parseTime(req.ClosedAt)
+		closed, valid := parseTimeStrict(req.ClosedAt)
+		if !valid {
+			return "", Invalid("waktu tutup shift tidak valid")
+		}
+		closedAt = closed
+		// A closing timestamp is terminal even on legacy payloads whose status
+		// was accidentally left as open. Never invent a replacement timestamp.
+		req.Status = "closed"
 	}
 
 	var reportJSON interface{}
@@ -153,6 +160,7 @@ func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (stri
 			report = EXCLUDED.report,
 			updated_at = NOW(),
 			synced_at = NOW()
+		WHERE cloud_cashier_shifts.status <> 'closed' AND cloud_cashier_shifts.closed_at IS NULL
 		RETURNING id`,
 		cloudID, req.LocalID, outletID, req.OpenedBy, openedAt,
 		req.OpeningCash, closedAt, req.ClosedBy, req.ClosingCash, req.ClosingCard,
@@ -160,6 +168,23 @@ func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (stri
 		req.HandoverTo, req.Status, req.Notes, reportJSON,
 	).Scan(&cloudID)
 
+	if err == sql.ErrNoRows {
+		// The upsert locked an already closed shift. Without a revision on the
+		// wire, a retried close cannot be distinguished from an older snapshot.
+		// Acknowledge its stable identity, preserving the accepted close/report.
+		// Repair a legacy open+closed_at status only on this explicit sync;
+		// never rewrite its event times, money, or report, and do not notify twice.
+		err = tx.QueryRow(`UPDATE cloud_cashier_shifts SET status='closed',synced_at=NOW()
+			WHERE outlet_id=$1 AND local_id=$2 AND (status='closed' OR closed_at IS NOT NULL)
+			RETURNING id`, outletID, req.LocalID).Scan(&cloudID)
+		if err != nil {
+			return "", err
+		}
+		if err := tx.Commit(); err != nil {
+			return "", err
+		}
+		return cloudID, nil
+	}
 	if err != nil {
 		return "", err
 	}
@@ -814,7 +839,7 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 				AND i.outlet_id=s.outlet_id AND i.cloud_id=s.previous_shift_id),previous_shift_id,''), COALESCE(handover_to,''),
 			status, COALESCE(notes,''), created_at, updated_at, synced_at
 		FROM cloud_cashier_shifts s
-		WHERE outlet_id = $1 AND status = 'open'
+		WHERE outlet_id = $1 AND status = 'open' AND closed_at IS NULL
 		ORDER BY opened_at ASC`,
 		outletID,
 	)
@@ -895,10 +920,10 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 					m.movement_type, m.amount,
 					COALESCE(m.counterpart_name,''), COALESCE(m.note,''), m.created_at
 				FROM cloud_cash_movements m
-				JOIN LATERAL (SELECT s.local_id,s.status FROM cloud_cashier_shifts s
+				JOIN LATERAL (SELECT s.local_id,s.status,s.closed_at FROM cloud_cashier_shifts s
 					WHERE s.outlet_id=m.outlet_id AND (s.id=m.shift_id OR s.local_id=m.shift_id)
 					ORDER BY (s.id=m.shift_id) DESC LIMIT 1) parent ON true
-				WHERE m.outlet_id = $1 AND parent.status='open'
+				WHERE m.outlet_id = $1 AND parent.status='open' AND parent.closed_at IS NULL
 				ORDER BY m.created_at ASC,m.id`, outletID,
 		)
 		if err != nil {

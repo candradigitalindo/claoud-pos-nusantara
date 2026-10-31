@@ -370,3 +370,49 @@ akhir cocok dengan 318 berkas pada snapshot uji. Laporan sebelum penyesuaian
 tersimpan sebagai `analysis-before-other.*`; 789 jenis sebelumnya tetap,
 sedangkan 94 produk sisanya mendapat usulan Lainnya. Seluruh sumber daya uji
 dibersihkan dan produksi tidak dideploy.
+
+## Tutup kasir dan laporan per hari
+
+Audit menemukan bahwa laporan tutup kasir memakai rentang sejak shift dibuka,
+sehingga shift yang masih terbuka melewati pergantian tanggal menggabungkan
+beberapa hari. Menutup aplikasi atau menyelesaikan sesi station tidak menutup
+shift laci. Kas fisik juga mencakup modal awal dan mutasi kas, sehingga berbeda
+dari penjualan pada hari itu. Transaksi kemarin tidak boleh dihilangkan dari
+rekonsiliasi dengan sekadar memotong total shift ke tengah malam.
+
+Perbaikan memisahkan rincian harian dari total seluruh shift. Laporan membawa
+rentang waktu yang jelas dan rincian `by_day` menurut tanggal lokal perangkat,
+sementara total penutupan dan kas serah-terima tetap mencakup ledger shift.
+Dialog menampilkan tanggal lengkap, penanda pergantian hari, dan menunggu
+penutupan berhasil. Identitas shift pada dialog tidak boleh berpindah ke shift
+baru saat ada serah-terima dari perangkat lain. Kegagalan cetak setelah
+penutupan tersimpan tidak dianggap sebagai kegagalan menutup kasir.
+
+Cloud menerima penutupan shift sebagai keadaan akhir. Kiriman buka lama dan
+pengulangan penutupan mengembalikan ID yang sama tanpa menimpa waktu, nominal,
+atau laporan penutupan yang telah diterima. Data lama dengan status buka tetapi
+memiliki `closed_at` tidak ikut dipulihkan, beserta mutasi kas milik shift itu.
+Flutter menolak snapshot pemulihan baru yang bertentangan dengan bukti
+penutupan, tanpa mengarang tanggal buka atau mengubah shift lokal yang ada.
+Shift yang lebih lama atau bertumpang tindih dengan riwayat lokal juga ditolak;
+shift berikutnya yang dibuka tepat saat shift sebelumnya ditutup tetap valid.
+Tidak ada pembaruan massal riwayat produksi; koreksi nominal historis tetap
+memerlukan rekonsiliasi tersendiri.
+
+Validasi pada lingkungan terisolasi dengan data sintetis:
+
+- Build API dan **546 tes Go lulus, 3 dilewati** karena prasyarat eksternal/data
+  yang sama dengan pengujian sebelumnya. Ketiga tes integritas penutupan baru
+  wajib dijalankan dan semuanya lulus.
+- **171 tes Flutter lulus**, termasuk integrasi pesanan, reservasi, pemulihan,
+  dan foto produk. Skenario baru mencakup pergantian tanggal dan tengah malam,
+  cetak ulang, mutasi kas lama, identitas shift yang berubah, kegagalan simpan,
+  printer gagal setelah penutupan tersimpan, serta pemulihan shift lama.
+- Analyzer Flutter tidak menemukan error atau warning. Tiga saran gaya baru
+  dirapikan dan diverifikasi ulang; 21 info `avoid_print` pada utilitas uji lama
+  tetap ada.
+
+Artefak ada di `shift-close-backend`, `shift-close-flutter`, dan
+`shift-close-precheck` pada direktori artefak staging. Pemeriksaan ini belum
+mencakup APK rilis, pemasangan pada perangkat kasir, atau printer fisik.
+Tidak ada deployment ataupun perubahan data produksi.
