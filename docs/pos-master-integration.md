@@ -527,3 +527,29 @@ Pasang APK sebagai pembaruan aplikasi yang ada, lalu sinkronkan katalog Cloud
 agar jenis produk tersedia pada tablet. Sesuai pilihan pengguna, distribusi
 hanya melalui tautan unduh; pemasangan perangkat dan pengujian printer fisik
 belum dilakukan.
+
+## Halaman App POS dan pencarian pilihan — 31 Oktober 2026
+
+Frontend commit `68c7356` dipasang pada **13:11 WIB**. Halaman
+[/app-pos](https://pos.nbp.co.id/app-pos) menampilkan APK terbaru dari daftar
+unggahan, versi, ukuran, waktu unggah WIB, kompatibilitas, catatan rilis, dan
+petunjuk pembaruan/sinkronisasi. Keterangan khusus v10.18 hanya tampil ketika
+nama dan ukuran file cocok dengan artefak yang diaudit. Arsip aplikasi dapat
+dicari berdasarkan nama/versi dan disaring berdasarkan format.
+
+APK v10.18 sudah tersedia melalui API unggahan App POS sejak 11:45 WIB;
+unduhan publik diperiksa ulang setelah pemasangan UI, dengan ukuran dan
+SHA-256 yang sama seperti catatan rilis di atas.
+
+Sembilan pilihan pada produk, produk outlet, analisis klasifikasi, serta
+penggunaan barang projek kini mendukung pencarian. Filter format App POS juga
+memakai komponen pencarian yang sama. Validasi wajib, nilai pilihan, dan
+pembatasan hak akses tetap diperiksa melalui pengujian browser.
+
+Build frontend serta empat suite browser (komponen pilihan, jenis produk,
+penggunaan barang projek, dan App POS) lulus. Pemeriksaan browser pada situs
+produksi memverifikasi unduhan v10.18, pencarian arsip/filter format, serta
+tampilan desktop dan ponsel tanpa galat runtime. Hanya container frontend
+yang diganti; image sebelumnya disimpan untuk rollback. Bukti build,
+deployment, pemeriksaan publik, dan tangkapan layar disimpan secara privat di
+`/home/candra/projects/pos-integration-staging/releases/20261031-app-pos-ui/`.
