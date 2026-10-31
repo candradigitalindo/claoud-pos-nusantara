@@ -63,8 +63,11 @@ func AdminGetProducts(c *fiber.Ctx) error {
 	page, limit := getPagination(c)
 	scopeIDs := getOutletScope(c)
 
-	products, total, err := services.GetAllProducts(outletID, search, scopeIDs, page, limit)
+	products, total, err := services.GetAllProducts(outletID, search, scopeIDs, page, limit, c.Query("menu_kind"))
 	if err != nil {
+		if errors.Is(err, services.ErrProductMenuKind) {
+			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: err.Error()})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
 			Success: false, Error: "Gagal mengambil data produk",
 		})
@@ -154,7 +157,7 @@ func AdminCreateProduct(c *fiber.Ctx) error {
 	}
 	p, err := services.AdminCreateProduct(req)
 	if err != nil {
-		if errors.Is(err, services.ErrProductRecipe) {
+		if errors.Is(err, services.ErrProductRecipe) || errors.Is(err, services.ErrProductMenuKind) {
 			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Error: err.Error()})
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: err.Error()})
@@ -175,7 +178,7 @@ func AdminUpdateProduct(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Outlet di luar akses Anda"})
 	}
 	if err := services.AdminUpdateProduct(id, req); err != nil {
-		if errors.Is(err, services.ErrProductRecipe) {
+		if errors.Is(err, services.ErrProductRecipe) || errors.Is(err, services.ErrProductMenuKind) {
 			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Error: err.Error()})
 		}
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{Success: false, Error: err.Error()})

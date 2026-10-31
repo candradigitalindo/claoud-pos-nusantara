@@ -13,6 +13,26 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
+var ErrProductMenuKind = errors.New("jenis produk harus food, beverage, activity, atau kosong")
+
+func validProductMenuKind(kind string) bool {
+	return kind == "" || kind == "food" || kind == "beverage" || kind == "activity"
+}
+
+// The product and F&B screens share one classification; menu edits must not
+// reset existing HPP targets, packaging costs, overhead, or audit attribution.
+func saveProductMenuKind(tx *sql.Tx, productID string, kind *string) error {
+	if kind == nil {
+		return nil
+	}
+	if !validProductMenuKind(*kind) {
+		return ErrProductMenuKind
+	}
+	_, err := tx.Exec(`INSERT INTO fnb_product_profiles(product_id,menu_kind)
+		VALUES($1,$2) ON CONFLICT(product_id) DO UPDATE SET menu_kind=EXCLUDED.menu_kind,updated_at=NOW()`, productID, *kind)
+	return err
+}
+
 func SaveProduct(outletID string, req models.PushProductRequest) (string, error) {
 	tx, err := database.DB.Begin()
 	if err != nil {
@@ -73,11 +93,12 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 		`SELECT id, local_id, outlet_id, name, COALESCE(code,''), COALESCE(description,''),
 			COALESCE((SELECT c.local_id FROM cloud_categories c WHERE c.outlet_id=cloud_products.outlet_id AND c.id=cloud_products.category_id),
 			 (SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='category' AND i.outlet_id=cloud_products.outlet_id AND i.cloud_id=cloud_products.category_id), category_id,''),
-			COALESCE(category_name,''), price, COALESCE(destination,''), COALESCE(photo_url,''),
+			COALESCE(category_name,''), price, COALESCE(destination,''), COALESCE(photo_url,''), COALESCE(mk.menu_kind,''),
 			stock_type, COALESCE(recipe_master_id,''),
 			COALESCE((SELECT r.name FROM recipe_masters r WHERE r.id = cloud_products.recipe_master_id),''),
 			is_deleted, version, created_at, updated_at, synced_at
-		FROM cloud_products WHERE outlet_id = $1 AND is_deleted = false
+		FROM cloud_products LEFT JOIN product_menu_kinds mk ON mk.product_id=cloud_products.id
+		WHERE outlet_id = $1 AND is_deleted = false
 		ORDER BY name ASC, id ASC LIMIT $2 OFFSET $3`,
 		outletID, limit, offset,
 	)
@@ -90,7 +111,7 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 	for rows.Next() {
 		var p models.CloudProduct
 		if err := rows.Scan(&p.ID, &p.LocalID, &p.OutletID, &p.Name, &p.Code, &p.Description,
-			&p.CategoryID, &p.CategoryName, &p.Price, &p.Destination, &p.PhotoURL,
+			&p.CategoryID, &p.CategoryName, &p.Price, &p.Destination, &p.PhotoURL, &p.MenuKind,
 			&p.StockType, &p.RecipeMasterID, &p.RecipeMasterName,
 			&p.IsDeleted, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.SyncedAt); err != nil {
 			return nil, 0, err
@@ -107,8 +128,18 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 	return products, total, nil
 }
 
-func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int) ([]models.CloudProduct, int, error) {
+func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int, menuKind ...string) ([]models.CloudProduct, int, error) {
 	offset := (page - 1) * limit
+	filterKind := ""
+	if len(menuKind) > 1 {
+		return nil, 0, ErrProductMenuKind
+	}
+	if len(menuKind) == 1 {
+		filterKind = menuKind[0]
+	}
+	if filterKind != "unclassified" && !validProductMenuKind(filterKind) {
+		return nil, 0, ErrProductMenuKind
+	}
 
 	// Normalize outlet filter
 	var filterIDs []string
@@ -132,23 +163,35 @@ func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int)
 		args = append(args, "%"+search+"%")
 		idx++
 	}
+	if filterKind != "" {
+		kind := filterKind
+		if kind == "unclassified" {
+			kind = ""
+		}
+		conds = append(conds, fmt.Sprintf("COALESCE(mk.menu_kind,'')=$%d", idx))
+		args = append(args, kind)
+		idx++
+	}
 	whereSQL := "WHERE " + strings.Join(conds, " AND ")
 
 	var total int
-	database.DB.QueryRow(
-		fmt.Sprintf("SELECT COUNT(*) FROM cloud_products cp %s", whereSQL),
+	if err := database.DB.QueryRow(
+		fmt.Sprintf("SELECT COUNT(*) FROM cloud_products cp LEFT JOIN product_menu_kinds mk ON mk.product_id=cp.id %s", whereSQL),
 		args...,
-	).Scan(&total)
+	).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 
 	dataArgs := append(append([]any{}, args...), limit, offset)
 	dataQuery := fmt.Sprintf(
 		`SELECT cp.id, cp.local_id, cp.outlet_id, COALESCE(o.name,''),
 			cp.name, COALESCE(cp.code,''), COALESCE(cp.description,''),
 			COALESCE(cp.category_id,''), COALESCE(cp.category_name,''),
-			cp.price, COALESCE(cp.destination,''), COALESCE(cp.photo_url,''),
+			cp.price, COALESCE(cp.destination,''), COALESCE(cp.photo_url,''), COALESCE(mk.menu_kind,''),
 			cp.stock_type, COALESCE(cp.recipe_master_id,''), COALESCE(rm.name,''),
 			cp.is_deleted, cp.version, cp.created_at, cp.updated_at, cp.synced_at
 		FROM cloud_products cp
+		LEFT JOIN product_menu_kinds mk ON mk.product_id=cp.id
 		LEFT JOIN outlets o ON o.id = cp.outlet_id
 		LEFT JOIN recipe_masters rm ON rm.id = cp.recipe_master_id
 		%s ORDER BY o.name ASC, cp.name ASC LIMIT $%d OFFSET $%d`,
@@ -164,7 +207,7 @@ func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int)
 	for rows.Next() {
 		var p models.CloudProduct
 		if err := rows.Scan(&p.ID, &p.LocalID, &p.OutletID, &p.OutletName,
-			&p.Name, &p.Code, &p.Description, &p.CategoryID, &p.CategoryName, &p.Price, &p.Destination, &p.PhotoURL,
+			&p.Name, &p.Code, &p.Description, &p.CategoryID, &p.CategoryName, &p.Price, &p.Destination, &p.PhotoURL, &p.MenuKind,
 			&p.StockType, &p.RecipeMasterID, &p.RecipeMasterName,
 			&p.IsDeleted, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.SyncedAt); err != nil {
 			return nil, 0, err
@@ -318,6 +361,9 @@ func validateProductRecipe(tx *sql.Tx, outletID, recipeID string) (string, error
 }
 
 func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProduct, error) {
+	if req.MenuKind != nil && !validProductMenuKind(*req.MenuKind) {
+		return models.CloudProduct{}, ErrProductMenuKind
+	}
 	if req.OutletID == "" || req.Name == "" {
 		return models.CloudProduct{}, fmt.Errorf("outlet_id and name are required")
 	}
@@ -368,6 +414,13 @@ func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProdu
 	if err := replaceProductRecipes(tx, id, links); err != nil {
 		return models.CloudProduct{}, err
 	}
+	if err := saveProductMenuKind(tx, id, req.MenuKind); err != nil {
+		return models.CloudProduct{}, err
+	}
+	var menuKind string
+	if err := tx.QueryRow(`SELECT menu_kind FROM product_menu_kinds WHERE product_id=$1`, id).Scan(&menuKind); err != nil {
+		return models.CloudProduct{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return models.CloudProduct{}, err
 	}
@@ -375,13 +428,16 @@ func AdminCreateProduct(req models.AdminCreateProductRequest) (models.CloudProdu
 		ID: id, LocalID: id, OutletID: req.OutletID,
 		Name: req.Name, Code: req.Code, Description: req.Description,
 		CategoryID: req.CategoryID, CategoryName: req.CategoryName,
-		Price: req.Price, Destination: req.Destination,
+		Price: req.Price, Destination: req.Destination, MenuKind: menuKind,
 		StockType: stockType, RecipeMasterID: recipeID, RecipeMasterName: recipeName, Recipes: links,
 		Version: 1, CreatedAt: now, UpdatedAt: now, SyncedAt: now,
 	}, nil
 }
 
 func AdminUpdateProduct(id string, req models.AdminUpdateProductRequest) error {
+	if req.MenuKind != nil && !validProductMenuKind(*req.MenuKind) {
+		return ErrProductMenuKind
+	}
 	if req.CategoryID != "" {
 		var catName string
 		err := database.DB.QueryRow(
@@ -451,6 +507,9 @@ func AdminUpdateProduct(id string, req models.AdminUpdateProductRequest) error {
 		if err := replaceProductRecipes(tx, id, links); err != nil {
 			return err
 		}
+	}
+	if err := saveProductMenuKind(tx, id, req.MenuKind); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

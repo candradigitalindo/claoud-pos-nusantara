@@ -4,6 +4,7 @@ import (
 	"cloud-pos/database"
 	"cloud-pos/models"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -1731,6 +1732,69 @@ func GetRecipeMaster(id string) (models.RecipeMaster, error) {
 	return rm, err
 }
 
+// Product editors lock their product before taking a recipe SHARE lock. Use
+// that same order here, including profile-overridden products whose foreign
+// keys will still be changed by a recipe deletion.
+func lockRecipeProductKinds(tx *sql.Tx, recipeID string) (map[string]string, error) {
+	const references = `p.recipe_master_id=$1 OR EXISTS (
+		SELECT 1 FROM product_recipe_links l WHERE l.product_id=p.id AND l.recipe_master_id=$1)`
+	rows, err := tx.Query(`SELECT p.id FROM cloud_products p WHERE `+references+` ORDER BY p.id FOR UPDATE OF p`, recipeID)
+	if err != nil {
+		return nil, err
+	}
+	locked := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		locked[id] = true
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	var id string
+	if err := tx.QueryRow(`SELECT id FROM recipe_masters WHERE id=$1 FOR UPDATE`, recipeID).Scan(&id); err != nil {
+		return nil, err
+	}
+	// A product could have linked this recipe while we waited for its lock.
+	// Retry the whole operation instead of locking new products after a recipe
+	// (which would invert the editor's lock order). New links now wait on us.
+	rows, err = tx.Query(`SELECT p.id,k.menu_kind FROM cloud_products p
+		JOIN product_menu_kinds k ON k.product_id=p.id WHERE `+references, recipeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	kinds := map[string]string{}
+	for rows.Next() {
+		var productID, kind string
+		if err := rows.Scan(&productID, &kind); err != nil {
+			return nil, err
+		}
+		if !locked[productID] {
+			return nil, Conflict("tautan produk berubah saat resep disimpan; coba lagi")
+		}
+		kinds[productID] = kind
+	}
+	return kinds, rows.Err()
+}
+
+func publishRecipeProductKindChanges(tx *sql.Tx, before map[string]string) error {
+	for id, kind := range before {
+		// Read after the recipe mutation, including the next linked recipe after
+		// deletion. Explicit profiles (even empty) keep their effective value.
+		if _, err := tx.Exec(`UPDATE cloud_products p SET updated_at=clock_timestamp(),version=p.version+1
+			FROM product_menu_kinds k WHERE p.id=$1 AND k.product_id=p.id AND k.menu_kind<>$2 AND NOT p.is_deleted`, id, kind); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error) {
 	if strings.TrimSpace(req.Name) == "" || (req.Visibility != "public" && req.Visibility != "secret") || req.TotalTime < 0 {
 		return "", Invalid("nama, visibilitas, dan durasi resep harus valid")
@@ -1755,6 +1819,13 @@ func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error)
 	defer tx.Rollback()
 
 	isNew := id == ""
+	var productKinds map[string]string
+	if !isNew && req.MenuKind != nil {
+		productKinds, err = lockRecipeProductKinds(tx, id)
+		if err != nil {
+			return "", err
+		}
+	}
 	if isNew {
 		id = NewULID()
 		_, err = tx.Exec(`INSERT INTO recipe_masters (id, name, description, visibility, instructions, total_time, menu_kind) VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,''))`,
@@ -1799,13 +1870,33 @@ func SaveRecipeMaster(id string, req models.RecipeMasterRequest) (string, error)
 			return "", err
 		}
 	}
+	if err := publishRecipeProductKindChanges(tx, productKinds); err != nil {
+		return "", err
+	}
 	err = tx.Commit()
 	return id, err
 }
 
 func DeleteRecipeMaster(id string) error {
-	_, err := database.DB.Exec(`DELETE FROM recipe_masters WHERE id = $1`, id)
-	return err
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	productKinds, err := lockRecipeProductKinds(tx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM recipe_masters WHERE id=$1`, id); err != nil {
+		return err
+	}
+	if err := publishRecipeProductKindChanges(tx, productKinds); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 

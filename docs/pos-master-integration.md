@@ -244,3 +244,95 @@ dan `photo-flutter-verified`. Manifest `source-verification.json` memastikan
 103 berkas Dart pada snapshot uji sama dengan sumber akhir. Semua container,
 database, dan jaringan uji dibersihkan. Production tidak dideploy, APK belum
 dibangun/dirilis, dan pengujian tablet fisik tetap diperlukan sebelum rilis.
+
+## Jenis produk dan analisis katalog
+
+Halaman Produk Cloud menyediakan jenis **Makanan**, **Minuman**, dan
+**Aktivitas**, termasuk filter serta penanda pada daftar global dan per outlet.
+Jenis produk terpisah dari kategori POS. Form edit yang hanya mengubah nama,
+harga, atau kategori tidak mengirim ulang jenis lama, sehingga perubahan jenis
+terbaru dari F&B atau analisis tetap dipertahankan.
+
+Jenis memakai profil F&B yang sama, dengan fallback ke resep utama jika belum
+ada profil. Migrasi `RunFnbMigrations` memperluas jenis profil dan menyediakan
+view `product_menu_kinds`; startup backend gagal bila migrasi ini gagal.
+Aktivitas tidak masuk perhitungan costing/dashboard F&B. Pengaturan target HPP,
+kemasan, dan overhead yang sudah tersimpan tetap dipertahankan. Klasifikasi
+resep serta pengembangan menu F&B tetap Makanan/Minuman.
+
+Tombol **Analisis jenis** membaca seluruh produk yang belum dihapus dalam
+cakupan akses pengguna, bukan hanya halaman daftar yang terbuka. Laporan
+menampilkan jenis saat ini, saran, alasan, dan produk yang perlu ditinjau.
+Analisis menggunakan aturan nama/kategori/resep yang dapat diperiksa; nama
+tidak dikenal, barang di luar tiga jenis, serta paket campuran tidak dipaksa
+menjadi Aktivitas. Jenis yang sudah ditentukan tidak ditimpa.
+
+Pratinjau memerlukan `products.view`; penerapan memerlukan `products.update`
+dan konfirmasi pilihan di dialog. Maksimal 1.000 saran berkeyakinan tinggi
+diterapkan dalam satu transaksi. Server memeriksa ulang sumber, fingerprint,
+jenis, serta akses outlet; perubahan katalog membatalkan seluruh pilihan
+dengan respons 409. Pelaku tercatat dari sesi login, bukan kiriman browser.
+Perubahan profil menaikkan revisi produk untuk incremental sync. API full pull
+dan incremental pull mengirim `menu_kind`; POS lama tidak dapat mengosongkan
+jenis Cloud melalui push produk. Penyimpanan/tampilan jenis di Flutter belum
+ditambahkan pada tahap Cloud ini.
+
+Perubahan/penghapusan resep juga menerbitkan revisi untuk produk yang jenis
+efektifnya berubah, termasuk perpindahan ke resep berikutnya. Profil eksplisit
+tetap berlaku. Penguncian mengikuti urutan produk lalu resep; penautan baru
+yang bertabrakan membatalkan perubahan dengan 409 agar dapat dicoba kembali.
+
+Analisis tanpa database tersedia melalui CLI yang menerima array JSON
+`ProductClassificationInput` dari stdin:
+
+```bash
+go run ./cmd/classify-products < katalog.json > analisis.json
+go run ./cmd/classify-products -format csv < katalog.json > analisis.csv
+```
+
+CLI hanya menghasilkan laporan. CSV/JSON katalog operasional disimpan sebagai
+artefak privat di luar Git; penerapan tetap menggunakan pratinjau terbaru dari
+API. Pengujian menggunakan database sintetis dan respons API browser sintetis,
+tanpa menulis katalog produksi.
+
+```bash
+scripts/test-pos-integration.sh --phase backend --offline \
+  --artifacts /path/baru/uji-jenis-backend
+scripts/test-product-kinds-browser.sh --offline \
+  --playwright-modules /path/node_modules \
+  --artifacts /path/baru/uji-jenis-browser
+```
+
+Runner browser membutuhkan `playwright` dan `playwright-core` versi 1.47.2
+serta image `mcr.microsoft.com/playwright:v1.47.2-jammy`. Runner membangun Vue
+dan menguji jenis produk, pemilihan resep, serta costing F&B pada container
+tanpa jaringan eksternal/port host. Dependensi `npm ci` memakai cache ketika
+`--offline`; tanpa opsi itu hanya tahap persiapan dependensi yang berjejaring.
+
+Analisis snapshot katalog pada 31 Oktober 2026 mencakup **883 produk yang belum
+dihapus di 11 outlet**; 234 produk yang sudah dihapus tidak disertakan. Hasilnya
+**442 usulan Makanan, 336 Minuman, 10 Aktivitas**, serta **95 perlu ditinjau**.
+Ini merupakan usulan berdasarkan bukti katalog, belum penerapan ke database
+produksi. Laporan seluruh baris, alasan, dan ringkasan per outlet tersimpan di
+`/home/candra/projects/pos-integration-staging/artifacts/product-kinds-analysis/`
+sebagai `analysis-final.csv`, `analysis-final.json`, dan `analysis-summary.json`.
+Pengambilan sumber memakai koneksi PostgreSQL read-only; CLI tidak terhubung
+ke database. Tidak ada deployment produksi pada tahap ini.
+
+Hasil pengujian akhir jenis produk:
+
+- Build API dan tes Go: **539 lulus, 3 dilewati** dengan alasan eksternal/data
+  yang sama seperti pemeriksaan sebelumnya. Tes wajib klasifikasi, akses
+  outlet, pelestarian biaya, migrasi ulang, perubahan/penghapusan resep,
+  sinkronisasi, serta konkurensi seluruhnya dijalankan dan lulus.
+- Build Vue dan seluruh skenario browser jenis produk, pemilihan resep, serta
+  costing F&B lulus. Cakupan mencakup 883 baris sintetis, ponsel, akses lihat
+  saja, konflik 409, dan batas 1.000 pilihan dalam satu penerapan.
+- Sintaks runner dan pemeriksaan whitespace lulus. Peringatan build Vue yang
+  tersisa berkaitan dengan ukuran chunk.
+
+Artefak akhir: `product-kinds-backend-final` dan
+`product-kinds-browser-deps-fixed` di direktori artefak yang sama. Manifest
+backend memastikan 318 berkas sumber Go/modul sama dengan snapshot yang diuji.
+Seluruh container dan jaringan uji telah dibersihkan. Katalog produksi dan
+container operasional tetap tidak diubah.

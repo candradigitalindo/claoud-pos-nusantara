@@ -39,7 +39,7 @@ func main() {
 		log.Fatalf("Migration failed: %v", err)
 	}
 	if err := database.RunFnbMigrations(); err != nil {
-		log.Printf("F&B migration failed: %v", err)
+		log.Fatalf("Product/F&B migration failed: %v", err)
 	}
 	if err := database.RunStockQualityMigrations(); err != nil {
 		log.Fatalf("Stock quality migration failed: %v", err)

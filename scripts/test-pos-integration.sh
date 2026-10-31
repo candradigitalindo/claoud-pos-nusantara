@@ -306,7 +306,18 @@ if phase in ('all', 'backend'):
                 'TestProductPhotoRejectsInvalidImageAndOtherOutlet',
                 'TestProductPhotoDatabaseFailureCleansNewFileAndKeepsPrevious',
                 'TestProductPhotoCleanupStaysWithinOwnedFiles',
-                'TestProductPhotoGETUsesCurrentFileAndRejectsTraversal'}
+                'TestProductPhotoGETUsesCurrentFileAndRejectsTraversal',
+                'TestProductKindEffectiveViewAndScopedFilters',
+                'TestProductKindEditsPreserveFnbCostsAndIgnorePOSClassification',
+                'TestProductKindFnbEditPublishesUpdatesAndActivityIsOutsideCosting',
+                'TestProductKindMigrationIsIdempotentAndKeepsExistingProfile',
+                'TestProductKindRecipeFallbackChangesPublishUpdates',
+                'TestProductKindRecipeConcurrentLinkRequiresRetry',
+                'TestProductClassificationPreviewScopedCompleteAndConservative',
+                'TestProductClassificationApplyPreservesCostsAndAudit',
+                'TestProductClassificationApplyRejectsTamperingAndStaleAtomically',
+                'TestProductClassificationConcurrentApplyHasSingleWinner',
+                'TestProductClassificationRoutesRequireUpdatePermissionToApply'}
     if not required <= passed:
         raise SystemExit('Required integration tests did not pass (possibly skipped): ' + ', '.join(sorted(required-passed)))
 if phase in ('all', 'flutter'):

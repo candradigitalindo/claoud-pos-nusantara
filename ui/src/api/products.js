@@ -6,6 +6,8 @@ import { apiClient } from './client.js'
 export const productsApi = {
   // ── Products ──────────────────────────────────────────────
   listProducts:   (params = {})      => apiClient.get('/admin/products', { params }),
+  classification: (params = {})    => apiClient.get('/admin/products/classification', { params }),
+  applyClassification: (data, params = {}) => apiClient.post('/admin/products/classification', data, { params }),
   recipeOptions: (outletId)         => apiClient.get('/admin/products/recipe-options', { params: { outlet_id: outletId } }),
   recipeDetail:  (outletId, id)     => apiClient.get(`/admin/products/recipe-options/${encodeURIComponent(id)}`, { params: { outlet_id: outletId } }),
   createProduct:  (data)             => apiClient.post('/admin/products', data),

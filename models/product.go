@@ -57,6 +57,7 @@ type CloudProduct struct {
 	Price            float64             `json:"price"`
 	Destination      string              `json:"destination"`
 	PhotoURL         string              `json:"photo_url"`
+	MenuKind         string              `json:"menu_kind"`
 	StockType        string              `json:"stock_type"`
 	RecipeMasterID   string              `json:"recipe_master_id"`
 	RecipeMasterName string              `json:"recipe_master_name"`
@@ -91,6 +92,7 @@ type CloudCategory struct {
 }
 
 type AdminCreateProductRequest struct {
+	MenuKind       *string              `json:"menu_kind"` // omitted/null preserves recipe fallback
 	Recipes        *[]ProductRecipeLink `json:"recipes"`
 	OutletID       string               `json:"outlet_id"`
 	Name           string               `json:"name"`
@@ -104,6 +106,7 @@ type AdminCreateProductRequest struct {
 }
 
 type AdminUpdateProductRequest struct {
+	MenuKind     *string              `json:"menu_kind"` // omitted/null preserves the shared F&B profile
 	Recipes      *[]ProductRecipeLink `json:"recipes"`
 	Name         string               `json:"name"`
 	Code         string               `json:"code"`

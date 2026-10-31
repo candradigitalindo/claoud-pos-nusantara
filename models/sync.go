@@ -40,6 +40,7 @@ type UpdateEntity struct {
 	CategoryName string   `json:"category_name,omitempty"`
 	Price        *float64 `json:"price,omitempty"`
 	PhotoURL     string   `json:"photo_url"` // empty is an explicit photo deletion
+	MenuKind     string   `json:"menu_kind"` // empty is explicitly unclassified
 	Version      int      `json:"version"`
 	UpdatedAt    string   `json:"updated_at"`
 	Action       string   `json:"action"`

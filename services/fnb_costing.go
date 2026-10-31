@@ -3,6 +3,7 @@ package services
 import (
 	"cloud-pos/database"
 	"cloud-pos/models"
+	"database/sql"
 	"errors"
 	"math"
 	"strings"
@@ -41,17 +42,40 @@ func SaveFnbProfile(productID string, req models.FnbProfile, scope []string, act
 		!fnbFinite(req.PackagingCost) || req.PackagingCost < 0 || !fnbFinite(req.OverheadCost) || req.OverheadCost < 0 {
 		return Invalid("kategori, target HPP (0–100%%), dan biaya tambahan harus valid")
 	}
-	res, err := database.DB.Exec(`INSERT INTO fnb_product_profiles(product_id,menu_kind,target_cost_pct,packaging_cost,overhead_cost,updated_by)
-		SELECT id,$2,$3,$4,$5,$6 FROM cloud_products WHERE id=$1 AND NOT is_deleted AND ($7 OR outlet_id=ANY($8))
-		ON CONFLICT(product_id) DO UPDATE SET menu_kind=$2,target_cost_pct=$3,packaging_cost=$4,overhead_cost=$5,updated_by=$6,updated_at=NOW()`,
-		productID, req.MenuKind, req.TargetCostPct, req.PackagingCost, req.OverheadCost, actor, scope == nil, pq.Array(scope))
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	defer tx.Rollback()
+	// Match the product editor/classifier lock order to serialize ownership.
+	var lockedID, previousKind string
+	err = tx.QueryRow(`SELECT id FROM cloud_products
+		WHERE id=$1 AND NOT is_deleted AND ($2 OR outlet_id=ANY($3)) FOR UPDATE`,
+		productID, scope == nil, pq.Array(scope)).Scan(&lockedID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrFnbScope
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	// Read the shared profile after acquiring the product lock, so a writer
+	// that committed while we waited cannot leave us comparing an old kind.
+	if err := tx.QueryRow(`SELECT menu_kind FROM product_menu_kinds WHERE product_id=$1`, lockedID).Scan(&previousKind); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO fnb_product_profiles(product_id,menu_kind,target_cost_pct,packaging_cost,overhead_cost,updated_by)
+		VALUES($1,$2,$3,$4,$5,$6)
+		ON CONFLICT(product_id) DO UPDATE SET menu_kind=$2,target_cost_pct=$3,packaging_cost=$4,overhead_cost=$5,updated_by=$6,updated_at=NOW()`,
+		productID, req.MenuKind, req.TargetCostPct, req.PackagingCost, req.OverheadCost, actor)
+	if err != nil {
+		return err
+	}
+	if previousKind != req.MenuKind {
+		if _, err := tx.Exec(`UPDATE cloud_products SET updated_at=clock_timestamp(),version=version+1 WHERE id=$1`, productID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // GetFnbCosting calculates current standard menu cost, not historical accounting COGS.
@@ -69,7 +93,7 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 	products := []product{}
 	rows, err := database.DB.Query(`SELECT p.id,p.name,p.outlet_id,o.name,COALESCE(p.category_name,''),p.price,
 		COALESCE(p.stock_type,'none'),COALESCE(p.linked_stock_item_id,''),COALESCE(p.recipe_master_id,''),
-		COALESCE(f.menu_kind,r.menu_kind,''),COALESCE(op.target_cost_pct,f.target_cost_pct,35),COALESCE(f.packaging_cost,0),COALESCE(f.overhead_cost,0),
+		COALESCE(mk.menu_kind,''),COALESCE(op.target_cost_pct,f.target_cost_pct,35),COALESCE(f.packaging_cost,0),COALESCE(f.overhead_cost,0),
 		op.target_cost_pct,CASE WHEN op.outlet_id IS NOT NULL THEN 'outlet' WHEN f.product_id IS NOT NULL THEN 'menu' ELSE 'default' END,
 		($3 OR (NOT EXISTS(SELECT 1 FROM product_recipe_sources ps JOIN recipe_masters rm ON rm.id=ps.recipe_master_id
 			WHERE ps.product_id=p.id AND rm.visibility<>'public' AND NOT EXISTS(SELECT 1 FROM recipe_outlet_access a WHERE a.recipe_master_id=rm.id AND a.outlet_id=p.outlet_id))
@@ -77,9 +101,8 @@ func GetFnbCosting(outlet string, scope []string) ([]models.FnbCostRow, error) {
 				AND p.stock_type='recipe' AND NOT EXISTS(SELECT 1 FROM product_recipe_sources ps WHERE ps.product_id=p.id))))
 		FROM cloud_products p JOIN outlets o ON o.id=p.outlet_id
 		LEFT JOIN fnb_product_profiles f ON f.product_id=p.id LEFT JOIN fnb_outlet_policies op ON op.outlet_id=p.outlet_id
-		LEFT JOIN LATERAL (SELECT rm.menu_kind FROM product_recipe_sources ps JOIN recipe_masters rm ON rm.id=ps.recipe_master_id
-			WHERE ps.product_id=p.id ORDER BY ps.position,rm.id LIMIT 1) r ON true
-		WHERE NOT p.is_deleted AND o.is_active AND ($1 OR p.outlet_id=ANY($2)) ORDER BY o.name,p.name`, filter == nil, pq.Array(filter), scope == nil)
+		LEFT JOIN product_menu_kinds mk ON mk.product_id=p.id
+		WHERE NOT p.is_deleted AND COALESCE(mk.menu_kind,'') <> 'activity' AND o.is_active AND ($1 OR p.outlet_id=ANY($2)) ORDER BY o.name,p.name`, filter == nil, pq.Array(filter), scope == nil)
 	if err != nil {
 		return nil, err
 	}

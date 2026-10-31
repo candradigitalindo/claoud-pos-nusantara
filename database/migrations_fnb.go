@@ -49,6 +49,21 @@ func RunFnbMigrations() error {
 			overhead_cost NUMERIC(18,4) NOT NULL DEFAULT 0 CHECK(overhead_cost >= 0),
 			updated_by VARCHAR(100) NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		// Product classification also covers non-F&B activities. Recipe and
+		// development constraints deliberately remain food/beverage-only.
+		`ALTER TABLE fnb_product_profiles DROP CONSTRAINT IF EXISTS fnb_product_profiles_menu_kind_check`,
+		`ALTER TABLE fnb_product_profiles ADD CONSTRAINT fnb_product_profiles_menu_kind_check
+			CHECK(menu_kind IN ('','food','beverage','activity'))`,
+		`CREATE OR REPLACE VIEW product_menu_kinds AS
+			SELECT p.id AS product_id,COALESCE(f.menu_kind,r.menu_kind,'') AS menu_kind,
+				CASE WHEN f.product_id IS NOT NULL THEN 'profile'
+					WHEN r.recipe_master_id IS NOT NULL THEN 'recipe' ELSE '' END AS menu_kind_source
+			FROM cloud_products p LEFT JOIN fnb_product_profiles f ON f.product_id=p.id
+			LEFT JOIN LATERAL (
+				SELECT rm.id AS recipe_master_id,rm.menu_kind
+				FROM product_recipe_sources ps JOIN recipe_masters rm ON rm.id=ps.recipe_master_id
+				WHERE ps.product_id=p.id ORDER BY ps.position,rm.id LIMIT 1
+			) r ON true`,
 		`CREATE TABLE IF NOT EXISTS fnb_developments (
 			id CHAR(26) PRIMARY KEY, outlet_id CHAR(26) NOT NULL REFERENCES outlets(id),
 			name VARCHAR(200) NOT NULL, menu_kind VARCHAR(16) NOT NULL CHECK(menu_kind IN ('food','beverage')),

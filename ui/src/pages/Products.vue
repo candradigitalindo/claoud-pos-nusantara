@@ -54,7 +54,13 @@
           @change="onOutletChange"
         />
       </div>
-      <button class="btn-add" @click="tab === 'products' ? openCreateProd() : openCreateCat()">
+      <select v-if="tab === 'products'" v-model="menuKind" class="kind-filter" aria-label="Filter jenis produk" @change="onKindChange">
+        <option value="">Semua jenis</option>
+        <option v-for="kind in PRODUCT_KINDS" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
+        <option value="unclassified">Belum ditentukan</option>
+      </select>
+      <button v-if="tab === 'products' && auth.hasPermission('products.view')" class="btn-cancel" @click="showClassification = true">Analisis jenis</button>
+      <button v-if="tab === 'categories' || auth.hasPermission('products.create')" class="btn-add" @click="tab === 'products' ? openCreateProd() : openCreateCat()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Tambah {{ tab === 'products' ? 'Produk' : 'Kategori' }}
       </button>
@@ -77,13 +83,14 @@
             <p class="mcard-meta">
               <span v-if="p.code" class="row-code">{{ p.code }}</span>
               <span v-if="p.category_name" class="tag-category">{{ p.category_name }}</span>
+              <ProductKindBadge :kind="p.menu_kind || ''" />
             </p>
             <p class="row-price">{{ formatRupiah(p.price) }}</p>
             <p v-if="!selectedOutlet" class="row-outlet">{{ p.outlet_name || '—' }}</p>
           </div>
           <div class="mcard-acts">
-            <AppActionButton icon="edit" label="Edit" @click="openEditProd(p)" />
-            <AppActionButton icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
+            <AppActionButton v-if="auth.hasPermission('products.update')" icon="edit" label="Edit" @click="openEditProd(p)" />
+            <AppActionButton v-if="auth.hasPermission('products.delete')" icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
           </div>
         </div>
       </div>
@@ -95,6 +102,7 @@
               <th>Kode</th>
               <th>Nama Produk</th>
               <th>Kategori</th>
+              <th>Jenis</th>
               <th>Harga</th>
               <th v-if="!selectedOutlet">Outlet</th>
               <th>Diperbarui</th>
@@ -106,6 +114,7 @@
               <tr v-for="n in 8" :key="n" class="tr-skeleton">
                 <td><div class="skel skel-avatar"/></td>
                 <td><div class="skel skel-w60"/><div class="skel skel-w30 skel-mt"/></td>
+                <td><div class="skel skel-w44"/></td>
                 <td><div class="skel skel-w44"/></td>
                 <td><div class="skel skel-w44"/></td>
                 <td><div class="skel skel-w30"/></td>
@@ -132,6 +141,7 @@
                   <span v-if="p.category_name" class="tag-category">{{ p.category_name }}</span>
                   <span v-else class="row-muted">—</span>
                 </td>
+                <td><ProductKindBadge :kind="p.menu_kind || ''" /></td>
                 <td>
                   <span class="row-price">{{ formatRupiah(p.price) }}</span>
                 </td>
@@ -143,14 +153,14 @@
                 </td>
                 <td class="td-actions">
                   <div class="action-btns">
-                    <AppActionButton icon="edit" label="Edit" @click="openEditProd(p)" />
-                    <AppActionButton icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
+                    <AppActionButton v-if="auth.hasPermission('products.update')" icon="edit" label="Edit" @click="openEditProd(p)" />
+                    <AppActionButton v-if="auth.hasPermission('products.delete')" icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
                   </div>
                 </td>
               </tr>
             </template>
             <tr v-else>
-              <td :colspan="selectedOutlet ? 7 : 8">
+              <td :colspan="selectedOutlet ? 8 : 9">
                 <div class="empty-state">
                   <div class="empty-icon">
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
@@ -259,6 +269,8 @@
       </div>
     </div>
 
+    <ProductClassificationReview v-if="showClassification" :outlet-id="selectedOutlet" :scope-label="classificationScope" @close="showClassification = false" @applied="fetchProducts" />
+
     <!-- ── Product Modal ──────────────────────────────────── -->
     <Teleport to="body">
       <div v-if="showProdModal" class="modal-overlay product-overlay" :inert="showRecipePicker" :aria-hidden="showRecipePicker || undefined" @click.self="closeProductModal" @keydown.esc="closeProductModal">
@@ -301,6 +313,14 @@
                   <div class="form-group">
                     <label for="product-code">Kode produk <span class="product-field-note">Otomatis</span></label>
                     <input id="product-code" v-model="formProd.code" class="form-input form-input--code" placeholder="Dibuat saat disimpan" readonly />
+                  </div>
+                  <div class="form-group product-field-wide">
+                    <label for="product-kind">Jenis produk</label>
+                    <select id="product-kind" v-model="formProd.menu_kind" class="form-input">
+                      <option value="">Belum ditentukan</option>
+                      <option v-for="kind in PRODUCT_KINDS" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
+                    </select>
+                    <p class="product-kind-help">Pengelompokan Makanan, Minuman, atau Aktivitas. Kategori produk tetap terpisah.</p>
                   </div>
                   <div class="form-group product-field-wide">
                     <label for="product-price">Harga jual <span class="req">*</span><span class="product-field-note">Rupiah per produk</span></label>
@@ -430,6 +450,10 @@
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import RupiahInput from '@/components/ui/RupiahInput.vue'
 import ProductRecipePicker from '@/components/ProductRecipePicker.vue'
+import ProductKindBadge from '@/components/ProductKindBadge.vue'
+import ProductClassificationReview from '@/components/ProductClassificationReview.vue'
+import { PRODUCT_KINDS } from '@/utils/productKinds.js'
+import { useAuthStore } from '@/stores/auth.js'
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import { productsApi } from '@/api/products.js'
 import { outletsApi }  from '@/api/outlets.js'
@@ -439,6 +463,10 @@ import AppPagination from '@/components/ui/AppPagination.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 
 // ── State ────────────────────────────────────────────────────
+const auth = useAuthStore()
+const menuKind = ref('')
+const showClassification = ref(false)
+const classificationScope = computed(() => selectedOutlet.value ? (outlets.value.find(outlet => outlet.id === selectedOutlet.value)?.name || 'Outlet terpilih') : 'Semua outlet yang dapat diakses')
 const tab            = ref('products')
 const search         = ref('')
 const selectedOutlet = ref('')
@@ -463,7 +491,7 @@ const savingProd    = ref(false)
 const productForm = ref(null)
 const productPane = ref('info')
 const productSaveError = ref('')
-const formProd      = ref({ outlet_id: '', name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '', recipes: [] })
+const formProd      = ref({ outlet_id: '', name: '', code: '', description: '', category_id: '', category_name: '', menu_kind: '', price: 0, photo_url: '', recipe_master_id: '', recipes: [] })
 const recipeOptions = ref([])
 const loadingRecipes = ref(false)
 const recipeLoadError = ref('')
@@ -561,22 +589,27 @@ watch(search, () => {
 })
 
 // ── Fetch ────────────────────────────────────────────────────
+let productListRequest = 0
 async function fetchProducts() {
+  const request = ++productListRequest
   loadingProd.value = true
   try {
     const res = await productsApi.listProducts({
       outlet_id: selectedOutlet.value || undefined,
       search: search.value.trim() || undefined,
+      menu_kind: menuKind.value || undefined,
       page: pageProd.value,
       limit: PAGE_SIZE,
     })
+    if (request !== productListRequest) return
     products.value  = res.items ?? []
     totalProd.value = res.total ?? 0
   } catch {
+    if (request !== productListRequest) return
     products.value  = []
     totalProd.value = 0
   } finally {
-    loadingProd.value = false
+    if (request === productListRequest) loadingProd.value = false
   }
 }
 
@@ -604,6 +637,11 @@ async function fetchOutlets() {
     const data = await outletsApi.myOutlets()
     outlets.value = data?.outlets ?? data ?? []
   } catch { outlets.value = [] }
+}
+
+function onKindChange() {
+  if (pageProd.value !== 1) pageProd.value = 1
+  else fetchProducts()
 }
 
 function onOutletChange() {
@@ -691,10 +729,11 @@ function clearPhoto() {
 }
 
 function openCreateProd() {
+  if (!auth.hasPermission('products.create')) return
   productPane.value = 'info'
   productSaveError.value = ''
   editingProd.value = null
-  formProd.value = { outlet_id: selectedOutlet.value, name: '', code: '', description: '', category_id: '', category_name: '', price: 0, photo_url: '', recipe_master_id: '', recipes: [] }
+  formProd.value = { outlet_id: selectedOutlet.value, name: '', code: '', description: '', category_id: '', category_name: '', menu_kind: '', price: 0, photo_url: '', recipe_master_id: '', recipes: [] }
   recipeSelectionChanged.value = false
   resetPhoto()
   fetchOutletCategories(selectedOutlet.value)
@@ -702,10 +741,11 @@ function openCreateProd() {
   showProdModal.value = true
 }
 function openEditProd(p) {
+  if (!auth.hasPermission('products.update')) return
   productPane.value = 'info'
   productSaveError.value = ''
   editingProd.value = p
-  formProd.value = { outlet_id: p.outlet_id, name: p.name, code: p.code ?? '', description: p.description ?? '', category_id: p.category_id ?? '', category_name: p.category_name ?? '', price: p.price, photo_url: p.photo_url ?? '', recipe_master_id: p.recipe_master_id || '', recipes: (p.recipes || (p.recipe_master_id ? [{ recipe_master_id: p.recipe_master_id, name: p.recipe_master_name, multiplier: 1 }] : [])).map(link => ({ ...link })) }
+  formProd.value = { outlet_id: p.outlet_id, name: p.name, code: p.code ?? '', description: p.description ?? '', category_id: p.category_id ?? '', category_name: p.category_name ?? '', menu_kind: p.menu_kind || '', price: p.price, photo_url: p.photo_url ?? '', recipe_master_id: p.recipe_master_id || '', recipes: (p.recipes || (p.recipe_master_id ? [{ recipe_master_id: p.recipe_master_id, name: p.recipe_master_name, multiplier: 1 }] : [])).map(link => ({ ...link })) }
   recipeSelectionChanged.value = false
   resetPhoto()
   fetchOutletCategories(p.outlet_id)
@@ -713,7 +753,7 @@ function openEditProd(p) {
   showProdModal.value = true
 }
 async function saveProd() {
-  if (savingProd.value) return
+  if (savingProd.value || !auth.hasPermission(editingProd.value ? 'products.update' : 'products.create')) return
   productSaveError.value = ''
   if (!formProdOutletId.value || !productForm.value?.checkValidity()) {
     productPane.value = 'info'
@@ -732,6 +772,7 @@ async function saveProd() {
         name: formProd.value.name, code: formProd.value.code, description: formProd.value.description,
         category_id: formProd.value.category_id, category_name: formProd.value.category_name,
         price: formProd.value.price,
+        ...(formProd.value.menu_kind !== (editingProd.value.menu_kind || '') ? { menu_kind: formProd.value.menu_kind } : {}),
         ...(recipeSelectionChanged.value ? { recipes: formProd.value.recipes } : {}),
       })
     } else {
@@ -842,6 +883,8 @@ watch(pageCat,  fetchCategories)
 .tab-btn--active .tab-count { background: rgba(255,255,255,.22); }
 
 /* ── Toolbar ──────────────────────────────────────────────── */
+.kind-filter { padding: .48rem .7rem; border: 1px solid #d5e1d9; border-radius: .65rem; background: white; font-size: .8rem; color: #345742; max-width: 100%; }
+.product-kind-help { font-size: .72rem; color: #64786b; margin-top: 5px; }
 .toolbar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 .search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 380px; }
 .search-ico  { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: #8aaa96; pointer-events: none; }

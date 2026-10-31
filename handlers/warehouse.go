@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 
 	"cloud-pos/models"
 	"cloud-pos/services"
@@ -649,6 +650,10 @@ func UpdateRecipeMaster(c *fiber.Ctx) error {
 	}
 	id, err := services.SaveRecipeMaster(c.Params("id"), req)
 	if err != nil {
+		var conflict services.ConflictError
+		if errors.As(err, &conflict) {
+			return c.Status(409).JSON(models.APIResponse{Error: err.Error()})
+		}
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: id})
@@ -659,6 +664,10 @@ func DeleteRecipeMaster(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Error: "Master resep bersama dikelola F&B dengan cakupan semua outlet"})
 	}
 	if err := services.DeleteRecipeMaster(c.Params("id")); err != nil {
+		var conflict services.ConflictError
+		if errors.As(err, &conflict) {
+			return c.Status(409).JSON(models.APIResponse{Error: err.Error()})
+		}
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
 	return c.JSON(models.APIResponse{Success: true, Message: "resep master dihapus"})
