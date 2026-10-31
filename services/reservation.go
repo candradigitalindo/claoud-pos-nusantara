@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"time"
@@ -335,7 +336,7 @@ func GetPublicMenu(slug string) (*models.PublicMenu, error) {
 		return nil, fmt.Errorf("outlet tidak ditemukan")
 	}
 	rows, err := database.DB.Query(`
-		SELECT COALESCE(NULLIF(category_name,''),'Lainnya') AS cat, id, name, price, COALESCE(photo_url,'')
+		SELECT COALESCE(NULLIF(category_name,''),'Lainnya') AS cat, id, local_id, name, price, COALESCE(photo_url,'')
 		FROM cloud_products
 		WHERE outlet_id = $1 AND is_deleted = false
 		ORDER BY cat ASC, name ASC`, outletID)
@@ -344,13 +345,27 @@ func GetPublicMenu(slug string) (*models.PublicMenu, error) {
 	}
 	defer rows.Close()
 
+	// Add-on diambil sekali untuk seluruh outlet lalu dipetakan per produk —
+	// menghindari satu query per menu saat daftar digambar.
+	addonsByProduct, aerr := GetProductAddons(outletID)
+	if aerr != nil {
+		// Menu tetap tampil tanpa add-on daripada gagal total: pelanggan masih
+		// bisa memesan menu dasarnya.
+		log.Printf("GetProductAddons gagal untuk outlet %s: %v", outletID, aerr)
+		addonsByProduct = map[string][]models.CloudProductAddon{}
+	}
+
 	menu := &models.PublicMenu{OutletID: outletID, OutletName: outletName, Slug: slug, Categories: []models.PublicCategory{}}
 	idxByCat := map[string]int{}
 	for rows.Next() {
 		var cat string
 		var p models.PublicProduct
-		if err := rows.Scan(&cat, &p.ID, &p.Name, &p.Price, &p.PhotoURL); err != nil {
+		if err := rows.Scan(&cat, &p.ID, &p.ProductLocalID, &p.Name, &p.Price, &p.PhotoURL); err != nil {
 			return nil, err
+		}
+		p.Addons = addonsByProduct[p.ProductLocalID]
+		if p.Addons == nil {
+			p.Addons = []models.CloudProductAddon{}
 		}
 		i, ok := idxByCat[cat]
 		if !ok {

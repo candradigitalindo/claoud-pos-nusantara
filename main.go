@@ -106,6 +106,10 @@ func main() {
 	services.InitNarrativeAI(cfg)
 	services.StartNarrativeScheduler()
 
+	// QRIS remains disabled unless a provider is explicitly configured.
+	// The mock provider is simulation only; it does not collect real payments.
+	services.InitPaymentGateway()
+
 	app := fiber.New(fiber.Config{
 		AppName:      "Nusantara POS Cloud API v1.0.0",
 		BodyLimit:    200 * 1024 * 1024,

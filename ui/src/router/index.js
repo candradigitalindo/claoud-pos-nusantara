@@ -52,6 +52,7 @@ const ProductSalesReport  = () => import('@/pages/ProductSalesReport.vue')
 const Assets              = () => import('@/pages/Assets.vue')
 const Reservations        = () => import('@/pages/Reservations.vue')
 const Customers           = () => import('@/pages/Customers.vue')
+const OrderPublic         = () => import('@/pages/OrderPublic.vue')
 const ReservePublic       = () => import('@/pages/ReservePublic.vue')
 const NotFound            = () => import('@/pages/NotFound.vue')
 const Forbidden           = () => import('@/pages/Forbidden.vue')
@@ -108,6 +109,14 @@ const routes = [
     component: ReservePublic,
     meta: { title: 'Reservasi — Cloud POS' },
   },
+
+  {
+    path: '/o/:slug',
+    name: 'OrderPublic',
+    component: OrderPublic,
+    meta: { title: 'Pesan — Cloud POS' },
+  },
+
 
   // ── Auth layout (no sidebar) ────────────────────────────
   {

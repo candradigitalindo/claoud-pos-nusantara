@@ -200,13 +200,15 @@ func GetPpicUsageControl(dateFrom, dateTo, warehouseID, search, status string, s
 	// outlet. An order without payment, parked order or completed void is never
 	// promoted into the sales baseline just because a movement says "sale".
 	rows, err = tx.Query(ppicUsageScopeCTE+` SELECT m.item_id,m.warehouse_id,m.movement_type,COALESCE(m.ref_type,''),m.qty_base,m.cost_per_base,
-  (t.id IS NOT NULL AND NOT COALESCE(o.is_holding,false) AND NULLIF(o.payment_info->>'voided_at','') IS NULL AND NOT EXISTS(SELECT 1 FROM pos_void_stock_events v WHERE v.outlet_id=t.outlet_id AND v.order_id=t.order_id AND v.source_type='order')) AS valid_sale,
+  (t.id IS NOT NULL AND NOT COALESCE(o.is_holding,false) AND NULLIF(o.payment_info->>'voided_at','') IS NULL AND NOT EXISTS(SELECT 1 FROM pos_void_stock_events v WHERE v.outlet_id=t.outlet_id AND v.order_id=COALESCE(o.id,t.order_id) AND v.source_type='order')) AS valid_sale,
   (wo.id IS NOT NULL AND wo.status='done' AND wo.qty_planned_base>0 AND wo.qty_actual_base>0 AND wm.item_id IS NOT NULL AND wo.finished_at>=tz_day_start($1::date) AND wo.finished_at<tz_day_start($2::date+1)) AS valid_wo,
   (b.id IS NOT NULL AND ABS(b.input_qty_base+m.qty_base)<0.0001) AS valid_breakdown,
   (EXISTS(SELECT 1 FROM stock_wastes sw WHERE sw.source_movement_id=m.id OR (m.ref_type='stock_waste' AND sw.id::text=m.ref_id))) AS waste_document
  FROM stock_movements m JOIN wh ON wh.id=m.warehouse_id
  LEFT JOIN cloud_transactions t ON m.ref_type='transaction' AND t.id::text=m.ref_id AND t.outlet_id=wh.outlet_id
- LEFT JOIN cloud_orders o ON o.outlet_id=t.outlet_id AND o.local_id=t.order_id
+ LEFT JOIN LATERAL (SELECT candidate.* FROM cloud_orders candidate
+  WHERE candidate.outlet_id=t.outlet_id AND (candidate.id=t.order_id OR candidate.local_id=t.order_id)
+  ORDER BY (candidate.id=t.order_id) DESC LIMIT 1) o ON true
  LEFT JOIN work_orders wo ON m.ref_type='work_order' AND wo.id::text=m.ref_id AND wo.warehouse_id=m.warehouse_id
  LEFT JOIN work_order_materials wm ON wm.wo_id=wo.id AND wm.item_id=m.item_id
  LEFT JOIN stock_breakdowns b ON m.ref_type='stock_breakdown' AND b.id::text=m.ref_id AND b.warehouse_id=m.warehouse_id AND b.input_item_id=m.item_id
@@ -367,10 +369,12 @@ func GetPpicUsageControl(dateFrom, dateTo, warehouseID, search, status string, s
 
 	rows, err = tx.Query(ppicUsageScopeCTE+` SELECT DISTINCT wh.id FROM wh JOIN cloud_transactions t ON t.outlet_id=wh.outlet_id
  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.items,'[]'::jsonb)) item
- LEFT JOIN cloud_orders o ON o.outlet_id=t.outlet_id AND o.local_id=t.order_id
+ LEFT JOIN LATERAL (SELECT candidate.* FROM cloud_orders candidate
+  WHERE candidate.outlet_id=t.outlet_id AND (candidate.id=t.order_id OR candidate.local_id=t.order_id)
+  ORDER BY (candidate.id=t.order_id) DESC LIMIT 1) o ON true
  WHERE t.synced_at>=tz_day_start($1::date) AND t.synced_at<tz_day_start($2::date+1)
  AND NOT COALESCE(o.is_holding,false) AND NULLIF(o.payment_info->>'voided_at','') IS NULL
- AND NOT EXISTS(SELECT 1 FROM pos_void_stock_events v WHERE v.outlet_id=t.outlet_id AND v.order_id=t.order_id AND v.source_type='order')
+ AND NOT EXISTS(SELECT 1 FROM pos_void_stock_events v WHERE v.outlet_id=t.outlet_id AND v.order_id=COALESCE(o.id,t.order_id) AND v.source_type='order')
  AND (CASE WHEN jsonb_typeof(item->'quantity')='number' THEN (item->>'quantity')::numeric ELSE 0 END)>0
  AND NOT EXISTS(SELECT 1 FROM pos_stock_deductions d WHERE d.outlet_id=t.outlet_id AND d.transaction_id=t.id::text AND d.product_local_id=COALESCE(item->>'product_id',''))
  AND NOT EXISTS(SELECT 1 FROM stock_movements m JOIN warehouses mw ON mw.id=m.warehouse_id WHERE mw.outlet_id=wh.outlet_id AND m.ref_type='transaction' AND m.ref_id=t.id::text AND m.qty_base<0 AND m.movement_type IN ('sale','waste') AND (m.pos_product_local_id=COALESCE(item->>'product_id','') OR m.pos_product_local_id=''))`, args...)

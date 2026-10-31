@@ -212,6 +212,99 @@ func RunMigrations() error {
 		`CREATE INDEX IF NOT EXISTS idx_cloud_products_outlet ON cloud_products(outlet_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_cloud_products_local ON cloud_products(outlet_id, local_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_cloud_products_updated ON cloud_products(updated_at)`,
+		// Add-on/modifier menu (mis. "Extra keju +5.000"). Dikirim POS lewat
+		// sync batch dan dipakai menu publik agar pemesanan online menawarkan
+		// pilihan yang sama dengan kasir. product_local_id menunjuk
+		// cloud_products.local_id — POS adalah sumber kebenaran id-nya.
+		`CREATE TABLE IF NOT EXISTS cloud_product_addons (
+			id CHAR(26) PRIMARY KEY,
+			local_id VARCHAR(50) NOT NULL,
+			outlet_id CHAR(26) NOT NULL REFERENCES outlets(id),
+			product_local_id VARCHAR(50) NOT NULL,
+			group_name VARCHAR(100) NOT NULL DEFAULT '',
+			name VARCHAR(150) NOT NULL,
+			price DECIMAL(15,2) NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			is_deleted BOOLEAN NOT NULL DEFAULT false,
+			version INTEGER DEFAULT 1,
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			synced_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			UNIQUE(outlet_id, local_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_cloud_addons_product ON cloud_product_addons(outlet_id, product_local_id, is_deleted)`,
+		`CREATE INDEX IF NOT EXISTS idx_cloud_addons_updated ON cloud_product_addons(updated_at)`,
+
+		// Tagihan QRIS. Cloud hanya memastikan uangnya masuk — pencatatan
+		// pembayaran ke shift tetap dilakukan POS, sehingga tidak ada
+		// pembayaran yang muncul di cloud tanpa pasangannya di laporan kasir.
+		`CREATE TABLE IF NOT EXISTS qris_charges (
+			id VARCHAR(64) PRIMARY KEY,
+			outlet_id CHAR(26) NOT NULL REFERENCES outlets(id),
+			order_local_id VARCHAR(50),
+			amount DECIMAL(15,2) NOT NULL,
+			provider VARCHAR(30) NOT NULL,
+			provider_ref VARCHAR(120),
+			qr_string TEXT NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			expires_at TIMESTAMP NOT NULL,
+			paid_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		// Pencarian tagihan pending yang bisa dipakai ulang saat kasir menekan
+		// "QRIS" dua kali untuk order yang sama.
+		`CREATE INDEX IF NOT EXISTS idx_qris_charges_order ON qris_charges(outlet_id, order_local_id, status)`,
+
+		// Pemesanan mandiri tamu (QR dine-in). Satu-satunya data yang mengalir
+		// cloud → POS: POS mem-polling, mengklaim (atomik), lalu mengonfirmasi
+		// setelah order meja benar-benar terbentuk.
+		`CREATE TABLE IF NOT EXISTS online_orders (
+			id VARCHAR(64) PRIMARY KEY,
+			outlet_id CHAR(26) NOT NULL REFERENCES outlets(id),
+			table_number VARCHAR(20) NOT NULL,
+			customer_name VARCHAR(100),
+			customer_phone VARCHAR(30),
+			notes VARCHAR(200),
+			items JSONB NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'new',
+			claimed_by VARCHAR(80),
+			claimed_at TIMESTAMP,
+			local_order_id VARCHAR(50),
+			reject_reason VARCHAR(200),
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		// Penarikan POS selalu memfilter outlet + status + urut waktu masuk.
+		`CREATE INDEX IF NOT EXISTS idx_online_orders_pending ON online_orders(outlet_id, status, created_at)`,
+
+		// Biaya tambahan (pajak/PB1, service charge) — cerminan tabel POS.
+		// Dipakai menghitung total pesanan online DENGAN CARA YANG SAMA dengan
+		// kasir, supaya nominal QRIS yang dibayar tamu tidak pernah berbeda
+		// dari tagihan yang nanti dihitung POS.
+		`CREATE TABLE IF NOT EXISTS cloud_additional_charges (
+			id CHAR(26) PRIMARY KEY,
+			local_id VARCHAR(50) NOT NULL,
+			outlet_id CHAR(26) NOT NULL REFERENCES outlets(id),
+			name VARCHAR(120) NOT NULL,
+			charge_type VARCHAR(20) NOT NULL,
+			value DECIMAL(15,2) NOT NULL DEFAULT 0,
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			version INTEGER DEFAULT 1,
+			created_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
+			UNIQUE(outlet_id, local_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_cloud_charges_outlet ON cloud_additional_charges(outlet_id, is_active)`,
+
+		// Tautan pesanan online ke tagihan QRIS-nya. Pesanan baru boleh ditarik
+		// POS SETELAH tagihan ini lunas — dapur tidak pernah memasak pesanan
+		// yang belum dibayar.
+		`ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS qris_charge_id VARCHAR(64)`,
+		`ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS total_amount DECIMAL(15,2) NOT NULL DEFAULT 0`,
+		`ALTER TABLE online_orders ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(15,2) NOT NULL DEFAULT 0`,
+		`CREATE INDEX IF NOT EXISTS idx_online_orders_charge ON online_orders(qris_charge_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_cloud_categories_outlet ON cloud_categories(outlet_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_cloud_analytics_outlet ON cloud_analytics(outlet_id, date)`,
 		`CREATE INDEX IF NOT EXISTS idx_sync_logs_outlet ON sync_logs(outlet_id, created_at)`,
@@ -3143,5 +3236,5 @@ func RunMigrations() error {
 		}
 	}
 
-	return nil
+	return RunPOSIdentityMigrations()
 }

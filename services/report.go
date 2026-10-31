@@ -15,12 +15,19 @@ import (
 // sudah di-void (agar tidak terhitung sebagai penjualan). ref = referensi tabel
 // cloud_transactions di query (mis. "cloud_transactions" atau "t").
 func txNotVoided(ref string) string {
-	return ` AND NOT EXISTS (SELECT 1 FROM cloud_orders vo WHERE vo.id = ` + ref +
-		`.order_id AND NULLIF(vo.payment_info->>'voided_at','') IS NOT NULL)`
+	return ` AND NOT COALESCE((SELECT NULLIF(vo.payment_info->>'voided_at','') IS NOT NULL
+		FROM cloud_orders vo WHERE vo.outlet_id = ` + ref + `.outlet_id
+		AND (vo.id = ` + ref + `.order_id OR vo.local_id = ` + ref + `.order_id)
+		ORDER BY (vo.id = ` + ref + `.order_id) DESC LIMIT 1),false)`
 }
 
 // payNotVoided mengecualikan baris transaction_payments yang transaksinya ter-void.
-const payNotVoided = ` AND NOT EXISTS (SELECT 1 FROM cloud_transactions vt JOIN cloud_orders vo ON vo.id = vt.order_id WHERE vt.id = transaction_payments.transaction_id AND NULLIF(vo.payment_info->>'voided_at','') IS NOT NULL)`
+const payNotVoided = ` AND NOT EXISTS (SELECT 1 FROM cloud_transactions vt
+	JOIN LATERAL (SELECT candidate.payment_info FROM cloud_orders candidate
+		WHERE candidate.outlet_id=vt.outlet_id AND (candidate.id=vt.order_id OR candidate.local_id=vt.order_id)
+		ORDER BY (candidate.id=vt.order_id) DESC LIMIT 1) vo ON true
+	WHERE vt.id=transaction_payments.transaction_id AND vt.outlet_id=transaction_payments.outlet_id
+	AND NULLIF(vo.payment_info->>'voided_at','') IS NOT NULL)`
 
 // paymentMethodTotals menjumlahkan nominal per metode pembayaran dari
 // transaction_payments untuk rentang tanggal & scope outlet tertentu. Inilah
@@ -127,7 +134,9 @@ func GetSalesReport(dateFrom, dateTo, outletID string, scopeIDs []string, page, 
 			TO_CHAR(tz_date(created_at), 'YYYY-MM-DD') AS date,
 			COUNT(*)::int,
 			COALESCE(SUM(total_amount), 0),
-			COALESCE(SUM(COALESCE((SELECT o2.pax FROM cloud_orders o2 WHERE o2.id = cloud_transactions.order_id LIMIT 1), 0)), 0)::int
+			COALESCE(SUM(COALESCE((SELECT o2.pax FROM cloud_orders o2
+				WHERE o2.outlet_id=cloud_transactions.outlet_id AND (o2.id=cloud_transactions.order_id OR o2.local_id=cloud_transactions.order_id)
+				ORDER BY (o2.id=cloud_transactions.order_id) DESC LIMIT 1), 0)), 0)::int
 		FROM cloud_transactions
 		WHERE created_at >= tz_day_start($1::date) AND created_at < tz_day_start($2::date + 1)` + txNotVoided("cloud_transactions")
 
@@ -261,15 +270,16 @@ func GetSalesReport(dateFrom, dateTo, outletID string, scopeIDs []string, page, 
 			t.payment_method,
 			-- Nama kasir: app sering mengirim cashier_name kosong, jadi resolve dari
 			-- shift kasir yang menaungi waktu transaksi (opened_by) sebagai fallback.
-			-- Pakai s.created_at (= waktu shift dibuka sebenarnya); opened_at bisa
-			-- ter-overwrite jadi closed_at saat shift ditutup.
+			-- opened_at berasal dari perangkat; created_at hanya fallback data lama.
 			COALESCE(NULLIF(t.cashier_name, ''),
 				(SELECT NULLIF(s.opened_by, '') FROM cloud_cashier_shifts s
-				 WHERE s.outlet_id = t.outlet_id AND s.created_at <= t.created_at
-				 ORDER BY s.created_at DESC LIMIT 1),
+				 WHERE s.outlet_id = t.outlet_id AND COALESCE(s.opened_at,s.created_at) <= t.created_at
+				 ORDER BY COALESCE(s.opened_at,s.created_at) DESC LIMIT 1),
 				'') AS cashier_name,
 			COALESCE(t.orderer_name, ''),
-			COALESCE((SELECT o2.pax FROM cloud_orders o2 WHERE o2.id = t.order_id LIMIT 1), 0) AS pax,
+			COALESCE((SELECT o2.pax FROM cloud_orders o2
+				WHERE o2.outlet_id=t.outlet_id AND (o2.id=t.order_id OR o2.local_id=t.order_id)
+				ORDER BY (o2.id=t.order_id) DESC LIMIT 1), 0) AS pax,
 			t.items,
 			TO_CHAR(t.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM cloud_transactions t

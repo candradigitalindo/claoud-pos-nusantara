@@ -74,7 +74,7 @@ func TestCCTVCloudDiscoveryTicketsProtectCredentials(t *testing.T) {
 		if r.URL.Path != "/api/tuya" || r.URL.Query().Get("email") != "owner@example.com" {
 			t.Error("permintaan cloud salah")
 		}
-		fmt.Fprint(w, `{"sources":[{"name":"Kamera toko","url":"tuya://protect-eu.ismartlife.me?device_id=dev1&email=owner%40example.com&password=secret"}]}`)
+		fmt.Fprintf(w, "%s", `{"sources":[{"name":"Kamera toko","url":"tuya://protect-eu.ismartlife.me?device_id=dev1&email=owner%40example.com&password=secret"}]}`)
 	}))
 	defer server.Close()
 	go2rtcBaseURL = server.URL

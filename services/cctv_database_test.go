@@ -19,7 +19,7 @@ func prepareCCTVTestSchema(t *testing.T) {
 	requireDB(t)
 	// Fixture tabel lama pada Postgres uji; TestMain menolak database produksi.
 	for _, ddl := range []string{
-		`CREATE TABLE IF NOT EXISTS outlets(id CHAR(26) PRIMARY KEY,name TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS outlets(id CHAR(26) PRIMARY KEY,code VARCHAR(20) UNIQUE NOT NULL,name TEXT NOT NULL,api_key VARCHAR(100) UNIQUE NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS outlet_cameras(id CHAR(26) PRIMARY KEY,outlet_id CHAR(26) REFERENCES outlets(id),name TEXT,brand TEXT,host TEXT,port INT,channel INT,subtype INT,rtsp_username TEXT,rtsp_password_enc TEXT,is_active BOOLEAN,sort_order INT,created_at TIMESTAMP DEFAULT NOW(),updated_at TIMESTAMP DEFAULT NOW())`,
 	} {
 		if _, err := database.DB.Exec(ddl); err != nil {
@@ -36,15 +36,15 @@ func prepareCCTVTestSchema(t *testing.T) {
 func TestCCTVMultiVendorAndOutboundGatewayDB(t *testing.T) {
 	prepareCCTVTestSchema(t)
 	outletA, outletB := NewULID(), NewULID()
-	for _, id := range []string{outletA, outletB} {
-		if _, err := database.DB.Exec(`INSERT INTO outlets(id,name) VALUES($1,'Outlet uji')`, id); err != nil {
-			t.Fatal(err)
-		}
-	}
 	t.Cleanup(func() {
 		database.DB.Exec(`DELETE FROM outlet_cameras WHERE outlet_id IN($1,$2)`, outletA, outletB)
 		database.DB.Exec(`DELETE FROM outlets WHERE id IN($1,$2)`, outletA, outletB)
 	})
+	for _, id := range []string{outletA, outletB} {
+		if _, err := database.DB.Exec(`INSERT INTO outlets(id,code,name,api_key) VALUES($1,$2,'Outlet uji',$3)`, id, "CCTV"+id[10:], "test-cctv-"+id); err != nil {
+			t.Fatal(err)
+		}
+	}
 	token, _, scope, _, _ := cctvFixture(t)
 	scope.OutletIDs = []string{outletA}
 	InvalidateAllAdminSessions()
@@ -176,13 +176,13 @@ func TestCCTVMultiVendorAndOutboundGatewayDB(t *testing.T) {
 func TestCCTVProbeStoredSecretsAndConfigurationCleanupDB(t *testing.T) {
 	prepareCCTVTestSchema(t)
 	outlet := NewULID()
-	if _, err := database.DB.Exec(`INSERT INTO outlets(id,name) VALUES($1,'Outlet konfigurasi uji')`, outlet); err != nil {
-		t.Fatal(err)
-	}
 	t.Cleanup(func() {
 		database.DB.Exec(`DELETE FROM outlet_cameras WHERE outlet_id=$1`, outlet)
 		database.DB.Exec(`DELETE FROM outlets WHERE id=$1`, outlet)
 	})
+	if _, err := database.DB.Exec(`INSERT INTO outlets(id,code,name,api_key) VALUES($1,$2,'Outlet konfigurasi uji',$3)`, outlet, "CCTV"+outlet[10:], "test-cctv-"+outlet); err != nil {
+		t.Fatal(err)
+	}
 	cctvFixture(t)
 	cctvCameraLoader = GetCamera
 	source := "onvif://operator:stored-source-secret@camera:80?subtype=Profile1"

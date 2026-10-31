@@ -2,6 +2,9 @@
 
 Backend cloud server untuk sinkronisasi data multi-outlet POS.
 
+Acuan gabungan Cloud/Flutter, asal branch, batas QRIS simulasi, dan cara uji di
+luar produksi tersedia di [panduan master POS](docs/pos-master-integration.md).
+
 ## Tech Stack
 - **Go** + **Fiber v2** (HTTP framework)
 - **PostgreSQL** (database)

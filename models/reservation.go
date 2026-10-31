@@ -3,7 +3,7 @@ package models
 import "time"
 
 type ReservationItem struct {
-	ProductID   string  `json:"product_id"`
+	ProductID string `json:"product_id"`
 	// ProductLocalID = cloud_products.local_id, id produk yang dikenal app POS.
 	// Hanya diisi pada endpoint untuk POS (ListOutletReservations); POS
 	// mencocokkan menu lewat id ini, sama seperti pesanan online.
@@ -22,39 +22,39 @@ type ReservationItem struct {
 // DownPayment di sini adalah DP yang DIMINTA; uang yang benar-benar masuk
 // hidup di reservation_payments dan harus tervalidasi lebih dulu.
 type Reservation struct {
-	ID              string            `json:"id"`
-	OutletID        string            `json:"outlet_id"`
-	OutletName      string            `json:"outlet_name"`
-	CustomerName    string            `json:"customer_name"`
-	CustomerPhone   string            `json:"customer_phone"`
-	Pax             int               `json:"pax"`
-	Items           []ReservationItem `json:"items"`
-	Subtotal        float64           `json:"subtotal"`
+	ID            string            `json:"id"`
+	OutletID      string            `json:"outlet_id"`
+	OutletName    string            `json:"outlet_name"`
+	CustomerName  string            `json:"customer_name"`
+	CustomerPhone string            `json:"customer_phone"`
+	Pax           int               `json:"pax"`
+	Items         []ReservationItem `json:"items"`
+	Subtotal      float64           `json:"subtotal"`
 	// DownPayment = DP yang diminta. PaidAmount = pembayaran TERVALIDASI
 	// (dp + pelunasan − refund). PendingAmount = bukti yang masih menunggu
 	// validasi. Remaining = Total − PaidAmount.
-	DownPayment     float64           `json:"down_payment"`
-	PaidAmount      float64           `json:"paid_amount"`
-	PendingAmount   float64           `json:"pending_amount"`
-	DpPaid          bool              `json:"dp_paid"`
-	Total           float64           `json:"total"`
-	Remaining       float64           `json:"remaining"`
-	ReservationDate string            `json:"reservation_date"` // YYYY-MM-DD
-	ReservationTime string            `json:"reservation_time"` // HH:MM
+	DownPayment     float64 `json:"down_payment"`
+	PaidAmount      float64 `json:"paid_amount"`
+	PendingAmount   float64 `json:"pending_amount"`
+	DpPaid          bool    `json:"dp_paid"`
+	Total           float64 `json:"total"`
+	Remaining       float64 `json:"remaining"`
+	ReservationDate string  `json:"reservation_date"` // YYYY-MM-DD
+	ReservationTime string  `json:"reservation_time"` // HH:MM
 	// Status: pending (menunggu DP) → confirmed (DP tervalidasi) → done
 	// (dilayani, ditutup POS/admin); cancelled dengan CancelDisposition
 	// 'refund' (uang muka dikembalikan) atau 'hangus' (menjadi pendapatan lain).
-	Status            string `json:"status"`
-	CancelDisposition string `json:"cancel_disposition"`
-	ConfirmedAt       string `json:"confirmed_at"`
-	CancelledAt       string `json:"cancelled_at"`
-	SettledAt         string `json:"settled_at"`
-	PosTransactionID  string `json:"pos_transaction_id"`
-	Notes           string            `json:"notes"`
-	Source          string            `json:"source"` // admin | public
-	Payments        []ReservationPayment `json:"payments,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	Status            string               `json:"status"`
+	CancelDisposition string               `json:"cancel_disposition"`
+	ConfirmedAt       string               `json:"confirmed_at"`
+	CancelledAt       string               `json:"cancelled_at"`
+	SettledAt         string               `json:"settled_at"`
+	PosTransactionID  string               `json:"pos_transaction_id"`
+	Notes             string               `json:"notes"`
+	Source            string               `json:"source"` // admin | public
+	Payments          []ReservationPayment `json:"payments,omitempty"`
+	CreatedAt         time.Time            `json:"created_at"`
+	UpdatedAt         time.Time            `json:"updated_at"`
 }
 
 // ReservationPayment — satu bukti uang masuk/keluar atas sebuah reservasi.
@@ -63,7 +63,7 @@ type Reservation struct {
 type ReservationPayment struct {
 	ID             string  `json:"id"`
 	ReservationID  string  `json:"reservation_id"`
-	Type           string  `json:"type"`   // dp | pelunasan | refund
+	Type           string  `json:"type"` // dp | pelunasan | refund
 	Amount         float64 `json:"amount"`
 	Method         string  `json:"method"` // transfer | cash | qris | lainnya
 	BankAccountID  string  `json:"bank_account_id"`
@@ -155,10 +155,14 @@ type ReservationRequest struct {
 // ── Public reservation page payloads ────────────────────────
 
 type PublicProduct struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Price    float64 `json:"price"`
-	PhotoURL string  `json:"photo_url"`
+	ID             string  `json:"id"`
+	ProductLocalID string  `json:"product_local_id"`
+	Name           string  `json:"name"`
+	Price          float64 `json:"price"`
+	PhotoURL       string  `json:"photo_url"`
+	// Add-on aktif menu ini — pemesanan online menawarkan pilihan yang sama
+	// dengan kasir. Kosong bila menu tidak punya tambahan.
+	Addons []CloudProductAddon `json:"addons"`
 }
 
 type PublicCategory struct {

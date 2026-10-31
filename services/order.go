@@ -32,7 +32,7 @@ func resolveTxnCreatedAt(tx *sql.Tx, outletID string, req models.PushTransaction
 			return oc
 		}
 	}
-	return parseTime(req.CreatedAt)
+	return time.Now().UTC()
 }
 
 func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
@@ -42,9 +42,9 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 	itemsJSON, _ := json.Marshal(req.Items)
 	paymentJSON, _ := json.Marshal(req.PaymentInfo)
 
-	cloudID := req.LocalID
-	if cloudID == "" {
-		cloudID = NewULID()
+	req.LocalID = strings.TrimSpace(req.LocalID)
+	if req.LocalID == "" {
+		req.LocalID = NewULID()
 	}
 	tx, err := database.DB.Begin()
 	if err != nil {
@@ -54,8 +54,12 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 	if err = lockPOSStock(tx, outletID); err != nil {
 		return "", err
 	}
+	cloudID, err := reservePOSID(tx, "order", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
 	var previousVoid string
-	err = tx.QueryRow(`SELECT COALESCE(payment_info->>'voided_at','') FROM cloud_orders WHERE outlet_id=$1 AND local_id=$2`, outletID, cloudID).Scan(&previousVoid)
+	err = tx.QueryRow(`SELECT COALESCE(payment_info->>'voided_at','') FROM cloud_orders WHERE outlet_id=$1 AND local_id=$2`, outletID, req.LocalID).Scan(&previousVoid)
 	if err != nil && err != sql.ErrNoRows {
 		return "", err
 	}
@@ -78,7 +82,6 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 			created_at, updated_at, is_holding, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			id = EXCLUDED.id,
 			table_number = EXCLUDED.table_number,
 			customer_name = EXCLUDED.customer_name,
 			customer_phone = EXCLUDED.customer_phone,
@@ -94,7 +97,7 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 			is_holding = EXCLUDED.is_holding,
 			synced_at = NOW()
 		RETURNING id`,
-		cloudID, cloudID, outletID, req.OutletCode, req.TableNumber,
+		cloudID, req.LocalID, outletID, req.OutletCode, req.TableNumber,
 		req.CustomerName, req.CustomerPhone, req.OrdererName, req.CreatedBy, req.Pax, req.TotalAmount, req.Status,
 		string(itemsJSON), string(paymentJSON), req.Version,
 		parseTime(req.CreatedAt), parseTime(req.UpdatedAt), req.IsHolding,
@@ -160,9 +163,9 @@ func GetOrders(outletID string, page, limit int) ([]models.CloudOrder, int, erro
 }
 
 func SaveTransaction(outletID string, req models.PushTransactionRequest) (string, error) {
-	cloudID := req.LocalID
-	if cloudID == "" {
-		cloudID = NewULID()
+	req.LocalID = strings.TrimSpace(req.LocalID)
+	if req.LocalID == "" {
+		req.LocalID = NewULID()
 	}
 
 	tx, err := database.DB.Begin()
@@ -173,9 +176,17 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	if err = lockPOSStock(tx, outletID); err != nil {
 		return "", err
 	}
+	cloudID, err := reservePOSID(tx, "transaction", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
 	if req.OrderID != "" {
+		req.OrderID, err = reservePOSID(tx, "order", outletID, req.OrderID)
+		if err != nil {
+			return "", err
+		}
 		var voided bool
-		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cloud_orders WHERE outlet_id=$1 AND local_id=$2 AND NULLIF(payment_info->>'voided_at','') IS NOT NULL)`, outletID, req.OrderID).Scan(&voided); err != nil {
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cloud_orders WHERE outlet_id=$1 AND id=$2 AND NULLIF(payment_info->>'voided_at','') IS NOT NULL)`, outletID, req.OrderID).Scan(&voided); err != nil {
 			return "", err
 		}
 		if voided {
@@ -187,6 +198,19 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	// (umum pada transaksi sync tertunda) pakai created_at order tertaut agar
 	// tidak salah tanggal (ter-stempel waktu sync). Fallback terakhir: waktu sekarang.
 	createdAt := resolveTxnCreatedAt(tx, outletID, req)
+	// Old APKs omitted product_id. Resolve only an exact unique product in this
+	// outlet; an ambiguous sale must remain retryable rather than skip stock.
+	req.Items = append([]models.TransactionItem(nil), req.Items...)
+	for i := range req.Items {
+		item := &req.Items[i]
+		if strings.TrimSpace(item.ProductID) == "" && item.Quantity > 0 {
+			product, resolveErr := resolvePOSProduct(tx, outletID, posStockItem{Name: item.ProductName})
+			if resolveErr != nil {
+				return "", fmt.Errorf("identitas produk transaksi: %w", resolveErr)
+			}
+			item.ProductID = product.id
+		}
+	}
 
 	itemsJSON := "[]"
 	if len(req.Items) > 0 {
@@ -217,6 +241,7 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		req.TaxAmount = 0
 	}
 
+	var persistedCreatedAt time.Time
 	err = tx.QueryRow(
 		`INSERT INTO cloud_transactions (id, local_id, outlet_id, outlet_code, order_id,
 			subtotal, total_amount, tax_amount, other_charges_total, charges,
@@ -224,7 +249,7 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 			items, version, created_at, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			id = EXCLUDED.id,
+			order_id = EXCLUDED.order_id,
 			subtotal = EXCLUDED.subtotal,
 			total_amount = EXCLUDED.total_amount,
 			tax_amount = EXCLUDED.tax_amount,
@@ -237,31 +262,34 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 			orderer_name = EXCLUDED.orderer_name,
 			items = EXCLUDED.items,
 			version = EXCLUDED.version,
+			created_at = COALESCE(cloud_transactions.created_at, EXCLUDED.created_at),
 			synced_at = NOW()
-		RETURNING id`,
-		cloudID, cloudID, outletID, req.OutletCode, req.OrderID,
+		RETURNING id, created_at`,
+		cloudID, req.LocalID, outletID, req.OutletCode, req.OrderID,
 		req.Subtotal, req.TotalAmount, req.TaxAmount, req.OtherChargesTotal, chargesJSON,
 		req.PaymentMethod, req.CashAmount, req.ChangeAmount, cashierName, req.OrdererName,
 		itemsJSON, req.Version, createdAt,
-	).Scan(&cloudID)
+	).Scan(&cloudID, &persistedCreatedAt)
 
 	if err != nil {
 		return "", err
 	}
+	// A retry without source timestamps must reuse the persisted transaction
+	// time, not move old payments to the time this retry reached the cloud.
+	createdAt = persistedCreatedAt
 
 	// Rincian pembayaran multi-metode (Gabung Bayar / Split Bill). Tulis ulang
 	// (delete + insert) agar re-sync transaksi yang sama tidak menggandakan baris.
-	// created_at memakai tanggal transaksi agar rekap per-metode konsisten dengan
-	// laporan yang berbasis tanggal transaksi.
+	// Preserve each payment's real time, including partial payments in earlier
+	// shifts. Older payloads without that time use the transaction time.
 	// Gagal menulis rincian pembayaran harus mengembalikan error (bukan sekadar log):
 	// bila dilapor sukses, device tidak akan retry dan rekap per-metode kurang selamanya.
 	// Upsert header + delete/insert di sini idempotent, jadi retry aman.
-	txCreatedAt := createdAt
-	if _, derr := tx.Exec(`DELETE FROM transaction_payments WHERE transaction_id = $1`, cloudID); derr != nil {
+	if _, derr := tx.Exec(`DELETE FROM transaction_payments WHERE transaction_id = $1 AND outlet_id = $2`, cloudID, outletID); derr != nil {
 		log.Printf("clear transaction_payments (tx=%s): %v", cloudID, derr)
 		return "", fmt.Errorf("gagal menulis rincian pembayaran: %w", derr)
 	}
-	lines := req.Payments
+	lines := append([]models.PaymentLine(nil), req.Payments...)
 	if len(lines) == 0 {
 		// Fallback klien lama tanpa payments[]: satu baris dari metode header + total.
 		method := req.PaymentMethod
@@ -292,6 +320,10 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		}
 	}
 	for _, p := range lines {
+		paidAt := createdAt
+		if parsed, valid := parseTimeStrict(p.CreatedAt); valid {
+			paidAt = parsed.UTC()
+		}
 		method := p.PaymentMethod
 		if method == "" {
 			method = "other"
@@ -303,7 +335,7 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		if _, derr := tx.Exec(
 			`INSERT INTO transaction_payments (transaction_id, outlet_id, payment_method, amount, payment_note, created_at)
 			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			cloudID, outletID, method, p.Amount, note, txCreatedAt,
+			cloudID, outletID, method, p.Amount, note, paidAt,
 		); derr != nil {
 			log.Printf("insert transaction_payment (tx=%s method=%s): %v", cloudID, method, derr)
 			return "", fmt.Errorf("gagal menulis rincian pembayaran: %w", derr)
@@ -352,7 +384,9 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	BroadcastSync("transaction", outletID)
 	if strings.TrimSpace(req.ReservationID) != "" {
 		if serr := SettleReservation(outletID, req.ReservationID, cloudID, cashierName); serr != nil {
-			log.Printf("settle reservasi %s dari tx %s: %v", req.ReservationID, cloudID, serr)
+			// The financial row is committed and idempotent; keep the outbox
+			// pending so settlement is retried after validation/network recovery.
+			return "", fmt.Errorf("transaksi tersimpan; penyelesaian reservasi perlu dicoba ulang: %w", serr)
 		}
 	}
 

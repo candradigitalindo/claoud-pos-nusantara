@@ -14,6 +14,7 @@ type BatchSyncRequest struct {
 }
 
 type BatchSyncResult struct {
+	EventID    string `json:"event_id,omitempty"`
 	EntityType string `json:"entity_type"`
 	LocalID    string `json:"local_id"`
 	CloudID    string `json:"cloud_id,omitempty"`
@@ -82,16 +83,16 @@ type ResolveConflictRequest struct {
 }
 
 type RestoreResponse struct {
-	OpenShifts    []CloudCashierShift  `json:"open_shifts"`
-	UnpaidOrders  []CloudOrder         `json:"unpaid_orders"`
-	CashMovements []CloudCashMovement  `json:"cash_movements"`
-	Summary       RestoreSummary       `json:"summary"`
-	RestoredAt    string               `json:"restored_at"`
+	OpenShifts    []CloudCashierShift `json:"open_shifts"`
+	UnpaidOrders  []CloudOrder        `json:"unpaid_orders"`
+	CashMovements []CloudCashMovement `json:"cash_movements"`
+	Summary       RestoreSummary      `json:"summary"`
+	RestoredAt    string              `json:"restored_at"`
 }
 
 type RestoreSummary struct {
-	OpenShiftCount   int `json:"open_shift_count"`
-	UnpaidOrderCount int `json:"unpaid_order_count"`
+	OpenShiftCount    int `json:"open_shift_count"`
+	UnpaidOrderCount  int `json:"unpaid_order_count"`
 	CashMovementCount int `json:"cash_movement_count"`
 }
 

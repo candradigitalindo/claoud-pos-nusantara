@@ -11,4 +11,10 @@ export const publicApi = {
   // Unggah bukti transfer (multipart: file, type, amount, bank_account_id, paid_at, notes).
   pay:     (slug, id, formData) => publicClient.post(`/public/outlets/${slug}/reservations/${id}/payments`, formData,
     { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data),
+
+  // Pemesanan mandiri tamu (QR dine-in)
+  order:       (slug, data) => publicClient.post(`/public/outlets/${slug}/orders`, data).then(r => r.data),
+  orderStatus: (slug, id)   => publicClient.get(`/public/outlets/${slug}/orders/${id}`).then(r => r.data),
+  // Alat uji penyedia tiruan — ditolak server kecuali gateway mock aktif.
+  simulatePay: (slug, id)   => publicClient.post(`/public/outlets/${slug}/orders/${id}/simulate-paid`).then(r => r.data),
 }

@@ -7,20 +7,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
 func SavePrinter(outletID string, req models.PushPrinterRequest) (string, error) {
-	cloudID := req.LocalID
-	if cloudID == "" {
-		cloudID = NewULID()
+	req.LocalID = strings.TrimSpace(req.LocalID)
+	if req.LocalID == "" {
+		req.LocalID = NewULID()
 	}
-	err := database.DB.QueryRow(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	cloudID, err := reservePOSID(tx, "printer", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
+	err = tx.QueryRow(
 		`INSERT INTO cloud_printers (id, local_id, outlet_id, name, ip_address, port,
 			printer_type, paper_size, is_active, is_deleted, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			id = EXCLUDED.id,
 			name = EXCLUDED.name,
 			ip_address = EXCLUDED.ip_address,
 			port = EXCLUDED.port,
@@ -31,10 +40,13 @@ func SavePrinter(outletID string, req models.PushPrinterRequest) (string, error)
 			updated_at = NOW(),
 			synced_at = NOW()
 		RETURNING id`,
-		cloudID, cloudID, outletID, req.Name, req.IPAddress, req.Port,
+		cloudID, req.LocalID, outletID, req.Name, req.IPAddress, req.Port,
 		req.PrinterType, req.PaperSize, req.IsActive, req.IsDeleted,
 	).Scan(&cloudID)
 	if err != nil {
+		return "", err
+	}
+	if err = tx.Commit(); err != nil {
 		return "", err
 	}
 	go logSync(outletID, "push_printer", "printer", 1, "success", "")
@@ -69,9 +81,24 @@ func GetOutletPrinters(outletID string) ([]models.CloudPrinter, error) {
 }
 
 func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (string, error) {
-	cloudID := req.LocalID
-	if cloudID == "" {
-		cloudID = NewULID()
+	req.LocalID = strings.TrimSpace(req.LocalID)
+	if req.LocalID == "" {
+		req.LocalID = NewULID()
+	}
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	cloudID, err := reservePOSID(tx, "cashier_shift", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
+	if req.PreviousShiftID != "" {
+		req.PreviousShiftID, err = reservePOSID(tx, "cashier_shift", outletID, req.PreviousShiftID)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	var closedAt interface{}
@@ -91,22 +118,28 @@ func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (stri
 	// di outbox). Fallback ke waktu sekarang + catat, daripada menolak shift-nya.
 	openedAt := parseTime(req.OpenedAt)
 	if _, ok := openedAt.(time.Time); !ok {
-		log.Printf("SaveCashierShift: opened_at kosong/tak valid (outlet=%s local_id=%s raw=%q), fallback ke NOW", outletID, req.LocalID, req.OpenedAt)
-		openedAt = time.Now().UTC()
+		var original time.Time
+		if lookupErr := tx.QueryRow(`SELECT opened_at FROM cloud_cashier_shifts WHERE outlet_id=$1 AND local_id=$2`, outletID, req.LocalID).Scan(&original); lookupErr == nil {
+			openedAt = original
+		} else if lookupErr == sql.ErrNoRows {
+			log.Printf("SaveCashierShift: opened_at tidak valid (outlet=%s local_id=%s), fallback ke NOW", outletID, req.LocalID)
+			openedAt = time.Now().UTC()
+		} else {
+			return "", lookupErr
+		}
 	}
 
-	err := database.DB.QueryRow(
+	err = tx.QueryRow(
 		`INSERT INTO cloud_cashier_shifts (id, local_id, outlet_id, opened_by, opened_at,
 			opening_cash, closed_at, closed_by, closing_cash, closing_card, closing_qris,
 			closing_transfer, carry_over_cash, previous_shift_id, handover_to, status, notes, report,
 			created_at, updated_at, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW(), NOW())
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			id = EXCLUDED.id,
 			opened_by = EXCLUDED.opened_by,
 			opened_at = EXCLUDED.opened_at,
 			opening_cash = EXCLUDED.opening_cash,
-			closed_at = EXCLUDED.closed_at,
+			closed_at = COALESCE(EXCLUDED.closed_at, cloud_cashier_shifts.closed_at),
 			closed_by = EXCLUDED.closed_by,
 			closing_cash = EXCLUDED.closing_cash,
 			closing_card = EXCLUDED.closing_card,
@@ -121,13 +154,16 @@ func SaveCashierShift(outletID string, req models.PushCashierShiftRequest) (stri
 			updated_at = NOW(),
 			synced_at = NOW()
 		RETURNING id`,
-		cloudID, cloudID, outletID, req.OpenedBy, openedAt,
+		cloudID, req.LocalID, outletID, req.OpenedBy, openedAt,
 		req.OpeningCash, closedAt, req.ClosedBy, req.ClosingCash, req.ClosingCard,
 		req.ClosingQris, req.ClosingTransfer, req.CarryOverCash, req.PreviousShiftID,
 		req.HandoverTo, req.Status, req.Notes, reportJSON,
 	).Scan(&cloudID)
 
 	if err != nil {
+		return "", err
+	}
+	if err = tx.Commit(); err != nil {
 		return "", err
 	}
 
@@ -156,6 +192,12 @@ func SaveOrderItemVoid(outletID string, req models.PushOrderItemVoidRequest) (st
 	defer tx.Rollback()
 	if err = lockPOSStock(tx, outletID); err != nil {
 		return "", err
+	}
+	if req.OrderID != "" {
+		req.OrderID, err = reservePOSID(tx, "order", outletID, req.OrderID)
+		if err != nil {
+			return "", err
+		}
 	}
 	if err = applyItemVoidStock(tx, outletID, req); err != nil {
 		return "", fmt.Errorf("waste pembatalan item: %w", err)
@@ -210,17 +252,31 @@ func SaveOrderItemTitipan(outletID string, req models.PushOrderItemTitipanReques
 }
 
 func SaveCashMovement(outletID string, req models.PushCashMovementRequest) (string, error) {
-	cloudID := req.LocalID
-	if cloudID == "" {
-		cloudID = NewULID()
+	req.LocalID = strings.TrimSpace(req.LocalID)
+	if req.LocalID == "" {
+		req.LocalID = NewULID()
 	}
-
-	err := database.DB.QueryRow(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	// Allocate the parent first, matching SaveCashierShift's lock order.
+	if req.ShiftID != "" {
+		req.ShiftID, err = reservePOSID(tx, "cashier_shift", outletID, req.ShiftID)
+		if err != nil {
+			return "", err
+		}
+	}
+	cloudID, err := reservePOSID(tx, "cash_movement", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
+	err = tx.QueryRow(
 		`INSERT INTO cloud_cash_movements (id, local_id, outlet_id, shift_id,
 			movement_type, amount, counterpart_name, note, created_at, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			id = EXCLUDED.id,
 			shift_id = EXCLUDED.shift_id,
 			movement_type = EXCLUDED.movement_type,
 			amount = EXCLUDED.amount,
@@ -228,12 +284,15 @@ func SaveCashMovement(outletID string, req models.PushCashMovementRequest) (stri
 			note = EXCLUDED.note,
 			synced_at = NOW()
 		RETURNING id`,
-		cloudID, cloudID, outletID, req.ShiftID,
+		cloudID, req.LocalID, outletID, req.ShiftID,
 		req.MovementType, req.Amount, req.CounterpartName, req.Note,
 		parseTime(req.CreatedAt),
 	).Scan(&cloudID)
 
 	if err != nil {
+		return "", err
+	}
+	if err = tx.Commit(); err != nil {
 		return "", err
 	}
 
@@ -308,6 +367,9 @@ func ProcessBatchSync(outletID string, req models.BatchSyncRequest) models.Batch
 		}
 
 		if dataMap, ok := item.Data.(map[string]interface{}); ok {
+			if eventID, ok := dataMap["event_id"].(string); ok {
+				result.EventID = eventID
+			}
 			normalizeSyncFields(dataMap, item.EntityType)
 			item.Data = dataMap
 		}
@@ -382,6 +444,51 @@ func ProcessBatchSync(outletID string, req models.BatchSyncRequest) models.Batch
 						result.CloudID = cloudID
 						resp.Success++
 					}
+				}
+			}
+
+		case "additional_charge":
+			var chargeReq models.PushAdditionalChargeRequest
+			if err := json.Unmarshal(dataBytes, &chargeReq); err != nil {
+				result.Status = "failed"
+				result.Error = "Invalid additional charge data: " + err.Error()
+				resp.Failed++
+			} else {
+				result.LocalID = chargeReq.LocalID
+				if cloudID, err := SaveAdditionalCharge(outletID, chargeReq); err != nil {
+					result.Status = "failed"
+					result.Error = err.Error()
+					resp.Failed++
+				} else {
+					result.CloudID = cloudID
+					resp.Success++
+				}
+			}
+
+		case "product_addon":
+			var addonReq models.PushProductAddonRequest
+			if err := json.Unmarshal(dataBytes, &addonReq); err != nil {
+				result.Status = "failed"
+				result.Error = "Invalid product addon data: " + err.Error()
+				resp.Failed++
+			} else {
+				result.LocalID = addonReq.LocalID
+				if item.Operation == "delete" {
+					if err := DeleteProductAddon(outletID, addonReq.LocalID); err != nil {
+						result.Status = "failed"
+						result.Error = err.Error()
+						resp.Failed++
+					} else {
+						result.CloudID = addonReq.LocalID
+						resp.Success++
+					}
+				} else if cloudID, err := SaveProductAddon(outletID, addonReq); err != nil {
+					result.Status = "failed"
+					result.Error = err.Error()
+					resp.Failed++
+				} else {
+					result.CloudID = cloudID
+					resp.Success++
 				}
 			}
 
@@ -542,14 +649,9 @@ func ProcessBatchSync(outletID string, req models.BatchSyncRequest) models.Batch
 				}
 			}
 			result.LocalID = localID
-			result.Status = "success"
-			result.CloudID = localID
-			// Dijawab "success" agar device tidak retry selamanya, tapi dicatat di
-			// sync_logs: item tipe ini TIDAK dipersistenkan — bila tipenya kelak
-			// diimplementasikan, data historis periode ini tidak akan dikirim ulang.
-			log.Printf("Entity type '%s' not handled by cloud, skipping", item.EntityType)
-			go logSync(outletID, "batch_sync_item", item.EntityType, 1, "skipped", localID+": entity type tidak dikenal, tidak disimpan")
-			resp.Success++
+			result.Status = "failed"
+			result.Error = fmt.Sprintf("Unsupported entity_type: %s", item.EntityType)
+			resp.Failed++
 		}
 
 		// Persistenkan kegagalan per-item: tanpa ini server hanya menyimpan agregat
@@ -596,7 +698,8 @@ func GetUpdatesSince(outletID, since string) (*models.UpdatesResponse, error) {
 
 	rows, err := database.DB.Query(
 		`SELECT id, local_id, name, COALESCE(code,''), COALESCE(description,''),
-			COALESCE(category_id,''), COALESCE(category_name,''),
+			COALESCE((SELECT c.local_id FROM cloud_categories c WHERE c.outlet_id=cloud_products.outlet_id AND c.id=cloud_products.category_id),
+			 (SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='category' AND i.outlet_id=cloud_products.outlet_id AND i.cloud_id=cloud_products.category_id), category_id,''), COALESCE(category_name,''),
 			price, version, updated_at::text
 		FROM cloud_products
 		WHERE outlet_id = $1 AND updated_at > $2 AND is_deleted = false
@@ -704,9 +807,10 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 		`SELECT id, local_id, outlet_id, opened_by, opened_at, opening_cash,
 			closed_at, COALESCE(closed_by,''), closing_cash, closing_card,
 			closing_qris, closing_transfer, carry_over_cash,
-			COALESCE(previous_shift_id,''), COALESCE(handover_to,''),
+			COALESCE((SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='cashier_shift'
+				AND i.outlet_id=s.outlet_id AND i.cloud_id=s.previous_shift_id),previous_shift_id,''), COALESCE(handover_to,''),
 			status, COALESCE(notes,''), created_at, updated_at, synced_at
-		FROM cloud_cashier_shifts
+		FROM cloud_cashier_shifts s
 		WHERE outlet_id = $1 AND status = 'open'
 		ORDER BY opened_at ASC`,
 		outletID,
@@ -784,10 +888,11 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 		}
 		movRows, err := database.DB.Query(
 			fmt.Sprintf(
-				`SELECT id, local_id, outlet_id, shift_id,
+				`SELECT id, local_id, outlet_id,
+					COALESCE((SELECT s.local_id FROM cloud_cashier_shifts s WHERE s.id=m.shift_id AND s.outlet_id=m.outlet_id),shift_id),
 					movement_type, amount,
 					COALESCE(counterpart_name,''), COALESCE(note,''), created_at
-				FROM cloud_cash_movements
+				FROM cloud_cash_movements m
 				WHERE outlet_id = $1 AND shift_id IN (%s)
 				ORDER BY created_at ASC`, placeholders,
 			),

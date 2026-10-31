@@ -4,6 +4,7 @@ package services
 // karena jumlah outlet berubah atau omzet antar outlet timpang; minggu berlibur
 // disetarakan sebelum dibandingkan; dan selisih baru divonis kalau konsisten.
 import (
+	"cloud-pos/database"
 	"cloud-pos/models"
 	"encoding/json"
 	"fmt"
@@ -314,7 +315,7 @@ func TestPengaliPerOutletDitarikKeGrup(t *testing.T) {
 
 func TestKlasifikasiHari(t *testing.T) {
 	cal := &bizCalendar{days: map[string][]models.BizCalendarDay{
-		"2026-08-17": {{Kind: BizCalNational, Name: "HUT RI"}},   // Senin
+		"2026-08-17": {{Kind: BizCalNational, Name: "HUT RI"}},     // Senin
 		"2026-03-21": {{Kind: BizCalNational, Name: "Idul Fitri"}}, // Sabtu → bukan libur hari kerja
 		"2026-07-01": {{Kind: BizCalSchool, Name: "Libur sekolah"}},
 		"2026-06-01": {{Kind: BizCalNational, Name: "Pancasila"}, {Kind: BizCalSchool, Name: "Libur sekolah"}},
@@ -425,7 +426,7 @@ func TestKalimatModelDinamis(t *testing.T) {
 			RecentSlopePct: 1.2, RecentSignificant: true, RecentWeeks: 8},
 		Forecast: &models.BizForecast{From: "2026-09-28", To: "2026-10-25", TotalRaw: 200e6, TotalLo: 150e6, TotalHi: 260e6, Basis: "tren",
 			Weeks: []models.BizForecastWeek{{WeekStart: "2026-09-28"}, {WeekStart: "2026-10-05", Calendar: "Libur: Uji (Sen 5)"}}},
-		Dow: &models.BizDowShift{WeekendPct: pf(-30), WeekdayPct: pf(-8), WorstDow: 6, WorstPct: -38, BestDow: 1, BestPct: 5},
+		Dow:         &models.BizDowShift{WeekendPct: pf(-30), WeekdayPct: pf(-8), WorstDow: 6, WorstPct: -38, BestDow: 1, BestPct: 5},
 		Changepoint: &models.BizChangepoint{WeekStart: "2026-08-31", ShiftPct: -25, BeforeMean: 80e6, AfterMean: 60e6, Significant: true, AfterWeeks: 4},
 	}
 	got := strings.Join(bizModelStatements("Kala (KL)", r, false, 4), " || ")
@@ -734,16 +735,69 @@ func TestKesimpulanStabilTerhadapRentangMinggu(t *testing.T) {
 // penjualannya nyata, hanya belum bisa dinilai.
 func TestOutletTanpaMingguPenuhTetapTampil(t *testing.T) {
 	requireDB(t)
+	// Tiga outlet membentuk panel delapan minggu penuh. Outlet keempat baru
+	// berjualan pada Jumat lalu, sehingga omzetnya tampil tanpa ikut dinilai.
+	// Kalender fixture mengikuti zona waktu DB, bukan jam/zona mesin penguji.
+	var partialCode string
+	var fixtureIDs []string
+	t.Cleanup(func() {
+		for _, id := range fixtureIDs {
+			if _, err := database.DB.Exec(`DELETE FROM cloud_transactions WHERE outlet_id=$1`, id); err != nil {
+				t.Error(err)
+			}
+			if _, err := database.DB.Exec(`DELETE FROM outlets WHERE id=$1`, id); err != nil {
+				t.Error(err)
+			}
+		}
+		bizReportCacheClear()
+	})
+	for i := 0; i < 4; i++ {
+		id := NewULID()
+		code := "BIZ" + id[10:]
+		fixtureIDs = append(fixtureIDs, id)
+		if _, err := database.DB.Exec(`INSERT INTO outlets(id,code,name,api_key,is_active)
+			VALUES($1,$2,'Analisa bisnis fixture',$3,true)`, id, code, "test-biz-"+id); err != nil {
+			t.Fatal(err)
+		}
+		first, last, amount := 56, 1, 1000
+		if i == 3 {
+			partialCode = code
+			first, last, amount = 3, 3, 5000
+		}
+		if _, err := database.DB.Exec(`
+			WITH days AS (
+				SELECT date_trunc('week',tz_today()::timestamp)::date - n AS day
+				FROM generate_series($3::integer,$4::integer,-1) AS n
+			), fixture AS (
+				SELECT substring(md5($1 || day::text),1,26) AS id, day FROM days
+			)
+			INSERT INTO cloud_transactions(id,local_id,outlet_id,outlet_code,total_amount,created_at)
+			SELECT id,id,$1,$2,$5,tz_day_start(day) + interval '12 hours' FROM fixture`,
+			id, code, first, last, amount); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bizReportCacheClear()
 	rep, err := GetBusinessAnalysis(12)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var adaNet float64
+	var foundPartial bool
 	for _, o := range rep.Outlets {
 		adaNet += o.Net
+		if o.Code == partialCode {
+			foundPartial = true
+			if o.InPanel || o.Net != 5000 {
+				t.Errorf("outlet baru: panel=%v omzet=%.0f, ingin di luar panel dengan omzet 5000", o.InPanel, o.Net)
+			}
+		}
 		if !o.InPanel && o.Net > 0 && o.Diagnosis != "DATA_KURANG" && o.Diagnosis != "SINYAL_LEMAH" {
 			t.Errorf("%s di luar panel tapi divonis %q", o.Code, o.Diagnosis)
 		}
+	}
+	if !foundPartial {
+		t.Error("outlet tanpa minggu penuh hilang dari laporan")
 	}
 	if adaNet <= 0 {
 		t.Error("tidak ada outlet yang menampilkan penjualan")

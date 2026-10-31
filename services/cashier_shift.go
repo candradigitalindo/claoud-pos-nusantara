@@ -39,12 +39,12 @@ func GetCashierShiftReport(outletID, status, dateFrom, dateTo string, outletScop
 		idx++
 	}
 	if dateFrom != "" {
-		conds = append(conds, fmt.Sprintf("s.created_at >= tz_day_start($%d::date)", idx))
+		conds = append(conds, fmt.Sprintf("COALESCE(s.opened_at,s.created_at) >= tz_day_start($%d::date)", idx))
 		args = append(args, dateFrom)
 		idx++
 	}
 	if dateTo != "" {
-		conds = append(conds, fmt.Sprintf("s.created_at < tz_day_start($%d::date + 1)", idx))
+		conds = append(conds, fmt.Sprintf("COALESCE(s.opened_at,s.created_at) < tz_day_start($%d::date + 1)", idx))
 		args = append(args, dateTo)
 		idx++
 	}
@@ -56,11 +56,10 @@ func GetCashierShiftReport(outletID, status, dateFrom, dateTo string, outletScop
 
 	q := fmt.Sprintf(`
 		SELECT s.id, s.outlet_id, COALESCE(o.name, s.outlet_id), s.opened_by,
-			-- Pakai created_at (waktu cloud, UTC andal) untuk waktu buka; opened_at dari app
-			-- naive-local (geser +7) & bisa ter-overwrite jadi closed_at saat tutup.
-			to_char((s.created_at AT TIME ZONE 'UTC') AT TIME ZONE COALESCE((SELECT value FROM app_settings WHERE key='timezone'),'Asia/Jakarta'), 'YYYY-MM-DD HH24:MI'),
+			-- Gunakan waktu kejadian dari POS; waktu penerimaan hanya cadangan.
+			to_char((COALESCE(s.opened_at,s.created_at) AT TIME ZONE 'UTC') AT TIME ZONE COALESCE((SELECT value FROM app_settings WHERE key='timezone'),'Asia/Jakarta'), 'YYYY-MM-DD HH24:MI'),
 			COALESCE(s.closed_by, ''),
-			CASE WHEN s.status='closed' THEN to_char((s.updated_at AT TIME ZONE 'UTC') AT TIME ZONE COALESCE((SELECT value FROM app_settings WHERE key='timezone'),'Asia/Jakarta'), 'YYYY-MM-DD HH24:MI') ELSE '' END,
+			CASE WHEN s.status='closed' THEN to_char((COALESCE(s.closed_at,s.updated_at) AT TIME ZONE 'UTC') AT TIME ZONE COALESCE((SELECT value FROM app_settings WHERE key='timezone'),'Asia/Jakarta'), 'YYYY-MM-DD HH24:MI') ELSE '' END,
 			s.opening_cash, COALESCE(s.closing_cash,0), COALESCE(s.closing_card,0),
 			COALESCE(s.closing_qris,0), COALESCE(s.closing_transfer,0), COALESCE(s.carry_over_cash,0),
 			COALESCE(s.handover_to,''), s.status, COALESCE(s.notes,''),
@@ -68,7 +67,7 @@ func GetCashierShiftReport(outletID, status, dateFrom, dateTo string, outletScop
 		FROM cloud_cashier_shifts s
 		LEFT JOIN outlets o ON o.id = s.outlet_id
 		WHERE %s
-		ORDER BY s.created_at DESC`, strings.Join(conds, " AND "))
+		ORDER BY COALESCE(s.opened_at,s.created_at) DESC`, strings.Join(conds, " AND "))
 
 	rows, err := database.DB.Query(q, args...)
 	if err != nil {
@@ -124,21 +123,21 @@ func GetCashierShiftReport(outletID, status, dateFrom, dateTo string, outletScop
 		aggs := map[string]*cloudAgg{}
 		crows, cErr := database.DB.Query(`
 			WITH win AS (
-				SELECT TRIM(s.id) AS sid, s.outlet_id, s.created_at AS t_from,
+				SELECT TRIM(s.id) AS sid, s.outlet_id, COALESCE(s.opened_at,s.created_at) AS t_from,
 					LEAST(
-						COALESCE((SELECT MIN(s2.created_at) FROM cloud_cashier_shifts s2
-							WHERE s2.outlet_id = s.outlet_id AND s2.created_at > s.created_at),
+						COALESCE((SELECT MIN(COALESCE(s2.opened_at,s2.created_at)) FROM cloud_cashier_shifts s2
+							WHERE s2.outlet_id = s.outlet_id AND COALESCE(s2.opened_at,s2.created_at) > COALESCE(s.opened_at,s.created_at)),
 							'infinity'::timestamp),
-						CASE WHEN s.status = 'closed' THEN s.updated_at ELSE (NOW() AT TIME ZONE 'UTC') END
+						CASE WHEN s.status = 'closed' THEN COALESCE(s.closed_at,s.updated_at) ELSE (NOW() AT TIME ZONE 'UTC') END
 					) AS t_to
 				FROM cloud_cashier_shifts s WHERE TRIM(s.id) = ANY($1::text[])
 			)
 			SELECT w.sid, COALESCE(tp.payment_method,'other'),
 				COALESCE(SUM(tp.amount),0), COUNT(DISTINCT t.id)
 			FROM win w
-			JOIN cloud_transactions t ON t.outlet_id = w.outlet_id
-				AND t.created_at >= w.t_from AND t.created_at < w.t_to
-			JOIN transaction_payments tp ON tp.transaction_id = t.id
+			JOIN transaction_payments tp ON tp.outlet_id = w.outlet_id
+				AND tp.created_at >= w.t_from AND tp.created_at < w.t_to
+			JOIN cloud_transactions t ON t.id = tp.transaction_id AND t.outlet_id = tp.outlet_id
 			GROUP BY w.sid, tp.payment_method`, pq.Array(needCloud))
 		if cErr == nil {
 			defer crows.Close()
@@ -161,19 +160,20 @@ func GetCashierShiftReport(outletID, status, dateFrom, dateTo string, outletScop
 		// tidak boleh terhitung dua kali.
 		cntRows, cntErr := database.DB.Query(`
 			WITH win AS (
-				SELECT TRIM(s.id) AS sid, s.outlet_id, s.created_at AS t_from,
+				SELECT TRIM(s.id) AS sid, s.outlet_id, COALESCE(s.opened_at,s.created_at) AS t_from,
 					LEAST(
-						COALESCE((SELECT MIN(s2.created_at) FROM cloud_cashier_shifts s2
-							WHERE s2.outlet_id = s.outlet_id AND s2.created_at > s.created_at),
+						COALESCE((SELECT MIN(COALESCE(s2.opened_at,s2.created_at)) FROM cloud_cashier_shifts s2
+							WHERE s2.outlet_id = s.outlet_id AND COALESCE(s2.opened_at,s2.created_at) > COALESCE(s.opened_at,s.created_at)),
 							'infinity'::timestamp),
-						CASE WHEN s.status = 'closed' THEN s.updated_at ELSE (NOW() AT TIME ZONE 'UTC') END
+						CASE WHEN s.status = 'closed' THEN COALESCE(s.closed_at,s.updated_at) ELSE (NOW() AT TIME ZONE 'UTC') END
 					) AS t_to
 				FROM cloud_cashier_shifts s WHERE TRIM(s.id) = ANY($1::text[])
 			)
-			SELECT w.sid, COUNT(t.id)
+			SELECT w.sid, COUNT(DISTINCT t.id)
 			FROM win w
-			JOIN cloud_transactions t ON t.outlet_id = w.outlet_id
-				AND t.created_at >= w.t_from AND t.created_at < w.t_to
+			JOIN transaction_payments tp ON tp.outlet_id = w.outlet_id
+				AND tp.created_at >= w.t_from AND tp.created_at < w.t_to
+			JOIN cloud_transactions t ON t.id = tp.transaction_id AND t.outlet_id = tp.outlet_id
 			GROUP BY w.sid`, pq.Array(needCloud))
 		if cntErr == nil {
 			defer cntRows.Close()
@@ -204,9 +204,9 @@ func GetCashierShiftReport(outletID, status, dateFrom, dateTo string, outletScop
 	if len(shiftIDs) > 0 {
 		mrows, mErr := database.DB.Query(`
 			SELECT TRIM(shift_id), movement_type, amount, COALESCE(counterpart_name,''), COALESCE(note,''),
-				COALESCE(to_char((synced_at AT TIME ZONE 'UTC') AT TIME ZONE COALESCE((SELECT value FROM app_settings WHERE key='timezone'),'Asia/Jakarta'),'YYYY-MM-DD HH24:MI'),'')
+				COALESCE(to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE COALESCE((SELECT value FROM app_settings WHERE key='timezone'),'Asia/Jakarta'),'YYYY-MM-DD HH24:MI'),'')
 			FROM cloud_cash_movements WHERE TRIM(shift_id) = ANY($1::text[])
-			ORDER BY synced_at ASC`, pq.Array(shiftIDs))
+			ORDER BY created_at ASC`, pq.Array(shiftIDs))
 		if mErr == nil {
 			defer mrows.Close()
 			for mrows.Next() {

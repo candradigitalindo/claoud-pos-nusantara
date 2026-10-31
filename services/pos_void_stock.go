@@ -288,7 +288,11 @@ func applyOrderVoidStock(tx *sql.Tx, outletID, orderID string, req models.PushOr
 	if err != nil || !fresh {
 		return err
 	}
-	rows, err := tx.Query(`SELECT id,COALESCE(items,'[]') FROM cloud_transactions WHERE outlet_id=$1 AND btrim(order_id)=$2 ORDER BY id`, outletID, orderID)
+	rows, err := tx.Query(`SELECT t.id,COALESCE(t.items,'[]') FROM cloud_transactions t
+		JOIN LATERAL (SELECT candidate.id FROM cloud_orders candidate
+			WHERE candidate.outlet_id=t.outlet_id AND (candidate.id=t.order_id OR candidate.local_id=t.order_id)
+			ORDER BY (candidate.id=t.order_id) DESC LIMIT 1) o ON true
+		WHERE t.outlet_id=$1 AND o.id=$2 ORDER BY t.id`, outletID, orderID)
 	if err != nil {
 		return err
 	}
@@ -459,7 +463,7 @@ func retryPOSStockDeduction(id, outletID, txnID, productID string, qty float64) 
 	}
 	var pending, exists bool
 	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM stock_deduction_failures WHERE id=$1 AND status='pending'),
-		EXISTS(SELECT 1 FROM cloud_transactions t WHERE t.outlet_id=$2 AND t.id=$3 AND NOT EXISTS(SELECT 1 FROM cloud_orders o WHERE o.outlet_id=t.outlet_id AND o.local_id=t.order_id AND NULLIF(o.payment_info->>'voided_at','') IS NOT NULL))`, id, outletID, txnID).Scan(&pending, &exists); err != nil {
+		EXISTS(SELECT 1 FROM cloud_transactions t WHERE t.outlet_id=$2 AND t.id=$3`+txNotVoided("t")+`)`, id, outletID, txnID).Scan(&pending, &exists); err != nil {
 		return err
 	}
 	if !pending {

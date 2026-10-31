@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/playwright:v1.47.2-jammy
+
+# Test tooling only. The application and SDK are mounted by the test runner.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl unzip xz-utils libsqlite3-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CI=true FLUTTER_SUPPRESS_ANALYTICS=true DART_SUPPRESS_ANALYTICS=true
+ENV PUB_CACHE=/cache/pub XDG_CONFIG_HOME=/cache/config XDG_CACHE_HOME=/cache/xdg
+ENV PATH=/opt/flutter/bin:$PATH
+WORKDIR /src

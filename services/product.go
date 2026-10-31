@@ -14,13 +14,27 @@ import (
 )
 
 func SaveProduct(outletID string, req models.PushProductRequest) (string, error) {
-	cloudID := req.LocalID
-	err := database.DB.QueryRow(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	cloudID, err := reservePOSID(tx, "product", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
+	categoryID := strings.TrimSpace(req.CategoryID)
+	if categoryID != "" {
+		categoryID, err = reservePOSID(tx, "category", outletID, categoryID)
+		if err != nil {
+			return "", err
+		}
+	}
+	err = tx.QueryRow(
 		`INSERT INTO cloud_products (id, local_id, outlet_id, name, code, description, category_id,
 			category_name, price, destination, version, updated_at, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()), NOW())
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			id = EXCLUDED.id,
 			name = EXCLUDED.name,
 			code = EXCLUDED.code,
 			description = EXCLUDED.description,
@@ -32,12 +46,15 @@ func SaveProduct(outletID string, req models.PushProductRequest) (string, error)
 			updated_at = NOW(),
 			synced_at = NOW()
 		RETURNING id`,
-		cloudID, cloudID, outletID, req.Name, nullStr(req.Code), req.Description, req.CategoryID,
+		cloudID, req.LocalID, outletID, req.Name, nullStr(req.Code), req.Description, categoryID,
 		req.CategoryName, req.Price, req.Destination,
 		req.Version, parseTime(req.UpdatedAt),
 	).Scan(&cloudID)
 
 	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 
@@ -52,7 +69,8 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 
 	rows, err := database.DB.Query(
 		`SELECT id, local_id, outlet_id, name, COALESCE(code,''), COALESCE(description,''),
-			COALESCE(category_id,''),
+			COALESCE((SELECT c.local_id FROM cloud_categories c WHERE c.outlet_id=cloud_products.outlet_id AND c.id=cloud_products.category_id),
+			 (SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='category' AND i.outlet_id=cloud_products.outlet_id AND i.cloud_id=cloud_products.category_id), category_id,''),
 			COALESCE(category_name,''), price, COALESCE(destination,''),
 			stock_type, COALESCE(recipe_master_id,''),
 			COALESCE((SELECT r.name FROM recipe_masters r WHERE r.id = cloud_products.recipe_master_id),''),
@@ -519,6 +537,91 @@ func DeleteProduct(outletID, localID string) error {
 	return err
 }
 
+// SaveProductAddon menyimpan satu add-on dari sync batch POS. Idempoten per
+// (outlet_id, local_id) — kiriman ulang menimpa, bukan menggandakan.
+func SaveProductAddon(outletID string, req models.PushProductAddonRequest) (string, error) {
+	if req.ProductLocalID == "" {
+		return "", fmt.Errorf("product_local_id wajib diisi")
+	}
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	cloudID, err := reservePOSID(tx, "product_addon", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
+	err = tx.QueryRow(
+		`INSERT INTO cloud_product_addons (id, local_id, outlet_id, product_local_id,
+			group_name, name, price, sort_order, is_active, version, updated_at, synced_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, NOW()), NOW())
+		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
+			product_local_id = EXCLUDED.product_local_id,
+			group_name = EXCLUDED.group_name,
+			name = EXCLUDED.name,
+			price = EXCLUDED.price,
+			sort_order = EXCLUDED.sort_order,
+			is_active = EXCLUDED.is_active,
+			-- Kiriman ulang menghidupkan kembali add-on yang sempat dihapus,
+			-- mengikuti keadaan terakhir di POS sebagai sumber kebenaran.
+			is_deleted = false,
+			version = EXCLUDED.version,
+			updated_at = NOW(),
+			synced_at = NOW()
+		RETURNING id`,
+		cloudID, req.LocalID, outletID, req.ProductLocalID,
+		req.GroupName, req.Name, req.Price, req.SortOrder, req.IsActive != 0,
+		req.Version, parseTime(req.UpdatedAt),
+	).Scan(&cloudID)
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	go logSync(outletID, "push_product_addon", "product_addon", 1, "success", "")
+	return cloudID, nil
+}
+
+func DeleteProductAddon(outletID, localID string) error {
+	_, err := database.DB.Exec(
+		`UPDATE cloud_product_addons SET is_deleted = true, updated_at = NOW()
+		WHERE outlet_id = $1 AND local_id = $2`,
+		outletID, localID,
+	)
+	return err
+}
+
+// GetProductAddons mengembalikan add-on AKTIF milik outlet, dikelompokkan per
+// product_local_id — dipakai menu publik dan pemesanan online agar pilihan yang
+// ditawarkan sama persis dengan yang ada di kasir.
+func GetProductAddons(outletID string) (map[string][]models.CloudProductAddon, error) {
+	rows, err := database.DB.Query(
+		`SELECT id, local_id, product_local_id, COALESCE(group_name,''), name,
+			price, sort_order, is_active
+		FROM cloud_product_addons
+		WHERE outlet_id = $1 AND is_deleted = false AND is_active = true
+		ORDER BY product_local_id, sort_order ASC, name ASC`,
+		outletID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string][]models.CloudProductAddon)
+	for rows.Next() {
+		var a models.CloudProductAddon
+		if err := rows.Scan(&a.ID, &a.LocalID, &a.ProductLocalID, &a.GroupName,
+			&a.Name, &a.Price, &a.SortOrder, &a.IsActive); err != nil {
+			return nil, err
+		}
+		out[a.ProductLocalID] = append(out[a.ProductLocalID], a)
+	}
+	return out, rows.Err()
+}
+
 func generateProductCode(outletID, productName string) string {
 	name := strings.TrimSpace(productName)
 	if name == "" {
@@ -574,22 +677,32 @@ func SaveCategory(outletID string, req models.PushCategoryRequest) (string, erro
 		codePrefix = generateCategoryCodePrefix(req.Name)
 	}
 
-	cloudID := req.LocalID
-	err := database.DB.QueryRow(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	cloudID, err := reservePOSID(tx, "category", outletID, req.LocalID)
+	if err != nil {
+		return "", err
+	}
+	err = tx.QueryRow(
 		`INSERT INTO cloud_categories (id, local_id, outlet_id, name, code_prefix, version, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
-			id = EXCLUDED.id,
 			name = EXCLUDED.name,
 			code_prefix = EXCLUDED.code_prefix,
 			version = EXCLUDED.version,
 			updated_at = NOW(),
 			synced_at = NOW()
 		RETURNING id`,
-		cloudID, cloudID, outletID, req.Name, codePrefix, req.Version,
+		cloudID, req.LocalID, outletID, req.Name, codePrefix, req.Version,
 	).Scan(&cloudID)
 
 	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	return cloudID, nil
