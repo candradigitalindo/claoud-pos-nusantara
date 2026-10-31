@@ -249,3 +249,59 @@ func TestProductClassificationConcurrentApplyHasSingleWinner(t *testing.T) {
 		t.Fatalf("concurrent apply wrote more than once: version=%d err=%v", version, err)
 	}
 }
+
+func TestProductClassificationATVOverlandPolicyApplyAndRename(t *testing.T) {
+	f := newClassificationFixture(t)
+	if _, err := database.DB.Exec(`UPDATE outlets SET name='ATV Overland' WHERE id=$1`, f.outlet); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{}
+	for _, name := range []string{"Dokumentasi", "GOLD ATV", "Jas Hujan", "SILVER ATV"} {
+		ids = append(ids, f.product(t, f.outlet, name))
+	}
+	foreign := f.product(t, f.foreign, "Jas Hujan")
+	selection := classificationSelection(t, f.outlet, []string{f.outlet}, ids...)
+	for _, item := range selection {
+		if item.SuggestedKind != "activity" {
+			t.Fatalf("outlet item omitted from activity selection: %+v", item)
+		}
+	}
+	// Outlet identity is part of the evidence. A rename after preview must
+	// reject the entire batch, including otherwise recognizable ATV items.
+	if _, err := database.DB.Exec(`UPDATE outlets SET name='ATV Overland Cafe' WHERE id=$1`, f.outlet); err != nil {
+		t.Fatal(err)
+	}
+	var conflict ConflictError
+	if _, err := ApplyProductClassification(f.outlet, []string{f.outlet}, "tester", selection); !errors.As(err, &conflict) {
+		t.Fatalf("outlet rename accepted stale policy: %v", err)
+	}
+	var written int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM fnb_product_profiles f JOIN cloud_products p ON p.id=f.product_id WHERE p.outlet_id=$1`, f.outlet).Scan(&written); err != nil || written != 0 {
+		t.Fatalf("stale policy partially applied: %d %v", written, err)
+	}
+	if _, err := database.DB.Exec(`UPDATE outlets SET name='ATV Overland' WHERE id=$1`, f.outlet); err != nil {
+		t.Fatal(err)
+	}
+	selection = classificationSelection(t, f.outlet, []string{f.outlet}, ids...)
+	if n, err := ApplyProductClassification(f.outlet, []string{f.outlet}, "owner policy", selection); err != nil || n != 4 {
+		t.Fatalf("apply policy: %d %v", n, err)
+	}
+	updates, err := GetUpdatesSince(f.outlet, "2021-01-01T00:00:00Z")
+	if err != nil || len(updates.Products) != 4 {
+		t.Fatalf("policy updates missing: %+v %v", updates, err)
+	}
+	for _, product := range updates.Products {
+		if product.MenuKind != "activity" || product.Version != 2 {
+			t.Fatalf("policy did not publish activity: %+v", product)
+		}
+	}
+	report, err := PreviewProductClassification("", []string{f.outlet, f.foreign})
+	if err != nil || report.Totals != (models.ProductClassificationTotals{Total: 5, Existing: 4, Activity: 4, NeedsReview: 1}) {
+		t.Fatalf("policy scope/retry result: %+v %v", report.Totals, err)
+	}
+	for _, row := range report.Rows {
+		if row.ProductID == foreign && (row.CurrentKind != "" || row.Status != "needs_review") {
+			t.Fatalf("policy changed another outlet: %+v", row)
+		}
+	}
+}

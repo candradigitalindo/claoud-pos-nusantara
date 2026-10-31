@@ -13,7 +13,7 @@ import (
 	"unicode"
 )
 
-const rulesVersion = "menu-kind-v1"
+const rulesVersion = "menu-kind-v2-atv-overland"
 
 var nameRules = map[string][]string{
 	"food": {
@@ -129,6 +129,14 @@ func Classify(in models.ProductClassificationInput) models.ProductClassification
 	}
 	if in.CurrentKind != "" {
 		r.Reason = "Jenis lama tidak dikenal; tinjau manual tanpa menimpa nilai yang ada."
+		return r
+	}
+	// Owner-defined business grouping includes every catalog item at this
+	// outlet, including supporting items such as raincoats. Match the full
+	// outlet name, never product/category text or another outlet's prefix.
+	if strings.EqualFold(strings.Join(strings.Fields(in.OutletName), " "), "ATV Overland") {
+		r.SuggestedKind, r.Status, r.Confidence = "activity", "suggested", "high"
+		r.Reason = "Ketentuan outlet ATV Overland: seluruh produk dikelompokkan sebagai Aktivitas."
 		return r
 	}
 	for _, recipe := range in.RecipeEvidence {

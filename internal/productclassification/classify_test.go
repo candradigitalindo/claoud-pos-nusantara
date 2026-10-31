@@ -86,6 +86,7 @@ func TestClassificationFingerprintBindsRelevantInputs(t *testing.T) {
 		func(p *models.ProductClassificationInput) { p.MenuKindSource = "profile" },
 		func(p *models.ProductClassificationInput) { p.UpdatedAt = "2026-01-02T00:00:00Z" },
 		func(p *models.ProductClassificationInput) { p.OutletID = "another" },
+		func(p *models.ProductClassificationInput) { p.OutletName = "ATV Overland" },
 		func(p *models.ProductClassificationInput) {
 			p.RecipeEvidence = []models.ProductClassificationRecipe{{RecipeID: "one", MenuKind: "food"}}
 		},
@@ -99,5 +100,30 @@ func TestClassificationFingerprintBindsRelevantInputs(t *testing.T) {
 	report := Report([]models.ProductClassificationInput{{Name: "Nasi"}, {CurrentKind: "beverage"}, {Name: "ATV"}, {Name: "Unknown"}})
 	if report.Totals != (models.ProductClassificationTotals{Total: 4, Existing: 1, Suggested: 2, NeedsReview: 1, Food: 1, Beverage: 1, Activity: 1}) {
 		t.Fatalf("incorrect review totals: %+v", report.Totals)
+	}
+}
+
+func TestClassifyATVOverlandOutletPolicy(t *testing.T) {
+	for _, name := range []string{"Dokumentasi", "GOLD ATV", "Jas Hujan", "SILVER ATV", "Nasi Goreng", "Espresso", "BUNDLING GOLD ATV (2KOPI-2DONAT)", "Produk baru"} {
+		row := Classify(models.ProductClassificationInput{OutletName: "ATV Overland", Name: name, CategoryName: "ATV KALA"})
+		if row.Status != "suggested" || row.SuggestedKind != "activity" || row.Confidence != "high" {
+			t.Fatalf("outlet policy did not cover %q: %+v", name, row)
+		}
+	}
+	for _, outlet := range []string{"ATV", "ATV Overland Cafe", "Cabang ATV Overland", "Kala Mont View", ""} {
+		row := Classify(models.ProductClassificationInput{OutletName: outlet, Name: "Jas Hujan", CategoryName: "ATV KALA"})
+		if row.Status != "needs_review" || row.SuggestedKind != "" {
+			t.Fatalf("outlet policy leaked to %q: %+v", outlet, row)
+		}
+	}
+	row := Classify(models.ProductClassificationInput{OutletName: "  atv   OVERLAND  ", Name: "Jas Hujan"})
+	if row.SuggestedKind != "activity" {
+		t.Fatalf("case/whitespace variation lost policy: %+v", row)
+	}
+	for _, kind := range []string{"food", "beverage", "activity"} {
+		row := Classify(models.ProductClassificationInput{OutletName: "ATV Overland", Name: "Jas Hujan", CurrentKind: kind})
+		if row.Status != "existing" || row.CurrentKind != kind || row.SuggestedKind != "" {
+			t.Fatalf("preview silently replaced an existing label: %+v", row)
+		}
 	}
 }

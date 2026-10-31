@@ -267,6 +267,13 @@ Analisis menggunakan aturan nama/kategori/resep yang dapat diperiksa; nama
 tidak dikenal, barang di luar tiga jenis, serta paket campuran tidak dipaksa
 menjadi Aktivitas. Jenis yang sudah ditentukan tidak ditimpa.
 
+Sesuai ketentuan pemilik, analisis outlet **ATV Overland** mengelompokkan semua
+produk yang belum memiliki jenis sebagai Aktivitas, termasuk barang pendukung.
+Aturan memeriksa nama outlet lengkap (abaikan kapitalisasi/spasi berlebih),
+bukan kategori ATV atau potongan nama outlet lain. Jenis eksplisit tetap
+dipertahankan sesuai kontrak analisis; aturan ini bukan pembatas form edit.
+Perubahan nama outlet setelah pratinjau membatalkan penerapan dengan 409.
+
 Pratinjau memerlukan `products.view`; penerapan memerlukan `products.update`
 dan konfirmasi pilihan di dialog. Maksimal 1.000 saran berkeyakinan tinggi
 diterapkan dalam satu transaksi. Server memeriksa ulang sumber, fingerprint,
@@ -310,8 +317,10 @@ tanpa jaringan eksternal/port host. Dependensi `npm ci` memakai cache ketika
 `--offline`; tanpa opsi itu hanya tahap persiapan dependensi yang berjejaring.
 
 Analisis snapshot katalog pada 31 Oktober 2026 mencakup **883 produk yang belum
-dihapus di 11 outlet**; 234 produk yang sudah dihapus tidak disertakan. Hasilnya
-**442 usulan Makanan, 336 Minuman, 10 Aktivitas**, serta **95 perlu ditinjau**.
+dihapus di 11 outlet**; 234 produk yang sudah dihapus tidak disertakan.
+Setelah ketentuan ATV Overland, hasilnya **442 usulan Makanan, 336 Minuman,
+11 Aktivitas**, serta **94 perlu ditinjau**. Keempat produk ATV Overland
+seluruhnya mendapat usulan Aktivitas.
 Ini merupakan usulan berdasarkan bukti katalog, belum penerapan ke database
 produksi. Laporan seluruh baris, alasan, dan ringkasan per outlet tersimpan di
 `/home/candra/projects/pos-integration-staging/artifacts/product-kinds-analysis/`
@@ -336,3 +345,11 @@ Artefak akhir: `product-kinds-backend-final` dan
 backend memastikan 318 berkas sumber Go/modul sama dengan snapshot yang diuji.
 Seluruh container dan jaringan uji telah dibersihkan. Katalog produksi dan
 container operasional tetap tidak diubah.
+
+Penyesuaian ATV Overland diuji ulang pada database sintetis: build API lulus,
+**541 tes Go lulus, 3 dilewati** dengan alasan yang sama. Tes baru mencakup
+seluruh produk outlet, batas cakupan nama, penerapan serta incremental sync,
+dan pembatalan seluruh pilihan setelah outlet berganti nama. Artefak tersimpan
+di `atv-overland-backend`. Laporan sebelumnya dicadangkan dengan nama
+`analysis-before-atv-overland.*`; hasil untuk 879 produk outlet lain tetap.
+Tidak ada perubahan UI atau deployment produksi pada penyesuaian ini.

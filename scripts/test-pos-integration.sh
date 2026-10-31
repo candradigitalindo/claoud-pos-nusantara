@@ -317,6 +317,7 @@ if phase in ('all', 'backend'):
                 'TestProductClassificationApplyPreservesCostsAndAudit',
                 'TestProductClassificationApplyRejectsTamperingAndStaleAtomically',
                 'TestProductClassificationConcurrentApplyHasSingleWinner',
+                'TestProductClassificationATVOverlandPolicyApplyAndRename',
                 'TestProductClassificationRoutesRequireUpdatePermissionToApply'}
     if not required <= passed:
         raise SystemExit('Required integration tests did not pass (possibly skipped): ' + ', '.join(sorted(required-passed)))
