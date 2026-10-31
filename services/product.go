@@ -65,7 +65,9 @@ func SaveProduct(outletID string, req models.PushProductRequest) (string, error)
 func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, error) {
 	offset := (page - 1) * limit
 	var total int
-	database.DB.QueryRow("SELECT COUNT(*) FROM cloud_products WHERE outlet_id = $1 AND is_deleted = false", outletID).Scan(&total)
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM cloud_products WHERE outlet_id = $1 AND is_deleted = false", outletID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 
 	rows, err := database.DB.Query(
 		`SELECT id, local_id, outlet_id, name, COALESCE(code,''), COALESCE(description,''),
@@ -76,7 +78,7 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 			COALESCE((SELECT r.name FROM recipe_masters r WHERE r.id = cloud_products.recipe_master_id),''),
 			is_deleted, version, created_at, updated_at, synced_at
 		FROM cloud_products WHERE outlet_id = $1 AND is_deleted = false
-		ORDER BY name ASC LIMIT $2 OFFSET $3`,
+		ORDER BY name ASC, id ASC LIMIT $2 OFFSET $3`,
 		outletID, limit, offset,
 	)
 	if err != nil {

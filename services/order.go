@@ -39,8 +39,14 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 	if strings.TrimSpace(req.PaymentInfo.VoidedAt) != "" && strings.TrimSpace(req.LocalID) == "" {
 		return "", fmt.Errorf("ID order void wajib diisi")
 	}
-	itemsJSON, _ := json.Marshal(req.Items)
-	paymentJSON, _ := json.Marshal(req.PaymentInfo)
+	itemsJSON, err := json.Marshal(req.Items)
+	if err != nil {
+		return "", fmt.Errorf("item order tidak valid: %w", err)
+	}
+	paymentJSON, err := json.Marshal(req.PaymentInfo)
+	if err != nil {
+		return "", fmt.Errorf("rincian pembayaran order tidak valid: %w", err)
+	}
 
 	req.LocalID = strings.TrimSpace(req.LocalID)
 	if req.LocalID == "" {
@@ -58,14 +64,19 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var previousVoid string
-	err = tx.QueryRow(`SELECT COALESCE(payment_info->>'voided_at','') FROM cloud_orders WHERE outlet_id=$1 AND local_id=$2`, outletID, req.LocalID).Scan(&previousVoid)
+	var previousVoid, previousPayment string
+	var previousVersion sql.NullInt64
+	var previousUpdatedAt sql.NullTime
+	err = tx.QueryRow(`SELECT COALESCE(payment_info->>'voided_at',''),
+		COALESCE(payment_info->>'payment_status',''),version,updated_at
+		FROM cloud_orders WHERE outlet_id=$1 AND local_id=$2`, outletID, req.LocalID).
+		Scan(&previousVoid, &previousPayment, &previousVersion, &previousUpdatedAt)
 	if err != nil && err != sql.ErrNoRows {
 		return "", err
 	}
 	// A delayed unpaid/paid snapshot must never resurrect a completed void.
 	if previousVoid != "" && strings.TrimSpace(req.PaymentInfo.VoidedAt) == "" {
-		return cloudID, nil
+		return cloudID, tx.Commit()
 	}
 	if previousVoid != "" {
 		var completed bool
@@ -73,7 +84,31 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 			return "", err
 		}
 		if completed {
-			return cloudID, nil
+			return cloudID, tx.Commit()
+		}
+	}
+	// Terminal payment state cannot be reopened by a delayed order snapshot.
+	// A real void remains allowed and follows the existing atomic stock path.
+	if strings.TrimSpace(req.PaymentInfo.VoidedAt) == "" {
+		if strings.EqualFold(strings.TrimSpace(previousPayment), "paid") &&
+			!strings.EqualFold(strings.TrimSpace(req.PaymentInfo.PaymentStatus), "paid") {
+			return cloudID, tx.Commit()
+		}
+		// POS versions count enqueue seconds, so two mutations can share one
+		// version. Prefer their source timestamps; version alone is a fallback.
+		// Version-less legacy clients remain accepted rather than guessing age.
+		if req.Version > 0 && previousVersion.Valid && previousVersion.Int64 > 0 {
+			stale := int64(req.Version) < previousVersion.Int64
+			if updated, valid := parseTimeStrict(req.UpdatedAt); valid && previousUpdatedAt.Valid {
+				if updated.Before(previousUpdatedAt.Time) {
+					stale = true
+				} else if updated.After(previousUpdatedAt.Time) {
+					stale = false
+				}
+			}
+			if stale {
+				return cloudID, tx.Commit()
+			}
 		}
 	}
 	err = tx.QueryRow(
@@ -134,7 +169,7 @@ func GetOrders(outletID string, page, limit int) ([]models.CloudOrder, int, erro
 
 	rows, err := database.DB.Query(
 		`SELECT id, local_id, outlet_id, outlet_code, COALESCE(table_number,''),
-			COALESCE(customer_name,''), COALESCE(customer_phone,''), pax, total_amount, status,
+			COALESCE(customer_name,''), COALESCE(customer_phone,''),COALESCE(created_by,''),COALESCE(orderer_name,''),COALESCE(is_holding,false),pax, total_amount, status,
 			COALESCE(items::text,'[]'), COALESCE(payment_info::text,'{}'),
 			version, created_at, updated_at, synced_at
 		FROM cloud_orders WHERE outlet_id = $1
@@ -150,7 +185,7 @@ func GetOrders(outletID string, page, limit int) ([]models.CloudOrder, int, erro
 	for rows.Next() {
 		var o models.CloudOrder
 		if err := rows.Scan(&o.ID, &o.LocalID, &o.OutletID, &o.OutletCode,
-			&o.TableNumber, &o.CustomerName, &o.CustomerPhone, &o.Pax, &o.TotalAmount, &o.Status,
+			&o.TableNumber, &o.CustomerName, &o.CustomerPhone, &o.CreatedBy, &o.OrdererName, &o.IsHolding, &o.Pax, &o.TotalAmount, &o.Status,
 			&o.Items, &o.PaymentInfo, &o.Version, &o.CreatedAt, &o.UpdatedAt, &o.SyncedAt); err != nil {
 			return nil, 0, err
 		}

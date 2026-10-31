@@ -796,18 +796,21 @@ func GetUpdatesSince(outletID, since string) (*models.UpdatesResponse, error) {
 
 func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 	resp := &models.RestoreResponse{
-		OpenShifts:    make([]models.CloudCashierShift, 0),
-		UnpaidOrders:  make([]models.CloudOrder, 0),
-		CashMovements: make([]models.CloudCashMovement, 0),
-		RestoredAt:    time.Now().UTC().Format(time.RFC3339),
+		OpenShifts:        make([]models.CloudCashierShift, 0),
+		UnpaidOrders:      make([]models.CloudOrder, 0),
+		CashMovements:     make([]models.CloudCashMovement, 0),
+		AdditionalCharges: make([]models.RestoreAdditionalCharge, 0),
+		RestoredAt:        time.Now().UTC().Format(time.RFC3339),
 	}
 
 	// 1. Open cashier shifts
 	shiftRows, err := database.DB.Query(
 		`SELECT id, local_id, outlet_id, opened_by, opened_at, opening_cash,
-			closed_at, COALESCE(closed_by,''), closing_cash, closing_card,
-			closing_qris, closing_transfer, carry_over_cash,
-			COALESCE((SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='cashier_shift'
+			closed_at, COALESCE(closed_by,''), COALESCE(closing_cash,0), COALESCE(closing_card,0),
+			COALESCE(closing_qris,0), COALESCE(closing_transfer,0), COALESCE(carry_over_cash,0),
+			COALESCE((SELECT p.local_id FROM cloud_cashier_shifts p
+				WHERE p.outlet_id=s.outlet_id AND p.id=s.previous_shift_id),
+				(SELECT i.local_id FROM pos_entity_ids i WHERE i.entity_type='cashier_shift'
 				AND i.outlet_id=s.outlet_id AND i.cloud_id=s.previous_shift_id),previous_shift_id,''), COALESCE(handover_to,''),
 			status, COALESCE(notes,''), created_at, updated_at, synced_at
 		FROM cloud_cashier_shifts s
@@ -820,7 +823,6 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 	}
 	defer shiftRows.Close()
 
-	shiftIDs := make([]string, 0)
 	for shiftRows.Next() {
 		var s models.CloudCashierShift
 		if err := shiftRows.Scan(
@@ -833,23 +835,33 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 			return nil, fmt.Errorf("scan shift: %w", err)
 		}
 		resp.OpenShifts = append(resp.OpenShifts, s)
-		shiftIDs = append(shiftIDs, s.ID)
 	}
 	if err := shiftRows.Err(); err != nil {
 		return nil, err
 	}
 
-	// 2. Unpaid orders (not paid, not voided)
+	// 2. A completed transaction is authoritative even if its final paid order
+	// snapshot arrived late or never arrived. Resolve legacy local references
+	// within this outlet, preferring canonical IDs when both forms could match.
 	orderRows, err := database.DB.Query(
 		`SELECT id, local_id, outlet_id, outlet_code,
 			COALESCE(table_number,''), COALESCE(customer_name,''),
+			COALESCE(customer_phone,''),COALESCE(created_by,''),COALESCE(orderer_name,''),COALESCE(is_holding,false),
 			pax, total_amount, status,
 			COALESCE(items::text,'[]'), COALESCE(payment_info::text,'{}'),
 			version, created_at, updated_at, synced_at
-		FROM cloud_orders
+		FROM cloud_orders o
 		WHERE outlet_id = $1
-			AND COALESCE(payment_info->>'payment_status','unpaid') NOT IN ('paid')
-			AND NULLIF(payment_info->>'voided_at','') IS NULL
+			AND lower(btrim(COALESCE(payment_info->>'payment_status','unpaid'))) <> 'paid'
+			AND lower(btrim(COALESCE(status,''))) NOT IN ('paid','completed','cancelled','canceled','voided')
+			AND NULLIF(btrim(payment_info->>'voided_at'),'') IS NULL
+			AND NOT EXISTS (
+				SELECT 1 FROM cloud_transactions t
+				WHERE t.outlet_id=o.outlet_id AND (t.order_id=o.id OR t.order_id=o.local_id)
+				AND (SELECT parent.id FROM cloud_orders parent
+					WHERE parent.outlet_id=t.outlet_id AND (parent.id=t.order_id OR parent.local_id=t.order_id)
+					ORDER BY (parent.id=t.order_id) DESC LIMIT 1)=o.id
+			)
 		ORDER BY created_at ASC`,
 		outletID,
 	)
@@ -863,6 +875,7 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 		if err := orderRows.Scan(
 			&o.ID, &o.LocalID, &o.OutletID, &o.OutletCode,
 			&o.TableNumber, &o.CustomerName,
+			&o.CustomerPhone, &o.CreatedBy, &o.OrdererName, &o.IsHolding,
 			&o.Pax, &o.TotalAmount, &o.Status,
 			&o.Items, &o.PaymentInfo,
 			&o.Version, &o.CreatedAt, &o.UpdatedAt, &o.SyncedAt,
@@ -876,27 +889,17 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 	}
 
 	// 3. Cash movements from open shifts
-	if len(shiftIDs) > 0 {
-		placeholders := ""
-		args := []interface{}{outletID}
-		for i, id := range shiftIDs {
-			if i > 0 {
-				placeholders += ","
-			}
-			args = append(args, id)
-			placeholders += fmt.Sprintf("$%d", i+2)
-		}
+	if len(resp.OpenShifts) > 0 {
 		movRows, err := database.DB.Query(
-			fmt.Sprintf(
-				`SELECT id, local_id, outlet_id,
-					COALESCE((SELECT s.local_id FROM cloud_cashier_shifts s WHERE s.id=m.shift_id AND s.outlet_id=m.outlet_id),shift_id),
-					movement_type, amount,
-					COALESCE(counterpart_name,''), COALESCE(note,''), created_at
+			`SELECT m.id, m.local_id, m.outlet_id, parent.local_id,
+					m.movement_type, m.amount,
+					COALESCE(m.counterpart_name,''), COALESCE(m.note,''), m.created_at
 				FROM cloud_cash_movements m
-				WHERE outlet_id = $1 AND shift_id IN (%s)
-				ORDER BY created_at ASC`, placeholders,
-			),
-			args...,
+				JOIN LATERAL (SELECT s.local_id,s.status FROM cloud_cashier_shifts s
+					WHERE s.outlet_id=m.outlet_id AND (s.id=m.shift_id OR s.local_id=m.shift_id)
+					ORDER BY (s.id=m.shift_id) DESC LIMIT 1) parent ON true
+				WHERE m.outlet_id = $1 AND parent.status='open'
+				ORDER BY m.created_at ASC,m.id`, outletID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("query cash movements: %w", err)
@@ -917,6 +920,23 @@ func GetRestoreData(outletID string) (*models.RestoreResponse, error) {
 		if err := movRows.Err(); err != nil {
 			return nil, err
 		}
+	}
+
+	chargeRows, err := database.DB.Query(`SELECT local_id,name,charge_type,value,is_active
+		FROM cloud_additional_charges WHERE outlet_id=$1 ORDER BY local_id`, outletID)
+	if err != nil {
+		return nil, fmt.Errorf("query restore charges: %w", err)
+	}
+	defer chargeRows.Close()
+	for chargeRows.Next() {
+		var c models.RestoreAdditionalCharge
+		if err := chargeRows.Scan(&c.LocalID, &c.Name, &c.ChargeType, &c.Value, &c.IsActive); err != nil {
+			return nil, fmt.Errorf("scan restore charge: %w", err)
+		}
+		resp.AdditionalCharges = append(resp.AdditionalCharges, c)
+	}
+	if err := chargeRows.Err(); err != nil {
+		return nil, err
 	}
 
 	resp.Summary = models.RestoreSummary{

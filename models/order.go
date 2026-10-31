@@ -1,34 +1,49 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type OrderItem struct {
-	ID          string  `json:"id,omitempty"`
-	ProductID   string  `json:"product_id,omitempty"`
-	ProductName string  `json:"product_name"`
-	Category    string  `json:"category"`
-	Qty         int     `json:"qty"`
-	Price       float64 `json:"price"`
-	Subtotal    float64 `json:"subtotal"`
-	Destination string  `json:"destination"`
-	Status      string  `json:"status"`
-	WaiterName  string  `json:"waiter_name,omitempty"` // nama pemesan item (sumber pengelompokan struk)
+	ID           string  `json:"id,omitempty"`
+	ProductID    string  `json:"product_id,omitempty"`
+	ProductName  string  `json:"product_name"`
+	Category     string  `json:"category"`
+	CategoryID   string  `json:"category_id,omitempty"`
+	Qty          int     `json:"qty"`
+	Price        float64 `json:"price"`
+	Subtotal     float64 `json:"subtotal"`
+	Destination  string  `json:"destination"`
+	Status       string  `json:"status"`
+	WaiterName   string  `json:"waiter_name,omitempty"` // nama pemesan item (sumber pengelompokan struk)
+	Notes        string  `json:"notes,omitempty"`
+	Addons       string  `json:"addons,omitempty"` // JSON string from POS, preserved as a snapshot
+	IsAdditional int     `json:"is_additional,omitempty"`
+	CreatedAt    string  `json:"created_at,omitempty"`
+	UpdatedAt    string  `json:"updated_at,omitempty"`
 	// Diskon & komplimen (dikirim dari aplikasi POS Flutter, opsional):
 	Discount        float64 `json:"discount,omitempty"`         // diskon nominal untuk baris ini
 	IsComplimentary bool    `json:"is_complimentary,omitempty"` // true = item gratis/komplimen
 }
 
 type PaymentInfo struct {
-	Method        string  `json:"method"`
-	Amount        float64 `json:"amount"`
-	PaidAmount    float64 `json:"paid_amount"`
-	PaymentStatus string  `json:"payment_status"`
-	PaidAt        string  `json:"paid_at"`
-	Discount      float64 `json:"discount,omitempty"`      // diskon nominal pada bill (total_amount sudah net)
-	DiscountNote  string  `json:"discount_note,omitempty"` // alasan/label diskon (opsional)
-	VoidedAt      string  `json:"voided_at,omitempty"`
-	VoidedBy      string  `json:"voided_by,omitempty"`
-	VoidReason    string  `json:"void_reason,omitempty"`
+	Method           string  `json:"method"`
+	Amount           float64 `json:"amount"`
+	PaidAmount       float64 `json:"paid_amount"`
+	PaymentStatus    string  `json:"payment_status"`
+	PaidAt           string  `json:"paid_at"`
+	Discount         float64 `json:"discount,omitempty"`      // diskon nominal pada bill (total_amount sudah net)
+	DiscountNote     string  `json:"discount_note,omitempty"` // alasan/label diskon (opsional)
+	VoidedAt         string  `json:"voided_at,omitempty"`
+	VoidedBy         string  `json:"voided_by,omitempty"`
+	VoidReason       string  `json:"void_reason,omitempty"`
+	ComplimentedAt   string  `json:"complimented_at,omitempty"`
+	ComplimentBy     string  `json:"compliment_by,omitempty"`
+	ComplimentReason string  `json:"compliment_reason,omitempty"`
+	// Versioned POS recovery data. Keep unknown fields/versions intact so the
+	// originating client can validate payments, charges and local metadata.
+	Restore json.RawMessage `json:"restore,omitempty"`
 }
 
 // ── Laporan Diskon & Komplimen ──────────────────────────────
@@ -36,10 +51,10 @@ type DiscountReportRow struct {
 	ID           string  `json:"id"`
 	OutletName   string  `json:"outlet_name"`
 	CustomerName string  `json:"customer_name"`
-	Net          float64 `json:"net"`         // total_amount (dibayar, sudah net diskon)
-	Discount     float64 `json:"discount"`    // total diskon (bill + per item)
-	Compliment   float64 `json:"compliment"`  // nilai item komplimen
-	Gross        float64 `json:"gross"`       // net + diskon + komplimen
+	Net          float64 `json:"net"`        // total_amount (dibayar, sudah net diskon)
+	Discount     float64 `json:"discount"`   // total diskon (bill + per item)
+	Compliment   float64 `json:"compliment"` // nilai item komplimen
+	Gross        float64 `json:"gross"`      // net + diskon + komplimen
 	CreatedAt    string  `json:"created_at"`
 }
 
@@ -60,23 +75,23 @@ type DiscountReport struct {
 }
 
 type PushOrderRequest struct {
-	LocalID      string      `json:"local_id"`
-	OutletID     string      `json:"outlet_id"`
-	OutletCode   string      `json:"outlet_code"`
+	LocalID       string      `json:"local_id"`
+	OutletID      string      `json:"outlet_id"`
+	OutletCode    string      `json:"outlet_code"`
 	TableNumber   string      `json:"table_number"`
 	CustomerName  string      `json:"customer_name"`
 	CustomerPhone string      `json:"customer_phone"` // no. HP pelanggan (opsional)
 	OrdererName   string      `json:"orderer_name"`   // label "Pemesan" gabungan (seperti struk)
 	CreatedBy     string      `json:"created_by"`     // pembuat order (1 orang)
 	Pax           int         `json:"pax"`
-	TotalAmount  float64     `json:"total_amount"`
-	Status       string      `json:"status"`
-	Items        []OrderItem `json:"items"`
-	PaymentInfo  PaymentInfo `json:"payment_info"`
-	Version      int         `json:"version"`
-	CreatedAt    string      `json:"created_at"`
-	UpdatedAt    string      `json:"updated_at"`
-	IsHolding    bool        `json:"is_holding"` // true = order Meja Titipan (parked check), bukan tamu aktif
+	TotalAmount   float64     `json:"total_amount"`
+	Status        string      `json:"status"`
+	Items         []OrderItem `json:"items"`
+	PaymentInfo   PaymentInfo `json:"payment_info"`
+	Version       int         `json:"version"`
+	CreatedAt     string      `json:"created_at"`
+	UpdatedAt     string      `json:"updated_at"`
+	IsHolding     bool        `json:"is_holding"` // true = order Meja Titipan (parked check), bukan tamu aktif
 }
 
 // PushOrderItemTitipanRequest = payload entityType "order_item_titipan" dari app POS:
@@ -193,20 +208,23 @@ type VoidReport struct {
 }
 
 type CloudOrder struct {
-	ID           string    `json:"id"`
-	LocalID      string    `json:"local_id"`
-	OutletID     string    `json:"outlet_id"`
-	OutletCode   string    `json:"outlet_code"`
+	ID            string    `json:"id"`
+	LocalID       string    `json:"local_id"`
+	OutletID      string    `json:"outlet_id"`
+	OutletCode    string    `json:"outlet_code"`
 	TableNumber   string    `json:"table_number"`
 	CustomerName  string    `json:"customer_name"`
 	CustomerPhone string    `json:"customer_phone"`
+	CreatedBy     string    `json:"created_by"`
+	OrdererName   string    `json:"orderer_name"`
+	IsHolding     bool      `json:"is_holding"`
 	Pax           int       `json:"pax"`
 	TotalAmount   float64   `json:"total_amount"`
 	Status        string    `json:"status"`
-	Items        string    `json:"items"`
-	PaymentInfo  string    `json:"payment_info"`
-	Version      int       `json:"version"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	SyncedAt     time.Time `json:"synced_at"`
+	Items         string    `json:"items"`
+	PaymentInfo   string    `json:"payment_info"`
+	Version       int       `json:"version"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	SyncedAt      time.Time `json:"synced_at"`
 }

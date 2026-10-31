@@ -83,11 +83,19 @@ type ResolveConflictRequest struct {
 }
 
 type RestoreResponse struct {
-	OpenShifts    []CloudCashierShift `json:"open_shifts"`
-	UnpaidOrders  []CloudOrder        `json:"unpaid_orders"`
-	CashMovements []CloudCashMovement `json:"cash_movements"`
-	Summary       RestoreSummary      `json:"summary"`
-	RestoredAt    string              `json:"restored_at"`
+	OpenShifts        []CloudCashierShift       `json:"open_shifts"`
+	UnpaidOrders      []CloudOrder              `json:"unpaid_orders"`
+	CashMovements     []CloudCashMovement       `json:"cash_movements"`
+	AdditionalCharges []RestoreAdditionalCharge `json:"additional_charges"`
+	Summary           RestoreSummary            `json:"summary"`
+	RestoredAt        string                    `json:"restored_at"`
+}
+
+// Portable master IDs let a fresh POS reconnect restored order charges to its
+// own integer primary keys without matching names or guessing an old device ID.
+type RestoreAdditionalCharge struct {
+	CloudAdditionalCharge
+	IsActive bool `json:"is_active"`
 }
 
 type RestoreSummary struct {

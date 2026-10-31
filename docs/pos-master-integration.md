@@ -63,14 +63,59 @@ Antarmuka menandainya sebagai simulasi; tidak ada uang yang diterima melalui
 adapter ini. Pengujian memeriksa pembatasan outlet/provider dan transaksi atomik
 antara status pembayaran dan status pesanan online.
 
-Restore belum merupakan cadangan lengkap semua rincian pembayaran/charge/
-add-on. Sinkronisasi foto, pengaturan printer/dapur dari cloud, serta penyedia
+Snapshot order baru menyertakan rincian pembayaran, biaya, pilihan add-on,
+identitas item, dan reservasi agar order yang masih berjalan dapat dipulihkan.
+Data historis yang belum pernah mengirim rincian tersebut tetap memerlukan
+sinkronisasi dari perangkat asal atau rekonsiliasi. Sistem tidak mengarang
+metode pembayaran, waktu, maupun biaya yang hilang.
+Pemulihan lengkap baru tersedia setelah backend ini dan APK baru digunakan
+serta order aktif disinkronkan ulang. Saat rilis terpisah, backend dipasang
+lebih dahulu agar snapshot dari APK baru tidak dibuang oleh server lama.
+
+Sinkronisasi foto, pengaturan printer/dapur dari cloud, serta penyedia
 pembayaran nyata merupakan pekerjaan lanjutan. Pembaruan DP lokal dilakukan
 saat reservasi dibuka/dipilih kembali. Pengujian otomatis tidak menggantikan
 uji tablet, cetak printer, laci uang, dan pembayaran nyata sebelum rilis APK.
-Restore referensi shift lama yang sejak awal memiliki ID cloud berbeda dari
-ID lokal masih memerlukan rekonsiliasi; registri baru tidak menulis ulang
-referensi historis tersebut.
+
+## Perbaikan lanjutan sinkronisasi dan pemulihan
+
+- Flutter membaca `payment_info` baik sebagai objek maupun teks JSON seperti
+  respons Cloud. Snapshot `payment_info.restore.version = 1` membawa baris
+  pembayaran dengan ID/metode/waktu asli, biaya dengan `sync_id` portabel,
+  reservasi, dan metadata order. Pilihan add-on, catatan, kategori, serta ID
+  item turut dipertahankan; harga item sudah mencakup add-on.
+- Restore hanya mengisi entitas yang belum ada. Order/shift lokal, transaksi
+  lunas, dan pekerjaan yang masih menunggu sinkronisasi tidak ditimpa.
+  Meja tagihan yang dipulihkan ditandai terisi; meja bernama valid yang belum
+  ada dibuat. Benturan dengan tagihan lokal lain membatalkan restore.
+  Respons tidak lengkap atau jumlah yang tidak cocok membatalkan transaksi
+  restore secara utuh. Saldo pembayaran lama tanpa rincian tetap dipertahankan,
+  tetapi pelunasan/penambahan DP ditahan sampai rinciannya diperiksa.
+- Pada database operasional kosong, master biaya aktif/nonaktif dari Cloud
+  dipulihkan berdasarkan `sync_id`; biaya bawaan yang tidak ada di Cloud
+  dinonaktifkan agar tidak terhitung dua kali. Pada kasir yang sudah beroperasi,
+  definisi biaya lokal dipertahankan dan referensi yang hilang ditolak.
+- Cloud mengembalikan referensi shift lama sebagai ID lokal milik outlet yang
+  sama, termasuk mutasi kas yang masih merujuk ID lokal. Jika sebuah ID dapat
+  berarti dua hal, ID canonical diprioritaskan. Tidak ada penulisan ulang data
+  produksi. Order yang sudah memiliki transaksi selesai dikeluarkan dari restore;
+  kiriman order lama tidak menurunkan status lunas atau mengganti snapshot baru.
+- Penarikan menu memvalidasi seluruh halaman sebelum mengubah database lokal.
+  Halaman berulang/terpotong, respons tidak valid, dan kegagalan jaringan tidak
+  menghapus menu lokal atau memajukan checkpoint. Full pull dan incremental
+  pull diantrekan; checkpoint dipisahkan per URL/outlet dan berasal dari server.
+  Setelah full pull, perubahan diputar ulang satu kali dari awal agar perubahan
+  selama pengambilan halaman tidak terlewat.
+- Penggantian outbox, mutasi kas, serta buka/tutup/serah-terima shift dilakukan
+  dalam transaksi SQLite bersama antreannya. Mutasi kas lama tanpa antrean
+  dimasukkan kembali dengan identitas dan waktu asli. Monitor rekonsiliasi
+  membaca status pekerjaan terbaru, sehingga keberhasilan lama tidak menutupi
+  pekerjaan baru yang masih pending atau gagal.
+- Snapshot order dan antreannya dibuat dalam satu transaksi. Backfill
+  membandingkan revisi order terbaru dengan payload antrean terakhir, sehingga
+  pembayaran sebagian atau perubahan item yang ter-commit sebelum aplikasi
+  tertutup tetap dikirim ulang. Pembaruan status dapur ikut menaikkan revisi
+  order, walaupun status keseluruhan pesanan belum berubah.
 
 ## Menjalankan uji kelayakan terisolasi
 
@@ -117,3 +162,22 @@ Log dan ringkasan pemeriksaan pada VPS tersimpan di
 `master-frontend`, dan `master-flutter`. Pemeriksaan memakai database baru
 dan data sintetis. Hasil ini memvalidasi konsolidasi kode; belum merupakan
 persetujuan rilis APK atau deployment produksi.
+
+## Hasil perbaikan lanjutan — 31 Oktober 2026
+
+- Seluruh tes Go pada PostgreSQL sintetis: **451 lulus, 3 dilewati** dengan
+  alasan yang sama seperti pemeriksaan konsolidasi di atas.
+- Seluruh tes Flutter: **115 lulus, 0 dilewati**, termasuk tiga alur E2E wajib:
+  pesanan online, reservasi, serta POS → API → restore SQLite pada outlet uji
+  tersendiri. Uji restore membandingkan ID item/pembayaran, nominal, metode,
+  waktu asli, reservasi, dan biaya, lalu mengulang restore untuk memeriksa
+  idempotensi. Kegagalan tulis outbox, halaman menu terpotong, benturan data
+  lokal, dan pemulihan revisi setelah aplikasi tertutup juga diuji.
+- Analyzer Flutter: **0 error, 0 warning**; 21 informasi `avoid_print` lama
+  pada utilitas simulasi. Pemeriksaan whitespace dan sintaks runner lulus.
+
+Artefak berada di
+`/home/candra/projects/pos-integration-staging/artifacts/restore-backend-final`
+dan `restore-flutter-final`. Tidak ada perubahan UI Vue pada tahap ini.
+Kontainer/database uji dibersihkan setelah pengujian; production dan APK yang
+sedang digunakan tidak diubah oleh pemeriksaan ini.

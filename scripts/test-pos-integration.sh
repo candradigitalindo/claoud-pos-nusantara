@@ -279,6 +279,7 @@ if [[ $phase == all || $phase == flutter ]]; then
     -e E2E_CLOUD_URL=http://api:4000 -e E2E_SLUG=e2e-uji \
     -e E2E_OUTLET_ID=01E2ETESTOUTLET00000000001 -e E2E_API_KEY=e2e-api-key \
     -e E2E_PRODUCT_ID=01E2ETESTPRODUK00000000001 -e E2E_ADDON_ID=01E2ETESTADDON00000000001A \
+    -e E2E_RESTORE_OUTLET_ID=01E2ERESTOREOUTLET00000001 -e E2E_RESTORE_API_KEY=e2e-restore-key \
     pos-integration-flutter-tools:local flutter test --concurrency=1 --no-pub --reporter=json
 fi
 
@@ -310,7 +311,7 @@ if phase in ('all', 'flutter'):
             if e.get('result') == 'success' and not e.get('skipped'):
                 passed_suites.add(suites.get(tests.get(e['testID']), ''))
     summary['flutter'] = dict(collections.Counter(results))
-    for name in ('online_order_e2e_test.dart', 'reservation_e2e_test.dart'):
+    for name in ('online_order_e2e_test.dart', 'reservation_e2e_test.dart', 'restore_e2e_test.dart'):
         if not any(path.endswith(name) for path in passed_suites):
             raise SystemExit('Required Flutter E2E suite did not run successfully: ' + name)
 (out / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')

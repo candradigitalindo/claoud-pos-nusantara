@@ -11,6 +11,12 @@ INSERT INTO outlets (id, name, code, slug, api_key, is_active, created_at, updat
 VALUES ('01E2ETESTOUTLET00000000001', 'Outlet E2E', 'E2E', 'e2e-uji',
         'e2e-api-key', true, now() AT TIME ZONE 'UTC', now() AT TIME ZONE 'UTC');
 
+-- Independent recovery fixture: its POS uploads and restores its own catalog,
+-- shifts and payment snapshots without sharing operational data with other E2E.
+INSERT INTO outlets (id, name, code, slug, api_key, is_active, created_at, updated_at)
+VALUES ('01E2ERESTOREOUTLET00000001', 'Outlet Restore E2E', 'E2ER', 'e2e-restore',
+        'e2e-restore-key', true, now() AT TIME ZONE 'UTC', now() AT TIME ZONE 'UTC');
+
 INSERT INTO cloud_cashier_shifts (id, local_id, outlet_id, opened_by, opened_at, opening_cash, status)
 VALUES ('01E2ETESTSHIFT00000000001A', '01E2ETESTSHIFT00000000001A',
         '01E2ETESTOUTLET00000000001', 'Kasir E2E', now() AT TIME ZONE 'UTC', 0, 'open');
