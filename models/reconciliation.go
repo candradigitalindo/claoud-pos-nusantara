@@ -13,14 +13,14 @@ type ShiftReconRow struct {
 
 	CashierSales float64 `json:"cashier_sales"` // sales_total di report shift
 	CashierCount int     `json:"cashier_count"`
-	CloudSales   float64 `json:"cloud_sales"` // total_amount transaksi cloud (excl komplimen & adjustment)
-	CloudCount   int     `json:"cloud_count"`
-	Diff         float64 `json:"diff"`   // cashier - cloud (positif = cloud kurang)
-	Status       string  `json:"status"` // balanced | short | over
+	CloudSales   float64 `json:"cloud_sales"` // pembayaran asli dalam shift (tanpa komplimen/penyesuaian)
+	CloudCount   int     `json:"cloud_count"` // transaksi selesai dalam shift, termasuk transaksi gratis
+	Diff         float64 `json:"diff"`        // cashier - cloud (positif = cloud kurang)
+	Status       string  `json:"status"`      // balanced | short | over
 
 	Adjusted         bool    `json:"adjusted"` // sudah ada penyesuaian aktif
 	AdjustmentID     int64   `json:"adjustment_id"`
-	AdjustmentAmount float64 `json:"adjustment_amount"`
+	AdjustmentAmount float64 `json:"adjustment_amount"` // sisa penyesuaian setelah transaksi asli menyusul
 }
 
 type ShiftReconSummary struct {

@@ -146,6 +146,9 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 		if err = applyOrderVoidStock(tx, outletID, strings.TrimSpace(cloudID), req); err != nil {
 			return "", fmt.Errorf("waste pembatalan: %w", err)
 		}
+		if err = refreshShiftAdjustments(tx, outletID); err != nil {
+			return "", fmt.Errorf("rekonsiliasi setelah void: %w", err)
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return "", err
@@ -411,6 +414,9 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		if _, err = tx.Exec(`RELEASE SAVEPOINT pos_product_stock`); err != nil {
 			return "", err
 		}
+	}
+	if err = refreshShiftAdjustments(tx, outletID); err != nil {
+		return "", fmt.Errorf("rekonsiliasi pembayaran: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
 		return "", err

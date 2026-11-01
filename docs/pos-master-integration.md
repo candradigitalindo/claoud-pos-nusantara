@@ -553,3 +553,48 @@ tampilan desktop dan ponsel tanpa galat runtime. Hanya container frontend
 yang diganti; image sebelumnya disimpan untuk rollback. Bukti build,
 deployment, pemeriksaan publik, dan tangkapan layar disimpan secara privat di
 `/home/candra/projects/pos-integration-staging/releases/20261031-app-pos-ui/`.
+
+
+## Rekonsiliasi shift — 2 November 2026
+
+Rekonsiliasi memakai waktu kejadian `opened_at`/`closed_at`, dengan waktu
+penerimaan sebagai cadangan untuk data lama. Filter tanggal mengikuti tanggal
+buka shift dalam zona waktu aplikasi; jendela pembayaran memakai batas
+`[opened_at, closed_at)`. Pembayaran parsial dialokasikan menurut waktu tiap
+pembayaran, sedangkan jumlah transaksi mengikuti waktu pelunasan, termasuk
+transaksi gratis. Header transaksi tanpa rincian pembayaran tetap menjadi
+cadangan untuk data historis dan tidak dihitung lagi jika rincian sudah ada.
+
+Tombol **Ikuti versi kasir** menyimpan selisih yang disetujui sebagai
+penyesuaian pendapatan. Ketika transaksi asli menyusul, sisa penyesuaian
+berkurang dalam transaksi database yang sama dengan sinkronisasi; retry tidak
+menambah pendapatan. Setelah sisa nol, transaksi sintetis dihapus, sementara
+catatan persetujuan dan nominal kasir/cloud semula tetap disimpan. Void atau
+koreksi berikutnya tidak otomatis menaikkan penyesuaian kembali. Selisih baru
+perlu ditelusuri dan diputuskan kembali oleh superadmin.
+
+Laporan tetap menampilkan **Cloud asli** dan selisih sebelum penyesuaian;
+nominal manual yang masih berlaku ditampilkan terpisah. Data kasir yang tidak
+lengkap dan kegagalan query menghasilkan galat, bukan dianggap penjualan nol.
+Pergantian filter mengabaikan respons permintaan lama dan menutup aksi dari
+laporan sebelumnya. Halaman memakai zona waktu aplikasi untuk tanggal awal.
+
+Uji regresi backend terdapat pada `services/reconciliation_test.go` dan
+`services/reconciliation_adjustment_test.go`. Pengujian browser memakai halaman
+Vue asli melalui fixture `ui/tests/fixtures/shift-reconciliation.html`, dengan
+seluruh API diganti respons sintetis oleh
+`ui/tests/shift-reconciliation.browser.cjs`. Jalankan backend menggunakan
+`scripts/test-pos-integration.sh --phase backend` pada database uji terisolasi;
+untuk browser, jalankan Vite lalu set `SHIFT_RECON_TEST_URL` ke alamat Vite dan
+jalankan skrip dengan Node serta Playwright. Pengujian ini tidak memerlukan
+akses akun atau transaksi produksi.
+
+Validasi perbaikan: build backend dan frontend lulus; **568 tes Go lulus,
+3 dilewati** karena prasyarat CCTV/medsos/data analisis. Seluruh **21 pemeriksaan
+regresi rekonsiliasi** (termasuk subtes) dijalankan dan lulus, serta delapan
+kelompok pemeriksaan browser lulus tanpa galat Vue. Satu tes neraca lama
+memakai tanggal UTC; tanggal tes disamakan dengan zona aplikasi agar stabil
+sebelum pukul 07.00 WIB, tanpa mengubah implementasi laporan keuangan.
+Artefak tersimpan pada `shift-reconciliation-backend-20261102-final` dan
+`shift-reconciliation-frontend-20261102` di direktori artefak staging. Belum ada
+deployment atau perubahan data produksi.

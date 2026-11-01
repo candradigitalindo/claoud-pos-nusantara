@@ -7,20 +7,21 @@
   <div class="space-y-5">
     <div>
       <h1 class="text-xl font-bold text-gray-900">Rekonsiliasi Shift</h1>
-      <p class="text-sm text-gray-500 mt-0.5">Cocokkan tutup kasir (tablet) dengan pendapatan yang masuk cloud. Selisih = transaksi yang belum tersinkron.</p>
+      <p class="text-sm text-gray-500 mt-0.5">Bandingkan laporan tutup kasir (tablet) dengan transaksi yang masuk cloud. Telusuri penyebab selisih sebelum membuat penyesuaian.</p>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
 
     <!-- Notif -->
-    <div v-if="report && report.summary.short_count > 0" class="notif notif-warn">
+    <div v-if="report && (report.summary.short_count > 0 || report.summary.over_count > 0)" class="notif notif-warn">
       <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
       <div>
-        <p class="font-bold">{{ report.summary.short_count }} shift kurang di cloud (total {{ formatRupiah(report.summary.short_total) }})</p>
-        <p class="text-sm opacity-90">Ada transaksi yang dicatat kasir tapi belum masuk cloud. Superadmin bisa "Ikuti versi kasir" untuk menyamakan (bisa dibatalkan).</p>
+        <p v-if="report.summary.short_count > 0" class="font-bold">{{ report.summary.short_count }} shift kurang di cloud (total {{ formatRupiah(report.summary.short_total) }})</p>
+        <p v-if="report.summary.over_count > 0" class="font-bold">{{ report.summary.over_count }} shift lebih di cloud (total {{ formatRupiah(Math.abs(report.summary.over_total)) }})</p>
+        <p class="text-sm opacity-90">Periksa sinkronisasi dan rincian transaksi. Penyesuaian hanya menambah pendapatan; rincian transaksi yang belum masuk tetap perlu ditelusuri.</p>
       </div>
     </div>
-    <div v-else-if="report && report.summary.total_shifts > 0" class="notif notif-ok">
+    <div v-else-if="report && report.summary.total_shifts > 0 && report.summary.balanced_count === report.summary.total_shifts" class="notif notif-ok">
       <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       <p class="font-bold">Semua {{ report.summary.total_shifts }} shift cocok dengan cloud. 🎉</p>
     </div>
@@ -29,7 +30,7 @@
     <AppCard>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <DateRangePicker v-model="range" />
-        <SearchSelect v-model="filterOutlet" :options="outletOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" valueKey="value" labelKey="label" @change="load" />
+        <SearchSelect v-model="filterOutlet" :options="outletOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" valueKey="value" labelKey="label" aria-label="Filter outlet" @change="load" />
         <button @click="load" class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">Tampilkan</button>
       </div>
     </AppCard>
@@ -41,10 +42,12 @@
       <div class="stat" :class="report.summary.over_count ? 'stat-warn' : ''"><span class="stat-l">Lebih di Cloud</span><span class="stat-v">{{ report.summary.over_count }}</span><span class="stat-s stat-v-sm">{{ formatRupiah(report.summary.over_total) }}</span></div>
       <div class="stat stat-ok"><span class="stat-l">Sudah Disesuaikan</span><span class="stat-v">{{ report.summary.adjusted_count }}</span><span class="stat-s stat-v-sm">{{ formatRupiah(report.summary.adjusted_total) }}</span></div>
     </div>
+    <p v-if="report" class="text-xs text-gray-500">Cloud asli dan selisih dihitung tanpa penyesuaian manual. Nilai manual yang masih berlaku ditampilkan terpisah dan berkurang saat transaksi terlambat masuk.</p>
 
     <!-- List -->
     <AppCard :padding="false">
       <div v-if="loading" class="p-8 text-center text-sm text-gray-400">Memuat…</div>
+      <div v-else-if="errorMsg" class="p-8 text-center text-sm text-gray-400">Laporan tidak tersedia. Coba muat ulang.</div>
       <div v-else-if="!report || !report.shifts.length" class="p-8 text-center text-sm text-gray-400">Belum ada shift tertutup pada periode ini.</div>
       <template v-else>
         <!-- Mobile -->
@@ -58,9 +61,10 @@
               <span class="rbadge" :class="stCls(s)">{{ stLabel(s) }}</span>
             </div>
             <p class="text-xs text-gray-500">🟢 {{ s.opened_at }} → 🔴 {{ s.closed_at }}</p>
+            <p v-if="s.adjusted" class="text-xs text-gray-500">Penyesuaian manual: {{ formatRupiah(s.adjustment_amount) }}</p>
             <div class="grid grid-cols-3 gap-1 text-xs">
               <div><span class="text-gray-400 block">Kasir</span>{{ formatRupiah(s.cashier_sales) }}</div>
-              <div><span class="text-gray-400 block">Cloud</span>{{ formatRupiah(s.cloud_sales) }}</div>
+              <div><span class="text-gray-400 block">Cloud asli</span>{{ formatRupiah(s.cloud_sales) }}</div>
               <div><span class="text-gray-400 block">Selisih</span><b :class="s.diff>0?'text-red-600':(s.diff<0?'text-amber-600':'text-gray-500')">{{ formatRupiah(s.diff) }}</b></div>
             </div>
             <div v-if="isSuper" class="pt-1">
@@ -77,7 +81,7 @@
                 <th class="py-2.5 px-3 font-medium">Outlet / Kasir</th>
                 <th class="py-2.5 px-3 font-medium">Buka → Tutup</th>
                 <th class="py-2.5 px-3 font-medium text-right">Kasir</th>
-                <th class="py-2.5 px-3 font-medium text-right">Cloud</th>
+                <th class="py-2.5 px-3 font-medium text-right">Cloud asli</th>
                 <th class="py-2.5 px-3 font-medium text-right">Selisih</th>
                 <th class="py-2.5 px-3 font-medium text-center">Status</th>
                 <th v-if="isSuper" class="py-2.5 px-3 font-medium text-right">Aksi</th>
@@ -93,7 +97,7 @@
                 <td class="py-2.5 px-3 text-right font-medium">{{ formatRupiah(s.cashier_sales) }}</td>
                 <td class="py-2.5 px-3 text-right">{{ formatRupiah(s.cloud_sales) }}</td>
                 <td class="py-2.5 px-3 text-right font-semibold" :class="s.diff>0?'text-red-600':(s.diff<0?'text-amber-600':'text-gray-400')">{{ formatRupiah(s.diff) }}</td>
-                <td class="py-2.5 px-3 text-center"><span class="rbadge" :class="stCls(s)">{{ stLabel(s) }}</span></td>
+                <td class="py-2.5 px-3 text-center"><span class="rbadge" :class="stCls(s)">{{ stLabel(s) }}</span><p v-if="s.adjusted" class="text-xs text-gray-500 mt-1">Manual {{ formatRupiah(s.adjustment_amount) }}</p></td>
                 <td v-if="isSuper" class="py-2.5 px-3 text-right">
                   <AppActionButton icon="cancel" label="Batalkan" v-if="s.adjusted" @click="askRevert(s)" />
                   <AppActionButton icon="approve" label="Ikuti kasir" v-else-if="s.status==='short'" @click="askApply(s)" />
@@ -132,12 +136,12 @@
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { reconciliationApi } from '@/api/reconciliation.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useToastStore } from '@/stores/toast.js'
-import { formatRupiah } from '@/utils/format.js'
+import { formatRupiah, todayDateString } from '@/utils/format.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppModal from '@/components/ui/AppModal.vue'
@@ -148,13 +152,14 @@ const auth = useAuthStore()
 const toast = useToastStore()
 const isSuper = computed(() => auth.isSuperadmin)
 
-const _today = new Date().toISOString().slice(0, 10)
+const _today = todayDateString()
 const range = ref({ from: _today, to: _today, label: 'Hari Ini' })
 const filterOutlet = ref('')
 const outletOptions = ref([{ value: '', label: 'Semua outlet' }])
 const report = ref(null)
 const loading = ref(false)
 const errorMsg = ref('')
+let loadSequence = 0
 
 const confirmOpen = ref(false)
 const confirmMode = ref('apply')
@@ -164,19 +169,25 @@ const busy = ref(false)
 watch(range, load)
 
 function stCls(s) {
-  if (s.adjusted) return 'r-adj'
+  if (s.adjusted) {
+    const remaining = s.diff - s.adjustment_amount
+    return Math.abs(remaining) < 1 ? 'r-adj' : remaining > 0 ? 'r-bad' : 'r-warn'
+  }
   return { balanced: 'r-ok', short: 'r-bad', over: 'r-warn' }[s.status] || 'r-ok'
 }
 function stLabel(s) {
-  if (s.adjusted) return 'Disesuaikan'
+  if (s.adjusted) {
+    const remaining = s.diff - s.adjustment_amount
+    return Math.abs(remaining) < 1 ? 'Disesuaikan' : remaining > 0 ? 'Disesuaikan · Kurang' : 'Disesuaikan · Lebih'
+  }
   return { balanced: 'Cocok', short: 'Kurang', over: 'Lebih' }[s.status] || s.status
 }
 
-function askApply(s) { active.value = s; confirmMode.value = 'apply'; confirmOpen.value = true }
-function askRevert(s) { active.value = s; confirmMode.value = 'revert'; confirmOpen.value = true }
+function askApply(s) { if (loading.value || busy.value) return; active.value = s; confirmMode.value = 'apply'; confirmOpen.value = true }
+function askRevert(s) { if (loading.value || busy.value) return; active.value = s; confirmMode.value = 'revert'; confirmOpen.value = true }
 
 async function doConfirm() {
-  if (!active.value) return
+  if (!active.value || busy.value || loading.value) return
   busy.value = true
   try {
     if (confirmMode.value === 'apply') {
@@ -196,16 +207,26 @@ async function doConfirm() {
 }
 
 async function load() {
+  const sequence = ++loadSequence
   loading.value = true; errorMsg.value = ''
+  report.value = null
+  active.value = null
+  confirmOpen.value = false
   try {
     const d = await reconciliationApi.report({
       date_from: range.value.from,
       date_to: range.value.to,
       outlet_id: filterOutlet.value || undefined,
     })
-    report.value = d?.data ?? d
-  } catch (e) { errorMsg.value = e?.message || 'Gagal memuat rekonsiliasi' } finally { loading.value = false }
+    if (sequence === loadSequence) report.value = d?.data ?? d
+  } catch (e) {
+    if (sequence === loadSequence) errorMsg.value = e?.message || 'Gagal memuat rekonsiliasi'
+  } finally {
+    if (sequence === loadSequence) loading.value = false
+  }
 }
+
+onBeforeUnmount(() => { loadSequence++ })
 
 onMounted(async () => {
   try {

@@ -144,7 +144,8 @@ func TestAccountsPayableMatchesPaymentsPage(t *testing.T) {
 	}
 
 	// Neraca memakai rentang tanggal, tapi hutang usaha adalah saldo berjalan.
-	today := time.Now().UTC().Format("2006-01-02")
+	// Tanggal laporan mengikuti zona aplikasi, termasuk saat tanggal UTC masih kemarin.
+	today := time.Now().In(GetTimezoneLocation()).Format("2006-01-02")
 	bal, err := GetBalanceReport(today, today, "", nil)
 	if err != nil {
 		t.Fatalf("neraca: %v", err)
