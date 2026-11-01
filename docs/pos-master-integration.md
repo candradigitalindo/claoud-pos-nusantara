@@ -598,3 +598,34 @@ sebelum pukul 07.00 WIB, tanpa mengubah implementasi laporan keuangan.
 Artefak tersimpan pada `shift-reconciliation-backend-20261102-final` dan
 `shift-reconciliation-frontend-20261102` di direktori artefak staging. Belum ada
 deployment atau perubahan data produksi.
+
+
+## Rilis rekonsiliasi shift — 2 November 2026
+
+Status rilis ini menggantikan keterangan belum dideploy pada bagian rekonsiliasi
+di atas. Commit `65b9791` sudah dipush ke `master`; backend dan frontend dari
+commit tersebut dibangun dan dipasang pada **06:37 WIB** di
+[Rekonsiliasi Shift](https://pos.nbp.co.id/shift-reconciliation).
+
+Backup database, uploads, dan dokumen disiapkan sebelum pemasangan; arsip
+database berhasil diperiksa. Image API dan frontend sebelumnya disimpan untuk
+rollback. Environment, mount, port, dan restart policy dipertahankan; database,
+WhatsApp, serta layanan analitik tidak dibuat ulang. Tidak ada migrasi skema
+baru atau koreksi massal data historis pada rilis ini.
+
+Tujuh pemeriksaan produksi lulus: ping, halaman/aset baru, penolakan API tanpa
+login, laporan hari ini/kemarin/tujuh hari terakhir, dan browser terautentikasi
+pada desktop/ponsel. Browser tidak menemukan galat API maupun runtime dan
+memblokir seluruh permintaan non-GET; tidak ada uji apply/revert pada data nyata.
+Validasi regresi tetap **568 tes Go lulus, 3 dilewati**, **21 pemeriksaan
+rekonsiliasi lulus**, dan **8 kelompok uji browser lulus**.
+
+Pra-rilis menemukan dua shift historis pada **26 dan 28 Juni 2026** dengan
+waktu tutup 17–27 mikrodetik sebelum waktu buka. Keduanya tidak memiliki
+penyesuaian aktif. Data tersebut dipertahankan; rentang laporan yang memuatnya
+menghasilkan galat validasi agar nilai tidak diubah menjadi penjualan nol.
+
+Bukti build, backup, rollback, pemeriksaan publik, dan tangkapan layar privat
+tersimpan di
+`/home/candra/projects/pos-integration-staging/releases/20261102-shift-reconciliation-65b9791/`,
+termasuk `release-status.json`, `deployed.json`, dan `live-smoke-api.json`.
