@@ -850,3 +850,30 @@ Excel menggunakan kedua tanggal dan menyertakan pergerakan periode serta
 perbandingan saldo awal/akhir. Perbaikan riwayat tagihan, pembayaran, dan
 pembatalan sebelumnya tetap berlaku; perubahan ini tidak mengubah transaksi
 atau mengisi saldo dengan angka penyeimbang.
+
+Backend dan frontend commit `2e4fc47` selesai dipasang pada **2 November 2026,
+11:53 WIB**. **637 tes backend lulus, 3 dilewati**, dan 15 kelompok regresi
+browser lulus. Pengujian salinan produksi membandingkan tiga tanggal dan
+10 outlet, memeriksa Excel serta buku besar, dan membuktikan sumber nominal
+serta snapshot riwayat tidak berubah. Pembagian penyusutan pada batas awal
+periode diuji tersendiri, termasuk pembulatan saldo penutup.
+
+Browser produksi memeriksa Hari Ini, Kemarin, dan 1–2 November pada desktop
+serta ponsel. Saat pemeriksaan, kas masuk/perubahan kas Hari Ini adalah
+**Rp1.714.400**, kas keluar **Rp0**; saldo awal **Rp5.869.716.775,10** dan
+saldo akhir **Rp5.871.431.175,10** ditampilkan terpisah. Untuk Kemarin,
+perubahan kas **Rp179.474.229**; rentang dua hari **Rp181.188.629**. Angka ini
+merupakan hasil pemeriksaan saat rilis dan dapat berubah bersama transaksi
+yang masuk. Seluruh nominal layar cocok dengan respons API, unduhan memakai
+kedua tanggal, dan bundle publik cocok dengan hasil build. Tidak ditemukan
+error API maupun runtime browser; pengujian produksi hanya memakai GET.
+
+Pemasangan mempertahankan konfigurasi runtime dan hanya membuat ulang app
+serta nginx. Database, WhatsApp, dan analytics tidak dibuat ulang. Bukti
+privat ada di
+`/home/candra/projects/pos-integration-staging/releases/20261102-balance-period/`,
+terutama `deployed.json`, `rehearsal-summary.json`,
+`artifacts/live-smoke-after/summary.json`, dan
+`frontend/live-balance-browser.json`. Tangkapan layar Hari Ini tersimpan
+sebagai `frontend/live-balance-today-desktop.png` dan
+`frontend/live-balance-today-mobile.png`.
