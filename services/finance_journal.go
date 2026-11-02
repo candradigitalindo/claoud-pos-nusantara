@@ -45,6 +45,12 @@ func financePair(op *models.FinanceOperation, debit, credit string, amount float
 }
 
 func loadFinanceJournal(from, to, outlet string, scope []string) ([]models.FinanceOperation, error) {
+	return loadFinanceJournalWithOpening(from, to, outlet, scope, "")
+}
+
+// openingDate is used only by the balance report. Other reports retain the
+// established monthly depreciation postings and their existing journal dates.
+func loadFinanceJournalWithOpening(from, to, outlet string, scope []string, openingDate string) ([]models.FinanceOperation, error) {
 	// Read the configured timezone once per report, not once per source row.
 	location := GetTimezoneLocation()
 	if outlet != "" {
@@ -441,6 +447,14 @@ func loadFinanceJournal(from, to, outlet string, scope []string) ([]models.Finan
 	if ef != nil || et != nil || t.Before(f) {
 		return nil, Invalid("rentang tanggal tidak valid")
 	}
+	var boundary time.Time
+	if openingDate != "" {
+		var err error
+		boundary, err = time.Parse("2006-01-02", openingDate)
+		if err != nil {
+			return nil, Invalid("tanggal saldo awal tidak valid")
+		}
+	}
 	// Avoid iterating empty decades for an as-of balance report.
 	var firstAsset *time.Time
 	if err := database.DB.QueryRow(`SELECT MIN(purchase_date) FROM assets WHERE is_deleted=false`).Scan(&firstAsset); err != nil {
@@ -463,14 +477,40 @@ func loadFinanceJournal(from, to, outlet string, scope []string) ([]models.Finan
 		if err != nil {
 			return nil, err
 		}
+		// A monthly total can contain anniversaries before the selected start
+		// date. Attribute that part to opening without moving the existing
+		// closing amount or reloading the source journal for a second report.
+		split := !boundary.IsZero() && start.Before(boundary) && !end.Before(boundary)
+		var openingBy map[string]float64
+		openingEnd := boundary.AddDate(0, 0, -1)
+		if split {
+			_, openingBy, err = depreciationForPeriod(start.Format("2006-01-02"), openingEnd.Format("2006-01-02"), scope)
+			if err != nil {
+				return nil, err
+			}
+		}
 		for oid, amount := range by {
 			if round2(amount) == 0 {
 				continue
 			}
-			at := time.Date(end.Year(), end.Month(), end.Day(), 23, 59, 59, 0, location)
-			o := models.FinanceOperation{ID: "depreciation:" + oid + ":" + cur.Format("2006-01"), Source: "depreciation", At: at, Date: end.Format("2006-01-02"), OutletID: oid, Description: "Penyusutan aset " + cur.Format("2006-01"), Status: "posted", Postings: []models.FinancePosting{}}
-			financePair(&o, glAccDepreciation, glAccFixedAsset, amount)
-			ops = append(ops, o)
+			emitDepreciation := func(date time.Time, suffix string, value float64) {
+				if round2(value) == 0 {
+					return
+				}
+				at := time.Date(date.Year(), date.Month(), date.Day(), 23, 59, 59, 0, location)
+				o := models.FinanceOperation{ID: "depreciation:" + oid + ":" + cur.Format("2006-01") + suffix, Source: "depreciation", At: at, Date: date.Format("2006-01-02"), OutletID: oid, Description: "Penyusutan aset " + cur.Format("2006-01"), Status: "posted", Postings: []models.FinancePosting{}}
+				financePair(&o, glAccDepreciation, glAccFixedAsset, value)
+				ops = append(ops, o)
+			}
+			if split {
+				openingAmount := round2(openingBy[oid])
+				emitDepreciation(openingEnd, ":opening", openingAmount)
+				// Allocate the rounding remainder to the period, preserving the
+				// exact rounded monthly posting used by the closing position.
+				emitDepreciation(end, ":period", round2(round2(amount)-openingAmount))
+			} else {
+				emitDepreciation(end, "", amount)
+			}
 		}
 	}
 	// Resolve display names once. Names do not affect amounts or access.

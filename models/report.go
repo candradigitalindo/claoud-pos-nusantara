@@ -206,7 +206,22 @@ type BalanceOutletRow struct {
 	UnpaidAmount float64 `json:"unpaid_amount"`
 }
 
+// BalanceSection contains either the opening position or movements during the
+// selected period. Cash receipts/payments retain gross cash-account postings;
+// CashAndEquivalents is their net amount.
+type BalanceSection struct {
+	BalanceOutletRow
+	Accounts          []FinanceAccountTotal `json:"accounts"`
+	Outlets           []BalanceOutletRow    `json:"outlets"`
+	ReviewCount       int                   `json:"review_count"`
+	BalanceDifference float64               `json:"balance_difference"`
+	CashReceipts      float64               `json:"cash_receipts"`
+	CashPayments      float64               `json:"cash_payments"`
+}
+
 type BalanceResponse struct {
+	Opening              BalanceSection        `json:"opening"`
+	Period               BalanceSection        `json:"period"`
 	ReviewCount          int                   `json:"review_count"`
 	BalanceDifference    float64               `json:"balance_difference"`
 	FinancingLiabilities float64               `json:"financing_liabilities"`

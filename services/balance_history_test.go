@@ -324,16 +324,19 @@ func TestBalanceHistoryReservationDepositIsAppliedWithoutDuplicatingCash(t *test
 	financeNear(t, paid.CustomerDeposits, 0, "settled deposit liability")
 }
 
-func TestBalanceHistoryExcelUsesClosingDateAndMatchesJSON(t *testing.T) {
+func TestBalanceHistoryExcelUsesSelectedRangeAndMatchesJSON(t *testing.T) {
 	outlet := newPOSRestoreOutlet(t)
 	balanceHistoryOrder(t, outlet, NewULID(), "2026-10-01T05:00:00Z", 100000)
-	report := balanceHistoryReport(t, outlet, "2026-10-03")
+	report, err := GetBalanceReport("2026-01-01", "2026-10-03", outlet, []string{outlet})
+	if err != nil {
+		t.Fatal(err)
+	}
 	data, filename, err := BuildBalanceReportExcel("2026-01-01", "2026-10-03", outlet, []string{outlet})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(filename, "_per_2026-10-03.xlsx") || strings.Contains(filename, "_sd_") {
-		t.Fatalf("balance filename describes a flow interval: %s", filename)
+	if !strings.HasSuffix(filename, "_2026-01-01_2026-10-03.xlsx") || strings.Contains(filename, "_per_") {
+		t.Fatalf("balance filename omits the selected interval: %s", filename)
 	}
 	book, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
@@ -350,16 +353,16 @@ func TestBalanceHistoryExcelUsesClosingDateAndMatchesJSON(t *testing.T) {
 			values[row[0]] = row[1]
 		}
 	}
-	if values["Posisi per"] != "3 Okt 2026" || values["Periode"] != "" {
-		t.Fatalf("Excel does not identify its as-of date: %+v", values)
+	if values["Periode"] != "1 Jan 2026 s.d. 3 Okt 2026" || values["Tanggal Mulai"] != "1 Jan 2026" || values["Tanggal Akhir"] != "3 Okt 2026" {
+		t.Fatalf("Excel does not identify both selected dates: %+v", values)
 	}
 	for label, want := range map[string]float64{
-		"Kas & Setara Kas (saldo buku per tanggal posisi)": report.CashAndEquivalents,
-		"Sisa Piutang Usaha (per tanggal posisi)":          report.Receivables,
-		"Total Aset":                   report.TotalAssets,
-		"Total Kewajiban":              report.TotalLiabilities,
-		"Ekuitas termasuk hasil usaha": report.TotalEquity,
-		"Pendapatan Transaksi":         report.TotalRevenue,
+		"Arus Kas Bersih Periode":                report.Period.CashAndEquivalents,
+		"Perubahan Piutang Usaha":                report.Period.Receivables,
+		"Perubahan Total Aset":                   report.Period.TotalAssets,
+		"Perubahan Total Kewajiban":              report.Period.TotalLiabilities,
+		"Perubahan Ekuitas termasuk hasil usaha": report.Period.TotalEquity,
+		"Pendapatan Transaksi Periode":           report.Period.TotalRevenue,
 	} {
 		got, err := strconv.ParseFloat(values[label], 64)
 		if err != nil || got != want {

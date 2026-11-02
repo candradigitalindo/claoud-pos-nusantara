@@ -311,76 +311,123 @@ func ListFinanceOperations(from, to, outlet, source, direction, account, search 
 }
 
 func financeBalance(from, to, outlet string, scope []string) (*models.BalanceResponse, error) {
-	// A balance is cumulative to the closing date. The selected start date is
-	// only retained for display; changing it must not erase opening balances.
-	ops, err := loadFinanceJournal("1900-01-01", to, outlet, scope)
+	// Read the dated journal once so opening, period and closing all describe
+	// the same source evidence. Existing top-level values remain the closing
+	// position for clients that predate the selected-period sections.
+	ops, err := loadFinanceJournalWithOpening("1900-01-01", to, outlet, scope, from)
 	if err != nil {
 		return nil, err
 	}
-	balances := map[string]float64{}
-	by := map[string]map[string]float64{}
-	names := map[string]string{}
-	for _, o := range ops {
-		if by[o.OutletID] == nil {
-			by[o.OutletID] = map[string]float64{}
-		}
-		names[o.OutletID] = o.OutletName
-		for _, p := range o.Postings {
-			m, _ := financeAccount(p.AccountCode)
-			v := p.Debit - p.Credit
-			if m.Group != "aset" && m.Group != "beban" {
-				v = -v
-			}
-			balances[p.AccountCode] += v
-			by[o.OutletID][p.AccountCode] += v
-		}
-	}
-	makeRow := func(b map[string]float64) models.BalanceOutletRow {
-		r := models.BalanceOutletRow{CashAndEquivalents: round2(b[glAccCash]), Receivables: round2(b[glAccReceivable] + b["1-250"]), FixedAssets: round2(b[glAccFixedAsset]), ProjectsInProgress: round2(b[glAccProjectWIP]), AccountsPayable: round2(b[glAccPayable] + b["2-150"] + b["2-350"]), CustomerDeposits: round2(b[glAccCustomerDep]), TaxPayable: round2(b[glAccTaxPayable]), FinancingLiabilities: round2(b["2-400"])}
-		for _, code := range []string{"1-300", "1-310", "1-320", "1-330", "1-350"} {
-			r.Inventory += b[code]
-		}
-		r.Inventory = round2(r.Inventory)
-		r.TotalAssets = round2(r.CashAndEquivalents + r.Receivables + r.FixedAssets + r.ProjectsInProgress + r.Inventory)
-		r.TotalLiabilities = round2(r.AccountsPayable + r.CustomerDeposits + r.TaxPayable + r.FinancingLiabilities)
-		r.TotalRevenue = round2(b[glAccRevenue])
-		r.UnpaidAmount = r.Receivables
-		for _, m := range FinanceAccounts {
-			if m.Group == "ekuitas" || m.Group == "pendapatan" {
-				r.TotalEquity += b[m.Code]
-			} else if m.Group == "beban" {
-				r.TotalEquity -= b[m.Code]
-			}
-			if m.Group == "pendapatan" && m.Code != glAccRevenue {
-				r.TotalCashIn += b[m.Code]
-			}
-			if m.Group == "beban" {
-				r.TotalExpense += b[m.Code]
-			}
-		}
-		r.TotalEquity = round2(r.TotalEquity)
-		return r
-	}
-	r := makeRow(balances)
-	rep := &models.BalanceResponse{DateFrom: from, DateTo: to, CashAndEquivalents: r.CashAndEquivalents, Receivables: r.Receivables, Inventory: r.Inventory, FixedAssets: r.FixedAssets, ProjectsInProgress: r.ProjectsInProgress, TotalAssets: r.TotalAssets, AccountsPayable: r.AccountsPayable, CustomerDeposits: r.CustomerDeposits, TaxPayable: r.TaxPayable, FinancingLiabilities: r.FinancingLiabilities, TotalLiabilities: r.TotalLiabilities, TotalEquity: r.TotalEquity, TotalRevenue: r.TotalRevenue, TotalCashIn: r.TotalCashIn, TotalExpense: r.TotalExpense, UnpaidAmount: r.UnpaidAmount, Outlets: []models.BalanceOutletRow{}, Accounts: []models.FinanceAccountTotal{}}
-	rep.BalanceDifference = round2(rep.TotalAssets - rep.TotalLiabilities - rep.TotalEquity)
+	return buildFinanceBalance(from, to, ops), nil
+}
+
+func buildFinanceBalance(from, to string, ops []models.FinanceOperation) *models.BalanceResponse {
+	opening, period, closing := newBalanceAccumulator(), newBalanceAccumulator(), newBalanceAccumulator()
 	for _, op := range ops {
-		if op.ReviewNote != "" {
-			rep.ReviewCount++
+		if op.Date > to {
+			continue
+		}
+		closing.add(op)
+		if op.Date < from {
+			opening.add(op)
+		} else {
+			period.add(op)
 		}
 	}
-	for oid, b := range by {
-		r := makeRow(b)
-		r.OutletID = oid
-		r.OutletName = names[oid]
-		rep.Outlets = append(rep.Outlets, r)
+	c := closing.section()
+	r := c.BalanceOutletRow
+	return &models.BalanceResponse{DateFrom: from, DateTo: to,
+		Opening: opening.section(), Period: period.section(),
+		CashAndEquivalents: r.CashAndEquivalents, Receivables: r.Receivables,
+		Inventory: r.Inventory, FixedAssets: r.FixedAssets, ProjectsInProgress: r.ProjectsInProgress,
+		TotalAssets: r.TotalAssets, AccountsPayable: r.AccountsPayable, CustomerDeposits: r.CustomerDeposits,
+		TaxPayable: r.TaxPayable, FinancingLiabilities: r.FinancingLiabilities,
+		TotalLiabilities: r.TotalLiabilities, TotalEquity: r.TotalEquity, TotalRevenue: r.TotalRevenue,
+		TotalCashIn: r.TotalCashIn, TotalExpense: r.TotalExpense, UnpaidAmount: r.UnpaidAmount,
+		Accounts: c.Accounts, Outlets: c.Outlets, ReviewCount: c.ReviewCount, BalanceDifference: c.BalanceDifference}
+}
+
+type balanceAccumulator struct {
+	balances                   map[string]float64
+	byOutlet                   map[string]map[string]float64
+	names                      map[string]string
+	reviewCount                int
+	cashReceipts, cashPayments float64
+}
+
+func newBalanceAccumulator() *balanceAccumulator {
+	return &balanceAccumulator{balances: map[string]float64{}, byOutlet: map[string]map[string]float64{}, names: map[string]string{}}
+}
+
+func (a *balanceAccumulator) add(op models.FinanceOperation) {
+	if a.byOutlet[op.OutletID] == nil {
+		a.byOutlet[op.OutletID] = map[string]float64{}
+	}
+	a.names[op.OutletID] = op.OutletName
+	if op.ReviewNote != "" {
+		a.reviewCount++
+	}
+	for _, p := range op.Postings {
+		m, _ := financeAccount(p.AccountCode)
+		v := p.Debit - p.Credit
+		if m.Group != "aset" && m.Group != "beban" {
+			v = -v
+		}
+		a.balances[p.AccountCode] += v
+		a.byOutlet[op.OutletID][p.AccountCode] += v
+		if p.AccountCode == glAccCash {
+			a.cashReceipts += p.Debit
+			a.cashPayments += p.Credit
+		}
+	}
+}
+
+func (a *balanceAccumulator) section() models.BalanceSection {
+	r := financeBalanceRow(a.balances)
+	section := models.BalanceSection{BalanceOutletRow: r, Accounts: []models.FinanceAccountTotal{},
+		Outlets: []models.BalanceOutletRow{}, ReviewCount: a.reviewCount,
+		BalanceDifference: round2(r.TotalAssets - r.TotalLiabilities - r.TotalEquity),
+		CashReceipts:      round2(a.cashReceipts), CashPayments: round2(a.cashPayments)}
+	for oid, b := range a.byOutlet {
+		row := financeBalanceRow(b)
+		row.OutletID, row.OutletName = oid, a.names[oid]
+		section.Outlets = append(section.Outlets, row)
 	}
 	for _, m := range FinanceAccounts {
 		if m.Group == "beban" || m.Group == "pendapatan" {
 			continue
 		}
-		rep.Accounts = append(rep.Accounts, models.FinanceAccountTotal{FinanceAccount: m, Amount: round2(balances[m.Code])})
+		section.Accounts = append(section.Accounts, models.FinanceAccountTotal{FinanceAccount: m, Amount: round2(a.balances[m.Code])})
 	}
-	sort.Slice(rep.Outlets, func(i, j int) bool { return rep.Outlets[i].OutletName < rep.Outlets[j].OutletName })
-	return rep, nil
+	sort.Slice(section.Outlets, func(i, j int) bool { return section.Outlets[i].OutletName < section.Outlets[j].OutletName })
+	return section
+}
+
+func financeBalanceRow(b map[string]float64) models.BalanceOutletRow {
+	r := models.BalanceOutletRow{CashAndEquivalents: round2(b[glAccCash]), Receivables: round2(b[glAccReceivable] + b["1-250"]), FixedAssets: round2(b[glAccFixedAsset]), ProjectsInProgress: round2(b[glAccProjectWIP]), AccountsPayable: round2(b[glAccPayable] + b["2-150"] + b["2-350"]), CustomerDeposits: round2(b[glAccCustomerDep]), TaxPayable: round2(b[glAccTaxPayable]), FinancingLiabilities: round2(b["2-400"])}
+	for _, code := range []string{"1-300", "1-310", "1-320", "1-330", "1-350"} {
+		r.Inventory += b[code]
+	}
+	r.Inventory = round2(r.Inventory)
+	r.TotalAssets = round2(r.CashAndEquivalents + r.Receivables + r.FixedAssets + r.ProjectsInProgress + r.Inventory)
+	r.TotalLiabilities = round2(r.AccountsPayable + r.CustomerDeposits + r.TaxPayable + r.FinancingLiabilities)
+	r.TotalRevenue = round2(b[glAccRevenue])
+	r.UnpaidAmount = r.Receivables
+	for _, m := range FinanceAccounts {
+		if m.Group == "ekuitas" || m.Group == "pendapatan" {
+			r.TotalEquity += b[m.Code]
+		} else if m.Group == "beban" {
+			r.TotalEquity -= b[m.Code]
+		}
+		if m.Group == "pendapatan" && m.Code != glAccRevenue {
+			r.TotalCashIn += b[m.Code]
+		}
+		if m.Group == "beban" {
+			r.TotalExpense += b[m.Code]
+		}
+	}
+	r.TotalEquity = round2(r.TotalEquity)
+	r.TotalCashIn = round2(r.TotalCashIn)
+	r.TotalExpense = round2(r.TotalExpense)
+	return r
 }

@@ -1978,10 +1978,8 @@ func BuildProfitLossReportExcel(dateFrom, dateTo, outletID string, scopeIDs []st
 	return buf.Bytes(), filename, nil
 }
 
-// BuildBalanceReportExcel menyusun file Excel laporan neraca dengan filter yang
-// sama persis dengan halaman /balance-report (rentang tanggal; outlet_id
-// diterima demi paritas dengan endpoint layar). scopeIDs berasal dari role
-// admin sehingga hasil export tak melebihi hak akses user.
+// BuildBalanceReportExcel uses the same opening, period movement and closing
+// values as the balance API, including both selected dates and outlet scope.
 func BuildBalanceReportExcel(dateFrom, dateTo, outletID string, scopeIDs []string) ([]byte, string, error) {
 	report, err := GetBalanceReport(dateFrom, dateTo, outletID, scopeIDs)
 	if err != nil {
@@ -1992,148 +1990,231 @@ func BuildBalanceReportExcel(dateFrom, dateTo, outletID string, scopeIDs []strin
 	tzName, _ := GetTimezone()
 	outletLabel := resolveOutletLabel(outletID, scopeIDs)
 	companyName, _ := GetSetting("company_name")
+	dateFrom, dateTo = report.DateFrom, report.DateTo
+	periodLabel := fmtDateID(dateFrom) + " s.d. " + fmtDateID(dateTo)
+	openingLabel := "Sebelum " + fmtDateID(dateFrom)
+	closingLabel := "Per " + fmtDateID(dateTo)
+	closing := models.BalanceOutletRow{
+		CashAndEquivalents: report.CashAndEquivalents, Receivables: report.Receivables,
+		Inventory: report.Inventory, FixedAssets: report.FixedAssets, ProjectsInProgress: report.ProjectsInProgress,
+		TotalAssets: report.TotalAssets, AccountsPayable: report.AccountsPayable, CustomerDeposits: report.CustomerDeposits,
+		TaxPayable: report.TaxPayable, FinancingLiabilities: report.FinancingLiabilities,
+		TotalLiabilities: report.TotalLiabilities, TotalEquity: report.TotalEquity,
+		TotalRevenue: report.TotalRevenue, TotalCashIn: report.TotalCashIn,
+		TotalExpense: report.TotalExpense, UnpaidAmount: report.UnpaidAmount,
+	}
+	values := func(r models.BalanceOutletRow) []float64 {
+		return []float64{r.CashAndEquivalents, r.Receivables, r.Inventory, r.FixedAssets, r.ProjectsInProgress,
+			r.TotalAssets, r.AccountsPayable, r.CustomerDeposits, r.TaxPayable, r.FinancingLiabilities,
+			r.TotalLiabilities, r.TotalEquity, r.TotalRevenue, r.TotalCashIn, r.TotalExpense, r.UnpaidAmount}
+	}
+	positionLabels := []string{"Kas & Setara Kas", "Piutang Usaha", "Persediaan", "Aset Tetap", "Projek Berjalan",
+		"Total Aset", "Hutang Usaha", "Uang Muka Pelanggan", "Hutang Pajak", "Pinjaman",
+		"Total Kewajiban", "Ekuitas termasuk hasil usaha", "Pendapatan Transaksi Kumulatif",
+		"Pendapatan Lainnya Kumulatif", "Beban Kumulatif", "Sisa Tagihan"}
+	periodLabels := []string{"Perubahan Kas & Setara Kas", "Perubahan Piutang Usaha", "Perubahan Persediaan",
+		"Perubahan Aset Tetap", "Perubahan Projek Berjalan", "Perubahan Total Aset", "Perubahan Hutang Usaha",
+		"Perubahan Uang Muka Pelanggan", "Perubahan Hutang Pajak", "Perubahan Pinjaman",
+		"Perubahan Total Kewajiban", "Perubahan Ekuitas termasuk hasil usaha", "Pendapatan Transaksi Periode",
+		"Pendapatan Lainnya Periode", "Beban Periode", "Perubahan Sisa Tagihan"}
 
 	f := excelize.NewFile()
 	defer f.Close()
-
 	st, err := buildExportStyles(f)
 	if err != nil {
 		return nil, "", err
 	}
-
-	const (
-		shSummary = "Neraca"
-		shOutlet  = "Per Outlet"
-	)
+	const shSummary = "Neraca"
 	f.SetSheetName("Sheet1", shSummary)
-	if _, err := f.NewSheet(shOutlet); err != nil {
-		return nil, "", err
-	}
-
-	// ── Sheet Neraca ─────────────────────────────────────────────────────
-	f.SetColWidth(shSummary, "A", "A", 36)
-	f.SetColWidth(shSummary, "B", "B", 30)
-
-	row := 1
-	f.SetCellValue(shSummary, "A1", "LAPORAN NERACA")
-	f.MergeCell(shSummary, "A1", "B1")
-	f.SetCellStyle(shSummary, "A1", "B1", st.title)
+	f.SetColWidth(shSummary, "A", "A", 55)
+	f.SetColWidth(shSummary, "B", "D", 24)
+	f.SetCellValue(shSummary, "A1", "LAPORAN PERGERAKAN NERACA")
+	f.MergeCell(shSummary, "A1", "D1")
+	f.SetCellStyle(shSummary, "A1", "D1", st.title)
+	row := 2
 	if strings.TrimSpace(companyName) != "" {
+		f.SetCellValue(shSummary, "A2", companyName)
+		f.MergeCell(shSummary, "A2", "D2")
 		row++
-		f.SetCellValue(shSummary, fmt.Sprintf("A%d", row), companyName)
 	}
-	row += 2
-	setKV := func(label string, value interface{}, valStyle int) {
-		f.SetCellValue(shSummary, fmt.Sprintf("A%d", row), label)
-		f.SetCellStyle(shSummary, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), st.label)
-		f.SetCellValue(shSummary, fmt.Sprintf("B%d", row), value)
-		if valStyle != 0 {
-			f.SetCellStyle(shSummary, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), valStyle)
+	row++
+	setKV := func(label string, value interface{}, style int) {
+		a, b, d := fmt.Sprintf("A%d", row), fmt.Sprintf("B%d", row), fmt.Sprintf("D%d", row)
+		f.SetCellValue(shSummary, a, label)
+		f.SetCellStyle(shSummary, a, a, st.label)
+		f.SetCellValue(shSummary, b, value)
+		f.MergeCell(shSummary, b, d)
+		if style != 0 {
+			f.SetCellStyle(shSummary, b, d, style)
 		}
 		row++
 	}
-	setSection := func(title string) {
-		f.SetCellValue(shSummary, fmt.Sprintf("A%d", row), title)
-		f.SetCellStyle(shSummary, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), st.section)
+	setNote := func(text string, style int) {
+		a, d := fmt.Sprintf("A%d", row), fmt.Sprintf("D%d", row)
+		f.SetCellValue(shSummary, a, text)
+		f.MergeCell(shSummary, a, d)
+		f.SetCellStyle(shSummary, a, d, style)
 		row++
 	}
-
-	setKV("Posisi per", fmtDateID(dateTo), 0)
+	section := func(title string) {
+		row++
+		setNote(title, st.section)
+	}
+	setKV("Periode", periodLabel, 0)
+	setKV("Tanggal Mulai", fmtDateID(dateFrom), 0)
+	setKV("Tanggal Akhir", fmtDateID(dateTo), 0)
 	setKV("Outlet", outletLabel, 0)
 	setKV("Dibuat pada", fmtTimeID(time.Now().In(loc))+" ("+tzName+")", 0)
-	if report.ReviewCount > 0 {
-		setKV("Catatan pemeriksaan sumber", report.ReviewCount, st.num)
+	setNote("Angka utama adalah mutasi periode; saldo awal dan saldo akhir ditampilkan terpisah.", st.note)
+	setNote("Kas & setara kas adalah saldo buku seluruh metode pembayaran, bukan kas fisik yang direkonsiliasi.", st.note)
+	setKV("Catatan Pemeriksaan Periode", report.Period.ReviewCount, st.num)
+	setKV("Catatan Pemeriksaan Penutup", report.ReviewCount, st.num)
+
+	section("ARUS KAS PERIODE")
+	setKV("Penerimaan Kas Periode", report.Period.CashReceipts, st.money)
+	setKV("Pengeluaran Kas Periode", report.Period.CashPayments, st.money)
+	setKV("Arus Kas Bersih Periode", report.Period.CashAndEquivalents, st.moneyTot)
+
+	section("PERGERAKAN NERACA PERIODE")
+	for i, value := range values(report.Period.BalanceOutletRow) {
+		style := st.money
+		if i == 5 || i == 10 || i == 11 {
+			style = st.moneyTot
+		}
+		setKV(periodLabels[i], value, style)
 	}
-	row++
 
-	setSection("ASET")
-	setKV("Kas & Setara Kas (saldo buku per tanggal posisi)", report.CashAndEquivalents, st.money)
-	setKV("Sisa Piutang Usaha (per tanggal posisi)", report.Receivables, st.money)
-	setKV("Persediaan (nilai buku per tanggal akhir)", report.Inventory, st.money)
-	setKV("Aset Tetap (nilai buku per akhir periode)", report.FixedAssets, st.money)
-	setKV("Projek Berjalan (belanja projek belum berwujud aset)", report.ProjectsInProgress, st.money)
-	setKV("Total Aset", report.TotalAssets, st.moneyTot)
-	row++
-
-	setSection("KEWAJIBAN")
-	setKV("Hutang Usaha (pengadaan disetujui belum dibayar)", report.AccountsPayable, st.money)
-	setKV("Uang Muka Pelanggan (reservasi belum ditutup)", report.CustomerDeposits, st.money)
-	setKV("Hutang Pajak Restoran (PB1)", report.TaxPayable, st.money)
-	setKV("Pinjaman", report.FinancingLiabilities, st.money)
-	setKV("Total Kewajiban", report.TotalLiabilities, st.moneyTot)
-	row++
-
-	setSection("EKUITAS")
-	setKV("Ekuitas termasuk hasil usaha", report.TotalEquity, st.moneyTot)
-	row++
-
-	// Cek keseimbangan seperti banner di halaman.
-	diff := report.TotalAssets - (report.TotalLiabilities + report.TotalEquity)
-	balanceTxt := "Aset = Kewajiban + Ekuitas — Neraca Seimbang ✓"
-	if diff > 0.02 || diff < -0.02 {
-		balanceTxt = fmt.Sprintf("Aset ≠ Kewajiban + Ekuitas (selisih %.2f) — Neraca Tidak Seimbang", diff)
+	section("PERBANDINGAN SALDO AWAL, MUTASI PERIODE, DAN SALDO AKHIR")
+	for col, label := range []string{"Komponen", "Saldo Awal (" + openingLabel + ")",
+		"Mutasi (" + periodLabel + ")", "Saldo Akhir (" + closingLabel + ")"} {
+		cell, _ := excelize.CoordinatesToCellName(col+1, row)
+		f.SetCellValue(shSummary, cell, label)
+		f.SetCellStyle(shSummary, cell, cell, st.header)
 	}
-	f.SetCellValue(shSummary, fmt.Sprintf("A%d", row), balanceTxt)
-	f.MergeCell(shSummary, fmt.Sprintf("A%d", row), fmt.Sprintf("B%d", row))
-	f.SetCellStyle(shSummary, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), st.note)
-	row += 2
-
-	setSection("DETAIL KOMPONEN")
-	setKV("Pendapatan Transaksi", report.TotalRevenue, st.money)
-	setKV("Pendapatan Lainnya", report.TotalCashIn, st.money)
-	setKV("Beban", report.TotalExpense, st.money)
-	setKV("Piutang Usaha", report.UnpaidAmount, st.money)
-
-	// ── Sheet Per Outlet ─────────────────────────────────────────────────
-	setHeaderRow(f, shOutlet, []string{
-		"Outlet", "Kas & Setara Kas", "Piutang", "Persediaan", "Aset Tetap", "Projek Berjalan", "Total Aset",
-		"Hutang Usaha", "Uang Muka Pelanggan", "Hutang Pajak", "Pinjaman", "Total Kewajiban", "Ekuitas",
-	}, st.header)
-	f.SetColWidth(shOutlet, "A", "A", 28)
-	f.SetColWidth(shOutlet, "B", "M", 16)
-	outletVals := func(o models.BalanceOutletRow) []float64 {
-		return []float64{o.CashAndEquivalents, o.Receivables, o.Inventory, o.FixedAssets, o.ProjectsInProgress, o.TotalAssets,
-			o.AccountsPayable, o.CustomerDeposits, o.TaxPayable, o.FinancingLiabilities, o.TotalLiabilities, o.TotalEquity}
+	f.SetRowHeight(shSummary, row, 46)
+	row++
+	openingValues, periodValues, closingValues := values(report.Opening.BalanceOutletRow), values(report.Period.BalanceOutletRow), values(closing)
+	for i, label := range positionLabels {
+		f.SetCellValue(shSummary, fmt.Sprintf("A%d", row), label)
+		for col, value := range []float64{openingValues[i], periodValues[i], closingValues[i]} {
+			cell, _ := excelize.CoordinatesToCellName(col+2, row)
+			f.SetCellValue(shSummary, cell, value)
+			f.SetCellStyle(shSummary, cell, cell, st.money)
+		}
+		row++
 	}
-	outletTotals := make([]float64, 12)
-	for i, o := range report.Outlets {
+	section("STATUS NERACA PENUTUP — " + closingLabel)
+	setKV("Selisih Neraca Penutup", report.BalanceDifference, st.money)
+	balanceText := "Status neraca penutup: Neraca Seimbang"
+	if report.BalanceDifference > 0.02 || report.BalanceDifference < -0.02 {
+		balanceText = "Status neraca penutup: Neraca Tidak Seimbang"
+	}
+	setNote(balanceText, st.note)
+	if report.ReviewCount > 0 || report.Period.ReviewCount > 0 {
+		setNote("Status seimbang belum menjamin sumber lengkap; periksa riwayat dan harga pokok penjualan (HPP).", st.note)
+	}
+
+	// Keep period and position outlet amounts on distinct, explicitly dated sheets.
+	for _, sheet := range []struct {
+		name, title, date string
+		rows              []models.BalanceOutletRow
+		labels            []string
+	}{
+		{"Outlet Periode", "MUTASI NERACA PER OUTLET", periodLabel, report.Period.Outlets, periodLabels},
+		{"Outlet Awal", "SALDO AWAL PER OUTLET", openingLabel, report.Opening.Outlets, positionLabels},
+		{"Outlet Akhir", "SALDO AKHIR PER OUTLET", closingLabel, report.Outlets, positionLabels},
+	} {
+		if _, err := f.NewSheet(sheet.name); err != nil {
+			return nil, "", err
+		}
+		f.SetColWidth(sheet.name, "A", "A", 28)
+		f.SetColWidth(sheet.name, "B", "Q", 23)
+		f.SetCellValue(sheet.name, "A1", sheet.title)
+		f.MergeCell(sheet.name, "A1", "Q1")
+		f.SetCellStyle(sheet.name, "A1", "Q1", st.title)
+		f.SetCellValue(sheet.name, "A2", sheet.date)
+		f.MergeCell(sheet.name, "A2", "Q2")
+		for col, label := range append([]string{"Outlet"}, sheet.labels...) {
+			cell, _ := excelize.CoordinatesToCellName(col+1, 4)
+			f.SetCellValue(sheet.name, cell, label)
+			f.SetCellStyle(sheet.name, cell, cell, st.header)
+		}
+		f.SetRowHeight(sheet.name, 4, 45)
+		totals := make([]float64, len(positionLabels))
+		for i, outlet := range sheet.rows {
+			r := i + 5
+			f.SetCellValue(sheet.name, fmt.Sprintf("A%d", r), outlet.OutletName)
+			for j, value := range values(outlet) {
+				cell, _ := excelize.CoordinatesToCellName(j+2, r)
+				f.SetCellValue(sheet.name, cell, value)
+				totals[j] += value
+			}
+			f.SetCellStyle(sheet.name, fmt.Sprintf("B%d", r), fmt.Sprintf("Q%d", r), st.money)
+		}
+		r := len(sheet.rows) + 5
+		f.SetCellValue(sheet.name, fmt.Sprintf("A%d", r), "TOTAL")
+		f.SetCellStyle(sheet.name, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.numTot)
+		for j, value := range totals {
+			cell, _ := excelize.CoordinatesToCellName(j+2, r)
+			f.SetCellValue(sheet.name, cell, value)
+			f.SetCellStyle(sheet.name, cell, cell, st.moneyTot)
+		}
+	}
+
+	const shAccounts = "Rincian Akun"
+	if _, err := f.NewSheet(shAccounts); err != nil {
+		return nil, "", err
+	}
+	setHeaderRow(f, shAccounts, []string{"Kode", "Akun", "Kelompok", "Saldo Awal (" + openingLabel + ")",
+		"Mutasi Periode (" + periodLabel + ")", "Saldo Akhir (" + closingLabel + ")"}, st.header)
+	f.SetColWidth(shAccounts, "A", "A", 14)
+	f.SetColWidth(shAccounts, "B", "B", 40)
+	f.SetColWidth(shAccounts, "C", "F", 25)
+	f.SetRowHeight(shAccounts, 1, 46)
+	type accountComparison struct {
+		meta                     models.FinanceAccountTotal
+		opening, period, closing float64
+	}
+	accounts := map[string]*accountComparison{}
+	for sectionIndex, sectionAccounts := range [][]models.FinanceAccountTotal{report.Opening.Accounts, report.Period.Accounts, report.Accounts} {
+		for _, account := range sectionAccounts {
+			if accounts[account.Code] == nil {
+				accounts[account.Code] = &accountComparison{}
+			}
+			entry := accounts[account.Code]
+			entry.meta = account
+			switch sectionIndex {
+			case 0:
+				entry.opening = account.Amount
+			case 1:
+				entry.period = account.Amount
+			case 2:
+				entry.closing = account.Amount
+			}
+		}
+	}
+	codes := make([]string, 0, len(accounts))
+	for code := range accounts {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	for i, code := range codes {
+		account := accounts[code]
 		r := i + 2
-		f.SetCellValue(shOutlet, fmt.Sprintf("A%d", r), o.OutletName)
-		for j, v := range outletVals(o) {
-			cell, _ := excelize.CoordinatesToCellName(j+2, r)
-			f.SetCellValue(shOutlet, cell, v)
-			outletTotals[j] += v
+		for col, value := range []interface{}{code, account.meta.Name, account.meta.Group, account.opening, account.period, account.closing} {
+			cell, _ := excelize.CoordinatesToCellName(col+1, r)
+			f.SetCellValue(shAccounts, cell, value)
 		}
-		f.SetCellStyle(shOutlet, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.num)
-		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("M%d", r), st.money)
+		f.SetCellStyle(shAccounts, fmt.Sprintf("D%d", r), fmt.Sprintf("F%d", r), st.money)
 	}
-	if len(report.Outlets) > 0 {
-		r := len(report.Outlets) + 2
-		f.SetCellValue(shOutlet, fmt.Sprintf("A%d", r), "TOTAL")
-		for j, v := range outletTotals {
-			cell, _ := excelize.CoordinatesToCellName(j+2, r)
-			f.SetCellValue(shOutlet, cell, v)
-		}
-		f.SetCellStyle(shOutlet, fmt.Sprintf("A%d", r), fmt.Sprintf("A%d", r), st.numTot)
-		f.SetCellStyle(shOutlet, fmt.Sprintf("B%d", r), fmt.Sprintf("M%d", r), st.moneyTot)
-	} else {
-		f.SetCellValue(shOutlet, "A2", "Tidak ada data pada periode ini.")
-		f.SetCellStyle(shOutlet, "A2", "A2", st.note)
-	}
-
 	if idx, err := f.GetSheetIndex(shSummary); err == nil {
 		f.SetActiveSheet(idx)
-	}
-
-	if err := addFinanceAccountSheet(f, report.Accounts); err != nil {
-		return nil, "", err
 	}
 	buf, err := f.WriteToBuffer()
 	if err != nil {
 		return nil, "", err
 	}
-
-	filename := fmt.Sprintf("Laporan-Neraca_%s_per_%s.xlsx", slugFilename(outletLabel), dateTo)
+	filename := fmt.Sprintf("Laporan-Neraca_%s_%s_%s.xlsx", slugFilename(outletLabel), dateFrom, dateTo)
 	return buf.Bytes(), filename, nil
 }
 

@@ -1,230 +1,120 @@
 <template>
-  <div class="space-y-6">
-
-    <!-- Filter Bar -->
+  <div class="min-w-0 space-y-6">
     <AppCard>
       <div class="flex flex-wrap items-end gap-4">
         <div class="flex min-w-0 flex-col gap-1">
-          <label for="balance-as-of" class="text-sm font-medium text-gray-700">Tanggal posisi neraca</label>
-          <DateRangePicker v-model="positionRange" single-date input-id="balance-as-of" label="Tanggal posisi neraca" />
+          <label for="balance-range" class="text-sm font-medium text-gray-700">Periode laporan</label>
+          <DateRangePicker v-model="range" app-timezone input-id="balance-range" label="Periode laporan" />
         </div>
-        <button @click="fetchReport" :disabled="loading || !asOfDate"
-          class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+        <button @click="fetchReport" :disabled="loading || !range.from || !range.to"
+          class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
           Tampilkan
         </button>
         <button @click="downloadExcel" :disabled="!canExport"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-600 text-emerald-700 text-sm font-medium rounded-lg hover:bg-emerald-50 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
-          <svg v-if="!exporting" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          class="inline-flex items-center gap-2 rounded-lg border border-emerald-600 bg-white px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60">
+          <svg v-if="!exporting" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
           </svg>
           <AppSpinner v-else size="sm" />
           {{ exporting ? 'Menyiapkan…' : 'Download Excel' }}
         </button>
       </div>
-      <p class="mt-3 text-xs text-gray-500">Menampilkan saldo kumulatif hingga tanggal yang dipilih.</p>
+      <p class="mt-3 text-xs text-gray-500">Angka utama menunjukkan perubahan selama periode yang dipilih. Saldo awal dan saldo akhir ditampilkan terpisah.</p>
     </AppCard>
 
     <AppAlert type="error" :message="errorMsg || exportError" />
+    <div v-if="loading" class="flex justify-center py-12"><AppSpinner size="lg" /></div>
 
-    <div v-if="loading" class="flex justify-center py-12">
-      <AppSpinner size="lg" />
-    </div>
-
-    <template v-if="!loading && report">
-      <p class="text-sm text-gray-600" role="status">Posisi neraca per <b>{{ formatDateStr(report.date_to) }}</b>. Saldo kumulatif hingga tanggal ini, termasuk seluruh periode sebelumnya.</p>
-      <AppAlert v-if="report.review_count > 0" type="warning">
-        {{ report.review_count }} catatan sumber perlu ditinjau. Periksa kelengkapan riwayat dan harga pokok penjualan (HPP). Status seimbang belum menjamin semua catatan sudah lengkap.
+    <template v-if="!loading && report && period && opening">
+      <p class="text-sm text-gray-600" role="status">Perubahan periode <b>{{ formatDateStr(report.date_from) }} – {{ formatDateStr(report.date_to) }}</b>.</p>
+      <AppAlert v-if="period.review_count > 0" type="warning">
+        {{ period.review_count }} catatan pada periode ini perlu ditinjau. Periksa bukti transaksi dan harga pokok penjualan (HPP) yang belum lengkap.
       </AppAlert>
-      <!-- Neraca: Aset = Kewajiban + Ekuitas -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        <!-- ASET (Left side) -->
-        <AppCard>
-          <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wide mb-4 flex items-center gap-2">
-            <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"/>
-            </svg>
-            Aset
-          </h3>
-          <div class="space-y-3">
-            <div class="flex justify-between items-center py-2 border-b border-gray-100">
-              <div>
-                <p class="text-sm font-medium text-gray-700">Kas & Setara Kas</p>
-                <p class="text-xs text-gray-400">Saldo buku penerimaan dan pengeluaran kas sampai tanggal posisi</p>
-              </div>
-              <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.cash_and_equivalents) }}</span>
-            </div>
-            <div class="flex justify-between items-center py-2 border-b border-gray-100">
-              <div>
-                <p class="text-sm font-medium text-gray-700">Piutang Usaha</p>
-                <p class="text-xs text-gray-400">Sisa tagihan per tanggal posisi, termasuk pembayaran sebagian</p>
-              </div>
-              <span class="text-sm font-semibold" :class="report.receivables > 0 ? 'text-amber-600' : 'text-gray-800'">{{ formatRupiah(report.receivables) }}</span>
-            </div>
-            <!-- Tiga baris di bawah datang dari modul Gudang dan Perlengkapan:
-                 sebelumnya nilai stok dan aset tidak pernah sampai ke Neraca. -->
-            <div class="flex justify-between items-center py-2 border-b border-gray-100">
-              <div>
-                <p class="text-sm font-medium text-gray-700">Persediaan</p>
-                <p class="text-xs text-gray-400">Nilai buku persediaan, karantina, dan pengiriman (qty × rata-rata biaya)</p>
-              </div>
-              <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.inventory) }}</span>
-            </div>
-            <div class="flex justify-between items-center py-2 border-b border-gray-100">
-              <div>
-                <p class="text-sm font-medium text-gray-700">Aset Tetap</p>
-                <p class="text-xs text-gray-400">Nilai buku peralatan per tanggal posisi (perolehan − penyusutan)</p>
-              </div>
-              <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.fixed_assets) }}</span>
-            </div>
-            <div class="flex justify-between items-center py-2 border-b border-gray-100">
-              <div>
-                <p class="text-sm font-medium text-gray-700">Projek Berjalan</p>
-                <p class="text-xs text-gray-400">Belanja projek yang dibayar dan belum berwujud aset</p>
-              </div>
-              <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.projects_in_progress) }}</span>
-            </div>
+      <div class="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3" aria-label="Ringkasan kas periode">
+        <AppCard v-for="card in CASH_CARDS" :key="card.key" :data-cash-summary="card.key">
+          <h3 class="text-sm font-semibold text-gray-700">{{ card.label }}</h3>
+          <p class="mt-2 text-2xl font-bold" :class="card.key === 'cash_payments' || period[card.key] < 0 ? 'text-red-600' : 'text-emerald-700'" data-cash-value>{{ formatRupiah(period[card.key]) }}</p>
+          <p class="mt-1 text-xs text-gray-500">{{ card.description }}</p>
+        </AppCard>
+      </div>
+      <p class="text-xs text-gray-500">Kas dan setara kas mencakup tunai, QRIS, kartu, dan transfer sesuai pembukuan.</p>
+
+      <div class="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
+        <AppCard data-section="period-assets">
+          <h3 class="mb-4 text-sm font-bold uppercase tracking-wide text-emerald-700">Perubahan Aset</h3>
+          <div v-for="row in ASSET_ROWS" :key="row.key" class="flex items-center justify-between gap-4 border-b border-gray-100 py-3">
+            <div class="min-w-0"><p class="text-sm font-medium text-gray-700">{{ row.label }}</p><p class="text-xs text-gray-400">{{ row.description }}</p></div>
+            <span class="shrink-0 text-sm font-semibold text-gray-800">{{ formatRupiah(period[row.key]) }}</span>
           </div>
-          <div class="flex justify-between items-center pt-4 mt-2 border-t-2 border-emerald-200">
-            <span class="text-sm font-bold text-emerald-700">Total Aset</span>
-            <span class="text-lg font-bold text-emerald-700">{{ formatRupiah(report.total_assets) }}</span>
+          <div class="mt-2 flex items-center justify-between gap-4 border-t-2 border-emerald-200 pt-4">
+            <span class="text-sm font-bold text-emerald-700">Total Perubahan Aset</span>
+            <span class="text-lg font-bold text-emerald-700">{{ formatRupiah(period.total_assets) }}</span>
           </div>
         </AppCard>
 
-        <!-- KEWAJIBAN + EKUITAS (Right side) -->
-        <div class="space-y-6">
-          <!-- Kewajiban -->
-          <AppCard>
-            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wide mb-4 flex items-center gap-2">
-              <svg class="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>
-              </svg>
-              Kewajiban
-            </h3>
-            <div class="space-y-3">
-              <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                <div>
-                  <p class="text-sm font-medium text-gray-700">Hutang Usaha</p>
-                  <p class="text-xs text-gray-400">Hutang pengadaan dan operasional yang belum dilunasi</p>
-                </div>
-                <span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.accounts_payable) }}</span>
-              </div>
-              <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                <div>
-                  <p class="text-sm font-medium text-gray-700">Uang Muka Pelanggan</p>
-                  <p class="text-xs text-gray-400">DP reservasi tervalidasi yang belum ditutup di POS</p>
-                </div>
-                <span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.customer_deposits) }}</span>
-              </div>
-              <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                <div>
-                  <p class="text-sm font-medium text-gray-700">Hutang Pajak Restoran</p>
-                  <p class="text-xs text-gray-400">Pajak transaksi yang belum disetorkan</p>
-                </div>
-                <span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.tax_payable) }}</span>
-              </div>
+        <div class="min-w-0 space-y-6">
+          <AppCard data-section="period-liabilities">
+            <h3 class="mb-4 text-sm font-bold uppercase tracking-wide text-red-600">Perubahan Kewajiban</h3>
+            <div v-for="row in LIABILITY_ROWS" :key="row.key" class="flex items-center justify-between gap-4 border-b border-gray-100 py-3">
+              <div class="min-w-0"><p class="text-sm font-medium text-gray-700">{{ row.label }}</p><p class="text-xs text-gray-400">{{ row.description }}</p></div>
+              <span class="shrink-0 text-sm font-semibold text-gray-800">{{ formatRupiah(period[row.key]) }}</span>
             </div>
-            <div class="flex justify-between items-center py-2"><span class="text-sm text-gray-700">Pinjaman</span><span class="text-sm font-semibold text-red-600">{{ formatRupiah(report.financing_liabilities) }}</span></div>
-            <div class="flex justify-between items-center pt-4 mt-2 border-t-2 border-red-200">
-              <span class="text-sm font-bold text-red-600">Total Kewajiban</span>
-              <span class="text-base font-bold text-red-600">{{ formatRupiah(report.total_liabilities) }}</span>
+            <div class="mt-2 flex items-center justify-between gap-4 border-t-2 border-red-200 pt-4">
+              <span class="text-sm font-bold text-red-600">Total Perubahan Kewajiban</span>
+              <span class="text-base font-bold text-red-600">{{ formatRupiah(period.total_liabilities) }}</span>
             </div>
           </AppCard>
-
-          <!-- Ekuitas -->
-          <AppCard>
-            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wide mb-4 flex items-center gap-2">
-              <svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5"/>
-              </svg>
-              Ekuitas
-            </h3>
-            <div class="flex justify-between items-center pt-2">
-              <span class="text-sm font-medium text-gray-700">Ekuitas dan akumulasi hasil usaha</span>
-              <span class="text-sm font-semibold" :class="report.total_equity >= 0 ? 'text-blue-700' : 'text-red-600'">
-                {{ formatRupiah(report.total_equity) }}
-              </span>
-            </div>
-            <div class="flex justify-between items-center pt-4 mt-3 border-t-2 border-blue-200">
-              <span class="text-sm font-bold text-blue-700">Total Ekuitas</span>
-              <span class="text-base font-bold" :class="report.total_equity >= 0 ? 'text-blue-700' : 'text-red-600'">{{ formatRupiah(report.total_equity) }}</span>
+          <AppCard data-section="period-equity">
+            <h3 class="mb-4 text-sm font-bold uppercase tracking-wide text-blue-700">Perubahan Ekuitas</h3>
+            <p class="text-xs text-gray-500">Perubahan ekuitas dan hasil usaha selama periode.</p>
+            <div class="mt-3 flex items-center justify-between gap-4 border-t-2 border-blue-200 pt-4">
+              <span class="text-sm font-bold text-blue-700">Total Perubahan Ekuitas</span>
+              <span class="text-base font-bold" :class="period.total_equity >= 0 ? 'text-blue-700' : 'text-red-600'">{{ formatRupiah(period.total_equity) }}</span>
             </div>
           </AppCard>
         </div>
       </div>
 
-      <!-- Balance Check -->
-      <div class="flex items-center justify-center gap-3 py-3 rounded-xl text-sm"
-        :class="isBalanced ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-red-50 border border-red-200 text-red-700'">
-        <svg v-if="isBalanced" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-        </svg>
-        <span class="font-medium">
-          Aset ({{ formatRupiah(report.total_assets) }}) = Kewajiban ({{ formatRupiah(report.total_liabilities) }}) + Ekuitas ({{ formatRupiah(report.total_equity) }})
-          <template v-if="isBalanced"> — Neraca Seimbang ✓</template>
-          <template v-else> — Neraca Tidak Seimbang</template>
-        </span>
-      </div>
-
-      <!-- Detail Komponen -->
-      <AppCard>
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">Detail Komponen Kumulatif</h3>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-          <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Pendapatan Transaksi Kumulatif</p>
-            <p class="font-semibold text-gray-800">{{ formatRupiah(report.total_revenue) }}</p>
-          </div>
-          <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Pendapatan Lainnya Kumulatif</p>
-            <p class="font-semibold text-gray-800">{{ formatRupiah(report.total_cash_in) }}</p>
-          </div>
-          <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Beban Kumulatif</p>
-            <p class="font-semibold text-red-600">{{ formatRupiah(report.total_expense) }}</p>
-          </div>
-          <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Piutang Usaha per Tanggal Posisi</p>
-            <p class="font-semibold" :class="report.unpaid_amount > 0 ? 'text-amber-600' : 'text-gray-800'">{{ formatRupiah(report.unpaid_amount) }}</p>
+      <AppCard data-section="period-components">
+        <h3 class="mb-3 text-sm font-semibold text-gray-700">Komponen Periode</h3>
+        <div class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+          <div v-for="row in PERIOD_COMPONENTS" :key="row.key" class="rounded-lg bg-gray-50 p-3">
+            <p class="mb-1 text-xs text-gray-500">{{ row.label }}</p>
+            <p class="font-semibold text-gray-800">{{ formatRupiah(period[row.key]) }}</p>
           </div>
         </div>
       </AppCard>
 
-      <FinanceAccountTotals :accounts="report.accounts" />
-
-      <!-- Per Outlet -->
-      <AppCard v-if="report.outlets?.length > 0" :padding="false">
-        <div class="px-4 pt-4 pb-2">
-          <h3 class="text-sm font-semibold text-gray-700">Neraca Per Outlet</h3>
-        </div>
-        <AppTable :columns="OUTLET_COLS" :rows="report.outlets" :loading="false" emptyText="Tidak ada data.">
-          <template #cell-cash_and_equivalents="{ row }">{{ formatRupiah(row.cash_and_equivalents) }}</template>
-          <template #cell-receivables="{ row }">
-            <span :class="row.receivables > 0 ? 'text-amber-600' : ''">{{ formatRupiah(row.receivables) }}</span>
-          </template>
-          <template #cell-inventory="{ row }">{{ formatRupiah(row.inventory) }}</template>
-          <template #cell-fixed_assets="{ row }">{{ formatRupiah(row.fixed_assets) }}</template>
-          <template #cell-total_assets="{ row }">
-            <span class="font-semibold text-emerald-700">{{ formatRupiah(row.total_assets) }}</span>
-          </template>
-          <template #cell-accounts_payable="{ row }">
-            <span class="text-red-600">{{ formatRupiah(row.accounts_payable) }}</span>
-          </template>
-          <template #cell-customer_deposits="{ row }">
-            <span class="text-red-600">{{ formatRupiah(row.customer_deposits) }}</span>
-          </template>
-          <template #cell-tax_payable="{ row }">
-            <span class="text-red-600">{{ formatRupiah(row.tax_payable) }}</span>
-          </template>
-          <template #cell-total_equity="{ row }">
-            <span :class="row.total_equity >= 0 ? 'text-blue-700 font-semibold' : 'text-red-600 font-semibold'">
-              {{ formatRupiah(row.total_equity) }}
-            </span>
-          </template>
+      <FinanceAccountTotals :accounts="period.accounts" />
+      <AppCard v-if="period.outlets?.length > 0" :padding="false" data-section="period-outlets">
+        <div class="px-4 pb-2 pt-4"><h3 class="text-sm font-semibold text-gray-700">Perubahan Per Outlet</h3></div>
+        <AppTable :columns="OUTLET_COLS" :rows="period.outlets" :loading="false" emptyText="Tidak ada data.">
+          <template v-for="column in OUTLET_COLS.slice(1)" :key="column.key" #[`cell-${column.key}`]="{ row }">{{ formatRupiah(row[column.key]) }}</template>
         </AppTable>
       </AppCard>
+
+      <AppCard class="min-w-0" data-section="balance-comparison">
+        <h3 class="text-sm font-semibold text-gray-800">Saldo Awal dan Saldo Akhir</h3>
+        <p class="mt-1 text-xs text-gray-500">Saldo awal sebelum {{ formatDateStr(report.date_from) }} + perubahan periode = saldo akhir hingga {{ formatDateStr(report.date_to) }}. Saldo awal dan akhir mencakup riwayat sebelumnya.</p>
+        <AppAlert v-if="report.review_count > 0" type="warning" class="mt-3">
+          {{ report.review_count }} catatan kumulatif pada saldo akhir perlu ditinjau. Jumlah ini mencakup riwayat hingga {{ formatDateStr(report.date_to) }}, bukan hanya periode yang dipilih.
+        </AppAlert>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm" aria-label="Perbandingan saldo awal, perubahan, dan saldo akhir">
+            <thead><tr class="text-left text-gray-500"><th class="py-2 pr-4">Komponen</th><th class="whitespace-nowrap px-3 text-right">Saldo Awal</th><th class="whitespace-nowrap px-3 text-right">Perubahan Periode</th><th class="whitespace-nowrap pl-3 text-right">Saldo Akhir</th></tr></thead>
+            <tbody>
+              <tr v-for="row in COMPARISON_ROWS" :key="row.key" :data-balance-field="row.key" class="border-t border-gray-100">
+                <th scope="row" class="py-3 pr-4 text-left font-medium text-gray-700">{{ row.label }}</th>
+                <td data-value="opening" class="whitespace-nowrap px-3 text-right">{{ formatRupiah(opening[row.key]) }}</td>
+                <td data-value="period" class="whitespace-nowrap px-3 text-right font-semibold text-emerald-700">{{ formatRupiah(period[row.key]) }}</td>
+                <td data-value="closing" class="whitespace-nowrap pl-3 text-right">{{ formatRupiah(report[row.key]) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </AppCard>
+
     </template>
   </div>
 </template>
@@ -232,67 +122,89 @@
 <script setup>
 import FinanceAccountTotals from '@/components/FinanceAccountTotals.vue'
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { salesApi }    from '@/api/sales.js'
+import { salesApi } from '@/api/sales.js'
 import { formatRupiah, formatDateStr, todayDateString } from '@/utils/format.js'
-import AppCard      from '@/components/ui/AppCard.vue'
-import AppTable     from '@/components/ui/AppTable.vue'
-import AppAlert     from '@/components/ui/AppAlert.vue'
-import AppSpinner   from '@/components/ui/AppSpinner.vue'
+import AppCard from '@/components/ui/AppCard.vue'
+import AppTable from '@/components/ui/AppTable.vue'
+import AppAlert from '@/components/ui/AppAlert.vue'
+import AppSpinner from '@/components/ui/AppSpinner.vue'
 import DateRangePicker from '@/components/ui/DateRangePicker.vue'
 
-const asOfDate = ref(todayDateString())
-const positionLabel = ref('Hari Ini')
-const positionRange = computed({
-  get: () => ({ from: asOfDate.value, to: asOfDate.value, label: positionLabel.value }),
-  set: value => {
-    positionLabel.value = value?.label || ''
-    asOfDate.value = value?.to || value?.from || ''
-  },
-})
-watch(asOfDate, fetchReport)
-const loading  = ref(false)
+const today = todayDateString()
+const range = ref({ from: today, to: today, label: 'Hari Ini' })
+watch(range, fetchReport)
+const loading = ref(false)
 const errorMsg = ref('')
 const exportError = ref('')
-const report   = ref(null)
+const report = ref(null)
+const period = computed(() => report.value?.period)
+const opening = computed(() => report.value?.opening)
 let requestSequence = 0
 let disposed = false
 
-const isBalanced = computed(() => {
-  if (!report.value) return true
-  const diff = Math.abs(report.value.total_assets - (report.value.total_liabilities + report.value.total_equity))
-  return diff < 0.02
-})
-
+const CASH_CARDS = [
+  { key: 'cash_receipts', label: 'Kas Masuk', description: 'Penerimaan kas selama periode' },
+  { key: 'cash_payments', label: 'Kas Keluar', description: 'Pengeluaran kas selama periode' },
+  { key: 'cash_and_equivalents', label: 'Perubahan Kas', description: 'Kas masuk dikurangi kas keluar selama periode' },
+]
+const ASSET_ROWS = [
+  { key: 'cash_and_equivalents', label: 'Kas & Setara Kas', description: 'Kas masuk dikurangi kas keluar selama periode' },
+  { key: 'receivables', label: 'Piutang Usaha', description: 'Penambahan dan pelunasan piutang selama periode' },
+  { key: 'inventory', label: 'Persediaan', description: 'Perubahan nilai buku persediaan selama periode' },
+  { key: 'fixed_assets', label: 'Aset Tetap', description: 'Penambahan dan penyusutan aset selama periode' },
+  { key: 'projects_in_progress', label: 'Projek Berjalan', description: 'Perubahan belanja projek yang belum berwujud aset' },
+]
+const LIABILITY_ROWS = [
+  { key: 'accounts_payable', label: 'Hutang Usaha', description: 'Penambahan dan pelunasan hutang selama periode' },
+  { key: 'customer_deposits', label: 'Uang Muka Pelanggan', description: 'Perubahan DP reservasi selama periode' },
+  { key: 'tax_payable', label: 'Hutang Pajak Restoran', description: 'Perubahan pajak yang belum disetorkan' },
+  { key: 'financing_liabilities', label: 'Pinjaman', description: 'Penerimaan dan pelunasan pinjaman selama periode' },
+]
+const PERIOD_COMPONENTS = [
+  { key: 'total_revenue', label: 'Pendapatan Transaksi' },
+  { key: 'total_cash_in', label: 'Pendapatan Lainnya' },
+  { key: 'total_expense', label: 'Beban' },
+  { key: 'unpaid_amount', label: 'Perubahan Piutang Usaha' },
+]
+const COMPARISON_ROWS = [
+  ...ASSET_ROWS,
+  { key: 'total_assets', label: 'Total Aset' },
+  ...LIABILITY_ROWS,
+  { key: 'total_liabilities', label: 'Total Kewajiban' },
+  { key: 'total_equity', label: 'Total Ekuitas' },
+  { key: 'balance_difference', label: 'Selisih Aset − Kewajiban − Ekuitas' },
+]
 const OUTLET_COLS = [
-  { key: 'outlet_name',          label: 'Outlet' },
-  { key: 'cash_and_equivalents', label: 'Kas', align: 'right' },
-  { key: 'receivables',          label: 'Piutang', align: 'right' },
-  { key: 'inventory',            label: 'Persediaan', align: 'right' },
-  { key: 'fixed_assets',         label: 'Aset Tetap', align: 'right' },
-  { key: 'total_assets',         label: 'Total Aset', align: 'right' },
-  { key: 'accounts_payable',     label: 'Hutang Usaha', align: 'right' },
-  { key: 'customer_deposits',    label: 'Uang Muka', align: 'right' },
-  { key: 'tax_payable',          label: 'Hutang Pajak', align: 'right' },
-  { key: 'total_equity',         label: 'Ekuitas', align: 'right' },
+  { key: 'outlet_name', label: 'Outlet' },
+  { key: 'cash_and_equivalents', label: 'Perubahan Kas', align: 'right' },
+  { key: 'receivables', label: 'Perubahan Piutang', align: 'right' },
+  { key: 'inventory', label: 'Perubahan Persediaan', align: 'right' },
+  { key: 'fixed_assets', label: 'Perubahan Aset Tetap', align: 'right' },
+  { key: 'total_assets', label: 'Perubahan Aset', align: 'right' },
+  { key: 'accounts_payable', label: 'Perubahan Hutang', align: 'right' },
+  { key: 'customer_deposits', label: 'Perubahan Uang Muka', align: 'right' },
+  { key: 'tax_payable', label: 'Perubahan Pajak', align: 'right' },
+  { key: 'total_equity', label: 'Perubahan Ekuitas', align: 'right' },
 ]
 
 onMounted(fetchReport)
-
 async function fetchReport() {
   if (disposed) return
   const sequence = ++requestSequence
-  const date = asOfDate.value
+  const { from, to } = range.value
   loading.value = true
   errorMsg.value = ''
   exportError.value = ''
   report.value = null
-  if (!date) {
-    errorMsg.value = 'Pilih tanggal posisi neraca.'
+  if (!from || !to || from > to) {
+    errorMsg.value = 'Pilih tanggal awal dan akhir periode yang valid.'
     loading.value = false
     return
   }
   try {
-    const data = await salesApi.getBalanceReport({ date_from: date, date_to: date })
+    const data = await salesApi.getBalanceReport({ date_from: from, date_to: to })
+    if (!data?.opening || !data?.period) throw new Error('Rincian perubahan periode belum tersedia. Muat ulang laporan.')
+    if (data.date_from !== from || data.date_to !== to) throw new Error('Periode hasil tidak sesuai dengan filter. Muat ulang laporan.')
     if (!disposed && sequence === requestSequence) report.value = data
   } catch (err) {
     if (!disposed && sequence === requestSequence) errorMsg.value = err?.message ?? 'Gagal memuat laporan neraca.'
@@ -300,26 +212,24 @@ async function fetchReport() {
     if (!disposed && sequence === requestSequence) loading.value = false
   }
 }
-
 onBeforeUnmount(() => { disposed = true; requestSequence++ })
 
-// Export uses the loaded position date. A download already in progress retains
-// that date in both its request and filename if the user selects another date.
+// An in-progress export retains both boundaries of its loaded report.
 const exporting = ref(false)
 const canExport = computed(() => !loading.value && !exporting.value && !errorMsg.value &&
-  !!report.value && report.value.date_to === asOfDate.value)
+  !!report.value && report.value.date_from === range.value.from && report.value.date_to === range.value.to)
 async function downloadExcel() {
   if (disposed || !canExport.value) return
-  const date = report.value.date_to
+  const from = report.value.date_from
+  const to = report.value.date_to
   const sequence = requestSequence
-  const params = { date_from: date, date_to: date }
-  const filename = `Laporan-Neraca_per_${date}.xlsx`
+  const params = { date_from: from, date_to: to }
+  const filename = `Laporan-Neraca_${from}_${to}.xlsx`
   exporting.value = true
   exportError.value = ''
   try {
     const blob = await salesApi.exportBalanceReport(params)
     if (disposed) return
-
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

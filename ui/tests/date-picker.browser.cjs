@@ -30,6 +30,7 @@ const base = process.env.BALANCE_TEST_URL || 'http://127.0.0.1:4189'
     await dialog.waitFor({ state: 'hidden' })
     let value = await read()
     assert.equal(value.from, '2026-10-29'); assert.equal(value.to, '2026-11-01')
+    assert.equal((await trigger.innerText()).split(value.label).length - 1, 1, 'Custom range must appear only once in the trigger')
     console.log('PASS default range presets and cross-month two-date selection remain unchanged')
 
     await trigger.click()

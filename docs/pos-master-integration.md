@@ -826,3 +826,27 @@ Bukti rilis, tangkapan layar, dan rekonsiliasi nominal tersimpan secara privat
 di `/home/candra/projects/pos-integration-staging/releases/20261102-balance-datepicker-review/`,
 termasuk `release-status.json`, `frontend/live-balance-browser.json`, dan
 `diagnostics/reconciliation-conclusion.json`.
+
+### Nominal neraca mengikuti rentang tanggal
+
+Perubahan berikut menggantikan perilaku filter tanggal posisi di atas. Filter
+**Hari Ini** menampilkan penerimaan kas, pengeluaran kas, dan perubahan saldo
+hari tersebut. Kalender bersama kembali memakai rentang tanggal, sehingga
+tanggal mulai dan tanggal akhir sama-sama menentukan nominal utama. Nilai
+perubahan aset, kewajiban, ekuitas, rincian akun, dan outlet memakai periode
+yang sama; saldo awal dan saldo akhir ditampilkan terpisah sebagai pembanding.
+Penerimaan kas mencakup metode pembayaran yang dibukukan ke kas/setara kas,
+termasuk QRIS, kartu, dan transfer, bukan hanya uang tunai di laci.
+
+API neraca mempertahankan nilai tingkat atas sebagai posisi penutup untuk
+kompatibilitas. Bagian `opening` memuat jurnal sebelum `date_from`, sedangkan
+`period` memuat jurnal dari `date_from` sampai `date_to`, termasuk kedua
+tanggal tersebut. Ketiganya dihitung dari satu pemuatan jurnal bertanggal yang
+sama. `cash_receipts` dan `cash_payments` merupakan debit dan kredit bruto
+akun kas; `cash_and_equivalents` pada bagian periode merupakan selisihnya.
+Status keseimbangan posisi penutup tidak menyatakan kelengkapan sumber.
+
+Excel menggunakan kedua tanggal dan menyertakan pergerakan periode serta
+perbandingan saldo awal/akhir. Perbaikan riwayat tagihan, pembayaran, dan
+pembatalan sebelumnya tetap berlaku; perubahan ini tidak mengubah transaksi
+atau mengisi saldo dengan angka penyeimbang.
