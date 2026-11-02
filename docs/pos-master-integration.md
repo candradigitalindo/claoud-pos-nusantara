@@ -676,3 +676,32 @@ produk bernama ganda, isolasi outlet, retry lama setelah payload modern,
 pemulihan stok agregat, dan rollback void yang identitasnya belum lengkap.
 Sumber akhir sesuai manifest SHA-256 pada artefak
 `legacy-pos-compat-backend-20261102-final` di direktori staging.
+
+
+## Rilis kompatibilitas POS lama — 2 November 2026
+
+Commit `d1c76a0` sudah dipush ke `master` dan API dipasang pada **07:05 WIB**.
+Frontend tetap pada rilis sebelumnya. Backup database baru diperiksa; image
+API sebelumnya tersedia untuk rollback. Dua kolom pemulihan ditambahkan tanpa
+menghapus data atau memindahkan transaksi antar-outlet.
+
+Sebelum pemasangan, backup produksi dipulihkan ke database uji terisolasi.
+Image rilis berhasil boot, migrasi wajib/default kolom lulus, dan GET laporan
+terautentikasi berhasil. Jumlah/total nominal data moneter serta identitas
+catatan kegagalan stok lama tetap sama. Seluruh kontainer/jaringan rehearsal
+dibersihkan. Enam pemeriksaan GET produksi lulus sesudah pemasangan; tidak ada
+transaksi sintetis, replay finansial buatan, atau pengujian POST pada produksi.
+
+Kohor tetap berisi **80 ID transaksi gagal** dari lima outlet. Pada pemeriksaan
+pascadeploy **07:06 WIB**, belum ada transaksi kohor yang masuk dan belum ada
+kiriman transaksi/heartbeat baru dari perangkat terdampak. Artinya dukungan
+server sudah aktif, sementara pemulihan data menunggu antrean asli dikirim
+ulang. POS perlu aktif, terhubung internet, dan sinkronisasi menyala; tombol
+**Sync Sekarang** dapat mempercepat percobaan ulang. Status pemulihan dibuktikan
+dari transaksi/pembayaran aktual, bukan sekadar berkurangnya log gagal.
+
+Bukti build, backup, rehearsal, deployment, dan pemeriksaan kohor tersimpan
+privat di
+`/home/candra/projects/pos-integration-staging/releases/20261102-legacy-pos-d1c76a0/`,
+termasuk `release-status.json`, `rehearsal-summary.json`, dan
+`artifacts/backlog-after-check.json`.
