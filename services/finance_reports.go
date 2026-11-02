@@ -343,10 +343,14 @@ func financeBalance(from, to, outlet string, scope []string) (*models.BalanceRes
 		r.Inventory = round2(r.Inventory)
 		r.TotalAssets = round2(r.CashAndEquivalents + r.Receivables + r.FixedAssets + r.ProjectsInProgress + r.Inventory)
 		r.TotalLiabilities = round2(r.AccountsPayable + r.CustomerDeposits + r.TaxPayable + r.FinancingLiabilities)
-		r.TotalEquity = round2(r.TotalAssets - r.TotalLiabilities)
 		r.TotalRevenue = round2(b[glAccRevenue])
 		r.UnpaidAmount = r.Receivables
 		for _, m := range FinanceAccounts {
+			if m.Group == "ekuitas" || m.Group == "pendapatan" {
+				r.TotalEquity += b[m.Code]
+			} else if m.Group == "beban" {
+				r.TotalEquity -= b[m.Code]
+			}
 			if m.Group == "pendapatan" && m.Code != glAccRevenue {
 				r.TotalCashIn += b[m.Code]
 			}
@@ -354,10 +358,17 @@ func financeBalance(from, to, outlet string, scope []string) (*models.BalanceRes
 				r.TotalExpense += b[m.Code]
 			}
 		}
+		r.TotalEquity = round2(r.TotalEquity)
 		return r
 	}
 	r := makeRow(balances)
 	rep := &models.BalanceResponse{DateFrom: from, DateTo: to, CashAndEquivalents: r.CashAndEquivalents, Receivables: r.Receivables, Inventory: r.Inventory, FixedAssets: r.FixedAssets, ProjectsInProgress: r.ProjectsInProgress, TotalAssets: r.TotalAssets, AccountsPayable: r.AccountsPayable, CustomerDeposits: r.CustomerDeposits, TaxPayable: r.TaxPayable, FinancingLiabilities: r.FinancingLiabilities, TotalLiabilities: r.TotalLiabilities, TotalEquity: r.TotalEquity, TotalRevenue: r.TotalRevenue, TotalCashIn: r.TotalCashIn, TotalExpense: r.TotalExpense, UnpaidAmount: r.UnpaidAmount, Outlets: []models.BalanceOutletRow{}, Accounts: []models.FinanceAccountTotal{}}
+	rep.BalanceDifference = round2(rep.TotalAssets - rep.TotalLiabilities - rep.TotalEquity)
+	for _, op := range ops {
+		if op.ReviewNote != "" {
+			rep.ReviewCount++
+		}
+	}
 	for oid, b := range by {
 		r := makeRow(b)
 		r.OutletID = oid

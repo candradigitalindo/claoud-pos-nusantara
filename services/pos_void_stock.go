@@ -332,6 +332,11 @@ func applyOrderVoidStock(tx *sql.Tx, outletID, orderID string, req models.PushOr
 	if identityPending {
 		return fmt.Errorf("identitas produk transaksi belum lengkap; lengkapi identitas sebelum membatalkan transaksi")
 	}
+	for _, txnID := range txnIDs {
+		if err := captureFinancePOSVoid(tx, outletID, txnID, e.at); err != nil {
+			return fmt.Errorf("riwayat keuangan void: %w", err)
+		}
+	}
 	consumed := map[string]float64{}
 	rows, err = tx.Query(`SELECT product_local_id,SUM(qty) FROM pos_stock_deductions WHERE outlet_id=$1 AND transaction_id=ANY($2) GROUP BY product_local_id`, outletID, pq.Array(txnIDs))
 	if err != nil {

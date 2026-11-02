@@ -2038,14 +2038,17 @@ func BuildBalanceReportExcel(dateFrom, dateTo, outletID string, scopeIDs []strin
 		row++
 	}
 
-	setKV("Periode", fmtDateID(dateFrom)+" s/d "+fmtDateID(dateTo), 0)
+	setKV("Posisi per", fmtDateID(dateTo), 0)
 	setKV("Outlet", outletLabel, 0)
 	setKV("Dibuat pada", fmtTimeID(time.Now().In(loc))+" ("+tzName+")", 0)
+	if report.ReviewCount > 0 {
+		setKV("Catatan pemeriksaan sumber", report.ReviewCount, st.num)
+	}
 	row++
 
 	setSection("ASET")
-	setKV("Kas & Setara Kas (pendapatan + pemasukan − pengeluaran)", report.CashAndEquivalents, st.money)
-	setKV("Piutang Usaha (pesanan belum dibayar)", report.Receivables, st.money)
+	setKV("Kas & Setara Kas (saldo buku per tanggal posisi)", report.CashAndEquivalents, st.money)
+	setKV("Sisa Piutang Usaha (per tanggal posisi)", report.Receivables, st.money)
 	setKV("Persediaan (nilai buku per tanggal akhir)", report.Inventory, st.money)
 	setKV("Aset Tetap (nilai buku per akhir periode)", report.FixedAssets, st.money)
 	setKV("Projek Berjalan (belanja projek belum berwujud aset)", report.ProjectsInProgress, st.money)
@@ -2130,7 +2133,7 @@ func BuildBalanceReportExcel(dateFrom, dateTo, outletID string, scopeIDs []strin
 		return nil, "", err
 	}
 
-	filename := fmt.Sprintf("Laporan-Neraca_%s_%s_sd_%s.xlsx", slugFilename(outletLabel), dateFrom, dateTo)
+	filename := fmt.Sprintf("Laporan-Neraca_%s_per_%s.xlsx", slugFilename(outletLabel), dateTo)
 	return buf.Bytes(), filename, nil
 }
 

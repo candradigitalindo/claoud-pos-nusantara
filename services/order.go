@@ -110,6 +110,9 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 			}
 		}
 	}
+	if err := captureFinancePOSOrder(tx, outletID, cloudID); err != nil {
+		return "", fmt.Errorf("riwayat keuangan order: %w", err)
+	}
 	err = tx.QueryRow(
 		`INSERT INTO cloud_orders (id, local_id, outlet_id, outlet_code, table_number,
 			customer_name, customer_phone, orderer_name, created_by, pax, total_amount, status, items, payment_info, version,
@@ -148,6 +151,9 @@ func SaveOrder(outletID string, req models.PushOrderRequest) (string, error) {
 		if err = refreshShiftAdjustments(tx, outletID); err != nil {
 			return "", fmt.Errorf("rekonsiliasi setelah void: %w", err)
 		}
+	}
+	if err := captureFinancePOSOrder(tx, outletID, cloudID); err != nil {
+		return "", fmt.Errorf("riwayat keuangan order: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
 		return "", err
@@ -274,6 +280,9 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	}
 
 	var persistedCreatedAt time.Time
+	if err := captureFinancePOSTransaction(tx, outletID, cloudID); err != nil {
+		return "", fmt.Errorf("riwayat keuangan transaksi: %w", err)
+	}
 	err = tx.QueryRow(
 		`INSERT INTO cloud_transactions (id, local_id, outlet_id, outlet_code, order_id,
 			subtotal, total_amount, tax_amount, other_charges_total, charges,
@@ -388,6 +397,9 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	}
 	if err = refreshShiftAdjustments(tx, outletID); err != nil {
 		return "", fmt.Errorf("rekonsiliasi pembayaran: %w", err)
+	}
+	if err := captureFinancePOSTransaction(tx, outletID, cloudID); err != nil {
+		return "", fmt.Errorf("riwayat keuangan transaksi: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
 		return "", err

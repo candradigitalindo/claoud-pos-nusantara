@@ -4,15 +4,16 @@
     <!-- Filter Bar -->
     <AppCard>
       <div class="flex flex-wrap items-end gap-4">
-        <div class="flex flex-col gap-1">
-          <label class="text-sm font-medium text-gray-700">Rentang Tanggal</label>
-          <DateRangePicker v-model="range" />
+        <div class="flex min-w-0 flex-col gap-1">
+          <label for="balance-as-of" class="text-sm font-medium text-gray-700">Tanggal posisi neraca</label>
+          <input id="balance-as-of" v-model="asOfDate" type="date"
+            class="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
         </div>
-        <button @click="fetchReport"
-          class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
+        <button @click="fetchReport" :disabled="loading || !asOfDate"
+          class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
           Tampilkan
         </button>
-        <button @click="downloadExcel" :disabled="exporting"
+        <button @click="downloadExcel" :disabled="!canExport"
           class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-600 text-emerald-700 text-sm font-medium rounded-lg hover:bg-emerald-50 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
           <svg v-if="!exporting" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
@@ -21,16 +22,20 @@
           {{ exporting ? 'Menyiapkan…' : 'Download Excel' }}
         </button>
       </div>
+      <p class="mt-3 text-xs text-gray-500">Menampilkan saldo kumulatif hingga tanggal yang dipilih.</p>
     </AppCard>
 
-    <AppAlert type="error" :message="errorMsg" />
+    <AppAlert type="error" :message="errorMsg || exportError" />
 
     <div v-if="loading" class="flex justify-center py-12">
       <AppSpinner size="lg" />
     </div>
 
     <template v-if="!loading && report">
-      <p class="text-sm text-gray-500">Saldo kumulatif sampai tanggal akhir periode, termasuk saldo dari periode sebelumnya.</p>
+      <p class="text-sm text-gray-600" role="status">Posisi neraca per <b>{{ formatDateStr(report.date_to) }}</b>. Saldo kumulatif hingga tanggal ini, termasuk seluruh periode sebelumnya.</p>
+      <AppAlert v-if="report.review_count > 0" type="warning">
+        {{ report.review_count }} catatan sumber perlu ditinjau. Periksa kelengkapan riwayat dan harga pokok penjualan (HPP). Status seimbang belum menjamin semua catatan sudah lengkap.
+      </AppAlert>
       <FinanceAccountTotals :accounts="report.accounts" />
       <!-- Neraca: Aset = Kewajiban + Ekuitas -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -47,14 +52,14 @@
             <div class="flex justify-between items-center py-2 border-b border-gray-100">
               <div>
                 <p class="text-sm font-medium text-gray-700">Kas & Setara Kas</p>
-                <p class="text-xs text-gray-400">Pendapatan + Pemasukan − Pengeluaran</p>
+                <p class="text-xs text-gray-400">Saldo buku penerimaan dan pengeluaran kas sampai tanggal posisi</p>
               </div>
               <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.cash_and_equivalents) }}</span>
             </div>
             <div class="flex justify-between items-center py-2 border-b border-gray-100">
               <div>
                 <p class="text-sm font-medium text-gray-700">Piutang Usaha</p>
-                <p class="text-xs text-gray-400">Pesanan belum dibayar</p>
+                <p class="text-xs text-gray-400">Sisa tagihan per tanggal posisi, termasuk pembayaran sebagian</p>
               </div>
               <span class="text-sm font-semibold" :class="report.receivables > 0 ? 'text-amber-600' : 'text-gray-800'">{{ formatRupiah(report.receivables) }}</span>
             </div>
@@ -70,7 +75,7 @@
             <div class="flex justify-between items-center py-2 border-b border-gray-100">
               <div>
                 <p class="text-sm font-medium text-gray-700">Aset Tetap</p>
-                <p class="text-xs text-gray-400">Nilai buku peralatan per akhir periode (perolehan − penyusutan)</p>
+                <p class="text-xs text-gray-400">Nilai buku peralatan per tanggal posisi (perolehan − penyusutan)</p>
               </div>
               <span class="text-sm font-semibold text-gray-800">{{ formatRupiah(report.fixed_assets) }}</span>
             </div>
@@ -137,7 +142,7 @@
               Ekuitas
             </h3>
             <div class="flex justify-between items-center pt-2">
-              <span class="text-sm font-medium text-gray-700">Ekuitas termasuk hasil usaha (Aset − Kewajiban)</span>
+              <span class="text-sm font-medium text-gray-700">Ekuitas dan akumulasi hasil usaha</span>
               <span class="text-sm font-semibold" :class="report.total_equity >= 0 ? 'text-blue-700' : 'text-red-600'">
                 {{ formatRupiah(report.total_equity) }}
               </span>
@@ -168,22 +173,22 @@
 
       <!-- Detail Komponen -->
       <AppCard>
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">Detail Komponen</h3>
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">Detail Komponen Kumulatif</h3>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Pendapatan Transaksi</p>
+            <p class="text-xs text-gray-500 mb-1">Pendapatan Transaksi Kumulatif</p>
             <p class="font-semibold text-gray-800">{{ formatRupiah(report.total_revenue) }}</p>
           </div>
           <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Pendapatan Lainnya</p>
+            <p class="text-xs text-gray-500 mb-1">Pendapatan Lainnya Kumulatif</p>
             <p class="font-semibold text-gray-800">{{ formatRupiah(report.total_cash_in) }}</p>
           </div>
           <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Beban</p>
+            <p class="text-xs text-gray-500 mb-1">Beban Kumulatif</p>
             <p class="font-semibold text-red-600">{{ formatRupiah(report.total_expense) }}</p>
           </div>
           <div class="p-3 bg-gray-50 rounded-lg">
-            <p class="text-xs text-gray-500 mb-1">Piutang Usaha</p>
+            <p class="text-xs text-gray-500 mb-1">Piutang Usaha per Tanggal Posisi</p>
             <p class="font-semibold" :class="report.unpaid_amount > 0 ? 'text-amber-600' : 'text-gray-800'">{{ formatRupiah(report.unpaid_amount) }}</p>
           </div>
         </div>
@@ -226,23 +231,22 @@
 
 <script setup>
 import FinanceAccountTotals from '@/components/FinanceAccountTotals.vue'
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { salesApi }    from '@/api/sales.js'
-import { formatRupiah, todayDateString } from '@/utils/format.js'
+import { formatRupiah, formatDateStr, todayDateString } from '@/utils/format.js'
 import AppCard      from '@/components/ui/AppCard.vue'
 import AppTable     from '@/components/ui/AppTable.vue'
 import AppAlert     from '@/components/ui/AppAlert.vue'
 import AppSpinner   from '@/components/ui/AppSpinner.vue'
-import DateRangePicker from '@/components/ui/DateRangePicker.vue'
 
-const today = todayDateString()
-const dateFrom = ref(today)
-const dateTo   = ref(today)
-const range          = ref({ from: dateFrom.value, to: dateTo.value, label: 'Hari Ini' })
-watch(range, (r) => { dateFrom.value = r.from; dateTo.value = r.to; fetchReport() })
+const asOfDate = ref(todayDateString())
+watch(asOfDate, fetchReport)
 const loading  = ref(false)
 const errorMsg = ref('')
+const exportError = ref('')
 const report   = ref(null)
+let requestSequence = 0
+let disposed = false
 
 const isBalanced = computed(() => {
   if (!report.value) return true
@@ -266,28 +270,46 @@ const OUTLET_COLS = [
 onMounted(fetchReport)
 
 async function fetchReport() {
+  if (disposed) return
+  const sequence = ++requestSequence
+  const date = asOfDate.value
   loading.value = true
   errorMsg.value = ''
-  try {
-    const params = { date_from: dateFrom.value, date_to: dateTo.value }
-    report.value = await salesApi.getBalanceReport(params)
-  } catch (err) {
-    errorMsg.value = err?.message ?? 'Gagal memuat laporan neraca.'
-  } finally {
+  exportError.value = ''
+  report.value = null
+  if (!date) {
+    errorMsg.value = 'Pilih tanggal posisi neraca.'
     loading.value = false
+    return
+  }
+  try {
+    const data = await salesApi.getBalanceReport({ date_from: date, date_to: date })
+    if (!disposed && sequence === requestSequence) report.value = data
+  } catch (err) {
+    if (!disposed && sequence === requestSequence) errorMsg.value = err?.message ?? 'Gagal memuat laporan neraca.'
+  } finally {
+    if (!disposed && sequence === requestSequence) loading.value = false
   }
 }
 
-// Download Excel mengikuti filter aktif (rentang tanggal); scope role
-// tetap dipaksakan di server, jadi user hanya menerima data outlet miliknya.
+onBeforeUnmount(() => { disposed = true; requestSequence++ })
+
+// Export uses the loaded position date. A download already in progress retains
+// that date in both its request and filename if the user selects another date.
 const exporting = ref(false)
+const canExport = computed(() => !loading.value && !exporting.value && !errorMsg.value &&
+  !!report.value && report.value.date_to === asOfDate.value)
 async function downloadExcel() {
-  if (exporting.value) return
+  if (disposed || !canExport.value) return
+  const date = report.value.date_to
+  const sequence = requestSequence
+  const params = { date_from: date, date_to: date }
+  const filename = `Laporan-Neraca_per_${date}.xlsx`
   exporting.value = true
-  errorMsg.value = ''
+  exportError.value = ''
   try {
-    const blob = await salesApi.exportBalanceReport({ date_from: dateFrom.value, date_to: dateTo.value })
-    const filename = `Laporan-Neraca_${dateFrom.value}_sd_${dateTo.value}.xlsx`
+    const blob = await salesApi.exportBalanceReport(params)
+    if (disposed) return
 
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -298,9 +320,9 @@ async function downloadExcel() {
     a.remove()
     URL.revokeObjectURL(url)
   } catch {
-    errorMsg.value = 'Gagal mengunduh Excel. Coba lagi, atau persempit rentang tanggal.'
+    if (!disposed && sequence === requestSequence) exportError.value = 'Gagal mengunduh Excel. Coba lagi.'
   } finally {
-    exporting.value = false
+    if (!disposed) exporting.value = false
   }
 }
 </script>

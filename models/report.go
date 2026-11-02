@@ -207,6 +207,8 @@ type BalanceOutletRow struct {
 }
 
 type BalanceResponse struct {
+	ReviewCount          int                   `json:"review_count"`
+	BalanceDifference    float64               `json:"balance_difference"`
 	FinancingLiabilities float64               `json:"financing_liabilities"`
 	Accounts             []FinanceAccountTotal `json:"accounts"`
 	DateFrom             string                `json:"date_from"`

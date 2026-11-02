@@ -705,3 +705,59 @@ privat di
 `/home/candra/projects/pos-integration-staging/releases/20261102-legacy-pos-d1c76a0/`,
 termasuk `release-status.json`, `rehearsal-summary.json`, dan
 `artifacts/backlog-after-check.json`.
+
+
+## Audit neraca — 2 November 2026
+
+Neraca menunjukkan **posisi kumulatif per tanggal**, termasuk seluruh periode
+sebelumnya. Saldo kas yang besar tidak menunjukkan penjualan hari itu; perubahan
+hariannya adalah selisih posisi terhadap hari sebelumnya. UI memakai satu
+**Tanggal posisi neraca**, menampilkan tanggal
+hasil yang benar-benar diterima, dan memberi keterangan saldo buku kumulatif.
+Parameter `date_from` tetap diterima untuk kompatibilitas klien lama, tetapi
+saldo neraca dihitung sejak awal sampai akhir `date_to` pada zona waktu aplikasi.
+
+Permintaan filter memiliki nomor urut sehingga respons lama tidak menimpa
+pilihan terbaru. Data sebelumnya dibersihkan ketika memuat atau gagal. Ekspor
+hanya tersedia untuk posisi yang selesai dimuat; tanggal permintaan, judul
+lembar, dan nama berkas Excel tetap cocok meskipun pengguna mengganti tanggal
+ketika pengunduhan berjalan.
+
+Riwayat finansial POS disimpan dalam `finance_pos_snapshots`, di transaksi
+database dan lock outlet yang sama dengan penerimaan order/pembayaran. Keadaan
+sebelum perubahan, keadaan setelah perubahan, dan pembayaran sebelum dihapus
+oleh void disimpan tanpa menggandakan retry identik. Migrasi tabel ini wajib
+berhasil sebelum API menerima sinkronisasi. Membuka laporan tidak melakukan
+backfill maupun mengubah data sumber.
+
+Jurnal membentuk piutang dari nilai order dan menguranginya pada tanggal
+pembayaran sebenarnya, termasuk pembayaran sebagian. Void membalik pencatatan
+pada tanggal pembatalan sehingga tidak menghapus posisi sebelum void. DP
+reservasi mengurangi kewajiban DP ketika digunakan, tanpa menciptakan kas
+kedua. Refund tunai lintas shift yang cocok dengan arsip void dihitung sekali;
+pencocokan memerlukan outlet, waktu void, referensi order, dan bukti nominal.
+
+Data sebelum fitur arsip hanya dapat memakai bukti sumber yang masih tersedia.
+Waktu koreksi yang tidak tersedia memakai waktu pencatatan cloud dan ditandai
+untuk pemeriksaan. Pembayaran yang sudah terhapus tanpa bukti tidak dibangun
+dari perkiraan. Order lama yang pertama kali terlihat sudah lunas tetapi tidak
+memiliki waktu/bukti pembayaran tidak dijadikan piutang baru. Bila rincian
+transaksi satu metode kurang dari total final, sisa penerimaan hanya diakui
+pada waktu penyelesaian transaksi bila status dan jumlah lunas order mendukung;
+nilai pembayaran asal tetap pada tanggalnya dan fallback ditandai untuk ditinjau.
+Metode campuran, DP, metode tak dikenal, dan bukti pelunasan yang baru terjadi
+kemudian tidak memperoleh fallback tersebut. Kelebihan pembayaran non-tunai
+tetap menjadi bukti yang perlu ditinjau, tanpa mengubah data asal.
+API/Excel/UI menyertakan jumlah catatan pemeriksaan, termasuk
+riwayat belum lengkap dan HPP penjualan belum tertaut. Ekuitas dihitung dari
+akun ekuitas dan akumulasi hasil usaha; selisih persamaan neraca dihitung
+terpisah, sehingga status seimbang tidak dipaksakan dengan rumus aset minus
+kewajiban.
+
+Validasi kode final: **624 tes Go lulus, 3 dilewati**, termasuk seluruh **30
+fungsi regresi baru** untuk neraca historis, bukti pembayaran lama, koreksi
+metode/tanggal, isolasi outlet, DP, komplimen, void, dan refund. Build UI,
+**9 kelompok regresi browser neraca** serta **3 kelompok Operasional Keuangan**
+lulus tanpa error Vue. Manifest SHA-256 memverifikasi kesamaan 19 berkas
+runtime/pengujian dengan sumber yang diuji. Artefak backend berada pada
+`balance-report-backend-20261102-release` di direktori staging.
