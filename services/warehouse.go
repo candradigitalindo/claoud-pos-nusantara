@@ -1074,10 +1074,15 @@ func DeductStockByRecipe(outletID string, productLocalID string, qtySold float64
 // baris bermasalah permanen tidak di-loop selamanya (tetap terlihat di tabel).
 func RetryFailedStockDeductions() {
 	rows, err := database.DB.Query(`
-		SELECT id, outlet_id, transaction_id, product_local_id, qty
-		FROM stock_deduction_failures
-		WHERE status = 'pending' AND attempts < 20
-		ORDER BY created_at ASC LIMIT 100`)
+		SELECT f.id, f.outlet_id, f.transaction_id, f.product_local_id, f.qty
+		FROM stock_deduction_failures f
+		WHERE f.status = 'pending' AND f.attempts < 20
+		  AND NOT (f.failure_kind='stock' AND EXISTS (
+			SELECT 1 FROM stock_deduction_failures identity_failure
+			WHERE identity_failure.outlet_id=f.outlet_id
+			  AND identity_failure.transaction_id=f.transaction_id
+			  AND identity_failure.failure_kind='identity' AND identity_failure.status='pending'))
+		ORDER BY f.created_at ASC LIMIT 100`)
 	if err != nil {
 		return
 	}

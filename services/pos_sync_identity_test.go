@@ -241,18 +241,22 @@ func TestPOSLegacySaleProductAndPaymentShiftTimes(t *testing.T) {
 			t.Fatalf("partial payment assigned to wrong shift: %+v want %v", shift, want)
 		}
 	}
-	// No product guessing when two exact names exist in the same outlet.
+	// An ambiguous legacy item must preserve the payment without guessing stock.
 	other := f.productRecipeFixture.product(t, "")
 	if _, err := database.DB.Exec(`UPDATE cloud_products SET name=$1 WHERE id=$2`, f.product.Name, other.ID); err != nil {
 		t.Fatal(err)
 	}
 	pay.LocalID = NewULID()
-	if _, err := SaveTransaction(f.outlet, pay); err == nil {
-		t.Fatal("ambiguous product must fail and remain retryable")
+	if _, err := SaveTransaction(f.outlet, pay); err != nil {
+		t.Fatalf("legacy item identity blocked monetary sync: %v", err)
 	}
 	var n int
-	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM cloud_transactions WHERE outlet_id=$1 AND local_id=$2`, f.outlet, pay.LocalID).Scan(&n); err != nil || n != 0 {
-		t.Fatalf("ambiguous sale partially committed: %d %v", n, err)
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM cloud_transactions WHERE outlet_id=$1 AND local_id=$2`, f.outlet, pay.LocalID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("ambiguous sale payment missing: %d %v", n, err)
+	}
+	stock, _ = f.ledger(t, f.itemID)
+	if !bdNear(stock, 82) {
+		t.Fatalf("ambiguous legacy item guessed a stock product: %v", stock)
 	}
 }
 

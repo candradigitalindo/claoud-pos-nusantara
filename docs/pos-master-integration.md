@@ -27,9 +27,10 @@ Repo/cabang asal dipertahankan sebagai referensi.
   pembayaran/mutasi datang sebelum order/shift induknya. ID cloud lama tidak
   ditulis ulang dan tidak ada pemindahan data antar-outlet.
 - Flutter menyimpan `order_items.product_id` melalui migrasi SQLite v14 dan
-  mengirimkannya bersama item order/transaksi. Data lama tanpa ID hanya dapat
-  dicocokkan dengan satu produk yang namanya cocok dalam outlet yang sama;
-  data ambigu ditolak untuk diperiksa, bukan dipilih secara acak.
+  mengirimkannya bersama item order/transaksi. Transaksi dari POS lama tanpa
+  ID tetap menyimpan pembayaran dan rincian aslinya. Identitas dipulihkan dari
+  snapshot transaksi/order dalam outlet yang sama atau nama katalog yang unik;
+  bila belum pasti, stok seluruh transaksi ditunda dan dicatat untuk pemulihan.
 - Baris pembayaran mempertahankan waktu pembayarannya sendiri. Penghitungan
   fallback shift memakai waktu buka/tutup shift, bukan waktu sinkronisasi.
 - Setiap kejadian void/titipan memiliki identitas antrean tersendiri. Balasan
@@ -629,3 +630,49 @@ Bukti build, backup, rollback, pemeriksaan publik, dan tangkapan layar privat
 tersimpan di
 `/home/candra/projects/pos-integration-staging/releases/20261102-shift-reconciliation-65b9791/`,
 termasuk `release-status.json`, `deployed.json`, dan `live-smoke-api.json`.
+
+
+## Kompatibilitas transaksi POS lama — 2 November 2026
+
+Cloud menerima transaksi penjualan dari APK lama walaupun item belum membawa
+`product_id`. Nominal, pajak, biaya, waktu transaksi/pembayaran, dan rincian
+item tetap disimpan. Balasan batch menyatakan sukses hanya setelah pembayaran
+beserta catatan pekerjaan tertunda berhasil dikomit dalam database yang sama.
+Retry memakai ID transaksi yang sama sehingga tidak menggandakan pendapatan.
+
+Urutan pemulihan identitas: snapshot transaksi yang sudah tersimpan, ID item
+pada order asal dalam outlet yang sama, lalu nama katalog yang cocok dengan
+tepat satu produk. Pencocokan tidak memerlukan resep/stok yang sudah lengkap.
+Nama atau harga yang sama pada beberapa produk tidak menjadi alasan memilih
+salah satunya. Retry lama juga tidak boleh menghapus identitas/rincian yang
+sudah dipulihkan oleh kiriman lebih baru, termasuk bila item lama tidak punya ID.
+
+Bila masih ada satu identitas yang belum pasti, pemotongan stok seluruh
+transaksi ditunda. Satu tugas `stock_deduction_failures.failure_kind='identity'`
+menyimpan snapshot lengkap dan penjelasannya; tugas tersebut terlihat sebagai
+pemakaian POS tertunda dalam kontrol PPIC. Ini mencegah dua item yang kelak
+ternyata satu produk dipotong dua kali. Scheduler mencoba pemulihan dengan
+lock outlet, lalu menggabungkan kuantitas per produk sebelum menulis receipt.
+Masalah resep/FIFO sesudah identitas lengkap tetap memakai tugas deduksi stok
+biasa. Kolom `failure_kind` dan `item_snapshot` ditambahkan melalui migrasi
+wajib; layanan tidak mulai jika migrasi tersebut gagal.
+
+Void transaksi dengan identitas tertunda tetap harus dicoba ulang setelah
+identitas lengkap, agar tidak menghapus pembayaran sekaligus menghilangkan
+pekerjaan waste. Kegagalan void melakukan rollback penuh; tidak ada pemilihan
+produk, pemotongan stok, atau penghapusan transaksi sebagian.
+
+Pemulihan antrean perangkat menggunakan payload asli yang dikirim ulang oleh
+POS. Cloud tidak membangun transaksi dari log kegagalan karena log tidak
+menyimpan nominal, rincian pembayaran, dan seluruh payload aslinya. Perangkat
+perlu aktif, online, dan sinkronisasi menyala. Pengujian kompatibilitas berada
+pada `services/legacy_transaction_sync_test.go`; kontrak lama pada
+`services/pos_sync_identity_test.go` turut diperbarui.
+
+Validasi: build backend dan **583 tes Go lulus, 3 dilewati**; seluruh **15
+pemeriksaan kompatibilitas POS lama** (termasuk subtes) dijalankan dan lulus.
+Pengujian mencakup format batch lama, pembayaran split, resep belum lengkap,
+produk bernama ganda, isolasi outlet, retry lama setelah payload modern,
+pemulihan stok agregat, dan rollback void yang identitasnya belum lengkap.
+Sumber akhir sesuai manifest SHA-256 pada artefak
+`legacy-pos-compat-backend-20261102-final` di direktori staging.

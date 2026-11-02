@@ -320,6 +320,18 @@ func applyOrderVoidStock(tx *sql.Tx, outletID, orderID string, req models.PushOr
 	if err != nil {
 		return err
 	}
+	// A legacy payment may be accepted before its products can be identified.
+	// Keep the payment and its complete pending snapshot until the identity is
+	// known; a completed void must never guess which ingredients became waste.
+	var identityPending bool
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM stock_deduction_failures
+		WHERE outlet_id=$1 AND transaction_id=ANY($2) AND status='pending'
+		AND failure_kind='identity')`, outletID, pq.Array(txnIDs)).Scan(&identityPending); err != nil {
+		return err
+	}
+	if identityPending {
+		return fmt.Errorf("identitas produk transaksi belum lengkap; lengkapi identitas sebelum membatalkan transaksi")
+	}
 	consumed := map[string]float64{}
 	rows, err = tx.Query(`SELECT product_local_id,SUM(qty) FROM pos_stock_deductions WHERE outlet_id=$1 AND transaction_id=ANY($2) GROUP BY product_local_id`, outletID, pq.Array(txnIDs))
 	if err != nil {
@@ -388,6 +400,7 @@ func applyOrderVoidStock(tx *sql.Tx, outletID, orderID string, req models.PushOr
 		consumed = map[string]float64{}
 		rows, err = tx.Query(`SELECT f.product_local_id,SUM(f.qty) FROM stock_deduction_failures f
 			WHERE f.outlet_id=$1 AND f.transaction_id=ANY($2) AND f.status='pending'
+			AND f.failure_kind='stock'
 			AND NOT EXISTS(SELECT 1 FROM pos_stock_deductions d WHERE d.outlet_id=f.outlet_id AND d.transaction_id=f.transaction_id AND d.product_local_id=f.product_local_id)
 			GROUP BY f.product_local_id`, outletID, pq.Array(txnIDs))
 		if err != nil {
@@ -461,17 +474,48 @@ func retryPOSStockDeduction(id, outletID, txnID, productID string, qty float64) 
 	if err = lockPOSStock(tx, outletID); err != nil {
 		return err
 	}
-	var pending, exists bool
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM stock_deduction_failures WHERE id=$1 AND status='pending'),
-		EXISTS(SELECT 1 FROM cloud_transactions t WHERE t.outlet_id=$2 AND t.id=$3`+txNotVoided("t")+`)`, id, outletID, txnID).Scan(&pending, &exists); err != nil {
+	// The scheduler selected its candidate before acquiring the outlet lock.
+	// A payment retry may have enriched or replaced that snapshot meanwhile.
+	var kind, status string
+	err = tx.QueryRow(`SELECT failure_kind,product_local_id,qty,status
+		FROM stock_deduction_failures WHERE id=$1 AND outlet_id=$2 AND transaction_id=$3
+		FOR UPDATE`, id, outletID, txnID).Scan(&kind, &productID, &qty, &status)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
-	if !pending {
+	if status != "pending" {
 		return nil
+	}
+	var exists bool
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cloud_transactions t
+		WHERE t.outlet_id=$1 AND t.id=$2`+txNotVoided("t")+`)`, outletID, txnID).Scan(&exists); err != nil {
+		return err
 	}
 	if !exists {
 		_, err = tx.Exec(`UPDATE stock_deduction_failures SET status='cancelled',last_error='Transaksi tidak aktif atau sudah void' WHERE id=$1`, id)
 	} else {
+		if kind == "identity" {
+			if err := retryLegacyTransactionIdentity(tx, id, outletID, txnID); err != nil {
+				return err
+			}
+			return tx.Commit()
+		}
+		if kind != "stock" {
+			return fmt.Errorf("jenis kegagalan stok tidak dikenal: %s", kind)
+		}
+		var identityPending bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM stock_deduction_failures
+			WHERE outlet_id=$1 AND transaction_id=$2 AND failure_kind='identity'
+			AND status='pending')`, outletID, txnID).Scan(&identityPending); err != nil {
+			return err
+		}
+		if identityPending {
+			// This is a wait for identity, not another failed stock attempt.
+			return nil
+		}
 		if err = deductPOSProduct(tx, outletID, productID, qty, txnID, txnID); err != nil {
 			return err
 		}

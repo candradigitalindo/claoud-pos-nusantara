@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"sort"
 	"strings"
 	"time"
 )
@@ -236,18 +235,13 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	// (umum pada transaksi sync tertunda) pakai created_at order tertaut agar
 	// tidak salah tanggal (ter-stempel waktu sync). Fallback terakhir: waktu sekarang.
 	createdAt := resolveTxnCreatedAt(tx, outletID, req)
-	// Old APKs omitted product_id. Resolve only an exact unique product in this
-	// outlet; an ambiguous sale must remain retryable rather than skip stock.
-	req.Items = append([]models.TransactionItem(nil), req.Items...)
-	for i := range req.Items {
-		item := &req.Items[i]
-		if strings.TrimSpace(item.ProductID) == "" && item.Quantity > 0 {
-			product, resolveErr := resolvePOSProduct(tx, outletID, posStockItem{Name: item.ProductName})
-			if resolveErr != nil {
-				return "", fmt.Errorf("identitas produk transaksi: %w", resolveErr)
-			}
-			item.ProductID = product.id
-		}
+	// POS lama tidak selalu mengirim product_id. Pembayaran tetap diterima;
+	// identitas yang belum pasti dicatat terpisah tanpa menebak produk/stok.
+	originalItems := append([]models.TransactionItem(nil), req.Items...)
+	var unresolvedIdentity string
+	req.Items, unresolvedIdentity, err = enrichLegacyTransactionItems(tx, outletID, cloudID, req.OrderID, req.Items)
+	if err != nil {
+		return "", fmt.Errorf("membaca identitas produk transaksi: %w", err)
 	}
 
 	itemsJSON := "[]"
@@ -380,38 +374,15 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 		}
 	}
 
-	// Each product is atomic and has its own receipt. One failed ingredient
-	// rolls back that product, while the payment and other products can sync.
-	quantities := map[string]float64{}
-	for _, item := range req.Items {
-		if item.ProductID != "" && item.Quantity > 0 {
-			quantities[item.ProductID] += float64(item.Quantity)
-		}
-	}
-	products := make([]string, 0, len(quantities))
-	for product := range quantities {
-		products = append(products, product)
-	}
-	sort.Strings(products)
-	for _, product := range products {
-		if _, err = tx.Exec(`SAVEPOINT pos_product_stock`); err != nil {
+	if unresolvedIdentity != "" {
+		if err = recordLegacyIdentityFailure(tx, outletID, cloudID, unresolvedIdentity, originalItems); err != nil {
 			return "", err
 		}
-		if derr := deductPOSProduct(tx, outletID, product, quantities[product], cloudID, req.LocalID); derr != nil {
-			if _, err = tx.Exec(`ROLLBACK TO SAVEPOINT pos_product_stock`); err != nil {
-				return "", err
-			}
-			if _, err = tx.Exec(`INSERT INTO stock_deduction_failures(id,outlet_id,transaction_id,product_local_id,qty,last_error)
-				VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(transaction_id,product_local_id)
-				DO UPDATE SET last_error=EXCLUDED.last_error,qty=EXCLUDED.qty,status='pending'`, NewULID(), outletID, cloudID, product, quantities[product], derr.Error()); err != nil {
-				return "", err
-			}
-		} else {
-			if _, err = tx.Exec(`UPDATE stock_deduction_failures SET status='resolved' WHERE outlet_id=$1 AND transaction_id=$2 AND product_local_id=$3 AND status='pending'`, outletID, cloudID, product); err != nil {
-				return "", err
-			}
+	} else {
+		if err = resolveLegacyIdentityFailure(tx, outletID, cloudID); err != nil {
+			return "", err
 		}
-		if _, err = tx.Exec(`RELEASE SAVEPOINT pos_product_stock`); err != nil {
+		if err = syncTransactionProductStock(tx, outletID, cloudID, req.LocalID, req.Items); err != nil {
 			return "", err
 		}
 	}

@@ -1,6 +1,7 @@
 package database
 
-// RunPOSVoidMigrations adds receipts for stock consumption and void events.
+// RunPOSVoidMigrations adds receipts for stock consumption, void events and
+// durable recovery tasks for payments from clients without product identities.
 // No historical void is replayed: stock is processed only by incoming POS sync.
 func RunPOSVoidMigrations() error {
 	tx, err := DB.Begin()
@@ -9,6 +10,11 @@ func RunPOSVoidMigrations() error {
 	}
 	defer tx.Rollback()
 	for _, stmt := range []string{
+		// Sync requires both columns to preserve unresolved legacy items without
+		// confusing them with deductions for an already identified product. A
+		// missing column must stop startup instead of breaking every POS sync.
+		`ALTER TABLE stock_deduction_failures ADD COLUMN IF NOT EXISTS failure_kind VARCHAR(16) NOT NULL DEFAULT 'stock'`,
+		`ALTER TABLE stock_deduction_failures ADD COLUMN IF NOT EXISTS item_snapshot JSONB`,
 		// Support the existing master/custom recipe schema without replacing a
 		// richer recipe view when one is already installed.
 		`DO $$ BEGIN
