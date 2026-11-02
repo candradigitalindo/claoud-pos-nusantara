@@ -6,8 +6,7 @@
       <div class="flex flex-wrap items-end gap-4">
         <div class="flex min-w-0 flex-col gap-1">
           <label for="balance-as-of" class="text-sm font-medium text-gray-700">Tanggal posisi neraca</label>
-          <input id="balance-as-of" v-model="asOfDate" type="date"
-            class="w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+          <DateRangePicker v-model="positionRange" single-date input-id="balance-as-of" label="Tanggal posisi neraca" />
         </div>
         <button @click="fetchReport" :disabled="loading || !asOfDate"
           class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
@@ -36,7 +35,6 @@
       <AppAlert v-if="report.review_count > 0" type="warning">
         {{ report.review_count }} catatan sumber perlu ditinjau. Periksa kelengkapan riwayat dan harga pokok penjualan (HPP). Status seimbang belum menjamin semua catatan sudah lengkap.
       </AppAlert>
-      <FinanceAccountTotals :accounts="report.accounts" />
       <!-- Neraca: Aset = Kewajiban + Ekuitas -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -194,6 +192,8 @@
         </div>
       </AppCard>
 
+      <FinanceAccountTotals :accounts="report.accounts" />
+
       <!-- Per Outlet -->
       <AppCard v-if="report.outlets?.length > 0" :padding="false">
         <div class="px-4 pt-4 pb-2">
@@ -238,8 +238,17 @@ import AppCard      from '@/components/ui/AppCard.vue'
 import AppTable     from '@/components/ui/AppTable.vue'
 import AppAlert     from '@/components/ui/AppAlert.vue'
 import AppSpinner   from '@/components/ui/AppSpinner.vue'
+import DateRangePicker from '@/components/ui/DateRangePicker.vue'
 
 const asOfDate = ref(todayDateString())
+const positionLabel = ref('Hari Ini')
+const positionRange = computed({
+  get: () => ({ from: asOfDate.value, to: asOfDate.value, label: positionLabel.value }),
+  set: value => {
+    positionLabel.value = value?.label || ''
+    asOfDate.value = value?.to || value?.from || ''
+  },
+})
 watch(asOfDate, fetchReport)
 const loading  = ref(false)
 const errorMsg = ref('')

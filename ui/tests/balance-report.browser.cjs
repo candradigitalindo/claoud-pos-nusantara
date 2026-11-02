@@ -4,6 +4,21 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const base = process.env.BALANCE_TEST_URL || 'http://127.0.0.1:4189'
 const url = `${base}/tests/fixtures/balance-report.html`
+const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+async function chooseCalendarDay(page, date) {
+  await page.locator('.drp-trigger').click()
+  const dialog = page.getByRole('dialog', { name: 'Pilih Tanggal Posisi', exact: true })
+  await dialog.waitFor()
+  const [year, month] = date.split('-').map(Number)
+  const [shownMonth, shownYear] = (await dialog.locator('.drp-cal-title').innerText()).split(' ')
+  const steps = (year - Number(shownYear)) * 12 + month - 1 - months.indexOf(shownMonth)
+  assert(Math.abs(steps) < 120, 'Calendar navigation must stay within the fixture years')
+  for (let i = 0; i < Math.abs(steps); i++) {
+    await dialog.getByRole('button', { name: steps < 0 ? 'Bulan sebelumnya' : 'Bulan berikutnya', exact: true }).click()
+  }
+  await dialog.locator(`.drp-day[data-date="${date}"]`).click()
+  return dialog
+}
 function balance(date) {
   const cash = date === '2026-11-02' ? 5000000000 : date === '2026-11-01' ? 4999618300 : 4000000000
   const row = {
@@ -55,7 +70,7 @@ function balance(date) {
       errors.push(`Unexpected API ${path}`)
       return route.abort()
     })
-    const input = page.getByLabel('Tanggal posisi neraca', { exact: true })
+    const input = page.getByRole('button', { name: 'Tanggal posisi neraca', exact: true })
     const exportButton = page.getByRole('button', { name: 'Download Excel', exact: true })
     const assets = page.getByRole('heading', { name: 'Aset', exact: true })
     const status = page.locator('p[role=status]')
@@ -64,7 +79,11 @@ function balance(date) {
       for (let attempt = 0; list.length < count && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 10))
       assert.equal(list.length, count)
     }
-    async function selectDate(date) { await input.fill(date) }
+    async function selectDate(date) {
+      const dialog = await chooseCalendarDay(page, date)
+      await dialog.getByRole('button', { name: 'Terapkan', exact: true }).click()
+      await dialog.waitFor({ state: 'hidden' })
+    }
     async function loaded(date) {
       const formatted = date.split('-').reverse().join('-')
       await page.waitForFunction(formatted => document.querySelector('p[role=status]')?.textContent.includes(formatted), formatted)
@@ -72,22 +91,44 @@ function balance(date) {
     }
     await page.goto(url)
     await input.waitFor(); await waitHeld(held, 1)
-    assert.equal(await input.inputValue(), '2026-11-02')
+    assert((await input.innerText()).includes('Hari Ini'))
+    assert((await input.innerText()).includes('2 Nov 2026'))
     assert.deepEqual(requests[0], { date_from: '2026-11-02', date_to: '2026-11-02' })
     assert(await exportButton.isDisabled())
     assert.equal(await assets.count(), 0)
     await reply(held.shift().route, '2026-11-02'); await loaded('2026-11-02')
     assert((await status.innerText()).includes('Saldo kumulatif'))
     assert((await page.textContent('body')).includes('Rp 5.000.000.000'))
-    assert.equal(await page.locator('input[type=date]').count(), 1)
-    assert.equal(await page.locator('.drp-trigger').count(), 0)
-    assert.equal(await page.getByText('Hari Ini', { exact: true }).count(), 0)
+    assert.equal(await page.locator('input[type=date]').count(), 0)
+    assert.equal(await page.locator('.drp-trigger').count(), 1)
+    assert((await assets.boundingBox()).y < (await page.getByRole('heading', { name: 'Rincian per Akun', exact: true }).boundingBox()).y,
+      'Main monetary cards must precede account details')
     for (const label of ['Pendapatan Transaksi Kumulatif', 'Pendapatan Lainnya Kumulatif', 'Beban Kumulatif']) {
       assert(await page.getByText(label, { exact: true }).isVisible())
     }
     assert(await exportButton.isEnabled())
     assert(await page.getByText('Ekuitas dan akumulasi hasil usaha', { exact: true }).isVisible())
-    console.log('PASS one position date, Jakarta date at 02.00 WIB, explicit cumulative labels, and 5b balance preserved')
+    console.log('PASS shared custom position picker, Indonesian date, prominent monetary cards, and cumulative nominal preserved')
+
+    let pending = await chooseCalendarDay(page, '2026-10-31')
+    assert.equal(requests.length, 1, 'Calendar clicks remain pending until applied')
+    assert((await status.innerText()).includes('02-11-2026'))
+    await page.keyboard.press('Escape')
+    await pending.waitFor({ state: 'hidden' })
+    assert.equal(requests.length, 1, 'Closing the picker must not change the applied date')
+    await input.click()
+    const presets = page.getByRole('dialog', { name: 'Pilih Tanggal Posisi', exact: true })
+    assert.equal(await presets.getByRole('button', { name: 'Bulan Ini', exact: true }).count(), 0)
+    for (const name of ['Hari Ini', 'Kemarin', 'Akhir Minggu Lalu', 'Akhir Bulan Lalu', 'Akhir Tahun Lalu']) {
+      assert(await presets.getByRole('button', { name, exact: true }).isVisible())
+    }
+    await presets.getByRole('button', { name: 'Akhir Bulan Lalu', exact: true }).click()
+    await waitHeld(held, 1)
+    assert.deepEqual(held[0].params, { date_from: '2026-10-31', date_to: '2026-10-31' })
+    await reply(held.shift().route, '2026-10-31'); await loaded('2026-10-31')
+    await selectDate('2026-11-02'); await waitHeld(held, 1)
+    await reply(held.shift().route, '2026-11-02'); await loaded('2026-11-02')
+    console.log('PASS pending selection, Escape cancellation, month-end preset, and explicit one-date requests')
 
     await selectDate('2026-10-31'); await waitHeld(held, 1)
     await selectDate('2026-11-01'); await waitHeld(held, 2)
@@ -123,12 +164,13 @@ function balance(date) {
     await held.pop().route.fulfill({ status: 500, json: { success: false, error: 'Permintaan lama gagal' } }); await settled()
     assert.equal(await page.getByRole('alert').count(), 0)
     const requestCount = requests.length
-    await selectDate(''); await page.getByRole('alert').waitFor()
-    assert.equal(requests.length, requestCount, 'Empty dates must not query a default backend period')
-    assert(await exportButton.isDisabled())
-    assert.equal(await assets.count(), 0)
-    await selectDate('2026-11-02'); await loaded('2026-11-02')
-    console.log('PASS older errors are ignored and clearing the position date cannot export or query stale data')
+    pending = await chooseCalendarDay(page, '2026-10-31')
+    await pending.getByRole('button', { name: 'Tutup pemilih tanggal', exact: true }).click()
+    await pending.waitFor({ state: 'hidden' })
+    assert.equal(requests.length, requestCount)
+    assert(await exportButton.isEnabled())
+    assert((await status.innerText()).includes('02-11-2026'))
+    console.log('PASS older errors are ignored and cancelled calendar changes preserve the loaded report/export')
 
     holdExport = true
     const firstDownload = page.waitForEvent('download')
@@ -178,8 +220,22 @@ function balance(date) {
     })
     await mobile.goto(url)
     await mobile.locator('p[role=status]').waitFor()
-    assert.equal(await mobile.getByLabel('Tanggal posisi neraca').inputValue(), '2026-11-02')
+    const mobilePicker = mobile.getByRole('button', { name: 'Tanggal posisi neraca', exact: true })
+    assert((await mobilePicker.innerText()).includes('Hari Ini'))
+    assert.equal(await mobile.locator('input[type=date]').count(), 0)
     assert.deepEqual(mobileRequests[0], { date_from: '2026-11-02', date_to: '2026-11-02' })
+    await mobilePicker.click()
+    const mobileDialog = mobile.getByRole('dialog', { name: 'Pilih Tanggal Posisi', exact: true })
+    assert((await mobileDialog.locator('.drp-cal-title').innerText()).includes('November 2026'))
+    assert.equal(await mobileDialog.locator('.drp-day.is-today').getAttribute('data-date'), '2026-11-02')
+    const yesterday = mobile.waitForResponse(response => new URL(response.url()).searchParams.get('date_to') === '2026-11-01')
+    await mobileDialog.getByRole('button', { name: 'Kemarin', exact: true }).click(); await yesterday
+    await mobile.waitForFunction(() => document.querySelector('p[role=status]')?.textContent.includes('01-11-2026'))
+    assert.deepEqual(mobileRequests.at(-1), { date_from: '2026-11-01', date_to: '2026-11-01' })
+    await mobilePicker.click()
+    const todayResponse = mobile.waitForResponse(response => new URL(response.url()).searchParams.get('date_to') === '2026-11-02')
+    await mobile.getByRole('dialog').getByRole('button', { name: 'Hari Ini', exact: true }).click(); await todayResponse
+    await mobile.waitForFunction(() => document.querySelector('p[role=status]')?.textContent.includes('02-11-2026'))
     assert(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     assert.deepEqual(await mobile.evaluate(() => JSON.parse(localStorage.getItem('cloud_pos_permissions'))), ['reports.balance.view'])
     assert.deepEqual(errors, [])

@@ -1,12 +1,14 @@
 <template>
   <div class="drp">
     <!-- Trigger -->
-    <button type="button" class="drp-trigger" @click="open = true">
+    <button ref="trigger" :id="inputId || undefined" type="button" class="drp-trigger"
+      :aria-label="label || (singleDate ? 'Pilih tanggal posisi' : 'Pilih rentang tanggal')"
+      :aria-expanded="open" aria-haspopup="dialog" @click="open = true">
       <svg class="drp-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
       </svg>
       <span class="drp-label">{{ modelValue?.label || 'Pilih tanggal' }}</span>
-      <span class="drp-range">{{ rangeText }}</span>
+      <span v-if="!singleDate || modelValue?.label !== rangeText" class="drp-range">{{ rangeText }}</span>
       <svg class="drp-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
 
@@ -16,10 +18,11 @@
         <div v-if="open" class="drp-backdrop" @click="open = false" />
       </Transition>
       <Transition name="drp-pop">
-        <div v-if="open" class="drp-panel" role="dialog">
+        <div v-if="open" ref="panel" class="drp-panel" role="dialog" aria-modal="true"
+          :aria-label="dialogTitle" tabindex="-1">
           <div class="drp-head">
-            <span class="drp-title">Pilih Rentang Tanggal</span>
-            <button class="drp-close" @click="open = false">&times;</button>
+            <span class="drp-title">{{ dialogTitle }}</span>
+            <button type="button" class="drp-close" aria-label="Tutup pemilih tanggal" @click="open = false">&times;</button>
           </div>
 
           <div class="drp-body">
@@ -33,14 +36,15 @@
             <!-- Calendar -->
             <div class="drp-cal">
               <div class="drp-cal-head">
-                <button type="button" class="drp-nav" @click="shiftMonth(-1)">‹</button>
+                <button type="button" class="drp-nav" aria-label="Bulan sebelumnya" @click="shiftMonth(-1)">‹</button>
                 <span class="drp-cal-title">{{ monthTitle }}</span>
-                <button type="button" class="drp-nav" @click="shiftMonth(1)">›</button>
+                <button type="button" class="drp-nav" aria-label="Bulan berikutnya" @click="shiftMonth(1)">›</button>
               </div>
               <div class="drp-dow"><span v-for="d in DOW" :key="d">{{ d }}</span></div>
               <div class="drp-grid">
                 <span v-for="b in leading" :key="'b'+b" class="drp-blank" />
                 <button v-for="day in daysInMonth" :key="day" type="button"
+                  :data-date="dateOf(day)" :aria-label="dayLabel(day)" :aria-pressed="isSelected(day)"
                   :class="['drp-day', dayCls(day)]" @click="pickDay(day)">{{ day }}</button>
               </div>
             </div>
@@ -57,28 +61,37 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import { todayDateString } from '@/utils/format.js'
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
   // Tampilkan preset "Semua Tanggal" (from/to kosong = tanpa filter) — untuk
   // halaman yang default-nya menampilkan semua data (reservasi, shift, dll).
   clearable: { type: Boolean, default: false },
+  // Position reports choose one cutoff; range reports retain the default mode.
+  singleDate: { type: Boolean, default: false },
+  inputId: { type: String, default: '' },
+  label: { type: String, default: '' },
 })
 const emit = defineEmits(['update:modelValue'])
 
 const open = ref(false)
+const trigger = ref(null)
+const panel = ref(null)
+const dialogTitle = computed(() => props.singleDate ? 'Pilih Tanggal Posisi' : 'Pilih Rentang Tanggal')
 const DOW = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 
 function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function parseYmd(s) { const [y, m, d] = (s || '').split('-').map(Number); return y ? new Date(y, m - 1, d) : null }
 function fmtShort(s) { const d = parseYmd(s); return d ? `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getFullYear()}` : '' }
+function calendarToday() { return props.singleDate ? parseYmd(todayDateString()) : new Date() }
 
 // ── Presets ──
 function startOfWeek(d) { const x = new Date(d); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); return x } // Monday
 const presets = computed(() => {
-  const t = new Date(); t.setHours(0, 0, 0, 0)
+  const t = calendarToday(); t.setHours(0, 0, 0, 0)
   const y = new Date(t); y.setDate(t.getDate() - 1)
   const sow = startOfWeek(t)
   const sowLast = new Date(sow); sowLast.setDate(sow.getDate() - 7)
@@ -89,6 +102,15 @@ const presets = computed(() => {
   const soy = new Date(t.getFullYear(), 0, 1)
   const soyLast = new Date(t.getFullYear() - 1, 0, 1)
   const eoyLast = new Date(t.getFullYear() - 1, 11, 31)
+  if (props.singleDate) {
+    return [
+      { key: 'today', label: 'Hari Ini', from: ymd(t), to: ymd(t) },
+      { key: 'yesterday', label: 'Kemarin', from: ymd(y), to: ymd(y) },
+      { key: 'last_week', label: 'Akhir Minggu Lalu', from: ymd(eowLast), to: ymd(eowLast) },
+      { key: 'last_month', label: 'Akhir Bulan Lalu', from: ymd(eomLast), to: ymd(eomLast) },
+      { key: 'last_year', label: 'Akhir Tahun Lalu', from: ymd(eoyLast), to: ymd(eoyLast) },
+    ]
+  }
   const list = props.clearable ? [{ key: 'all', label: 'Semua Tanggal', from: '', to: '' }] : []
   return [
     ...list,
@@ -104,7 +126,8 @@ const presets = computed(() => {
 })
 const activePreset = computed(() => {
   const m = props.modelValue
-  const p = presets.value.find(p => p.from === m?.from && p.to === m?.to)
+  const matches = presets.value.filter(p => p.from === m?.from && p.to === m?.to)
+  const p = props.singleDate ? matches.find(p => p.label === m?.label) || matches[0] : matches[0]
   return p?.key || ''
 })
 
@@ -114,14 +137,26 @@ function applyPreset(p) {
 }
 
 // ── Calendar ──
-const view = ref(new Date())
+const view = ref(calendarToday())
 const pendFrom = ref('')
 const pendTo = ref('')
-watch(open, (v) => {
+watch(open, (v, _, onCleanup) => {
   if (v) {
-    pendFrom.value = props.modelValue?.from || ''
-    pendTo.value = props.modelValue?.to || ''
-    view.value = parseYmd(props.modelValue?.to) || new Date()
+    const selected = props.modelValue?.to || props.modelValue?.from || ''
+    pendFrom.value = props.singleDate ? selected : props.modelValue?.from || ''
+    pendTo.value = props.singleDate ? selected : props.modelValue?.to || ''
+    view.value = parseYmd(props.singleDate ? selected : props.modelValue?.to) || calendarToday()
+    const closeOnEscape = event => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      open.value = false
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    onCleanup(() => document.removeEventListener('keydown', closeOnEscape, true))
+    nextTick(() => panel.value?.focus())
+  } else {
+    nextTick(() => trigger.value?.focus())
   }
 })
 const monthTitle = computed(() => `${MONTHS[view.value.getMonth()]} ${view.value.getFullYear()}`)
@@ -129,14 +164,20 @@ const daysInMonth = computed(() => new Date(view.value.getFullYear(), view.value
 const leading = computed(() => { const fd = new Date(view.value.getFullYear(), view.value.getMonth(), 1).getDay(); return (fd + 6) % 7 })
 function shiftMonth(n) { view.value = new Date(view.value.getFullYear(), view.value.getMonth() + n, 1) }
 function dateOf(day) { return ymd(new Date(view.value.getFullYear(), view.value.getMonth(), day)) }
+function dayLabel(day) { return `${day} ${monthTitle.value}` }
+function isSelected(day) {
+  const d = dateOf(day)
+  return d === pendFrom.value || d === pendTo.value || !!(pendFrom.value && pendTo.value && d > pendFrom.value && d < pendTo.value)
+}
 function pickDay(day) {
   const d = dateOf(day)
+  if (props.singleDate) { pendFrom.value = d; pendTo.value = d; return }
   if (!pendFrom.value || (pendFrom.value && pendTo.value)) { pendFrom.value = d; pendTo.value = '' }
   else { if (d < pendFrom.value) { pendTo.value = pendFrom.value; pendFrom.value = d } else pendTo.value = d }
 }
 function dayCls(day) {
   const d = dateOf(day)
-  const isToday = d === ymd(new Date())
+  const isToday = d === ymd(calendarToday())
   const from = pendFrom.value, to = pendTo.value
   return {
     'is-from': d === from,
@@ -146,20 +187,23 @@ function dayCls(day) {
   }
 }
 const selText = computed(() => {
+  if (props.singleDate) return fmtShort(pendTo.value) || 'Pilih tanggal posisi'
   if (pendFrom.value && pendTo.value) return `${fmtShort(pendFrom.value)} – ${fmtShort(pendTo.value)}`
   if (pendFrom.value) return `${fmtShort(pendFrom.value)} – …`
   return 'Pilih tanggal mulai & akhir'
 })
 function applyCustom() {
   if (!pendFrom.value || !pendTo.value) return
-  const label = pendFrom.value === pendTo.value ? fmtShort(pendFrom.value)
-    : `${fmtShort(pendFrom.value)} – ${fmtShort(pendTo.value)}`
-  emit('update:modelValue', { from: pendFrom.value, to: pendTo.value, label })
+  const from = pendFrom.value
+  const to = props.singleDate ? from : pendTo.value
+  const label = from === to ? fmtShort(from) : `${fmtShort(from)} – ${fmtShort(to)}`
+  emit('update:modelValue', { from, to, label })
   open.value = false
 }
 
 const rangeText = computed(() => {
   const m = props.modelValue
+  if (props.singleDate) return fmtShort(m?.to || m?.from)
   if (!m?.from) return ''
   if (m.from === m.to) return fmtShort(m.from)
   return `${fmtShort(m.from)} – ${fmtShort(m.to)}`

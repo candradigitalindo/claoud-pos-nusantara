@@ -761,3 +761,40 @@ metode/tanggal, isolasi outlet, DP, komplimen, void, dan refund. Build UI,
 lulus tanpa error Vue. Manifest SHA-256 memverifikasi kesamaan 19 berkas
 runtime/pengujian dengan sumber yang diuji. Artefak backend berada pada
 `balance-report-backend-20261102-release` di direktori staging.
+
+
+## Rilis neraca historis — 2 November 2026
+
+Status rilis ini menggantikan keterangan staging pada audit neraca di atas.
+Backend dan frontend dari commit `34a9f49` sudah dibangun dan dipasang pada
+**10:42 WIB** di [Laporan Neraca](https://pos.nbp.co.id/balance-report).
+Nominal mengikuti tanggal order dan pembayaran; pelunasan berikutnya tidak
+menghapus piutang pada posisi tanggal sebelumnya. Dashboard memakai satu
+tanggal posisi dan mengabaikan respons filter yang sudah kedaluwarsa.
+
+Backup database, uploads, dan dokumen berhasil diverifikasi sebelum pemasangan.
+Backup terbaru dipulihkan pada database terisolasi untuk membandingkan versi
+produksi lama dengan kandidat akhir. Migrasi dan seluruh pemeriksaan GET
+mempertahankan jumlah baris, nominal, dan digest sumber finansial; tidak ada
+backfill arsip POS maupun transaksi sintetis pada produksi. Tabel
+`finance_pos_snapshots` dibuat oleh migrasi agar perubahan POS berikutnya
+memiliki riwayat. Image sebelumnya disimpan untuk rollback. Environment,
+mount, port, restart policy, dan jaringan aplikasi dipertahankan; database,
+WhatsApp, dan analitik tidak dibuat ulang.
+
+Validasi sumber tetap **624 tes Go lulus, 3 dilewati**. Build frontend serta
+**9 kelompok browser neraca dan 3 kelompok Operasional Keuangan** lulus.
+Sesudah deploy, **22 pemeriksaan GET produksi** lulus untuk neraca tiga tanggal,
+Excel, sepuluh outlet, kecocokan kas dengan buku besar, konsistensi tanggal
+mulai, aset UI baru, dan penolakan akses anonim. Browser publik memeriksa
+**enam posisi pada desktop dan ponsel**, mencocokkan nominal tampilan dengan
+respons API, serta mengunduh Excel sesuai tanggal yang dimuat; tidak ada error
+API atau runtime Vue. Catatan riwayat/HPP dan selisih bukti pembayaran tetap
+ditampilkan untuk pemeriksaan.
+
+Bukti build, backup, rehearsal, deployment, dan pemeriksaan publik tersimpan
+secara privat di
+`/home/candra/projects/pos-integration-staging/releases/20261102-balance-34a9f49/`,
+termasuk `release-status.json`, `deployed.json`, `rehearsal-summary.json`,
+`artifacts/live-smoke-after/summary.json`, dan
+`frontend/live-balance-browser.json`.
