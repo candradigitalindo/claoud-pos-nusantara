@@ -798,3 +798,31 @@ secara privat di
 termasuk `release-status.json`, `deployed.json`, `rehearsal-summary.json`,
 `artifacts/live-smoke-after/summary.json`, dan
 `frontend/live-balance-browser.json`.
+
+
+## Kalender neraca dan pemeriksaan nominal — 2 November 2026
+
+Frontend commit `41d3057` dipasang pada **11:06 WIB**. Filter neraca sekarang
+memakai kalender kustom bersama dengan laporan lain: tanggal berbahasa
+Indonesia, preset hari ini/kemarin/akhir periode, dan satu tanggal posisi.
+Kalender mengikuti zona waktu aplikasi, pilihan sementara baru diterapkan
+melalui tombol Terapkan, dan menutup kalender mempertahankan laporan terakhir.
+Mode rentang dua tanggal pada laporan lain tetap tersedia. Kartu nominal utama
+ditampilkan sebelum rincian akun agar posisi neraca langsung terlihat.
+
+Build dan **15 kelompok regresi browser** lulus: 10 neraca, 2 kompatibilitas
+kalender rentang, dan 3 Operasional Keuangan. Browser produksi memeriksa enam
+posisi pada desktop/ponsel, nominal terhadap respons API, kalender terbuka,
+label tanggal tunggal, dan unduhan Excel; tidak ditemukan error API/runtime.
+Bundle publik cocok dengan manifest build. Pemasangan hanya mengganti nginx;
+backend tetap pada `34a9f49`, dan layanan lainnya tidak dibuat ulang.
+
+Pemeriksaan nominal read-only juga mencocokkan saldo tanggal sampel dengan
+agregat bukti transaksi, penyesuaian shift, kas masuk/keluar, buku besar, dan
+arus kas periode. Saldo yang ditampilkan bersifat kumulatif sejak awal riwayat
+dan mencakup seluruh metode pembayaran yang tercatat.
+
+Bukti rilis, tangkapan layar, dan rekonsiliasi nominal tersimpan secara privat
+di `/home/candra/projects/pos-integration-staging/releases/20261102-balance-datepicker-review/`,
+termasuk `release-status.json`, `frontend/live-balance-browser.json`, dan
+`diagnostics/reconciliation-conclusion.json`.
