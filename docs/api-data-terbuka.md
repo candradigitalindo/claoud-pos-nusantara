@@ -96,3 +96,22 @@ curl https://pos.nbp.co.id/api/v1/open/outlets/kala-mont-view/products
 curl "https://pos.nbp.co.id/api/v1/open/outlets/kala-mont-view/product-sales?date_from=2026-10-01&date_to=2026-10-31"
 curl "https://pos.nbp.co.id/api/v1/open/social?date_from=2026-10-01&date_to=2026-10-31"
 ```
+
+## Catatan pemasangan
+
+Commit `2d8877d` dipasang pada **6 November 2026, 17.26 WIB**; hanya container app yang dibuat
+ulang (nginx, database, WhatsApp, dan analytics tidak). Image sebelumnya ditandai
+`cloud-pos-app:rollback-20261106`, image baru `cloud-pos-app:open-data-2d8877d`.
+
+Sebelum pemasangan: tes `routes`, `handlers`, dan `middleware` lulus di Postgres uji, termasuk
+`TestOpenDataEndpointsTanpaAuthDanTanpaID` (tanpa kunci/ID internal di respons, slug nonaktif 404,
+validasi tanggal) dan `TestOpenDataLimiterTerpisahDariPublic`. Uji salinan produksi (jaringan
+Docker internal, tanpa akses internet): 882 produk di 10 outlet sama dengan daftar produk Excel
+6 November; penjualan produk Oktober sama dengan Laporan Penjualan Produk (mis. Kala Mont View
+Rp156.476.000, Sekar Ayu Rp128.394.000); 18 akun medsos; permintaan terberat (366 hari, NHC) 0,4 detik.
+
+Setelah pemasangan (hanya GET lewat `https://pos.nbp.co.id`): keempat endpoint 200, slug tak
+dikenal 404, rentang tanggal terlalu panjang 400, halaman menu publik lama tetap 200, endpoint
+admin tanpa token tetap 401, tidak ada error 5xx di log app.
+
+Rollback: `docker tag cloud-pos-app:rollback-20261106 cloud-pos-app:latest && docker compose up -d --no-deps app`.
