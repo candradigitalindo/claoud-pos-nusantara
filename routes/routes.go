@@ -42,6 +42,16 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	public.Get("/outlets/:slug/orders/:orderId", handlers.PublicOrderStatus)
 	public.Post("/outlets/:slug/orders/:orderId/simulate-paid", handlers.PublicSimulateOrderPaid)
 
+	// Data terbuka (tanpa auth), outlet dirujuk lewat slug, tanpa ID internal.
+	// Sengaja BUKAN di bawah /public: middleware grup Fiber dicocokkan dengan
+	// prefiks string, jadi rute di bawah /public (atau /public-...) ikut kena
+	// limiter halaman pemesanan pelanggan.
+	open := api.Group("/open", middleware.OpenDataRateLimiter())
+	open.Get("/outlets", handlers.OpenListOutlets)
+	open.Get("/outlets/:slug/products", handlers.OpenOutletProducts)
+	open.Get("/outlets/:slug/product-sales", handlers.OpenOutletProductSales)
+	open.Get("/social", handlers.OpenSocial)
+
 	// Callback penyedia pembayaran. Tanpa AuthOutlet — keasliannya dibuktikan
 	// tanda tangan yang diverifikasi adapter penyedia, bukan API key outlet.
 	api.Post("/webhooks/qris/:provider", handlers.QRISWebhook)

@@ -195,6 +195,13 @@ func PublicRateLimiter() fiber.Handler {
 	return newRateLimitHandler("public", 30, time.Minute)
 }
 
+// OpenDataRateLimiter membatasi endpoint data terbuka /api/v1/open. Penyimpanannya
+// terpisah dari PublicRateLimiter supaya penarik data tidak menghabiskan jatah
+// halaman pemesanan/reservasi pelanggan.
+func OpenDataRateLimiter() fiber.Handler {
+	return newRateLimitHandler("open", 120, time.Minute)
+}
+
 // RequirePermission checks if the authenticated admin's role has a specific permission.
 // superadmin (static token) always passes.
 // For ".view" permissions, having ".manage" of the same module also passes (manage implies view).
