@@ -977,3 +977,28 @@ tablet di v10.19 (4 di v10.18, 5 di v10.17, 1 di v10.14). Setelah itu versi
 berikutnya ditawarkan dari dalam aplikasi. Bukti privat:
 `/home/candra/projects/pos-integration-staging/releases/20261119-045655-outlet-cash-payout/` dan
 `/home/candra/projects/pos-integration-staging/releases/20261118-v10.20/`.
+
+## Rilis tujuan pembayaran oleh Pembelian — 19 November 2026
+
+Cloud commit `892d71c` (API + dashboard) dipasang pada **06:16 WIB** tanpa lalu lintas
+tablet; hanya container app dan nginx yang dibuat ulang. Perubahan database **aditif**:
+15 kolom `pay_to_*` di `purchase_requests`. Backup `pg_dump -Fc` dibuat tepat sebelum deploy;
+image sebelumnya disimpan sebagai `before-purchasing-payment-details-20261119-060846`
+(rollback image saja sudah cukup). Aplikasi tablet tidak berubah.
+
+- **Pembelian** menetapkan tujuan pembayaran saat **Ajukan Pembayaran**: rekening vendor
+  terdaftar (tidak bisa diketik), VA marketplace dari checkout, atau tunai/cara lain (hanya
+  vendor tanpa rekening), plus catatan untuk Keuangan. Detail bisa diubah selama tagihan belum
+  lunas (`PUT /admin/purchase-requests/:id/payment-details`, versi wajib).
+- **Keuangan** melihat tujuan itu apa adanya dengan tombol salin, memilih sumber dana dan
+  rekening asal. Isian tujuan dari form bayar lama diabaikan server, dan bayar wajib membawa
+  versi dokumen (409 bila Pembelian mengubah detail setelah form dibuka).
+- **Kembalikan ke Pembelian** (`POST …/payment-details/return`, alasan wajib) mengunci
+  pembayaran dan tugas Kas Kasir Outlet sampai diperbaiki. Kas Kasir Outlet tidak tersedia
+  untuk VA marketplace. Notifikasi WA baru `purchase.payment_returned`.
+
+Validasi: suite Go penuh dan tes browser kedua halaman lulus; gladi pada salinan database
+produksi menghasilkan 10 dari 11 laporan keuangan identik byte demi byte (daftar pengajuan
+hanya bertambah field `pay_to`) dan 31 cek alur lulus. Pengajuan lama yang vendornya belum
+punya rekening (saat rilis: 071126001) menunggu Pembelian melengkapi detailnya. Bukti privat:
+`/home/candra/projects/pos-integration-staging/releases/20261119-060846-purchasing-payment-details/`.
