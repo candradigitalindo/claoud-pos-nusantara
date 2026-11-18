@@ -202,6 +202,10 @@
                     <span v-if="row.cash_payout?.status === 'returned'" class="max-w-[220px] text-[10px] leading-snug text-red-600">
                       Alasan kasir: {{ row.cash_payout.resolution_reason || '-' }}
                     </span>
+                    <span v-if="payToBlocked(row)" :class="payToBlockCls(row)" :title="row.pay_to?.problem">{{ payToBlockLabel(row) }}</span>
+                    <span v-if="payToBlocked(row) && row.pay_to?.returned_at" class="max-w-[220px] text-[10px] leading-snug text-red-600">
+                      Alasan: {{ row.pay_to.return_reason || '-' }}
+                    </span>
                   </div>
                 </td>
                 <td class="px-4 py-3 align-middle text-gray-700">{{ formatDateTime(row.created_at) }}</td>
@@ -210,6 +214,7 @@
                     <AppActionButton icon="view" label="Lihat Detail" @click="viewDetail(row)" />
                     <AppActionButton icon="pay" label="Bayar" v-if="canPay && isPayable(row)" @click="openPayModal(row)" />
                     <AppActionButton icon="cancel" label="Tarik tugas Kas Kasir Outlet" v-if="canPay && row.cash_payout?.status === 'pending'" @click="cancelPayout(row)" />
+                    <AppActionButton icon="return" label="Kembalikan detail pembayaran ke Pembelian" v-if="canPay && canReturnPayTo(row)" @click="openReturnPayTo(row)" />
                   </div>
                 </td>
               </tr>
@@ -303,6 +308,11 @@
                 </template>
               </dl>
             </div>
+          </div>
+
+          <!-- Tujuan pembayaran: diisi Pembelian, Keuangan hanya membaca. -->
+          <div v-if="PAYABLE_STATUSES.includes(detail.status) && remainingOf(detail) > 0" class="sm:col-span-2">
+            <PurchasePayToCard :pay-to="detail.pay_to" :amount="remainingOf(detail)" />
           </div>
 
           <!-- Pembayaran -->
@@ -470,6 +480,7 @@
         </div>
       </div>
       <template #footer>
+        <AppActionButton icon="return" label="Kembalikan detail pembayaran ke Pembelian" v-if="canPay && detail && canReturnPayTo(detail)" @click="openReturnPayTo(detail)" />
         <AppActionButton icon="pay" label="Bayar" v-if="canPay && detail && isPayable(detail)" @click="showDetail = false; openPayModal(detail)" />
         <AppButton variant="secondary" @click="showDetail = false">Tutup</AppButton>
       </template>
@@ -516,38 +527,19 @@
               </div>
             </div>
 
-            <!-- Card 2: Bank Info -->
-            <div v-if="payForm.payment_method !== 'marketplace_va' && paySource === 'office'" class="rounded-lg border border-gray-200 bg-white overflow-hidden">
-              <div class="bg-blue-50 px-4 py-2.5 border-b border-blue-100">
-                <p class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Rekening Vendor</p>
-              </div>
-              <div v-if="payVendor" class="px-4 py-2.5">
-                <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                  <dt class="text-gray-400">Bank</dt>
-                  <dd class="font-medium text-gray-800">{{ payVendor.bank_name || '-' }}</dd>
-                  <dt class="text-gray-400">No. Rek</dt>
-                  <dd class="font-medium font-mono text-gray-800 flex items-center gap-1">
-                    {{ payVendor.account_number || '-' }}
-                    <AppActionButton icon="copy" label="Salin" v-if="payVendor.account_number" @click="copyText(payVendor.account_number, 'No. Rekening')" />
-                  </dd>
-                  <dt class="text-gray-400">Atas Nama</dt>
-                  <dd class="font-medium text-gray-800 flex items-center gap-1">
-                    {{ payVendor.account_holder || '-' }}
-                    <AppActionButton icon="copy" label="Salin" v-if="payVendor.account_holder" @click="copyText(payVendor.account_holder, 'Atas Nama')" />
-                  </dd>
-                </dl>
-              </div>
-              <div v-else-if="payVendorLoading" class="px-4 py-4 text-xs text-gray-400 text-center">Memuat...</div>
-              <div v-else class="px-4 py-3">
-                <p v-if="payVendorError" class="text-xs text-red-600">Data rekening vendor gagal dimuat ({{ payVendorError }}) — pembayaran belum bisa dicatat. Tutup form ini lalu buka lagi.</p>
-                <p v-else class="text-xs text-red-600">Pengajuan ini belum memilih vendor dari daftar vendor — pembayaran tidak bisa dicatat. Minta bagian pembelian memilih vendornya lewat Isi Harga.</p>
-              </div>
+            <!-- Card 2: Tujuan pembayaran — diisi Pembelian; Keuangan hanya
+                 membaca & menyalin (keputusan owner 19 Nov 2026). -->
+            <PurchasePayToCard v-if="paySource === 'office'" :pay-to="payTargets[0]?.pay_to" :amount="payCopyAmount">
               <!-- Rekening vendor baru diganti: pastikan sah sebelum transfer. -->
-              <div v-if="recentBankChange" class="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[11px] leading-snug text-amber-800">
+              <div v-if="recentBankChange && payTargets[0]?.pay_to?.effective === 'vendor_account'" class="border-t border-amber-200 bg-amber-50 px-4 py-2 text-[11px] leading-snug text-amber-800">
                 <p class="font-semibold">Rekening vendor ini diubah {{ formatDateTime(recentBankChange.changed_at) }}<template v-if="recentBankChange.changed_by"> oleh {{ recentBankChange.changed_by }}</template>.</p>
                 <p>Sebelumnya: <span class="font-mono">{{ bankText(recentBankChange.old_bank_name, recentBankChange.old_account_number, recentBankChange.old_account_holder) || '(kosong)' }}</span>. Konfirmasi ke vendor bahwa perubahan ini sah sebelum mentransfer.</p>
               </div>
-            </div>
+              <div v-if="payTargets.length === 1 && canReturnPayTo(payTargets[0])" class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-2">
+                <p class="text-[11px] text-gray-500">Detail salah atau kedaluwarsa?</p>
+                <AppButton size="sm" variant="secondary" @click="openReturnPayTo(payTargets[0])">Kembalikan ke Pembelian</AppButton>
+              </div>
+            </PurchasePayToCard>
           </div>
 
           <!-- Batch detail (only for multi) -->
@@ -575,7 +567,7 @@
               <label class="source-opt" :class="{ 'source-opt--on': paySource === 'outlet_cash', 'source-opt--off': !canUseOutletCash }">
                 <input v-model="paySource" type="radio" value="outlet_cash" class="sr-only" :disabled="!canUseOutletCash" />
                 <span class="text-sm font-semibold text-gray-800">Kas Kasir Outlet</span>
-                <span class="text-[11px] leading-snug text-gray-500">{{ canUseOutletCash ? `Diserahkan tunai dari laci ${payOutletName}` : 'Hanya untuk pengajuan milik outlet' }}</span>
+                <span class="text-[11px] leading-snug text-gray-500">{{ outletCashHint }}</span>
               </label>
             </div>
           </fieldset>
@@ -604,32 +596,10 @@
           <template v-else>
           <!-- Form 2-col -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            <p v-if="!payTargetsReady" class="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              Tujuan pembayaran belum siap — tunggu Pembelian melengkapi atau memperbaikinya.
+            </p>
             <div class="sm:col-span-2">
-              <label for="payment-method" class="block text-sm font-medium text-gray-700 mb-1">Metode Pembayaran</label>
-              <select id="payment-method" :value="payForm.payment_method" :disabled="!payVendor || payLoading" @change="changePaymentMethod($event.target.value)" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
-                <option value="vendor_account">Rekening Vendor / Cara Bayar Manual</option>
-                <option value="marketplace_va" :disabled="payTargets.length > 1">Virtual Account Marketplace</option>
-              </select>
-              <p v-if="payTargets.length > 1" class="mt-1 text-[11px] leading-snug text-gray-500">Pembayaran marketplace dilakukan per pengajuan agar nomor pesanan dan virtual account sesuai transaksi.</p>
-            </div>
-            <template v-if="payForm.payment_method === 'marketplace_va'">
-              <div class="sm:col-span-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">Isi virtual account dari checkout pesanan ini. Nomornya dapat berubah setiap transaksi dan disimpan pada riwayat pembayaran.</div>
-              <AppInput v-model="payForm.payment_marketplace" label="Marketplace *" placeholder="Shopee, Tokopedia, dll." maxlength="100" />
-              <AppInput v-model="payForm.payment_order_number" label="Nomor Pesanan *" placeholder="Nomor pesanan marketplace" maxlength="100" />
-              <AppInput v-model="payForm.payment_bank_name" label="Bank Virtual Account *" placeholder="Contoh: BCA, Mandiri, BRI" maxlength="100" />
-              <AppInput v-model="payForm.payment_account_number" label="Nomor Virtual Account *" placeholder="Nomor VA dari checkout" inputmode="numeric" maxlength="50" />
-              <AppInput v-model="payForm.payment_account_holder" label="Atas Nama Virtual Account" placeholder="Nama penerima di checkout" maxlength="200" />
-            </template>
-            <div v-else-if="payVendor?.account_number">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Rekening Tujuan</label>
-              <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 break-words">{{ payForm.payment_account_dest }}</p>
-              <p class="mt-1 text-[11px] leading-snug text-gray-500">Diambil dari data vendor dan tersimpan permanen di riwayat pembayaran ini.</p>
-            </div>
-            <div v-else>
-              <AppInput v-model="payForm.payment_account_dest" label="Rekening Tujuan / Cara Bayar" placeholder="mis. Tunai" :disabled="!payVendor" />
-              <p v-if="payVendor" class="mt-1 text-[11px] leading-snug text-amber-700">Vendor ini belum punya rekening terdaftar — tulis cara bayarnya (mis. Tunai). Tercatat sebagai pembayaran manual.</p>
-            </div>
-            <div>
               <label for="payment-account-source" class="block text-sm font-medium text-gray-700 mb-1">Rekening Asal (Perusahaan)</label>
               <SearchSelect
                 id="payment-account-source"
@@ -701,7 +671,28 @@
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="showPayModal = false">Batal</AppButton>
-        <AppButton :loading="payLoading" :disabled="uploadLoading" @click="submitPay">{{ paySource === 'outlet_cash' ? 'Kirim ke Kas Kasir Outlet' : 'Konfirmasi Pembayaran' }}</AppButton>
+        <AppButton :loading="payLoading" :disabled="uploadLoading || (paySource === 'office' && !payTargetsReady)" @click="submitPay">{{ paySource === 'outlet_cash' ? 'Kirim ke Kas Kasir Outlet' : 'Konfirmasi Pembayaran' }}</AppButton>
+      </template>
+    </AppModal>
+
+    <!-- Kembalikan detail pembayaran ke Pembelian (tujuan salah / kedaluwarsa). -->
+    <AppModal v-model="showReturnPayTo" title="Kembalikan ke Pembelian" size="md">
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600">
+          Detail pembayaran <strong>{{ returnTarget?.request_number }}</strong> ({{ returnTarget?.vendor_name || '-' }})
+          dikembalikan ke bagian Pembelian. Tagihan ini tidak bisa dibayar sampai detailnya diperbaiki; Pembelian diberi tahu.
+        </p>
+        <div>
+          <label for="payto-return-reason" class="mb-1 block text-sm font-medium text-gray-700">Alasan *</label>
+          <textarea id="payto-return-reason" v-model="returnReason" rows="3" maxlength="1000"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            placeholder="mis. Nomor VA sudah kedaluwarsa / rekening tidak sesuai invoice"></textarea>
+          <p v-if="returnReason.trim().length > 0 && returnReason.trim().length < 5" class="mt-1 text-[11px] text-red-600">Alasan minimal 5 huruf.</p>
+        </div>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showReturnPayTo = false">Batal</AppButton>
+        <AppButton variant="danger" :loading="returnLoading" :disabled="returnReason.trim().length < 5" @click="submitReturnPayTo">Kembalikan</AppButton>
       </template>
     </AppModal>
   </div>
@@ -728,7 +719,8 @@ import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import { bankAccountsApi } from '@/api/bankAccounts.js'
 import { projectsApi } from '@/api/projects.js'
-import { purchaseTypeLabel, normalizePurchaseType, isPhysicalPurchaseType, purchaseStatusLabel, purchaseStatusBadge } from '@/utils/procurement.js'
+import { purchaseTypeLabel, normalizePurchaseType, isPhysicalPurchaseType, purchaseStatusLabel, purchaseStatusBadge, isConflictError } from '@/utils/procurement.js'
+import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
 import { safeUrl, isImageUrl } from '@/utils/safeUrl.js'
 
 const toast = useToastStore()
@@ -797,7 +789,21 @@ const payTargets = ref([])
 // Sumber dana pembayaran: 'office' (Kantor Pusat) | 'outlet_cash' (Kas Kasir Outlet).
 const paySource = ref('office')
 const payoutForm = ref({ amount: 0, recipient_name: '', notes: '' })
-const canUseOutletCash = computed(() => payTargets.value.length === 1 && !!payTargets.value[0]?.outlet_id)
+// Kas Kasir Outlet: satu pengajuan milik outlet yang tujuan pembayarannya
+// siap; VA marketplace selalu lewat transfer Kantor Pusat (cermin server).
+const canUseOutletCash = computed(() => {
+  const t = payTargets.value[0]
+  return payTargets.value.length === 1 && !!t?.outlet_id && !!t?.pay_to?.ready && t?.pay_to?.effective !== 'marketplace_va'
+})
+const outletCashHint = computed(() => {
+  const t = payTargets.value[0]
+  if (payTargets.value.length !== 1 || !t?.outlet_id) return 'Hanya untuk pengajuan milik outlet'
+  if (t?.pay_to?.effective === 'marketplace_va') return 'VA Marketplace dibayar lewat transfer'
+  if (!t?.pay_to?.ready) return 'Detail pembayaran belum siap'
+  return `Diserahkan tunai dari laci ${payOutletName.value}`
+})
+// Tujuan pembayaran milik Pembelian: semua tagihan yang dibayar harus siap.
+const payTargetsReady = computed(() => payTargets.value.length > 0 && payTargets.value.every(t => !!t?.pay_to?.ready))
 const payOutletName = computed(() => payTargets.value[0]?.outlet_name || 'outlet')
 const payLoading = ref(false)
 const payVendor = ref(null)
@@ -806,25 +812,12 @@ const payVendorLoading = ref(false)
 // menunjuk vendor terdaftar, jadi pesan tidak boleh menyuruh bagian pembelian
 // memilih vendor lewat Isi Harga.
 const payVendorError = ref('')
+// Isian Keuangan saat membayar: rekening asal, nominal, referensi, bukti.
+// Tujuan pembayaran TIDAK diisi di sini — milik Pembelian (pay_to).
 function newPayForm() {
-  return {
-    payment_account_dest: '', payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0,
-    payment_method: 'vendor_account', payment_marketplace: '', payment_order_number: '',
-    payment_bank_name: '', payment_account_number: '', payment_account_holder: '',
-  }
+  return { payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0 }
 }
 const payForm = ref(newPayForm())
-
-function changePaymentMethod(method) {
-  payForm.value.payment_method = method
-  payForm.value.payment_account_dest = method === 'vendor_account' && payVendor.value?.account_number
-    ? bankText(payVendor.value.bank_name, payVendor.value.account_number, payVendor.value.account_holder) : ''
-  payForm.value.payment_marketplace = ''
-  payForm.value.payment_order_number = ''
-  payForm.value.payment_bank_name = ''
-  payForm.value.payment_account_number = ''
-  payForm.value.payment_account_holder = ''
-}
 
 const paymentHistories = ref([])
 const paymentHistoriesLoading = ref(false)
@@ -873,7 +866,56 @@ function remainingOf(r) {
 // bisa dibayar di baris induk (pecahan dibayar di barisnya masing-masing).
 const PAYABLE_STATUSES = ['payment_requested', 'partial', 'received']
 function isPayable(r) {
-  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r)
+  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r) && !!r.pay_to?.ready
+}
+// Tujuan pembayaran milik Pembelian: tagihan yang detailnya dikembalikan atau
+// belum diisi tidak bisa dibayar sampai Pembelian melengkapinya.
+function payToBlocked(r) {
+  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !r.pay_to?.ready
+}
+function payToBlockLabel(r) { return r?.pay_to?.returned_at ? 'Dikembalikan ke Pembelian' : 'Menunggu detail Pembelian' }
+function payToBlockCls(r) {
+  const tone = r?.pay_to?.returned_at ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+  return `inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`
+}
+// Kembalikan ke Pembelian: selama masih ditagih, tidak sedang dibayar dari
+// Kas Kasir Outlet, dan belum dikembalikan (cermin payToEditableTx).
+function canReturnPayTo(r) {
+  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r) && !r.pay_to?.returned_at
+}
+const showReturnPayTo = ref(false)
+const returnTarget = ref(null)
+const returnReason = ref('')
+const returnLoading = ref(false)
+function openReturnPayTo(row) {
+  returnTarget.value = row
+  returnReason.value = ''
+  showReturnPayTo.value = true
+}
+async function submitReturnPayTo() {
+  const t = returnTarget.value
+  const reason = returnReason.value.trim()
+  if (!t || returnLoading.value) return
+  if (reason.length < 5) { toast.error('Alasan minimal 5 huruf.'); return }
+  returnLoading.value = true
+  try {
+    await purchaseApi.returnPaymentDetails(t.id, { reason, version: t.version })
+    toast.success(`Detail pembayaran ${t.request_number} dikembalikan ke Pembelian.`)
+    showReturnPayTo.value = false
+    showPayModal.value = false
+    if (detail.value?.id === t.id) showDetail.value = false
+    clearSelection()
+    fetchList()
+    fetchStats()
+  } catch (err) {
+    if (isConflictError(err)) {
+      showReturnPayTo.value = false
+      toast.error('Pengajuan berubah sejak dibuka — data terbaru sudah dimuat, periksa lagi.')
+      fetchList()
+    } else {
+      toast.error(err?.message || 'Gagal mengembalikan detail pembayaran.')
+    }
+  } finally { returnLoading.value = false }
 }
 // Tugas Kas Kasir Outlet yang masih terbuka mengunci pengajuan dari
 // pembayaran Kantor Pusat (satu pembayaran, satu sumber uang).
@@ -929,6 +971,14 @@ const selectedVendorName = computed(() => {
 const selectedTotal = computed(() => requests.value.filter(r => selectedIds.value.has(r.id)).reduce((s, r) => s + remainingOf(r), 0))
 const payTotalAmount = computed(() => payTargets.value.reduce((s, r) => s + (r.total_final || 0), 0))
 const payRemainingAmount = computed(() => payTargets.value.reduce((s, r) => s + remainingOf(r), 0))
+// Nominal yang disalin dari kartu tujuan = yang akan dicatat server: isian
+// Jumlah Bayar, atau sisa struk terpilih, atau sisa tagihan.
+const payCopyAmount = computed(() => {
+  if (payTargets.value.length !== 1) return payRemainingAmount.value
+  if (payForm.value.payment_amount > 0) return payForm.value.payment_amount
+  if (selectedPayStruk.value) return Math.min(selectedPayStruk.value.remaining, payRemainingAmount.value)
+  return payRemainingAmount.value
+})
 
 function toggleSelect(row) {
   const next = new Set(selectedIds.value)
@@ -945,6 +995,11 @@ function toggleSelect(row) {
       const existingRow = requests.value.find(r => next.has(r.id))
       if (existingRow && existingRow.vendor_id !== row.vendor_id) {
         toast.error('Pembayaran harus diproses per vendor. Pilih pengajuan dari vendor yang sama.')
+        return
+      }
+      // Satu transfer = satu tujuan: hanya rekening terdaftar vendor yang sama.
+      if (row.pay_to?.effective !== 'vendor_account' || existingRow?.pay_to?.effective !== 'vendor_account') {
+        toast.error('VA marketplace / tunai dibayar satu per satu — tujuannya berbeda per pengajuan.')
         return
       }
     }
@@ -964,6 +1019,11 @@ function toggleSelectAll(e) {
     }
     if (vendors.length > 1) {
       toast.error('Tidak bisa memilih semua — terdapat lebih dari 1 vendor. Pilih per vendor.')
+      e.target.checked = false
+      return
+    }
+    if (selectableRows.value.length > 1 && selectableRows.value.some(r => r.pay_to?.effective !== 'vendor_account')) {
+      toast.error('Ada tagihan VA marketplace / tunai — dibayar satu per satu. Pilih per pengajuan.')
       e.target.checked = false
       return
     }
@@ -1161,6 +1221,10 @@ function openBatchPay() {
     toast.error('Pembayaran harus diproses per vendor. Pilih pengajuan dari vendor yang sama.')
     return
   }
+  if (selected.length > 1 && selected.some(r => r.pay_to?.effective !== 'vendor_account')) {
+    toast.error('VA marketplace / tunai dibayar satu per satu — tujuannya berbeda per pengajuan.')
+    return
+  }
   payTargets.value = selected
   paySource.value = 'office'
   ++payStruksSeq
@@ -1203,23 +1267,12 @@ async function fetchPayVendor(vendorId) {
     const v = await vendorsApi.get(vendorId)
     if (seq !== payVendorSeq) return
     payVendor.value = v
-    if (v.account_number && payForm.value.payment_method === 'vendor_account') {
-      payForm.value.payment_account_dest = bankText(v.bank_name, v.account_number, v.account_holder)
-    }
   } catch (err) {
     if (seq !== payVendorSeq) return
     payVendor.value = null
     payVendorError.value = err?.message || 'koneksi gagal'
   }
   finally { if (seq === payVendorSeq) payVendorLoading.value = false }
-}
-
-function copyText(text, label) {
-  navigator.clipboard.writeText(text).then(() => {
-    toast.success(`${label} berhasil disalin: ${text}`)
-  }).catch(() => {
-    toast.error('Gagal menyalin ke clipboard.')
-  })
 }
 
 async function handleFileUpload(e) {
@@ -1278,19 +1331,12 @@ async function submitOutletCash() {
 
 async function submitPay() {
   if (paySource.value === 'outlet_cash') return submitOutletCash()
-  if (!payVendor.value) {
-    toast.error(payVendorError.value
-      ? 'Data rekening vendor gagal dimuat — tutup form ini lalu buka lagi.'
-      : 'Pengajuan ini belum memilih vendor dari daftar vendor — minta bagian pembelian memilihnya lewat Isi Harga.')
+  // Tujuan pembayaran milik Pembelian (pay_to): server membayar ke tujuan itu
+  // dan menolak 409 bila Pembelian mengubahnya sejak daftar ini dimuat.
+  if (!payTargetsReady.value) {
+    toast.error('Tujuan pembayaran belum siap — tunggu Pembelian melengkapi atau memperbaikinya.')
     return
   }
-  if (payForm.value.payment_method === 'marketplace_va') {
-    if (payTargets.value.length !== 1) { toast.error('Pembayaran marketplace dilakukan per pengajuan.'); return }
-    if (![payForm.value.payment_marketplace, payForm.value.payment_order_number, payForm.value.payment_bank_name, payForm.value.payment_account_number].every(v => v.trim())) {
-      toast.error('Marketplace, nomor pesanan, bank, dan nomor virtual account wajib diisi.'); return
-    }
-    if (!/^\d+$/.test(payForm.value.payment_account_number.trim())) { toast.error('Nomor virtual account harus berisi angka.'); return }
-  } else if (!payForm.value.payment_account_dest.trim()) { toast.error('Rekening tujuan / cara bayar wajib diisi.'); return }
   if (!payForm.value.payment_account_source) { toast.error('Rekening asal wajib diisi.'); return }
   const paymentAmount = payForm.value.payment_amount || 0
   if (payTargets.value.length === 1 && paymentAmount > 0 && paymentAmount > payRemainingAmount.value) {
@@ -1306,6 +1352,7 @@ async function submitPay() {
   payLoading.value = true
   let successCount = 0
   let failCount = 0
+  let conflict = false
   let failureMessage = ''
   try {
     for (const target of payTargets.value) {
@@ -1314,14 +1361,8 @@ async function submitPay() {
           action: 'pay',
           actor_name: adminName(),
           payment_proof: [payForm.value.payment_proof.trim(), uploadedFileUrl.value].filter(Boolean).join(' | '),
-          payment_account_dest: payForm.value.payment_account_dest.trim(),
-          payment_method: payForm.value.payment_method,
-          payment_marketplace: payForm.value.payment_marketplace.trim(),
-          payment_order_number: payForm.value.payment_order_number.trim(),
-          payment_bank_name: payForm.value.payment_bank_name.trim(),
-          payment_account_number: payForm.value.payment_account_number.trim(),
-          payment_account_holder: payForm.value.payment_account_holder.trim(),
           payment_account_source: accountSourceText,
+          version: target.version,
           payment_notes: payForm.value.payment_notes.trim(),
           payment_amount: payTargets.value.length === 1 ? paymentAmount : 0,
           struk_id: payTargets.value.length === 1 && payStrukId.value ? payStrukId.value : undefined,
@@ -1329,8 +1370,19 @@ async function submitPay() {
         successCount++
       } catch (err) {
         failCount++
+        if (isConflictError(err)) conflict = true
         failureMessage = err?.message || 'Gagal mencatat pembayaran.'
       }
+    }
+    if (conflict) {
+      // Detail pengajuan berubah sejak dibuka (mis. Pembelian mengubah tujuan
+      // pembayaran): tutup form, muat data terbaru, periksa lagi.
+      toast.error(`${successCount ? `${successCount} berhasil; ` : ''}pengajuan berubah sejak form dibuka — data terbaru sudah dimuat, periksa tujuan pembayarannya lagi.`)
+      showPayModal.value = false
+      clearSelection()
+      fetchList()
+      fetchStats()
+      return
     }
     if (failCount === 0) {
       toast.success(payTargets.value.length > 1 ? `${successCount} pembayaran berhasil dicatat.` : 'Pembayaran berhasil dicatat.')

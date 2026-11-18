@@ -308,7 +308,12 @@ func purchaseSelectCols(totalAmount, totalHps, totalFinal string) string {
 		pr.received_by, pr.received_at, COALESCE(pr.receipt_status, ''),
 		pr.parent_id, COALESCE(ppr.request_number,''), pr.split_status,
 		pr.project_id, COALESCE(prj.name,''),
-		pr.created_at, pr.updated_at`, totalAmount, totalHps, totalFinal)
+		pr.created_at, pr.updated_at,
+		pr.pay_to_method, pr.pay_to_marketplace, pr.pay_to_order_number, pr.pay_to_bank_name,
+		pr.pay_to_account_number, pr.pay_to_account_holder, pr.pay_to_text, pr.pay_to_note,
+		pr.pay_to_set_by, pr.pay_to_set_at, pr.pay_to_returned_at, pr.pay_to_returned_by, pr.pay_to_return_reason,
+		COALESCE(pvd.bank_name,''), COALESCE(pvd.account_number,''), COALESCE(pvd.account_holder,'')`,
+		totalAmount, totalHps, totalFinal)
 }
 
 const purchaseSelectJoins = `
@@ -316,7 +321,8 @@ const purchaseSelectJoins = `
 		LEFT JOIN outlets o ON o.id = pr.outlet_id
 		LEFT JOIN work_units wu ON wu.id = pr.work_unit_id
 		LEFT JOIN purchase_requests ppr ON ppr.id = pr.parent_id
-		LEFT JOIN projects prj ON prj.id = pr.project_id`
+		LEFT JOIN projects prj ON prj.id = pr.project_id
+		LEFT JOIN vendors pvd ON pvd.id = pr.vendor_id`
 
 func fmtTimePtr(t *time.Time) *string {
 	if t == nil {
@@ -332,6 +338,8 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 	var itemsJSON, rejectedJSON []byte
 	var verifiedAt, approvedAt, rejectedAt, paidAt, receivedAt *time.Time
 	var createdAt, updatedAt time.Time
+	var st payToStored
+	var vendorAcct vendorAccount
 
 	if err := sc.Scan(
 		&r.ID, &r.RequestNumber, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
@@ -347,9 +355,18 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 		&r.ParentID, &r.ParentNumber, &r.SplitStatus,
 		&r.ProjectID, &r.ProjectName,
 		&createdAt, &updatedAt,
+		&st.method, &st.marketplace, &st.orderNumber, &st.bank,
+		&st.number, &st.holder, &st.text, &st.note,
+		&st.setBy, &st.setAt, &st.returnedAt, &st.returnedBy, &st.returnReason,
+		&vendorAcct.bank, &vendorAcct.number, &vendorAcct.holder,
 	); err != nil {
 		return r, err
 	}
+	vendorID := ""
+	if r.VendorID != nil {
+		vendorID = *r.VendorID
+	}
+	r.PayTo = buildPayTo(st, vendorID, vendorAcct)
 
 	json.Unmarshal(itemsJSON, &r.Items)
 	if r.Items == nil {
@@ -1254,7 +1271,7 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 			// Induk tanpa sisa item hanya cangkang: yang ditagihkan adalah
 			// pecahannya, dan statusnya sendiri mengikuti keluarga (di bawah).
 			if moved == 0 {
-				return nil, Invalid("tidak ada pecahan yang bisa diajukan pembayarannya — pecahan yang belum berharga atau belum memilih vendor terdaftar diajukan dari detail pecahannya setelah dilengkapi")
+				return nil, Invalid("tidak ada pecahan yang bisa diajukan pembayarannya — pecahan yang belum berharga, belum memilih vendor terdaftar, atau vendornya belum punya rekening (butuh VA / tunai) diajukan dari detail pecahannya")
 			}
 		} else if _, err := applyStatusUpdateTx(tx, id, cur.Status, newStatus, input); err != nil {
 			return nil, err
@@ -1423,6 +1440,12 @@ func cascadeStatusToChildrenTx(tx *sql.Tx, masterID string, input models.UpdateP
 			if !valid || len(unpricedItemNames(c.items)) > 0 || strings.TrimSpace(c.vendorID) == "" {
 				continue
 			}
+			// Pecahan ikut memakai rekening terdaftar vendornya. Yang vendornya
+			// belum punya rekening (butuh VA marketplace / tunai) diajukan
+			// sendiri dari detail pecahannya beserta detail pembayarannya.
+			if !vendorHasAccountTx(tx, c.vendorID) {
+				continue
+			}
 		} else if !valid {
 			if targets[c.status] {
 				continue // sudah di status tujuan
@@ -1436,12 +1459,25 @@ func cascadeStatusToChildrenTx(tx *sql.Tx, masterID string, input models.UpdateP
 		return 0, Invalid("pengajuan induk tidak bisa %s: pecahan %s tidak bisa ikut. Selesaikan atau batalkan pecahan itu lebih dulu",
 			purchaseActionVerb(input.Action), strings.Join(blockers, ", "))
 	}
+	childInput := input
+	if input.Action == "request_payment" {
+		// Detail pembayaran di dialog milik dokumen induk (vendornya sendiri);
+		// pecahan selalu ke rekening terdaftar vendornya masing-masing.
+		childInput.PayTo = &models.PurchasePaymentDetailsInput{Method: PayToVendorAccount}
+	}
 	for _, s := range steps {
-		if _, err := applyStatusUpdateTx(tx, s.id, s.from, s.to, input); err != nil {
+		if _, err := applyStatusUpdateTx(tx, s.id, s.from, s.to, childInput); err != nil {
 			return 0, fmt.Errorf("gagal update pecahan %s: %w", s.id, err)
 		}
 	}
 	return len(steps), nil
+}
+
+// vendorHasAccountTx: vendor punya rekening terdaftar.
+func vendorHasAccountTx(tx *sql.Tx, vendorID string) bool {
+	var number string
+	tx.QueryRow(`SELECT COALESCE(account_number, '') FROM vendors WHERE id = $1`, strings.TrimSpace(vendorID)).Scan(&number)
+	return strings.TrimSpace(number) != ""
 }
 
 // purchaseActionVerb: bentuk pasif aksi status untuk pesan galat.
@@ -1532,8 +1568,22 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 		if err := requireRegisteredVendorTx(tx, id); err != nil {
 			return notice, err
 		}
-		res, err = tx.Exec("UPDATE purchase_requests SET status=$1, updated_at=$2 WHERE id=$3 AND status=$4",
-			newStatus, now, id, fromStatus)
+		// Tujuan pembayaran ditetapkan Pembelian di sini (keputusan owner
+		// 19 Nov 2026); Keuangan hanya membacanya saat membayar.
+		st, perr := payToFromInputTx(tx, id, input.PayTo)
+		if perr != nil {
+			return notice, perr
+		}
+		res, err = tx.Exec(`
+			UPDATE purchase_requests SET status=$1, updated_at=$2,
+			       pay_to_method=$5, pay_to_marketplace=$6, pay_to_order_number=$7,
+			       pay_to_bank_name=$8, pay_to_account_number=$9, pay_to_account_holder=$10, pay_to_text=$11, pay_to_note=$12,
+			       pay_to_set_by=$13, pay_to_set_by_id=$14, pay_to_set_at=$2,
+			       pay_to_returned_at=NULL, pay_to_returned_by='', pay_to_returned_by_id=NULL, pay_to_return_reason=''
+			WHERE id=$3 AND status=$4`,
+			newStatus, now, id, fromStatus,
+			st.method, st.marketplace, st.orderNumber, st.bank, st.number, st.holder, st.text, st.note,
+			input.ActorName, actorID)
 	case "pay":
 		// FOR UPDATE di transaksi yang sama: dua pembayaran bersamaan (double
 		// click / retry) tidak boleh sama-sama membaca paid_amount lama — tanpa
@@ -1607,7 +1657,19 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 
 		// Snapshot the registered account or this order's explicit marketplace
 		// VA. Neither changes to the vendor nor future orders alter this history.
-		dest, destErr := vendorPaymentDestTx(tx, vendorID, input)
+		//
+		// Kantor Pusat membayar ke tujuan yang ditetapkan Pembelian
+		// (payToDestTx) — isian tujuan di body Keuangan diabaikan. Kas Kasir
+		// Outlet: tunainya sudah keluar dari laci saat sampai di sini (tujuan
+		// diperiksa ketika tugas ditetapkan), jadi penyelesaiannya tidak boleh
+		// gagal karena isian Pembelian berubah sesudahnya.
+		var dest paymentDest
+		var destErr error
+		if input.CashPayoutID != "" {
+			dest, destErr = vendorPaymentDestTx(tx, vendorID, input)
+		} else {
+			dest, destErr = payToDestTx(tx, id)
+		}
 		if destErr != nil {
 			return notice, destErr
 		}

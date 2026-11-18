@@ -90,11 +90,24 @@ func TestMarketplacePaymentSnapshotsPerTransactionWithoutChangingVendor(t *testi
 	sfx := reviewSuffix()
 	v := snapshotVendor(t, "Marketplace Toko "+sfx, "BCA", "111222333", "Toko Uji")
 	pr := snapshotBill(t, "Zzz-Uji-VA-"+sfx, 1000000, v.ID)
+	// VA milik satu checkout: Pembelian mengisi VA baru per cicilan (sejak
+	// 19 Nov 2026), Keuangan hanya membayar — isian VA di body bayar diabaikan.
 	for i, va := range []string{"001234567890", "009876543210"} {
-		_, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{
+		cur, err := GetPurchaseRequest(pr.ID)
+		if err != nil {
+			t.Fatalf("muat %d: %v", i+1, err)
+		}
+		if _, err := UpdatePurchasePaymentDetails(pr.ID, models.PurchasePaymentDetailsInput{
+			Method: PayToMarketplaceVA, Marketplace: "Tokopedia", OrderNumber: "ORDER-" + va,
+			BankName: "Mandiri", AccountNumber: va, AccountHolder: "Tokopedia",
+			Version: cur.Version, ActorName: "pembelian",
+		}); err != nil {
+			t.Fatalf("detail VA %d: %v", i+1, err)
+		}
+		_, err = UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{
 			Action: "pay", ActorName: "keuangan", PaymentAmount: 500000, PaymentMethod: "marketplace_va",
-			PaymentMarketplace: "Tokopedia", PaymentOrderNumber: "ORDER-" + va,
-			PaymentBankName: "Mandiri", PaymentAccountNumber: va, PaymentAccountHolder: "Tokopedia",
+			PaymentMarketplace: "Shopee", PaymentOrderNumber: "BUKAN-INI",
+			PaymentBankName: "BRI", PaymentAccountNumber: "000999", PaymentAccountHolder: "Orang Lain",
 		})
 		if err != nil {
 			t.Fatalf("payment %d: %v", i+1, err)

@@ -390,6 +390,14 @@ func UpdatePurchaseStatus(c *fiber.Ctx) error {
 	if !allowed {
 		return purchaseForbidden(c, "")
 	}
+	// Keuangan membayar ke tujuan yang ditetapkan Pembelian: versi dokumen
+	// wajib supaya detail yang diubah Pembelian setelah form Bayar dibuka
+	// ditolak 409 — tidak pernah tercatat ke tujuan yang tidak dilihat.
+	if input.Action == "pay" && strings.TrimSpace(input.Version) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false, Error: "Versi pengajuan wajib dikirim saat membayar — muat ulang halaman Pembayaran lalu coba lagi.",
+		})
+	}
 
 	// Pelaku dari sesi login; actor_name kiriman UI lama diabaikan (T-7).
 	actor := purchaseActor(c)

@@ -171,26 +171,59 @@ diabaikan sistem — nilai pengajuan sampai tahap persetujuan selalu HPS.
 **Bila satu pengajuan dibeli dari beberapa vendor**, pakai **Pecah per Vendor**: item dipindahkan
 ke dokumen anak dengan vendornya masing-masing. Pembayaran lalu dilakukan per vendor.
 
-### 4.2 Mengajukan pembayaran
+### 4.2 Mengajukan pembayaran — Pembelian mengisi tujuan pembayaran
 
 Setelah harga final semua item terisi dan vendor dipilih dari daftar, tekan **Ajukan
-Pembayaran**. Status menjadi **Menunggu Pembayaran** dan muncul di menu **Pembayaran**.
-Pengajuan tanpa vendor terdaftar tidak bisa diajukan pembayarannya.
+Pembayaran**. Bagian **Pembelian** — yang memesan ke vendor dan tahu cara bayarnya — wajib
+memilih **Cara Bayar ke Vendor**:
 
-### 4.3 Pembayaran
+- **Rekening Vendor** — transfer ke rekening **terdaftar** vendor. Nomornya diambil dari data
+  Vendor dan tidak bisa diketik; bila rekeningnya berubah, perbarui di menu **Vendor**.
+- **VA Marketplace** — marketplace, nomor pesanan, bank, nomor VA, dan atas nama, disalin dari
+  halaman checkout pesanan itu. Nomor VA hanya berlaku untuk satu transaksi.
+- **Tunai / Cara Lain** — hanya untuk vendor yang **belum punya rekening terdaftar**, mis.
+  "Tunai saat barang diantar".
 
-Bagian Keuangan membuka **Pembayaran**, memilih rekening sumber (rekening perusahaan),
-mengunggah bukti transfer, lalu menyimpan. Pembayaran boleh **sebagian** (cicil) dan boleh
-**mundur** — barang boleh diterima lebih dulu, tagihannya tetap tercatat sampai lunas. Halaman
-Pembayaran hanya memuat pengajuan yang sudah disetujui.
+Tambahkan **Catatan untuk Keuangan** bila perlu (mis. jam kedaluwarsa VA). Status menjadi
+**Menunggu Pembayaran** dan muncul di menu **Pembayaran**. Pengajuan tanpa vendor terdaftar
+tidak bisa diajukan pembayarannya.
+
+Selama tagihan belum lunas, Pembelian bisa **Ubah Detail Pembayaran** di detail pengajuan
+(mis. VA kedaluwarsa, atau cicilan berikutnya dengan VA baru). Keuangan diberi tahu setiap kali
+detail disimpan. Detail tidak bisa diubah selama tugas **Kas Kasir Outlet** masih terbuka.
+
+Pada pengajuan yang dipecah per vendor, pecahan yang vendornya punya rekening terdaftar ikut
+diajukan bersama induknya (ke rekening vendornya masing-masing). Pecahan yang butuh VA atau
+tunai diajukan dari detail pecahannya sendiri.
+
+### 4.3 Pembayaran — Keuangan membaca, menyalin, dan memilih sumber dana
+
+Bagian Keuangan membuka **Pembayaran** dan melihat **Tujuan Pembayaran** yang diisi Pembelian
+apa adanya — tidak bisa diubah. Tombol **Salin** tersedia untuk nomor rekening / VA, atas nama,
+nomor pesanan, dan nominal. Keuangan lalu memilih **Sumber Dana** dan **Rekening Asal**
+(rekening perusahaan), mengisi jumlah bila dicicil, nomor referensi, dan bukti transfer, lalu
+menyimpan. Pembayaran boleh **sebagian** (cicil) dan boleh **mundur** — barang boleh diterima
+lebih dulu, tagihannya tetap tercatat sampai lunas. Halaman Pembayaran hanya memuat pengajuan
+yang sudah disetujui.
+
+**Detail salah atau kedaluwarsa?** Tekan **Kembalikan ke Pembelian** (ikon kembali di baris
+pengajuan, di detail, atau di form Bayar) dan tulis alasannya. Baris berlabel **Dikembalikan ke
+Pembelian** beserta alasannya, tombol Bayar terkunci, dan Pembelian diberi tahu; setelah
+Pembelian memperbaikinya, pengajuan siap dibayar lagi. Pengajuan lama yang vendornya belum punya
+rekening dan belum diisi detailnya berlabel **Menunggu detail Pembelian**.
+
+Bila Pembelian mengubah detail saat form Bayar sedang dibuka, konfirmasi pembayaran **ditolak**
+dan form ditutup dengan data terbaru — pembayaran tidak pernah tercatat ke tujuan yang berbeda
+dari yang dilihat Keuangan. **Bayar sekaligus** beberapa pengajuan hanya untuk vendor yang sama
+dengan tujuan rekening terdaftar; VA marketplace dan tunai dibayar satu per satu.
 
 **Bayar per struk.** Bila pengajuan punya struk, form bayar menampilkan pilihan **Struk yang
 Dibayar** beserta sisanya; jumlah yang dikosongkan berarti melunasi sisa struk itu. Tanpa memilih
 struk (mis. bayar sekaligus beberapa pengajuan), pembayaran dibagi ke struk yang belum lunas,
 terlama dulu. Riwayat pembayaran mencatat struk mana yang dibayar.
 
-**Rekening tujuan diambil otomatis dari data vendor** dan tidak bisa diketik ulang di form bayar.
-Rekening itu **disimpan permanen pada setiap pembayaran**:
+**Rekening tujuan diambil otomatis dari data vendor** dan tidak bisa diketik ulang, baik oleh
+Pembelian maupun Keuangan. Rekening itu **disimpan permanen pada setiap pembayaran**:
 
 - Bila vendor kemudian mengganti nomor rekeningnya, **pembayaran lama tetap tercatat dengan
   rekening lama**; pembayaran berikutnya memakai rekening baru.
@@ -198,8 +231,8 @@ Rekening itu **disimpan permanen pada setiap pembayaran**:
   di halaman detail vendor. Selama 30 hari setelah perubahan, form bayar menampilkan peringatan
   beserta rekening sebelumnya. **Konfirmasi ke vendor bahwa perubahan itu sah sebelum
   mentransfer.**
-- Vendor tanpa rekening terdaftar: tulis cara bayarnya (mis. "Tunai"). Pembayaran itu tercatat
-  dengan tanda **manual**.
+- Vendor tanpa rekening terdaftar: Pembelian menulis cara bayarnya (mis. "Tunai"). Pembayaran
+  itu tercatat dengan tanda **manual**.
 
 Di layar Pembayaran, tiap baris menampilkan **dua keadaan sekaligus**: status pembayaran dan
 penanda *Barang sudah/belum diterima*. Membayar barang yang belum datang adalah keputusan yang
@@ -235,7 +268,9 @@ Agar uang yang sama tidak tercatat dua kali:
   bisa diklasifikasi ulang manual. Laporan tutup kasir outlet tetap menampilkannya sebagai
   kas keluar, sehingga saldo laci tetap cocok.
 
-Pengajuan tanpa outlet (mis. milik gudang pusat) hanya bisa dibayar Kantor Pusat.
+Pengajuan tanpa outlet (mis. milik gudang pusat) hanya bisa dibayar Kantor Pusat. Begitu juga
+tujuan **VA Marketplace** (dibayar lewat transfer), dan pengajuan yang detail pembayarannya
+sedang **dikembalikan ke Pembelian**.
 
 ---
 
@@ -346,15 +381,15 @@ datang sebelum maupun sesudah dibayar.
 | **Bagian Perlengkapan (verifikator)** | `procurement.requests.view`, `procurement.requests.verify` |
 | **Penyetuju (owner)** | `procurement.requests.approve` |
 | **Petugas Logistik** | `procurement.requests.pickup` dan/atau `procurement.rawmaterials.pickup` (Pengambilan Barang) |
-| **Pembelian Barang & Perlengkapan** | `procurement.requests.view`, `procurement.requests.purchasing` |
-| **Keuangan** | `finance.payments.view`, `finance.payments.pay` |
+| **Pembelian Barang & Perlengkapan** | `procurement.requests.view`, `procurement.requests.purchasing` (termasuk mengisi & mengubah tujuan pembayaran) |
+| **Keuangan** | `finance.payments.view`, `finance.payments.pay` (membayar, memilih sumber dana, mengembalikan detail pembayaran ke Pembelian) |
 | **Logistik / Gudang** | `stockledger.adjust`, `stocktransfers.*` |
 | **Asset Officer** | `assets.create`, `assets.update`, `procurement.requests.submit` |
 | **PIC Projek** | `procurement.projects.view`, `procurement.projects.manage` (susun & tetapkan RAB) |
 | **Kepala Gudang Induk** | `procurement.rawmaterials.view`, `procurement.rawmaterials.submit` (Pengadaan Bahan Baku, lihat §12) |
 | **Manager Logistik** | `procurement.rawmaterials.view`, `procurement.rawmaterials.approve` |
 | **PPIC / Perencana Bahan** | `procurement.rawmaterials.view`, `procurement.rawmaterials.submit` (draft dari MRP) |
-| **Pembelian Bahan Baku** | `procurement.rawmaterials.view`, `procurement.rawmaterials.purchasing` |
+| **Pembelian Bahan Baku** | `procurement.rawmaterials.view`, `procurement.rawmaterials.purchasing` (termasuk tujuan pembayaran) |
 
 Di menu **Role**, izin ini tampil sebagai pilihan **Lihat · Buat/Hapus · Verifikasi · Approval ·
 Pembelian · Pengambilan Barang** pada baris *Pengadaan Barang, Perlengkapan & Jasa*, dan **Lihat ·

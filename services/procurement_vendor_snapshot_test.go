@@ -25,7 +25,24 @@ func snapshotVendor(t *testing.T, name, bank, number, holder string) *models.Ven
 }
 
 // snapshotBill: pengajuan jasa sampai 'payment_requested' ke vendor vendorID.
-func snapshotBill(t *testing.T, item string, price float64, vendorID string) *models.PurchaseRequest {
+// payTo (opsional) = tujuan pembayaran isian Pembelian; tanpa itu = rekening
+// vendor terdaftar.
+func snapshotBill(t *testing.T, item string, price float64, vendorID string, payTo ...*models.PurchasePaymentDetailsInput) *models.PurchaseRequest {
+	t.Helper()
+	pr := snapshotPriced(t, item, price, vendorID)
+	in := models.UpdatePurchaseStatusInput{Action: "request_payment", ActorName: "pembelian"}
+	if len(payTo) > 0 {
+		in.PayTo = payTo[0]
+	}
+	if _, err := UpdatePurchaseStatus(pr.ID, in); err != nil {
+		t.Fatalf("ajukan bayar: %v", err)
+	}
+	return pr
+}
+
+// snapshotPriced: pengajuan jasa sudah disetujui dan berharga final, vendor
+// terdaftar vendorID — siap diajukan pembayarannya.
+func snapshotPriced(t *testing.T, item string, price float64, vendorID string) *models.PurchaseRequest {
 	t.Helper()
 	group := func(final float64) []models.PurchaseRequestItem {
 		return []models.PurchaseRequestItem{{Name: "Servis", Items: []models.PurchaseSubItem{
@@ -42,9 +59,6 @@ func snapshotBill(t *testing.T, item string, price float64, vendorID string) *mo
 	verifyAndApprove(t, pr.ID)
 	if _, err := UpdatePurchaseItems(pr.ID, models.UpdatePurchaseItemsInput{Items: group(price), VendorID: &vendorID}); err != nil {
 		t.Fatalf("isi harga: %v", err)
-	}
-	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "request_payment", ActorName: "pembelian"}); err != nil {
-		t.Fatalf("ajukan bayar: %v", err)
 	}
 	return pr
 }
@@ -107,21 +121,29 @@ func TestPaymentSnapshotsVendorAccount(t *testing.T) {
 	}
 }
 
-// Vendor tanpa rekening terdaftar (mis. belanja tunai di pasar): pembayar wajib
-// menulis rekening/cara bayarnya, dan pembayaran itu ditandai manual.
+// Vendor tanpa rekening terdaftar (mis. belanja tunai di pasar): Pembelian
+// wajib menulis cara bayarnya saat mengajukan pembayaran (sejak 19 Nov 2026,
+// bukan Keuangan saat membayar), dan pembayaran itu ditandai manual.
 func TestPayVendorWithoutAccountIsManual(t *testing.T) {
 	requireDB(t)
 	sfx := reviewSuffix()
 	v := snapshotVendor(t, "Pasar Uji "+sfx, "", "", "")
-	pr := snapshotBill(t, "Zzz-Uji-Tunai-"+sfx, 250000, v.ID)
+	pr := snapshotPriced(t, "Zzz-Uji-Tunai-"+sfx, 250000, v.ID)
 
-	_, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "pay", ActorName: "keuangan"})
+	_, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{Action: "request_payment", ActorName: "pembelian"})
 	var ve ValidationError
 	if !errors.As(err, &ve) || !strings.Contains(ve.Msg, "belum punya rekening terdaftar") {
-		t.Fatalf("bayar vendor tanpa rekening tanpa keterangan: %v, mau ValidationError", err)
+		t.Fatalf("ajukan bayar vendor tanpa rekening tanpa cara bayar: %v, mau ValidationError", err)
 	}
 	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{
-		Action: "pay", ActorName: "keuangan", PaymentAccountDest: "Tunai",
+		Action: "request_payment", ActorName: "pembelian",
+		PayTo: &models.PurchasePaymentDetailsInput{Method: PayToManual, Text: "Tunai"},
+	}); err != nil {
+		t.Fatalf("ajukan bayar tunai: %v", err)
+	}
+	// Ketikan tujuan dari Keuangan diabaikan: yang tercatat isian Pembelian.
+	if _, err := UpdatePurchaseStatus(pr.ID, models.UpdatePurchaseStatusInput{
+		Action: "pay", ActorName: "keuangan", PaymentAccountDest: "BRI 9999999999 a.n. Orang Lain",
 	}); err != nil {
 		t.Fatalf("bayar tunai: %v", err)
 	}

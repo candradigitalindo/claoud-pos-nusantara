@@ -3259,6 +3259,31 @@ func RunMigrations() error {
 			log.Printf("Outlet cash payout migration skipped: %v", err)
 		}
 	}
+	// Tujuan pembayaran diisi bagian Pembelian (Nov 2026): cara bayar vendor
+	// (rekening terdaftar / VA marketplace / tunai-cara lain) ditetapkan saat
+	// mengajukan pembayaran; Keuangan hanya membaca dan memilih sumber dana.
+	// pay_to_returned_*: Keuangan mengembalikan detail yang salah ke Pembelian.
+	for _, m := range []string{
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_method VARCHAR(20) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_marketplace VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_order_number VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_bank_name VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_account_number VARCHAR(50) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_account_holder VARCHAR(200) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_text VARCHAR(300) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_note TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_set_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_set_by_id CHAR(26)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_set_at TIMESTAMP`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_returned_at TIMESTAMP`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_returned_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_returned_by_id CHAR(26)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS pay_to_return_reason TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Purchase pay-to migration skipped: %v", err)
+		}
+	}
 
 	// CHECK paid_amount ≤ total_final (T-87): pembayaran tidak pernah melebihi
 	// tagihan. Aman sejak pelunasan dibandingkan dalam sen dan item hanya bisa

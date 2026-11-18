@@ -24,6 +24,14 @@ export const purchaseApi = {
   updateItems: (id, data) =>
     apiClient.put(`/admin/purchase-requests/${id}/items`, data),
 
+  // Tujuan pembayaran diisi bagian Pembelian; Keuangan hanya membaca dan
+  // mengembalikannya bila salah. Keduanya wajib membawa `version`.
+  updatePaymentDetails: (id, data) =>
+    apiClient.put(`/admin/purchase-requests/${id}/payment-details`, data),
+
+  returnPaymentDetails: (id, data) =>
+    apiClient.post(`/admin/purchase-requests/${id}/payment-details/return`, data),
+
   splitVendor: (id, data) =>
     apiClient.post(`/admin/purchase-requests/${id}/split`, data),
 

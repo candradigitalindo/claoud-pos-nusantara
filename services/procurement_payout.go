@@ -167,6 +167,21 @@ func AssignCashPayout(in models.AssignCashPayoutInput) (*models.ProcurementCashP
 	if strings.TrimSpace(vendorID) == "" {
 		return nil, Invalid("pengajuan ini belum memilih vendor terdaftar")
 	}
+	// Tujuan pembayaran milik Pembelian: tugas kas tidak boleh berjalan di atas
+	// detail yang sedang dikembalikan / belum diisi, dan VA marketplace
+	// dibayar lewat transfer Kantor Pusat.
+	payTo, err := payToForPRTx(tx, prID)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case payTo.ReturnedAt != nil:
+		return nil, Invalid("detail pembayaran pengajuan ini sedang dikembalikan ke Pembelian — tunggu perbaikannya")
+	case payTo.Effective == PayToMarketplaceVA:
+		return nil, Invalid("Virtual Account Marketplace dibayar lewat transfer Kantor Pusat, bukan Kas Kasir Outlet")
+	case !payTo.Ready:
+		return nil, Invalid("belum bisa dibayar: %s", payTo.Problem)
+	}
 	var active bool
 	if err := tx.QueryRow(`SELECT is_active FROM outlets WHERE id = $1`, outletID).Scan(&active); err != nil || !active {
 		return nil, Invalid("outlet pengajuan ini tidak aktif — bayar dari Kantor Pusat")

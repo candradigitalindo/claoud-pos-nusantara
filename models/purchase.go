@@ -115,6 +115,9 @@ type PurchaseRequest struct {
 	// CashPayout: tugas Kas Kasir Outlet terakhir yang masih relevan
 	// (menunggu / diproses kasir / dikembalikan) — untuk halaman Pembayaran.
 	CashPayout *ProcurementCashPayout `json:"cash_payout,omitempty"`
+	// PayTo: tujuan pembayaran yang ditetapkan bagian Pembelian. Keuangan
+	// hanya membacanya (lihat PurchasePayTo).
+	PayTo PurchasePayTo `json:"pay_to"`
 	ReceivedBy           *string                `json:"received_by"`
 	ReceivedAt           *string                `json:"received_at"`
 	// ReceiptStatus berdiri sendiri dari Status: '' (belum diterima), 'partial',
@@ -245,6 +248,72 @@ type UpdatePurchaseStatusInput struct {
 	// CashPayoutID (internal, aksi pay): pembayaran ini berasal dari tugas
 	// Kas Kasir Outlet yang sudah diproses tablet. Tidak bisa diisi dari body.
 	CashPayoutID string `json:"-"`
+	// PayTo (aksi request_payment): tujuan pembayaran dari bagian Pembelian.
+	// Kosong = rekening vendor terdaftar (bila vendor punya rekening).
+	PayTo *PurchasePaymentDetailsInput `json:"pay_to,omitempty"`
+}
+
+// PurchasePayTo: tujuan pembayaran sebuah pengajuan. Diisi bagian Pembelian
+// saat mengajukan pembayaran dan boleh diubah selama tagihan belum lunas;
+// Keuangan hanya membaca, lalu memilih sumber dana.
+//
+// Method = isian Pembelian ('' bila belum pernah diisi — data lama).
+// Effective = metode yang berlaku sekarang: data lama tanpa isian memakai
+// rekening vendor terdaftar bila ada. Untuk vendor_account, BankName,
+// AccountNumber, dan AccountHolder adalah rekening vendor SAAT INI (dipotret
+// ke riwayat saat dibayar). Ready=false → belum bisa dibayar; Problem
+// menjelaskan sebabnya (dikembalikan, belum diisi, rekening kosong).
+type PurchasePayTo struct {
+	Method        string  `json:"method"`
+	Effective     string  `json:"effective"`
+	BankName      string  `json:"bank_name"`
+	AccountNumber string  `json:"account_number"`
+	AccountHolder string  `json:"account_holder"`
+	Marketplace   string  `json:"marketplace"`
+	OrderNumber   string  `json:"order_number"`
+	Text          string  `json:"text"`
+	Note          string  `json:"note"`
+	SetBy         string  `json:"set_by"`
+	SetAt         *string `json:"set_at"`
+	ReturnedAt    *string `json:"returned_at"`
+	ReturnedBy    string  `json:"returned_by"`
+	ReturnReason  string  `json:"return_reason"`
+	Ready         bool    `json:"ready"`
+	Problem       string  `json:"problem"`
+	// Rekening terdaftar vendor saat ini — acuan form Pembelian (opsi
+	// "Rekening Vendor Terdaftar" hanya bila nomornya ada).
+	VendorBankName      string `json:"vendor_bank_name"`
+	VendorAccountNumber string `json:"vendor_account_number"`
+	VendorAccountHolder string `json:"vendor_account_holder"`
+}
+
+// PurchasePaymentDetailsInput: tujuan pembayaran dari bagian Pembelian.
+// Method: vendor_account (rekening vendor terdaftar — tidak bisa diketik),
+// marketplace_va (VA dari checkout), manual (tunai / cara bayar lain — hanya
+// untuk vendor yang belum punya rekening terdaftar).
+type PurchasePaymentDetailsInput struct {
+	Method        string `json:"method"`
+	Marketplace   string `json:"marketplace"`
+	OrderNumber   string `json:"order_number"`
+	BankName      string `json:"bank_name"`
+	AccountNumber string `json:"account_number"`
+	AccountHolder string `json:"account_holder"`
+	Text          string `json:"text"`
+	Note          string `json:"note"`
+	// Version wajib saat mengubah detail (PUT payment-details); diabaikan
+	// di dalam aksi request_payment (versi dibawa input status).
+	Version   string `json:"version,omitempty"`
+	ActorName string `json:"-"`
+	ActorID   string `json:"-"`
+}
+
+// PurchasePaymentReturnInput: Keuangan mengembalikan detail pembayaran yang
+// salah/kurang ke bagian Pembelian.
+type PurchasePaymentReturnInput struct {
+	Reason    string `json:"reason"`
+	Version   string `json:"version"`
+	ActorName string `json:"-"`
+	ActorID   string `json:"-"`
 }
 
 // VerifyRejectedItemInput menunjuk satu sub-item menurut isi tersimpan:

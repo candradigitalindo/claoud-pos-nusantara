@@ -179,8 +179,17 @@ func TestKeuanganMurniBisaMembukaDanMembayarTagihan(t *testing.T) {
 	if code != fiber.StatusOK || len(list.Requests) != 0 {
 		t.Errorf("daftar biasa: status %d, %d baris — mau 200 tanpa baris", code, len(list.Requests))
 	}
-	if code, res = rutePanggil(t, app, "GET", base+"/"+prID, bayarTok, nil); code != fiber.StatusOK {
+	code, res = rutePanggil(t, app, "GET", base+"/"+prID, bayarTok, nil)
+	if code != fiber.StatusOK {
 		t.Errorf("detail: status %d (%s), mau 200", code, res.Error)
+	}
+	// Versi dokumen yang dibuka: wajib dikirim saat membayar (tujuan pembayaran
+	// milik Pembelian — perubahan sesudah dibuka ditolak 409).
+	raw, _ = json.Marshal(res.Data)
+	var opened models.PurchaseRequest
+	json.Unmarshal(raw, &opened)
+	if !opened.PayTo.Ready || opened.PayTo.Effective != "vendor_account" {
+		t.Errorf("tujuan pembayaran tagihan uji = %+v, mau rekening vendor terdaftar yang siap dibayar", opened.PayTo)
 	}
 	// Modal Bayar memuat rekening vendor tujuan (isi otomatis rekening tujuan).
 	v, err := services.CreateVendor(models.CreateVendorRequest{Name: "Vendor Uji Rute " + suffix, BankName: "BCA",
@@ -204,8 +213,13 @@ func TestKeuanganMurniBisaMembukaDanMembayarTagihan(t *testing.T) {
 	if code, _ = rutePanggil(t, app, "PUT", base+"/"+prID+"/status", lihatTok, map[string]interface{}{"action": "pay"}); code != fiber.StatusForbidden {
 		t.Errorf("keuangan tanpa izin bayar membayar: status %d, mau 403", code)
 	}
+	if code, _ = rutePanggil(t, app, "PUT", base+"/"+prID+"/status", bayarTok, map[string]interface{}{
+		"action": "pay", "payment_amount": 0, "payment_notes": "uji rute tanpa versi",
+	}); code != fiber.StatusBadRequest {
+		t.Errorf("keuangan membayar tanpa versi: status %d, mau 400", code)
+	}
 	code, res = rutePanggil(t, app, "PUT", base+"/"+prID+"/status", bayarTok, map[string]interface{}{
-		"action": "pay", "payment_amount": 0, "actor_name": "Nama Palsu", "payment_notes": "uji rute",
+		"action": "pay", "payment_amount": 0, "actor_name": "Nama Palsu", "payment_notes": "uji rute", "version": opened.Version,
 	})
 	if code != fiber.StatusOK {
 		t.Fatalf("keuangan membayar: status %d (%s), mau 200", code, res.Error)

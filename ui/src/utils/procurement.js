@@ -183,21 +183,126 @@ export function requestPaymentReadiness(doc) {
   }
   if (isMaster) {
     const approved = (doc.children || []).filter(c => c?.status === 'approved')
-    const ready = approved.filter(c => !unpricedItemNames(c).length && hasRegisteredVendor(c))
+    // Pecahan ikut ke rekening terdaftar vendornya; pecahan yang vendornya
+    // belum punya rekening (butuh VA / tunai) diajukan sendiri (cermin
+    // cascadeStatusToChildrenTx).
+    const ready = approved.filter(c => !unpricedItemNames(c).length && hasRegisteredVendor(c) && vendorHasAccount(c))
     for (const c of approved) {
       const miss = unpricedItemNames(c)
       if (miss.length) {
         notes.push(`Pecahan ${childLabel(c)} belum berharga lengkap (${nameList(miss, 3)}) sehingga tidak ikut diajukan — isi harganya lalu ajukan dari detail pecahan itu.`)
       } else if (!hasRegisteredVendor(c)) {
         notes.push(`Pecahan ${childLabel(c)} belum memilih vendor dari daftar vendor sehingga tidak ikut diajukan — pilih vendornya lewat Isi Harga di detail pecahan itu.`)
+      } else if (!vendorHasAccount(c)) {
+        notes.push(`Pecahan ${childLabel(c)}: vendornya belum punya rekening terdaftar sehingga tidak ikut diajukan — ajukan dari detail pecahan itu beserta cara bayarnya (VA marketplace / tunai).`)
       }
     }
-    if (ready.length) notes.push(`Pecahan yang ikut diajukan: ${ready.map(childLabel).join(', ')}.`)
+    if (ready.length) notes.push(`Pecahan yang ikut diajukan (ke rekening terdaftar vendornya): ${ready.map(childLabel).join(', ')}.`)
     if (!ownItemCount(doc) && !ready.length) {
-      blockers.push('Tidak ada pecahan yang bisa diajukan pembayarannya — pecahan yang belum berharga lengkap diajukan dari detail pecahannya setelah harganya diisi.')
+      blockers.push('Tidak ada pecahan yang bisa diajukan pembayarannya — pecahan yang belum berharga lengkap, atau yang vendornya belum punya rekening, diajukan dari detail pecahannya.')
     }
   }
   return { ok: blockers.length === 0, blockers, notes }
+}
+
+// ── Tujuan pembayaran (diisi Pembelian, dibaca Keuangan) ───────────────────
+// Cermin services/purchase_payto.go (keputusan owner 19 Nov 2026):
+//   - vendor_account: rekening vendor TERDAFTAR (dari data Vendor, tidak bisa
+//     diketik — aturan 14 Okt 2026);
+//   - marketplace_va: VA dari checkout satu pesanan;
+//   - manual: tunai / cara bayar lain — hanya untuk vendor tanpa rekening.
+// Keuangan hanya membaca `pay_to`, memilih sumber dana, atau mengembalikannya.
+
+export const PAY_TO_LABELS = {
+  vendor_account: 'Rekening Vendor Terdaftar',
+  marketplace_va: 'Virtual Account Marketplace',
+  manual: 'Tunai / Cara Bayar Lain',
+}
+
+/** Status yang masih bisa dibayar (cermin validTransitions["pay"]). */
+export const PAY_STAGE_STATUSES = ['payment_requested', 'partial', 'received']
+
+/** Vendor dokumen punya rekening terdaftar (dari pay_to server). */
+export function vendorHasAccount(doc) {
+  return !!String(doc?.pay_to?.vendor_account_number || '').trim()
+}
+
+/** Form awal dari pay_to dokumen: isian sebelumnya, atau rekening terdaftar. */
+export function newPayToForm(payTo) {
+  const p = payTo || {}
+  const hasAcct = !!String(p.vendor_account_number || '').trim()
+  let method = p.method || (hasAcct ? 'vendor_account' : '')
+  if (method === 'vendor_account' && !hasAcct) method = ''
+  if (method === 'manual' && hasAcct) method = 'vendor_account'
+  const va = p.method === 'marketplace_va'
+  return {
+    method,
+    marketplace: va ? p.marketplace || '' : '',
+    order_number: va ? p.order_number || '' : '',
+    bank_name: va ? p.bank_name || '' : '',
+    account_number: va ? p.account_number || '' : '',
+    account_holder: va ? p.account_holder || '' : '',
+    text: p.method === 'manual' ? p.text || '' : '',
+    note: p.note || '',
+  }
+}
+
+/** Pesan galat isian tujuan pembayaran (cermin resolvePayToInput); '' = sah. */
+export function payToFormError(form, payTo) {
+  const f = form || {}
+  const hasAcct = !!String(payTo?.vendor_account_number || '').trim()
+  const filled = v => String(v || '').trim() !== ''
+  switch (f.method) {
+    case 'vendor_account':
+      return hasAcct ? '' : 'Vendor ini belum punya rekening terdaftar — pilih VA Marketplace atau Tunai / cara bayar lain.'
+    case 'marketplace_va':
+      if (![f.marketplace, f.order_number, f.bank_name, f.account_number].every(filled)) {
+        return 'Marketplace, nomor pesanan, bank, dan nomor virtual account wajib diisi.'
+      }
+      if (!/^\d+$/.test(String(f.account_number).trim())) return 'Nomor virtual account harus berisi angka.'
+      return ''
+    case 'manual':
+      if (hasAcct) return 'Vendor ini punya rekening terdaftar — pembayarannya memakai rekening itu.'
+      return filled(f.text) ? '' : 'Tulis cara bayarnya, mis. "Tunai saat barang diantar".'
+    default:
+      return 'Pilih cara bayar ke vendor.'
+  }
+}
+
+/** Isian untuk API: hanya field milik metode terpilih. */
+export function payToPayload(form) {
+  const f = form || {}
+  const t = v => String(v || '').trim()
+  const out = { method: f.method, note: t(f.note) }
+  if (f.method === 'marketplace_va') {
+    Object.assign(out, {
+      marketplace: t(f.marketplace), order_number: t(f.order_number), bank_name: t(f.bank_name),
+      account_number: t(f.account_number), account_holder: t(f.account_holder),
+    })
+  }
+  if (f.method === 'manual') out.text = t(f.text)
+  return out
+}
+
+/** Detail pembayaran dokumen ini dikembalikan Keuangan (dan masih ditagih). */
+export function payToReturned(doc) {
+  return !!doc?.pay_to?.returned_at && PAY_STAGE_STATUSES.includes(doc?.status)
+}
+
+/**
+ * Bisakah Pembelian mengubah detail pembayaran dokumen ini? (cermin
+ * payToEditableTx). Hasil: { show, editable, reason }.
+ */
+export function payToEditState(doc) {
+  const none = { show: false, editable: false, reason: '' }
+  if (!doc || !PAY_STAGE_STATUSES.includes(doc.status)) return none
+  if (doc.split_status === 'master' && !ownItemCount(doc)) return none
+  if (!(Number(doc.total_final || 0) - Number(doc.paid_amount || 0) > 0.004)) return none
+  const cp = doc.cash_payout
+  if (cp && ['pending', 'claimed'].includes(cp.status)) {
+    return { show: true, editable: false, reason: 'Sedang dibayar dari Kas Kasir Outlet — minta Keuangan menarik tugasnya dulu.' }
+  }
+  return { show: true, editable: true, reason: '' }
 }
 
 // ── Penerimaan (Serah Terima) ──────────────────────────────────────────────

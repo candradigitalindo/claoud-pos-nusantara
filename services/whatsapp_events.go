@@ -284,6 +284,16 @@ Tagihan: *{total}* · {outlet} {work_unit}
 Diajukan oleh {actor}. Mohon diproses di menu Pembayaran.`,
 	},
 	{
+		Key: "purchase.payment_returned", Label: "Detail pembayaran dikembalikan ke Pembelian", Group: "Pengadaan", Audience: "internal",
+		Permissions:  []string{"procurement.requests.purchasing"},
+		Description:  "Keuangan mengembalikan tujuan pembayaran yang salah/kurang; Pembelian memperbaikinya lewat Ubah Detail Pembayaran.",
+		Placeholders: []string{"company", "number", "type", "outlet", "work_unit", "vendor", "total", "actor", "reason"},
+		Template: `↩️ *Detail pembayaran {number} dikembalikan*
+Vendor: {vendor} · tagihan {total}
+Alasan: {reason}
+Dikembalikan oleh {actor}. Mohon perbaiki lewat Ubah Detail Pembayaran.`,
+	},
+	{
 		Key: "purchase.paid", Label: "Pembayaran pengadaan dicairkan", Group: "Pengadaan", Audience: "internal",
 		// Pembelian, keuangan (bukti pencairan), dan pengaju.
 		Permissions: []string{"procurement.requests.purchasing", "finance.payments.pay"}, Extra: "pengaju",
@@ -1016,6 +1026,9 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 		"submitted": "purchase.submitted", "verify": "purchase.verified", "approve": "purchase.approved",
 		"reject": "purchase.rejected", "request_payment": "purchase.payment_requested", "pay": "purchase.paid",
 		"priced": "purchase.priced", "picked_up": "purchase.picked_up", "received": "purchase.received",
+		// Pembelian mengubah/memperbaiki tujuan pembayaran → Keuangan diberi
+		// tahu tagihannya siap diproses; Keuangan mengembalikan → Pembelian.
+		"payment_details": "purchase.payment_requested", "payment_returned": "purchase.payment_returned",
 	}[action]
 	if event == "" {
 		return
@@ -1047,6 +1060,10 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 	ref := pr.ID + ":" + action
 	if action == "pay" {
 		ref += ":" + fmt.Sprintf("%.0f", pr.PaidAmount)
+	}
+	if action == "payment_details" || action == "payment_returned" {
+		// Bisa terjadi berkali-kali per pengajuan: tiap versi pesan sendiri.
+		ref += ":" + pr.Version
 	}
 	// Pengaju selalu diberi tahu perkembangan pengajuannya — termasuk tanda
 	// terima saat diajukan (konsep owner 14 Okt 2026). Dicocokkan lewat id
@@ -1194,6 +1211,11 @@ func SendStalePurchaseReminders(now time.Time) {
 		pr, err := GetPurchaseRequest(st.id)
 		if err != nil {
 			continue
+		}
+		if st.status == "payment_requested" && pr.PayTo.ReturnedAt != nil {
+			// Detail pembayaran dikembalikan Keuangan: bolanya di Pembelian.
+			stage.perm, stage.next = "procurement.requests.purchasing",
+				"Detail pembayaran dikembalikan Keuangan ("+pr.PayTo.ReturnReason+") — mohon perbaiki lewat Ubah Detail Pembayaran."
 		}
 		vars := waPurchaseVars(pr)
 		vars["status_label"] = purchaseStatusLabel(pr.Status)

@@ -50,7 +50,10 @@
                 <p class="font-mono text-[11px] text-gray-500">{{ row.request_number || '-' }}</p>
                 <p class="mt-0.5 text-sm font-medium text-gray-900 break-words">{{ purchaseDisplayNames(row) }}</p>
               </button>
-              <span :class="statusBadge(row.status)" class="shrink-0">{{ statusLabel(row.status) }}</span>
+              <div class="flex shrink-0 flex-col items-end gap-1">
+                <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+                <span v-if="payToReturned(row)" class="payto-returned-badge" title="Keuangan mengembalikan detail pembayaran — perbaiki di detail pengajuan">Detail bayar dikembalikan</span>
+              </div>
             </div>
             <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
               <dt class="text-gray-400">Unit</dt>
@@ -93,7 +96,10 @@
           </div>
         </template>
         <template #cell-status="{ row }">
-          <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+          <div class="flex flex-col items-start gap-1">
+            <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+            <span v-if="payToReturned(row)" class="payto-returned-badge" title="Keuangan mengembalikan detail pembayaran — perbaiki di detail pengajuan">Detail bayar dikembalikan</span>
+          </div>
         </template>
         <template #cell-created_at="{ row }">
           {{ formatDateTime(row.created_at) }}
@@ -388,6 +394,19 @@
             </div>
           </div>
 
+          <!-- Tujuan pembayaran: diisi Pembelian saat mengajukan; Keuangan hanya
+               membaca. Bisa diubah selama tagihan belum lunas. -->
+          <div v-if="payToEdit.show" class="col-span-1 sm:col-span-2">
+            <PurchasePayToCard :pay-to="detail.pay_to" :amount="detailRemaining">
+              <div v-if="canPurchasingPayTo" class="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-4 py-2">
+                <p v-if="!payToEdit.editable" class="mr-auto text-[11px] text-amber-700">{{ payToEdit.reason }}</p>
+                <AppButton size="sm" :variant="payToReturnedDetail ? 'primary' : 'secondary'" :disabled="!payToEdit.editable" @click="openPayToEdit">
+                  {{ payToReturnedDetail ? 'Perbaiki Detail Pembayaran' : 'Ubah Detail Pembayaran' }}
+                </AppButton>
+              </div>
+            </PurchasePayToCard>
+          </div>
+
           <!-- Penerimaan -->
           <div v-if="detail.received_by" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-purple-500 px-3 py-2.5">
@@ -609,7 +628,7 @@
                 <!-- Pecahan diajukan bayar sendiri: pecahan yang belum berharga saat
                      induknya diajukan tidak ikut cascade dan tertahan di 'approved'.
                      Nonaktif selama masih ada item tanpa harga final (server menolak). -->
-                <AppActionButton icon="pay" :label="paymentReadiness.ok ? '' : 'Isi harga final semua item dulu'" v-if="detail.parent_id" :disabled="!paymentReadiness.ok" @click="confirmDetailAction('request_payment')" />
+                <AppActionButton icon="pay" :label="paymentReadiness.ok ? 'Ajukan Pembayaran' : 'Isi harga final semua item dulu'" v-if="detail.parent_id" :disabled="!paymentReadiness.ok" @click="confirmDetailAction('request_payment')" />
               </div>
             </div>
 
@@ -744,7 +763,7 @@
       <template #footer>
         <div v-if="!parentDetailId" class="flex flex-wrap items-center gap-2 mr-auto">
           <!-- Nonaktif selama ada item tanpa harga final; alasannya tampil di atas. -->
-          <AppActionButton icon="pay" :label="paymentReadiness.ok ? '' : 'Belum bisa diajukan — lihat keterangan di atas'" v-if="detail && detail.status === 'approved' && authStore.hasPermission(perm('purchasing')) && !detail.parent_id" :disabled="!paymentReadiness.ok"
+          <AppActionButton icon="pay" :label="paymentReadiness.ok ? 'Ajukan Pembayaran' : 'Belum bisa diajukan — lihat keterangan di atas'" v-if="detail && detail.status === 'approved' && authStore.hasPermission(perm('purchasing')) && !detail.parent_id" :disabled="!paymentReadiness.ok"
             @click="confirmDetailAction('request_payment')" />
           <!-- Serah terima sejak disetujui: barang tempo boleh datang sebelum dibayar (T-79). -->
           <AppActionButton icon="receive" :label="(detail.receipt_status === 'partial' ? 'Lanjutkan Serah Terima' : 'Serah Terima')" v-if="canOpenReceiving && detail.status !== 'received'" @click="openReceiving()" />
@@ -861,7 +880,7 @@
     </AppModal>
 
     <!-- Confirm Action Modal (Approve / Pay / Receive) -->
-    <AppModal v-model="showActionConfirm" :title="actionConfirmTitle" size="sm">
+    <AppModal v-model="showActionConfirm" :title="actionConfirmTitle" :size="requestPayToNeeded ? 'lg' : 'sm'">
       <div class="flex items-start gap-3">
         <div :class="actionConfirmIconBg" class="shrink-0 w-10 h-10 rounded-full flex items-center justify-center">
           <svg v-if="pendingAction === 'approve'" class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -882,10 +901,30 @@
           </template>
         </div>
       </div>
+      <!-- Pembelian menetapkan tujuan pembayaran; Keuangan hanya membacanya. -->
+      <div v-if="requestPayToNeeded && requestPaymentCheck?.ok" class="mt-4 border-t border-gray-100 pt-4">
+        <PurchasePayToForm v-model="requestPayToForm" :pay-to="actionTarget?.pay_to" :error="requestPayToError" />
+      </div>
       <template #footer>
         <AppButton variant="secondary" @click="showActionConfirm = false">{{ pendingAction === 'cancel' ? 'Kembali' : 'Batal' }}</AppButton>
         <AppButton :variant="pendingAction === 'cancel' ? 'danger' : 'primary'" :loading="actionLoading"
           :disabled="!!requestPaymentCheck && !requestPaymentCheck.ok" @click="submitAction">{{ actionConfirmBtn }}</AppButton>
+      </template>
+    </AppModal>
+
+    <!-- Ubah / perbaiki tujuan pembayaran (Pembelian) selama tagihan belum lunas. -->
+    <AppModal v-model="showPayToEdit" :title="payToReturnedDetail ? 'Perbaiki Detail Pembayaran' : 'Ubah Detail Pembayaran'" size="lg">
+      <div class="space-y-3">
+        <div v-if="payToReturnedDetail" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <p class="font-semibold">Dikembalikan Keuangan: <span class="font-normal">{{ detail?.pay_to?.return_reason }}</span></p>
+          <p class="mt-0.5 text-[11px] text-red-600">oleh {{ detail?.pay_to?.returned_by || '-' }}<template v-if="detail?.pay_to?.returned_at"> · {{ formatDateTime(detail.pay_to.returned_at) }}</template></p>
+        </div>
+        <p class="text-xs text-gray-500">Keuangan diberi tahu setelah disimpan. Form Bayar yang sedang dibuka Keuangan dengan detail lama akan diminta muat ulang.</p>
+        <PurchasePayToForm v-model="payToEditForm" :pay-to="detail?.pay_to" :error="payToEditError" />
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showPayToEdit = false">Batal</AppButton>
+        <AppButton :loading="payToSaving" @click="submitPayToEdit">Simpan &amp; Kirim ke Keuangan</AppButton>
       </template>
     </AppModal>
 
@@ -953,12 +992,15 @@ import { projectsApi } from '@/api/projects.js'
 import ReceivingDialog from '@/components/ReceivingDialog.vue'
 import PurchaseStrukSection from '@/components/PurchaseStrukSection.vue'
 import PurchasePickupSection from '@/components/PurchasePickupSection.vue'
+import PurchasePayToForm from '@/components/PurchasePayToForm.vue'
+import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
 import { stockItemsApi } from '@/api/warehouse.js'
 import {
   purchaseStatusLabel, purchaseStatusBadge, purchaseStatusOptions,
   VERIFY_REASON_MIN, reasonLength, isConflictError,
   requestPaymentReadiness,
   RECEIVABLE_PURCHASE_STATUSES, isPhysicalPurchaseType, purchaseDisplayNames,
+  newPayToForm, payToFormError, payToPayload, payToReturned, payToEditState,
 } from '@/utils/procurement.js'
 
 const toast = useToastStore()
@@ -1247,6 +1289,24 @@ const actionConfirmIconBg  = computed(() => ACTION_META[pendingAction.value]?.bg
 const paymentReadiness = computed(() => requestPaymentReadiness(detail.value))
 const requestPaymentCheck = computed(() =>
   pendingAction.value === 'request_payment' && actionTarget.value ? requestPaymentReadiness(actionTarget.value) : null)
+
+// Tujuan pembayaran (keputusan owner 19 Nov 2026): Pembelian menetapkannya
+// saat mengajukan pembayaran dan boleh mengubahnya selama tagihan belum lunas;
+// Keuangan hanya membaca (utils/procurement.js → payTo*).
+// Induk tanpa sisa item hanya cangkang — pecahannya ke rekening vendornya.
+const requestPayToNeeded = computed(() => pendingAction.value === 'request_payment' &&
+  (actionTarget.value?.items || []).some(g => (g?.items || []).length > 0))
+const requestPayToForm = ref(newPayToForm())
+const requestPayToError = ref('')
+const payToEdit = computed(() => payToEditState(detail.value))
+const canPurchasingPayTo = computed(() => payToEdit.value.show && authStore.hasPermission(perm('purchasing')))
+const payToReturnedDetail = computed(() => payToReturned(detail.value))
+const detailRemaining = computed(() =>
+  Math.max(0, Number(detail.value?.total_final || 0) - Number(detail.value?.paid_amount || 0)))
+const showPayToEdit = ref(false)
+const payToEditForm = ref(newPayToForm())
+const payToEditError = ref('')
+const payToSaving = ref(false)
 
 const showEditFinal = ref(false)
 const editFinalVendorId = ref('')
@@ -1829,15 +1889,52 @@ async function submitDetailReject() {
 function confirmDetailAction(action) {
   actionTarget.value = detail.value
   pendingAction.value = action
+  if (action === 'request_payment') {
+    requestPayToForm.value = newPayToForm(detail.value?.pay_to)
+    requestPayToError.value = ''
+  }
   showActionConfirm.value = true
+}
+
+function openPayToEdit() {
+  if (!detail.value) return
+  payToEditForm.value = newPayToForm(detail.value.pay_to)
+  payToEditError.value = ''
+  showPayToEdit.value = true
+}
+
+async function submitPayToEdit() {
+  const target = detail.value
+  if (!target || payToSaving.value) return
+  const err = payToFormError(payToEditForm.value, target.pay_to)
+  payToEditError.value = err
+  if (err) return
+  payToSaving.value = true
+  try {
+    await purchaseApi.updatePaymentDetails(target.id, { ...payToPayload(payToEditForm.value), version: target.version })
+    toast.success('Detail pembayaran disimpan — Keuangan diberi tahu.')
+    showPayToEdit.value = false
+    await reloadDetail()
+    fetchList()
+  } catch (e) {
+    if (isConflictError(e)) showPayToEdit.value = false
+    await handleConflict(e, 'Gagal menyimpan detail pembayaran.')
+  } finally { payToSaving.value = false }
 }
 
 async function submitAction() {
   if (!actionTarget.value || !pendingAction.value) return
   if (requestPaymentCheck.value && !requestPaymentCheck.value.ok) return
+  const body = { action: pendingAction.value, actor_name: adminName() }
+  if (requestPayToNeeded.value) {
+    requestPayToError.value = payToFormError(requestPayToForm.value, actionTarget.value.pay_to)
+    if (requestPayToError.value) return
+    body.pay_to = payToPayload(requestPayToForm.value)
+    body.version = actionTarget.value.version
+  }
   actionLoading.value = true
   try {
-    await purchaseApi.updateStatus(actionTarget.value.id, { action: pendingAction.value, actor_name: adminName() })
+    await purchaseApi.updateStatus(actionTarget.value.id, body)
     toast.success(`Pengajuan berhasil ${ACTION_META[pendingAction.value]?.done ?? 'diperbarui'}.`)
     showActionConfirm.value = false
     // Refresh detail modal if open
@@ -1927,6 +2024,9 @@ async function submitEditFinal() {
 
 <style scoped>
 @reference "tailwindcss";
+.payto-returned-badge {
+  @apply inline-flex whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700;
+}
 .input-sm {
   @apply rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500;
 }

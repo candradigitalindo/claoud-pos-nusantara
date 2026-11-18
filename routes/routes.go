@@ -413,6 +413,10 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/procurement-payouts", middleware.RequirePermission("finance.payments.pay"), handlers.AssignCashPayout)
 	admin.Post("/procurement-payouts/:id/cancel", middleware.RequirePermission("finance.payments.pay"), handlers.CancelCashPayout)
 	admin.Put("/purchase-requests/:id/items", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.UpdatePurchaseItems)
+	// Tujuan pembayaran: diisi/diubah Pembelian (izin per jenis diputus
+	// handler), dikembalikan Keuangan bila salah.
+	admin.Put("/purchase-requests/:id/payment-details", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), handlers.UpdatePurchasePaymentDetails)
+	admin.Post("/purchase-requests/:id/payment-details/return", middleware.RequirePermission("finance.payments.pay"), handlers.ReturnPurchasePaymentDetails)
 	admin.Delete("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), handlers.DeletePurchaseRequest)
 
 	// File upload — dipakai untuk bukti pembayaran pengadaan
