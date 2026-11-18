@@ -877,3 +877,44 @@ terutama `deployed.json`, `rehearsal-summary.json`,
 `frontend/live-balance-browser.json`. Tangkapan layar Hari Ini tersimpan
 sebagai `frontend/live-balance-today-desktop.png` dan
 `frontend/live-balance-today-mobile.png`.
+
+## Rilis v10.19 dan pembaruan dalam-aplikasi — 18 November 2026
+
+Cloud commit `27535b9` (API + dashboard) dipasang pada **20:49 WIB**; hanya
+container app dan nginx yang dibuat ulang, tanpa perubahan database. Image
+sebelumnya disimpan sebagai `before-app-update-20261118-204623-app-update` untuk
+rollback. Isi rilis cloud:
+
+- `GET /api/v1/app-update/pos?current=<versionCode>` (publik, `no-store`):
+  APK POS dengan versionCode **tertinggi**, beserta ukuran dan SHA-256.
+  Mengunggah ulang build lama tidak pernah menurunkan versi tablet.
+- Versi APK (package, versionCode, versionName) dibaca langsung dari
+  `AndroidManifest.xml` saat diunggah (`internal/apkinfo`, tanpa aapt).
+- `GET /admin/app-files/devices` dan kartu **Versi di tablet outlet** di
+  halaman App POS: versi terpasang tiap tablet (heartbeat) dibanding rilis
+  terbaru, plus nomor build pada setiap APK di arsip.
+
+APK universal **v10.19** dari Flutter commit `40c8a38` dipublikasikan pada
+**20:50 WIB**: [unduh APK](https://pos.nbp.co.id/uploads/apps/app-universal-release-v10.19.apk).
+Ukuran **64.392.299 byte**, versionCode `93421153` → `95008427`, minimum
+Android 7.0/API 24, target API 36, tiga arsitektur. Tanda tangan sama dengan
+v10.18 (sertifikat `3d2fb26f…`), SHA-256
+`0491b93ea59289ccdc4e7b348c438047f509017f5ebe7b882c1e6daab5bd5242`.
+Isi v10.19: status sinkron yang akurat (hanya kegagalan jaringan disebut
+offline; data yang ditolak cloud tampil terpisah dan tidak lagi menahan
+tarikan katalog), cetak ulang laporan tutup kasir dari snapshot yang
+dibekukan saat penutupan (skema DB tablet v17), dan pembaruan dalam-aplikasi.
+
+Validasi: 234 tes Flutter lulus (4 e2e dilewati), tes Go handler/apkinfo
+lulus (apkinfo dicocokkan dengan aapt pada 5 APK produksi), uji asap image
+baru di jaringan internal, serta uji ujung-ke-ujung di stack terisolasi
+(unggah v10.19 → tablet v10.18 ditawari v10.19 → layanan Flutter mengunduh
+64 MB dan memverifikasi SHA-256). Setelah rilis, unduhan HTTPS publik dan
+endpoint pembaruan diverifikasi ulang.
+
+**v10.19 perlu dipasang manual sekali** di setiap tablet (saat rilis: 4 di
+v10.18, 5 di v10.17, 1 di v10.14); versi berikutnya ditawarkan dari dalam
+aplikasi. Perilaku pemasangan per merek tablet (satu ketukan atau tanpa
+ketukan) belum diuji di perangkat fisik — lihat `docs/APP_UPDATE.md` di repo
+aplikasi. Bukti privat: `/home/candra/projects/pos-integration-staging/releases/20261118-204623-app-update/` dan
+`/home/candra/projects/pos-integration-staging/releases/20261118-v10.19/`.
