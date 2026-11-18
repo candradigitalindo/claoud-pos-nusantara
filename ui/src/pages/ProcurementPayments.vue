@@ -196,6 +196,12 @@
                     <span v-if="isPhysicalPurchaseType(row.request_type)" :class="receiptBadgeCls(row)" :title="receiptHint(row)">
                       {{ receiptLabel(row) }}
                     </span>
+                    <span v-if="row.cash_payout" :class="payoutBadgeCls(row.cash_payout)" :title="payoutHint(row.cash_payout)">
+                      {{ payoutLabel(row.cash_payout) }}
+                    </span>
+                    <span v-if="row.cash_payout?.status === 'returned'" class="max-w-[220px] text-[10px] leading-snug text-red-600">
+                      Alasan kasir: {{ row.cash_payout.resolution_reason || '-' }}
+                    </span>
                   </div>
                 </td>
                 <td class="px-4 py-3 align-middle text-gray-700">{{ formatDateTime(row.created_at) }}</td>
@@ -203,6 +209,7 @@
                   <div class="action-btns">
                     <AppActionButton icon="view" label="Lihat Detail" @click="viewDetail(row)" />
                     <AppActionButton icon="pay" label="Bayar" v-if="canPay && isPayable(row)" @click="openPayModal(row)" />
+                    <AppActionButton icon="cancel" label="Tarik tugas Kas Kasir Outlet" v-if="canPay && row.cash_payout?.status === 'pending'" @click="cancelPayout(row)" />
                   </div>
                 </td>
               </tr>
@@ -391,6 +398,8 @@
                   <span class="font-mono text-gray-700 ml-1">{{ ph.payment_account_dest }}</span>
                   <span v-if="ph.vendor_name" class="ml-1 text-gray-500">({{ ph.vendor_name }})</span>
                   <span v-if="ph.payment_method === 'marketplace_va'" class="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">VA Marketplace</span>
+                  <span v-else-if="ph.payment_method === 'outlet_cash'" class="ml-1 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700"
+                    title="Diserahkan tunai oleh kasir outlet lewat tugas Bayar Pengadaan di tablet">Kas Kasir Outlet</span>
                   <span v-else-if="ph.dest_manual" class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
                     title="Vendor belum punya rekening terdaftar — rekening/cara bayar diketik pembayar">manual</span>
                 </div>
@@ -508,7 +517,7 @@
             </div>
 
             <!-- Card 2: Bank Info -->
-            <div v-if="payForm.payment_method !== 'marketplace_va'" class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div v-if="payForm.payment_method !== 'marketplace_va' && paySource === 'office'" class="rounded-lg border border-gray-200 bg-white overflow-hidden">
               <div class="bg-blue-50 px-4 py-2.5 border-b border-blue-100">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Rekening Vendor</p>
               </div>
@@ -554,6 +563,45 @@
 
         <div class="space-y-4">
 
+          <!-- Sumber dana: satu pembayaran hanya punya SATU sumber uang. -->
+          <fieldset v-if="payTargets.length === 1" class="space-y-2">
+            <legend class="block text-sm font-medium text-gray-700 mb-1">Sumber Dana</legend>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label class="source-opt" :class="{ 'source-opt--on': paySource === 'office' }">
+                <input v-model="paySource" type="radio" value="office" class="sr-only" />
+                <span class="text-sm font-semibold text-gray-800">Kantor Pusat</span>
+                <span class="text-[11px] leading-snug text-gray-500">Dibayar Bagian Keuangan (transfer / VA)</span>
+              </label>
+              <label class="source-opt" :class="{ 'source-opt--on': paySource === 'outlet_cash', 'source-opt--off': !canUseOutletCash }">
+                <input v-model="paySource" type="radio" value="outlet_cash" class="sr-only" :disabled="!canUseOutletCash" />
+                <span class="text-sm font-semibold text-gray-800">Kas Kasir Outlet</span>
+                <span class="text-[11px] leading-snug text-gray-500">{{ canUseOutletCash ? `Diserahkan tunai dari laci ${payOutletName}` : 'Hanya untuk pengajuan milik outlet' }}</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <template v-if="paySource === 'outlet_cash'">
+            <div class="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-xs leading-relaxed text-teal-900">
+              Tugas langsung muncul di tablet kasir <strong>{{ payOutletName }}</strong> saat tablet online.
+              Kasir menyerahkan kas dengan PIN manajer dan mencetak bukti penyerahan; status pengajuan
+              berubah setelah kas diserahkan. Selama tugas terbuka, pengajuan ini tidak bisa dibayar dari Kantor Pusat.
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+              <div class="sm:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nominal dari Kas Outlet</label>
+                <RupiahInput v-model="payoutForm.amount" :placeholder="`Kosongkan = sisa tagihan (${formatRupiah(payRemainingAmount)})`" />
+              </div>
+              <div class="sm:col-span-2">
+                <AppInput v-model="payoutForm.recipient_name" label="Diserahkan Kepada *" placeholder="Nama vendor / staf yang belanja" maxlength="200" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Catatan untuk Kasir</label>
+                <textarea v-model="payoutForm.notes" rows="2" maxlength="1000" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Opsional, mis. bayar saat barang diantar"></textarea>
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
           <!-- Form 2-col -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
             <div class="sm:col-span-2">
@@ -648,11 +696,12 @@
               <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
+          </template>
         </div>
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="showPayModal = false">Batal</AppButton>
-        <AppButton :loading="payLoading" :disabled="uploadLoading" @click="submitPay">Konfirmasi Pembayaran</AppButton>
+        <AppButton :loading="payLoading" :disabled="uploadLoading" @click="submitPay">{{ paySource === 'outlet_cash' ? 'Kirim ke Kas Kasir Outlet' : 'Konfirmasi Pembayaran' }}</AppButton>
       </template>
     </AppModal>
   </div>
@@ -745,6 +794,11 @@ const selectedIds = ref(new Set())
 
 const showPayModal = ref(false)
 const payTargets = ref([])
+// Sumber dana pembayaran: 'office' (Kantor Pusat) | 'outlet_cash' (Kas Kasir Outlet).
+const paySource = ref('office')
+const payoutForm = ref({ amount: 0, recipient_name: '', notes: '' })
+const canUseOutletCash = computed(() => payTargets.value.length === 1 && !!payTargets.value[0]?.outlet_id)
+const payOutletName = computed(() => payTargets.value[0]?.outlet_name || 'outlet')
 const payLoading = ref(false)
 const payVendor = ref(null)
 const payVendorLoading = ref(false)
@@ -819,7 +873,31 @@ function remainingOf(r) {
 // bisa dibayar di baris induk (pecahan dibayar di barisnya masing-masing).
 const PAYABLE_STATUSES = ['payment_requested', 'partial', 'received']
 function isPayable(r) {
-  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0
+  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r)
+}
+// Tugas Kas Kasir Outlet yang masih terbuka mengunci pengajuan dari
+// pembayaran Kantor Pusat (satu pembayaran, satu sumber uang).
+function payoutOpen(r) { return ['pending', 'claimed'].includes(r?.cash_payout?.status) }
+function payoutLabel(p) {
+  return { pending: 'Menunggu Kas Outlet', claimed: 'Diproses kasir outlet', returned: 'Dikembalikan kasir' }[p?.status] || ''
+}
+function payoutBadgeCls(p) {
+  const tone = { pending: 'bg-amber-50 text-amber-800 border-amber-200', claimed: 'bg-sky-50 text-sky-800 border-sky-200', returned: 'bg-red-50 text-red-700 border-red-200' }[p?.status] || 'bg-gray-50 text-gray-600 border-gray-200'
+  return `inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`
+}
+function payoutHint(p) {
+  if (!p) return ''
+  const base = `${formatRupiah(p.amount)} dari kas ${p.outlet_name || 'outlet'} untuk ${p.recipient_name} · ditetapkan ${p.assigned_by || '-'}`
+  return p.status === 'claimed' ? `${base} · diproses ${p.cashier_name || 'kasir'}` : base
+}
+async function cancelPayout(row) {
+  const p = row?.cash_payout
+  if (!p || !window.confirm(`Tarik tugas Kas Kasir Outlet ${formatRupiah(p.amount)} untuk ${row.request_number}? Tablet kasir tidak lagi menampilkannya.`)) return
+  try {
+    await purchaseApi.cancelCashPayout(p.id, { reason: 'Ditarik Bagian Keuangan' })
+    toast.success('Tugas Kas Kasir Outlet ditarik.')
+    fetchList()
+  } catch (err) { toast.error(err?.message || 'Gagal menarik tugas.') }
 }
 
 // Daftar halaman ini (exclude_masters) sudah memakai nilai milik dokumen
@@ -1063,6 +1141,8 @@ async function fetchPayStruks(id) {
 
 function openPayModal(row) {
   payTargets.value = [row]
+  paySource.value = 'office'
+  payoutForm.value = { amount: 0, recipient_name: row.vendor_name || '', notes: '' }
   payForm.value = newPayForm()
   payVendor.value = null
   uploadedFileUrl.value = ''
@@ -1082,6 +1162,7 @@ function openBatchPay() {
     return
   }
   payTargets.value = selected
+  paySource.value = 'office'
   ++payStruksSeq
   payStruks.value = []
   payStrukId.value = ''
@@ -1169,7 +1250,34 @@ function removeUploadedFile() {
   uploadedFileName.value = ''
 }
 
+async function submitOutletCash() {
+  const target = payTargets.value[0]
+  if (payTargets.value.length !== 1 || !target?.outlet_id) { toast.error('Kas Kasir Outlet hanya untuk satu pengajuan milik outlet.'); return }
+  const amount = payoutForm.value.amount || 0
+  if (amount > payRemainingAmount.value) {
+    toast.error(`Nominal (${formatRupiah(amount)}) melebihi sisa tagihan (${formatRupiah(payRemainingAmount.value)}).`)
+    return
+  }
+  if (!payoutForm.value.recipient_name.trim()) { toast.error('Nama penerima kas wajib diisi.'); return }
+  payLoading.value = true
+  try {
+    await purchaseApi.assignCashPayout({
+      purchase_request_id: target.id,
+      amount,
+      recipient_name: payoutForm.value.recipient_name.trim(),
+      notes: payoutForm.value.notes.trim(),
+    })
+    toast.success(`Tugas dikirim ke tablet kasir ${payOutletName.value || 'outlet'}.`)
+    showPayModal.value = false
+    clearSelection()
+    fetchList()
+    fetchStats()
+  } catch (err) { toast.error(err?.message || 'Gagal menetapkan sumber dana.') }
+  finally { payLoading.value = false }
+}
+
 async function submitPay() {
+  if (paySource.value === 'outlet_cash') return submitOutletCash()
   if (!payVendor.value) {
     toast.error(payVendorError.value
       ? 'Data rekening vendor gagal dimuat — tutup form ini lalu buka lagi.'
@@ -1248,6 +1356,11 @@ async function submitPay() {
   background: linear-gradient(135deg, #065f46 0%, #0f766e 50%, #0d9488 100%);
 }
 .hero-content { position: relative; z-index: 1; }
+.source-opt {
+  @apply flex cursor-pointer flex-col gap-0.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 transition-colors hover:border-emerald-300;
+}
+.source-opt--on { @apply border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500; }
+.source-opt--off { @apply cursor-not-allowed opacity-60 hover:border-gray-200; }
 .hero-title { font-size: 1.35rem; font-weight: 800; color: #fff; letter-spacing: -.02em; }
 .hero-sub { font-size: .82rem; color: rgba(255,255,255,.7); margin-top: .2rem; }
 

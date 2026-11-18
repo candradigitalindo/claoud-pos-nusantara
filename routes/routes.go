@@ -115,6 +115,14 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Batch sync
 	outlet.Post("/sync/batch", handlers.BatchSync)
 
+	// Bayar Pengadaan dari Kas Kasir Outlet — tablet mengambil tugas langsung
+	// (online, tidak lewat sinkron), mengklaim, lalu menyelesaikan/mengembalikan.
+	outlet.Get("/procurement-payouts", handlers.ListOutletCashPayouts)
+	outlet.Post("/procurement-payouts/:id/claim", handlers.ClaimCashPayout)
+	outlet.Post("/procurement-payouts/:id/complete", handlers.CompleteCashPayout)
+	outlet.Post("/procurement-payouts/:id/return", handlers.ReturnCashPayout)
+	outlet.Post("/procurement-payouts/:id/release", handlers.ReleaseCashPayout)
+
 	// Updates
 	outlet.Get("/updates", handlers.GetUpdates)
 
@@ -401,6 +409,9 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), handlers.CreatePurchaseRequest)
 	// finance.payments.pay: keuangan membayar (aksi pay); izin per aksi diputus handler.
 	admin.Put("/purchase-requests/:id/status", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.pay"), handlers.UpdatePurchaseStatus)
+	// Sumber dana Kas Kasir Outlet: tugas penyerahan kas untuk tablet kasir.
+	admin.Post("/procurement-payouts", middleware.RequirePermission("finance.payments.pay"), handlers.AssignCashPayout)
+	admin.Post("/procurement-payouts/:id/cancel", middleware.RequirePermission("finance.payments.pay"), handlers.CancelCashPayout)
 	admin.Put("/purchase-requests/:id/items", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.UpdatePurchaseItems)
 	admin.Delete("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), handlers.DeletePurchaseRequest)
 

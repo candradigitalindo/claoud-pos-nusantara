@@ -687,6 +687,7 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	attachCashPayouts(requests)
 
 	return &models.PurchaseRequestListResponse{
 		Page:       page,
@@ -892,6 +893,9 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 	if r.Pickups, err = ListPurchasePickups(database.DB, id); err != nil {
 		return nil, err
 	}
+	one := []models.PurchaseRequest{r}
+	attachCashPayouts(one)
+	r.CashPayout = one[0].CashPayout
 
 	return &r, nil
 }
@@ -1542,6 +1546,25 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 			FROM purchase_requests WHERE id=$1 FOR UPDATE`, id).Scan(&totalFinal, &currentPaid, &receipt, &splitStatus, &vendorID); scanErr != nil {
 			return notice, fmt.Errorf("gagal memeriksa tagihan: %w", scanErr)
 		}
+		// Sumber dana tunggal: selama tugas Kas Kasir Outlet masih terbuka,
+		// Kantor Pusat tidak boleh membayar pengajuan yang sama — uang yang
+		// sama bisa keluar dua kali (dari laci outlet dan dari rekening).
+		var openPayoutID, openPayoutStatus string
+		switch scanErr := tx.QueryRow(`
+			SELECT id, status FROM procurement_cash_payouts
+			WHERE purchase_request_id=$1 AND status IN ('pending','claimed')`, id).Scan(&openPayoutID, &openPayoutStatus); {
+		case scanErr == sql.ErrNoRows:
+			if input.CashPayoutID != "" {
+				return notice, Conflict("tugas Kas Kasir Outlet tidak lagi terbuka")
+			}
+		case scanErr != nil:
+			return notice, fmt.Errorf("gagal memeriksa tugas kas outlet: %w", scanErr)
+		case input.CashPayoutID == "":
+			return notice, Invalid("pengajuan ini sedang menunggu pembayaran dari Kas Kasir Outlet — tarik tugasnya dulu bila ingin dibayar Kantor Pusat")
+		case strings.TrimSpace(openPayoutID) != input.CashPayoutID || openPayoutStatus != "claimed":
+			return notice, Conflict("tugas Kas Kasir Outlet tidak cocok dengan pengajuan ini")
+		}
+
 		// Semua perbandingan dalam sen: selisih pecahan float tidak boleh
 		// menolak pelunasan yang tepat sebesar sisa tagihan.
 		remainingCents := math.Round((totalFinal - currentPaid) * 100)
@@ -1600,13 +1623,13 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 			if _, insErr := tx.Exec(
 				`INSERT INTO payment_histories (id, purchase_request_id, amount, payment_proof, payment_account_dest, payment_account_source, payment_notes, paid_by, created_at,
 					vendor_id, vendor_name, dest_bank_name, dest_account_number, dest_account_holder, dest_manual, struk_id,
-					payment_method, payment_marketplace, payment_order_number)
-				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+					payment_method, payment_marketplace, payment_order_number, cash_payout_id)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 				NewULID(), id, a.cents/100, input.PaymentProof,
 				dest.text, input.PaymentAccountSource, input.PaymentNotes,
 				input.ActorName, now,
 				dest.vendorID, dest.vendorName, dest.bank, dest.number, dest.holder, dest.manual, nilIfEmpty(a.strukID),
-				dest.method, dest.marketplace, dest.orderNumber,
+				dest.method, dest.marketplace, dest.orderNumber, nilIfEmpty(input.CashPayoutID),
 			); insErr != nil {
 				return notice, fmt.Errorf("gagal menyimpan histori pembayaran: %w", insErr)
 			}

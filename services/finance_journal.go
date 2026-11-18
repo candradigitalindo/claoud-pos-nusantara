@@ -124,8 +124,21 @@ func loadFinanceJournalWithOpening(from, to, outlet string, scope []string, open
 	var refundErr error
 	if err := read("pos_cash", `SELECT m.id,m.created_at at,m.outlet_id outletid,m.local_id reference,
 		CASE WHEN lower(m.movement_type) IN ('masuk','in','income','pemasukan') THEN 'Kas Masuk: ' ELSE 'Pengeluaran: ' END||m.note description,
-		m.note||COALESCE(E'\nKlasifikasi: '||c.notes||' ('||c.actor||')','') notes,m.note rawnote,m.counterpart_name counterparty,m.movement_type kind,m.amount,c.account_code subtype
+		m.note||COALESCE(E'\nKlasifikasi: '||c.notes||' ('||c.actor||')','') notes,m.note rawnote,m.counterpart_name counterparty,m.movement_type kind,m.amount,c.account_code subtype,
+		CASE WHEN m.cash_payout_id IS NULL THEN ''
+		     WHEN EXISTS(SELECT 1 FROM payment_histories ph WHERE ph.cash_payout_id=m.cash_payout_id) THEN 'payout_settled'
+		     ELSE 'payout_pending' END link
 		FROM cloud_cash_movements m LEFT JOIN LATERAL (SELECT account_code,notes,actor FROM finance_cash_classifications WHERE movement_id=m.id ORDER BY created_at DESC,id DESC LIMIT 1) c ON true`, func(o *models.FinanceOperation, r financeSource) {
+		if r.Link == "payout_settled" {
+			// Penyerahan kas "Bayar Pengadaan": uang keluar ini sudah tercatat
+			// SEKALI sebagai pembayaran pengajuan (Dr Hutang / Cr Kas) lewat
+			// payment_histories — mencatatnya lagi di sini berarti dobel.
+			o.Status = "skip"
+			return
+		}
+		if r.Link == "payout_pending" {
+			o.ReviewNote = "Penyerahan kas Bayar Pengadaan belum terkonfirmasi sebagai pembayaran; periksa tugas kas outlet."
+		}
 		if strings.EqualFold(strings.TrimSpace(r.Counterparty), "Refund void (shift sebelumnya)") && strings.HasPrefix(r.RawNote, "Void order #") {
 			covered, err := financePOSRefundCovered(o.OutletID, o.At, r.RawNote, r.Amount)
 			if err != nil {

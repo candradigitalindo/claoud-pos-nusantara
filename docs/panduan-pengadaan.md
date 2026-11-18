@@ -205,6 +205,38 @@ Di layar Pembayaran, tiap baris menampilkan **dua keadaan sekaligus**: status pe
 penanda *Barang sudah/belum diterima*. Membayar barang yang belum datang adalah keputusan yang
 berbeda dengan melunasi barang yang sudah ada di outlet — keduanya sah, tapi harus disadari.
 
+### 4.4 Sumber Dana: Kantor Pusat atau Kas Kasir Outlet
+
+Saat membayar **satu** pengajuan milik outlet, Bagian Keuangan memilih **Sumber Dana**:
+
+- **Kantor Pusat (Bagian Keuangan)** — alur di atas (transfer / VA marketplace).
+- **Kas Kasir Outlet** — uang tunai diserahkan dari laci kasir outlet pengajuan itu.
+  Isi nominal (kosongkan = sisa tagihan), **Diserahkan Kepada** (vendor atau staf yang
+  belanja), dan catatan untuk kasir, lalu **Kirim ke Kas Kasir Outlet**.
+
+Memilih Kas Kasir Outlet **belum** mengeluarkan uang. Baris pengajuan berlabel
+**Menunggu Kas Outlet**, dan tugasnya muncul di tablet kasir outlet tersebut — diambil
+langsung dari cloud saat tablet **online** (tablet offline tidak bisa memprosesnya).
+Kasir menekan **Bayar Pengadaan → Serahkan Kas**, memasukkan **PIN Manager/SVP**, lalu
+tablet mencetak **Bukti Penyerahan Kas** (tanda tangan kasir & penerima — serahkan ke
+Bagian Keuangan). Saat itu juga pengajuan tercatat **Dibayar / Dibayar Sebagian** dengan
+metode *Kas Kasir Outlet*.
+
+Agar uang yang sama tidak tercatat dua kali:
+
+- Selama tugas masih terbuka, pengajuan **tidak bisa dibayar dari Kantor Pusat**.
+- Tugas yang belum diproses kasir bisa **ditarik** (ikon batal di baris pengajuan).
+  Tugas yang sedang/sudah diproses kasir tidak bisa ditarik.
+- Kasir boleh **Mengembalikan ke Keuangan** dengan alasan (mis. harga di toko berbeda,
+  kas laci tidak cukup). Baris berlabel **Dikembalikan kasir** beserta alasannya; tetapkan
+  ulang atau bayar dari Kantor Pusat.
+- Di pembukuan, penyerahan kas itu tercatat **sekali** sebagai pelunasan hutang pengajuan.
+  Kas keluar tablet yang tertaut tidak lagi dihitung sebagai beban operasional dan tidak
+  bisa diklasifikasi ulang manual. Laporan tutup kasir outlet tetap menampilkannya sebagai
+  kas keluar, sehingga saldo laci tetap cocok.
+
+Pengajuan tanpa outlet (mis. milik gudang pusat) hanya bisa dibayar Kantor Pusat.
+
 ---
 
 ## 5. Tahap 4 — Penerimaan

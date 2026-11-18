@@ -3218,6 +3218,48 @@ func RunMigrations() error {
 			log.Printf("Receiving/catalog migration skipped: %v", err)
 		}
 	}
+	// Bayar pengadaan dari Kas Kasir Outlet (Nov 2026): tugas penyerahan kas
+	// yang ditetapkan keuangan dan diproses tablet kasir outlet secara online.
+	// Satu tugas terbuka per pengajuan; satu kas keluar per tugas. Pembayaran
+	// & kas keluar yang dihasilkannya saling tertaut lewat cash_payout_id,
+	// sehingga pembukuan mencatat uang keluar itu sekali.
+	for _, m := range []string{
+		`CREATE TABLE IF NOT EXISTS procurement_cash_payouts (
+			id CHAR(26) PRIMARY KEY,
+			purchase_request_id CHAR(26) NOT NULL REFERENCES purchase_requests(id) ON DELETE CASCADE,
+			outlet_id CHAR(26) NOT NULL REFERENCES outlets(id),
+			amount NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+			recipient_name VARCHAR(200) NOT NULL,
+			notes TEXT NOT NULL DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'pending'
+				CHECK (status IN ('pending','claimed','paid','returned','cancelled')),
+			assigned_by VARCHAR(100) NOT NULL DEFAULT '',
+			assigned_by_id CHAR(26),
+			assigned_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+			movement_local_id VARCHAR(50),
+			cashier_name VARCHAR(100) NOT NULL DEFAULT '',
+			authorized_by VARCHAR(100) NOT NULL DEFAULT '',
+			claimed_at TIMESTAMP,
+			paid_at TIMESTAMP,
+			resolved_by VARCHAR(100) NOT NULL DEFAULT '',
+			resolved_at TIMESTAMP,
+			resolution_reason TEXT NOT NULL DEFAULT '',
+			updated_at TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_cash_payout_open ON procurement_cash_payouts(purchase_request_id) WHERE status IN ('pending','claimed')`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_cash_payout_movement ON procurement_cash_payouts(outlet_id, movement_local_id) WHERE movement_local_id IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_cash_payout_outlet ON procurement_cash_payouts(outlet_id, status)`,
+		`CREATE INDEX IF NOT EXISTS idx_cash_payout_pr ON procurement_cash_payouts(purchase_request_id, assigned_at DESC)`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS cash_payout_id CHAR(26)`,
+		`CREATE INDEX IF NOT EXISTS idx_payment_histories_payout ON payment_histories(cash_payout_id) WHERE cash_payout_id IS NOT NULL`,
+		`ALTER TABLE cloud_cash_movements ADD COLUMN IF NOT EXISTS cash_payout_id CHAR(26)`,
+		`CREATE INDEX IF NOT EXISTS idx_cash_movements_payout ON cloud_cash_movements(cash_payout_id) WHERE cash_payout_id IS NOT NULL`,
+	} {
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("Outlet cash payout migration skipped: %v", err)
+		}
+	}
+
 	// CHECK paid_amount ≤ total_final (T-87): pembayaran tidak pernah melebihi
 	// tagihan. Aman sejak pelunasan dibandingkan dalam sen dan item hanya bisa
 	// kembali ke induk yang belum dibayar (T-12, T-34). Hanya dipasang bila

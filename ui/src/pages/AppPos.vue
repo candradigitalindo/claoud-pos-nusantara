@@ -211,8 +211,19 @@ import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 
 // Release evidence: docs/pos-master-integration.md, "Rilis produksi — 31 Oktober 2026";
 // v10.19: pos-integration-staging/releases/20261118-v10.19 (sha256 0491b93e…).
+// v10.20: pos-integration-staging/releases/20261118-v10.20 (sha256 9b675dae…).
 // Match the exact artifact so future uploads never inherit these release claims.
 const RELEASES = {
+  'app-universal-release-v10.20.apk': {
+    size: 64670895,
+    summary: 'Bayar pengadaan dari kas kasir outlet: tugas dari Bagian Keuangan diproses langsung di tablet dan tercatat sekali di pembukuan.',
+    compatibility: 'Android 7.0+ · Universal',
+    highlights: [
+      { title: 'Tugas Bayar Pengadaan', description: 'Bila Keuangan memilih sumber dana Kas Kasir Outlet, tugas muncul di tablet kasir. Diambil langsung dari cloud dan hanya bisa diproses saat online.' },
+      { title: 'Penyerahan kas ber-PIN', description: 'Kasir menyerahkan kas dengan PIN Manager/SVP, mencetak Bukti Penyerahan Kas, atau mengembalikan tugas ke Keuangan dengan alasan.' },
+      { title: 'Tanpa pencatatan dobel', description: 'Kas keluar tertaut ke pembayaran pengajuan, sehingga uang yang sama tidak tercatat dua kali di pembukuan.' },
+    ],
+  },
   'app-universal-release-v10.19.apk': {
     size: 64392299,
     summary: 'Status sinkron yang akurat, cetak ulang laporan tutup kasir, dan pembaruan aplikasi langsung dari tablet.',

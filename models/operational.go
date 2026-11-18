@@ -96,6 +96,9 @@ type PushCashMovementRequest struct {
 	CounterpartName string  `json:"counterpart_name"`
 	Note            string  `json:"note"`
 	CreatedAt       string  `json:"created_at"`
+	// CashPayoutID: kas keluar ini adalah penyerahan kas untuk tugas
+	// "Bayar Pengadaan" (Kas Kasir Outlet). Kosong untuk kas keluar biasa.
+	CashPayoutID string `json:"cash_payout_id,omitempty"`
 }
 
 type CloudCashMovement struct {

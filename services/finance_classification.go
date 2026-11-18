@@ -9,9 +9,12 @@ func ClassifyFinanceCash(id, account, notes string, a FinanceAccess) error {
 	if !a.Has("finance.entries.post") {
 		return ErrFinanceAccess
 	}
-	var oid, kind string
-	if err := database.DB.QueryRow(`SELECT outlet_id,movement_type FROM cloud_cash_movements WHERE id=$1`, id).Scan(&oid, &kind); err != nil {
+	var oid, kind, payout string
+	if err := database.DB.QueryRow(`SELECT outlet_id,movement_type,COALESCE(cash_payout_id,'') FROM cloud_cash_movements WHERE id=$1`, id).Scan(&oid, &kind, &payout); err != nil {
 		return err
+	}
+	if strings.TrimSpace(payout) != "" {
+		return Invalid("kas keluar ini adalah penyerahan kas Bayar Pengadaan — sudah dibukukan sebagai pembayaran pengajuan")
 	}
 	if !financeInScope(strings.TrimSpace(oid), a.Outlets) {
 		return ErrFinanceAccess

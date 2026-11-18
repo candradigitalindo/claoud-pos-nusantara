@@ -112,6 +112,9 @@ type PurchaseRequest struct {
 	PaymentAccountSource string                 `json:"payment_account_source"`
 	PaymentNotes         string                 `json:"payment_notes"`
 	PaidAmount           float64                `json:"paid_amount"`
+	// CashPayout: tugas Kas Kasir Outlet terakhir yang masih relevan
+	// (menunggu / diproses kasir / dikembalikan) — untuk halaman Pembayaran.
+	CashPayout *ProcurementCashPayout `json:"cash_payout,omitempty"`
 	ReceivedBy           *string                `json:"received_by"`
 	ReceivedAt           *string                `json:"received_at"`
 	// ReceiptStatus berdiri sendiri dari Status: '' (belum diterima), 'partial',
@@ -239,6 +242,9 @@ type UpdatePurchaseStatusInput struct {
 	// dokumen sudah pindah status sebelum dikunci, aksi ditolak 409 — izin
 	// tidak boleh diputus atas tahap yang sudah lewat.
 	ExpectedStatus string `json:"-"`
+	// CashPayoutID (internal, aksi pay): pembayaran ini berasal dari tugas
+	// Kas Kasir Outlet yang sudah diproses tablet. Tidak bisa diisi dari body.
+	CashPayoutID string `json:"-"`
 }
 
 // VerifyRejectedItemInput menunjuk satu sub-item menurut isi tersimpan:

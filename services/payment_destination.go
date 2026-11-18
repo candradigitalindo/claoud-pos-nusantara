@@ -47,6 +47,19 @@ func resolvePaymentDestination(d paymentDest, input models.UpdatePurchaseStatusI
 		if d.text == "" {
 			return paymentDest{}, Invalid("vendor %s belum punya rekening terdaftar — isi rekening tujuan atau cara bayarnya (mis. Tunai), atau pilih Virtual Account Marketplace", d.vendorName)
 		}
+	case "outlet_cash":
+		// Tunai dari laci kasir outlet lewat tugas "Bayar Pengadaan". Hanya
+		// jalur tugas (CashPayoutID tidak bisa diisi dari body) yang boleh
+		// memakai metode ini — Kantor Pusat tidak bisa mencatatnya manual.
+		if strings.TrimSpace(input.CashPayoutID) == "" {
+			return paymentDest{}, Invalid("metode Kas Kasir Outlet hanya bisa lewat tugas penyerahan kas di tablet kasir")
+		}
+		d.method, d.manual = "outlet_cash", true
+		d.bank, d.number, d.holder = "", "", ""
+		d.text = strings.TrimSpace(input.PaymentAccountDest)
+		if d.text == "" {
+			d.text = "Tunai — Kas Kasir Outlet"
+		}
 	default:
 		return paymentDest{}, Invalid("metode pembayaran tidak valid")
 	}

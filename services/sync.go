@@ -297,21 +297,25 @@ func SaveCashMovement(outletID string, req models.PushCashMovementRequest) (stri
 	if err != nil {
 		return "", err
 	}
+	// Penyerahan kas "Bayar Pengadaan": tautkan hanya ke tugas outlet ini yang
+	// memang diklaim dengan kas keluar tersebut.
+	payoutID := linkableCashPayout(outletID, req.CashPayoutID, req.LocalID)
 	err = tx.QueryRow(
 		`INSERT INTO cloud_cash_movements (id, local_id, outlet_id, shift_id,
-			movement_type, amount, counterpart_name, note, created_at, synced_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+			movement_type, amount, counterpart_name, note, created_at, synced_at, cash_payout_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
 		ON CONFLICT (outlet_id, local_id) DO UPDATE SET
 			shift_id = EXCLUDED.shift_id,
 			movement_type = EXCLUDED.movement_type,
 			amount = EXCLUDED.amount,
 			counterpart_name = EXCLUDED.counterpart_name,
 			note = EXCLUDED.note,
+			cash_payout_id = COALESCE(EXCLUDED.cash_payout_id, cloud_cash_movements.cash_payout_id),
 			synced_at = NOW()
 		RETURNING id`,
 		cloudID, req.LocalID, outletID, req.ShiftID,
 		req.MovementType, req.Amount, req.CounterpartName, req.Note,
-		parseTime(req.CreatedAt),
+		parseTime(req.CreatedAt), nilIfEmpty(payoutID),
 	).Scan(&cloudID)
 
 	if err != nil {
@@ -320,6 +324,9 @@ func SaveCashMovement(outletID string, req models.PushCashMovementRequest) (stri
 	if err = tx.Commit(); err != nil {
 		return "", err
 	}
+	// Jalur tahan-putus: bila tablet belum sempat menyelesaikan tugas secara
+	// online setelah menyerahkan kas, kas keluar yang tersinkron menuntaskannya.
+	settleCashPayoutFromSync(outletID, payoutID, req.LocalID)
 
 	go logSync(outletID, "push_cash_movement", "cash_movement", 1, "success", "")
 	BroadcastSync("cash_movement", outletID)

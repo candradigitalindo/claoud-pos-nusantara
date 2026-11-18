@@ -13,6 +13,14 @@ export const purchaseApi = {
   updateStatus: (id, data) =>
     apiClient.put(`/admin/purchase-requests/${id}/status`, data),
 
+  // Sumber dana Kas Kasir Outlet: tugas penyerahan kas yang diproses tablet
+  // kasir outlet (online). Belum ada uang keluar sampai kasir memprosesnya.
+  assignCashPayout: (data) =>
+    apiClient.post('/admin/procurement-payouts', data),
+
+  cancelCashPayout: (id, data = {}) =>
+    apiClient.post(`/admin/procurement-payouts/${id}/cancel`, data),
+
   updateItems: (id, data) =>
     apiClient.put(`/admin/purchase-requests/${id}/items`, data),
 
