@@ -306,6 +306,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/admins", middleware.RequirePermission("users.view"), handlers.GetAdmins)
 	admin.Get("/permissions", middleware.RequirePermission("roles.view"), handlers.GetAllRolePermissions)
 	admin.Get("/roles", middleware.RequirePermission("roles.view"), handlers.ListRoles)
+	admin.Get("/roles/notification-options", middleware.RequirePermission("roles.view"), handlers.GetRoleNotificationOptions)
 	admin.Post("/admins", middleware.RequirePermission("users.create"), handlers.CreateAdmin)
 	admin.Put("/admins/:id/role", middleware.RequirePermission("users.update"), handlers.UpdateAdminRole)
 	admin.Put("/admins/:id/reset-password", middleware.RequirePermission("users.update"), handlers.ResetAdminPassword)
@@ -317,6 +318,8 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Put("/roles/:name", middleware.RequirePermission("roles.update"), handlers.UpdateRole)
 	admin.Delete("/roles/:name", middleware.RequirePermission("roles.delete"), handlers.DeleteRole)
 	admin.Put("/roles/:role/scope", middleware.RequirePermission("roles.update"), handlers.UpdateRoleScope)
+	admin.Put("/roles/:role/notifications", middleware.RequirePermission("roles.update"), handlers.UpdateRoleNotifications)
+	admin.Delete("/roles/:role/notifications", middleware.RequirePermission("roles.update"), handlers.ResetRoleNotifications)
 
 	// Purchase requests — granular: submit, approve, purchasing (isi harga), finance (bayar)
 	admin.Get("/procurement-dashboard", middleware.RequirePermission("procurement.dashboard.view"), handlers.GetProcurementDashboardGlobal)

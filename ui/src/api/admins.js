@@ -48,6 +48,10 @@ export const adminsApi = {
   listRoles: () =>
     apiClient.get('/admin/roles'),
 
+  roleNotificationOptions: () => apiClient.get('/admin/roles/notification-options'),
+  updateRoleNotifications: (role, policy) => apiClient.put(`/admin/roles/${encodeURIComponent(role)}/notifications`, policy),
+  resetRoleNotifications: (role) => apiClient.delete(`/admin/roles/${encodeURIComponent(role)}/notifications`),
+
   /** Create a new custom role */
   createRole: (payload) =>
     apiClient.post('/admin/roles', payload),

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <AppCard>
+    <AppCard v-if="!embedded">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 max-w-3xl">
           <h2 class="text-base font-bold text-gray-900">Notifikasi per Role</h2>
@@ -23,8 +23,8 @@
       <AppCard>
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div class="min-w-0">
-            <h3 class="break-words text-base font-bold text-gray-900">{{ selectedRole.name }}</h3>
-            <p class="mt-1 text-sm text-gray-500">{{ selectedRole.description || 'Belum ada deskripsi role.' }}</p>
+            <h3 class="break-words text-base font-bold text-gray-900">{{ embedded ? 'Notifikasi WhatsApp' : selectedRole.name }}</h3>
+            <p class="mt-1 text-sm text-gray-500">Pesan yang relevan dengan tugas dan hak akses {{ selectedRole.name }}. Aktifkan atau nonaktifkan setiap pesan di bawah.</p>
             <p class="mt-2 text-xs text-gray-600"><strong>{{ selectedRole.users || 0 }} akun aktif siap menerima</strong> · Nomor WA sudah diisi dan notifikasi pribadi pengguna aktif.</p>
             <p v-if="!selectedRole.users" class="mt-1 text-xs text-amber-800">Belum ada penerima yang siap. Isi nomor dan aktifkan notifikasi pada menu Pengguna.</p>
           </div>
@@ -81,25 +81,26 @@
           <p v-if="selectedRole.scope_type !== 'specific' && policy.outlet_mode === 'selected'" class="mt-2 text-xs text-violet-800">Pilihan outlet tertentu mempersempit seluruh isi pesan. Pilih Sesuai cakupan role untuk menerima rekap seluruh outlet atau informasi pusat.</p>
           <p v-if="selectedRole.scope_type === 'specific'" class="mt-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-600"><strong>Pesan global tidak tersedia untuk role ini.</strong> Rekap yang memuat data lintas outlet hanya dapat diterima role dengan akses semua outlet. Pesan tentang outlet atau unit kerja milik role sendiri tetap mengikuti pilihan di atas.</p>
         </fieldset>
-        <p v-if="selectedRole.personal_events?.length" class="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900"><strong>Kabar pengadaan pribadi:</strong> pengguna dengan posisi pengaju menerima kabar tentang pengajuannya sendiri. Memilih Otomatis tidak membuatnya menerima pengajuan pengguna lain. Pilihan Nonaktif pada jenis pesan atau tombol nonaktif role juga menghentikan kabar pribadi tersebut.</p>
+        <p v-if="selectedRole.personal_events?.length" class="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900"><strong>Kabar pengadaan pribadi:</strong> pengguna dengan posisi pengaju menerima kabar tentang pengajuannya sendiri. Mengaktifkan kabar pribadi tidak membuatnya menerima pengajuan pengguna lain. Pilihan Nonaktif pada jenis pesan atau tombol nonaktif role juga menghentikan kabar pribadi tersebut.</p>
       </AppCard>
 
       <AppCard>
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 class="text-sm font-bold text-gray-900">Jenis pesan untuk {{ selectedRole.name }}</h3>
-            <p class="mt-1 max-w-3xl text-xs leading-relaxed text-gray-500"><strong>Otomatis</strong> mengikuti hak akses dan aturan penerima event. <strong>Aktif</strong> menetapkan penerimaan khusus role ini bila hak aksesnya sesuai. <strong>Nonaktif</strong> menghentikan pesan untuk role ini, termasuk pengajuan pribadi. Pengaturan umum yang nonaktif tetap berlaku untuk semua role.</p>
+            <p class="mt-1 max-w-3xl text-xs leading-relaxed text-gray-500">Geser tombol untuk mengaktifkan atau menonaktifkan pesan bagi role ini. Label <strong>Bawaan</strong> berarti mengikuti aturan role; gunakan <strong>Ikuti bawaan</strong> untuk menghapus pilihan khusus. Pengaturan umum yang nonaktif tetap berlaku.</p>
           </div>
           <button v-if="canManage" type="button" class="text-xs font-semibold text-emerald-700 hover:underline disabled:opacity-50" :disabled="saving" @click="restoreDefaults">Pulihkan isian bawaan</button>
         </div>
         <div v-if="!settings.enabled" class="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900" role="status">Pengiriman WhatsApp umum sedang nonaktif. Pilihan role dapat disimpan, tetapi pesan belum akan dikirim.</div>
-        <div class="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+        <div v-if="relevantEvents.length" class="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
           <input v-model="eventSearch" type="search" aria-label="Cari jenis pesan role" placeholder="Cari jenis pesan atau kelompok…" class="wa-field" />
           <SearchableSelect v-model="scopeFilter" aria-label="Filter cakupan jenis pesan" class="wa-field sm:min-w-44">
             <option value="">Semua cakupan</option><option value="outlet">Per outlet</option><option value="global">Global / lintas outlet</option><option value="mixed">Outlet & global</option>
           </SearchableSelect>
         </div>
-        <div v-if="!eventGroups.length" class="py-8 text-center text-sm text-gray-500">Tidak ada jenis pesan yang cocok dengan pencarian.</div>
+        <div v-if="!relevantEvents.length" class="py-8 text-center text-sm text-gray-500">Belum ada jenis notifikasi yang terkait dengan tugas dan hak akses role ini.</div>
+        <div v-else-if="!eventGroups.length" class="py-8 text-center text-sm text-gray-500">Tidak ada jenis pesan yang cocok dengan pencarian.</div>
         <section v-for="group in eventGroups" :key="group.name" class="mt-5">
           <h4 class="border-b border-gray-100 pb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{{ group.name }}</h4>
           <div class="divide-y divide-gray-100">
@@ -116,18 +117,27 @@
                 <p v-if="(settings.event_roles?.[event.key] || []).length" class="mt-1 text-[11px] text-gray-500">Aturan Otomatis mengikuti daftar penerima event: {{ settings.event_roles[event.key].join(', ') }}.</p>
               </div>
               <div class="self-start">
-                <SearchableSelect :model-value="policy.events[event.key] || 'auto'" :aria-label="`Aturan pesan ${event.label}`" class="wa-field"
-                  :disabled="!canManage || saving || (!isEligible(event) && !isPersonal(event))" @update:model-value="setEvent(event.key, $event)">
-                  <option value="auto">Otomatis</option><option value="on" :disabled="!isEligible(event)">Aktif</option><option value="off">Nonaktif</option>
-                </SearchableSelect>
-                <p v-if="!isEligible(event) && isPersonal(event)" class="mt-1 text-[11px] text-gray-500">Otomatis / Nonaktif untuk pengajuan sendiri.</p>
+                <label class="flex cursor-pointer items-center justify-end gap-2 text-xs font-semibold text-gray-700">
+                  <span>{{ configuredEnabled(event) ? 'Aktif' : 'Nonaktif' }}</span>
+                  <input type="checkbox" role="switch" :aria-label="`Notifikasi ${event.label}`" :checked="configuredEnabled(event)"
+                    :disabled="!canManage || saving || (!isEligible(event) && !isPersonal(event) && !configuredEnabled(event))"
+                    class="wa-event-switch" @change="toggleEvent(event, $event.target.checked)" />
+                </label>
+                <div class="mt-2 flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                  <span v-if="!policy.events[event.key] || policy.events[event.key] === 'auto'" class="text-gray-500">Bawaan</span>
+                  <template v-else>
+                    <span class="text-emerald-700">Diatur khusus</span>
+                    <button v-if="canManage" type="button" :disabled="saving" class="font-semibold text-emerald-700 underline" :aria-label="`Ikuti bawaan ${event.label}`" @click="setEvent(event.key, 'auto')">Ikuti bawaan</button>
+                  </template>
+                </div>
+                <p v-if="!isEligible(event) && isPersonal(event)" class="mt-1 text-right text-[11px] text-gray-500">Hanya pengajuan milik sendiri.</p>
               </div>
             </div>
           </div>
         </section>
       </AppCard>
 
-      <p class="px-1 text-xs leading-relaxed text-gray-500">Berlaku untuk notifikasi baru setelah disimpan. Pesan yang sudah masuk antrean dapat dibatalkan di <RouterLink to="/whatsapp/messages" class="font-semibold text-emerald-700 hover:underline">Log Pesan</RouterLink>.</p>
+      <p class="px-1 text-xs leading-relaxed text-gray-500">Berlaku untuk notifikasi baru setelah disimpan. Pesan yang sudah masuk antrean dapat dibatalkan di <RouterLink v-if="canViewLogs" to="/whatsapp/messages" class="font-semibold text-emerald-700 hover:underline">Log Pesan</RouterLink><span v-else>Log Pesan oleh pengelola WhatsApp</span>.</p>
       <div class="sticky bottom-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-lg">
         <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
           <div class="min-w-0 flex-1 text-xs text-gray-600">
@@ -155,7 +165,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { defaultRoleNotificationPolicy, normalizeRoleNotificationPolicy, roleNotificationOutlets, selectedNotificationOutlets, roleNotificationEventState } from '@/utils/whatsappRoleNotifications.js'
 const props = defineProps({
   settings: { type: Object, required: true }, events: { type: Array, default: () => [] }, roles: { type: Array, default: () => [] },
-  roleName: { type: String, default: '' }, canManage: Boolean, canViewRoles: Boolean, saving: Boolean,
+  roleName: { type: String, default: '' }, embedded: Boolean, canManage: Boolean, canViewRoles: Boolean, canViewLogs: Boolean, saving: Boolean,
 })
 const emit = defineEmits(['select-role', 'save', 'reset'])
 const selectedRoleName = ref(props.roleName || '')
@@ -195,9 +205,14 @@ const notificationScopeLabel = computed(() => {
   return scopes.join(' · ') || 'Belum ada outlet dipilih'
 })
 const invalidSelectedOutlets = computed(() => policy.value?.outlet_mode === 'selected' && (policy.value?.outlet_ids || []).some(id => !allowedOutlets.value.some(outlet => outlet.id === id)))
+const relevantEvents = computed(() => {
+  const role = selectedRole.value
+  const keys = new Set([...(role?.eligible_events || []), ...(role?.automatic_events || []), ...(role?.personal_events || []), ...Object.keys(policy.value?.events || {})])
+  return props.events.filter(event => event.audience === 'internal' && keys.has(event.key))
+})
 const eventGroups = computed(() => {
   const groups = new Map(), search = eventSearch.value.trim().toLocaleLowerCase()
-  for (const event of props.events.filter(event => event.audience === 'internal')) {
+  for (const event of relevantEvents.value) {
     if (scopeFilter.value && event.scope_kind !== scopeFilter.value) continue
     if (search && !`${event.label} ${event.group} ${event.description || ''}`.toLocaleLowerCase().includes(search)) continue
     if (!groups.has(event.group)) groups.set(event.group, [])
@@ -210,10 +225,20 @@ function isEligible(event) { return (selectedRole.value?.eligible_events || []).
 function isPersonal(event) { return (selectedRole.value?.personal_events || []).includes(event.key) }
 function eventState(event) { return roleNotificationEventState(event, selectedRole.value, policy.value, props.settings) }
 function setEvent(key, value) { if (value === 'auto') delete policy.value.events[key]; else policy.value.events[key] = value }
+function configuredEnabled(event) {
+  const value = policy.value?.events?.[event.key] || 'auto'
+  if (value === 'off') return false
+  if (value === 'on') return true
+  return (selectedRole.value?.automatic_events || []).includes(event.key) || isPersonal(event)
+}
+function toggleEvent(event, enabled) {
+  if (enabled && !isEligible(event) && !isPersonal(event)) return
+  setEvent(event.key, enabled ? (isEligible(event) ? 'on' : 'auto') : 'off')
+}
 function restoreDefaults() { drafts.value[selectedRoleName.value] = defaultRoleNotificationPolicy(selectedRole.value) }
 const previewSummary = computed(() => {
   if (!policy.value?.enabled) return 'Semua pesan untuk role ini nonaktif, termasuk pengajuan pribadi.'
-  const count = props.events.filter(event => event.audience === 'internal' && eventState(event).active).length
+  const count = relevantEvents.value.filter(event => eventState(event).active).length
   const global = selectedRole.value?.scope_type !== 'specific' && policy.value.outlet_mode === 'role' && policy.value.include_global ? 'Global / lintas outlet aktif' : 'Global / lintas outlet nonaktif'
   return `${notificationScopeLabel.value} · ${global} · ${count} jenis pesan aktif${!props.settings.enabled ? ' · Pengiriman umum sedang nonaktif' : ''}.`
 })
@@ -230,5 +255,11 @@ defineExpose({ acceptSaved })
 <style scoped>
 .wa-field { width:100%; min-width:0; padding:.5rem .7rem; border:1px solid #d1d5db; border-radius:.6rem; background:#fff; font-size:.8rem; color:#374151; }
 .wa-field:focus { outline:2px solid #a7f3d0; outline-offset:1px; }
+.wa-event-switch { appearance:none; flex-shrink:0; width:2.5rem; height:1.4rem; border-radius:999px; background:#d1d5db; position:relative; transition:background .15s; cursor:pointer; }
+.wa-event-switch::after { content:''; position:absolute; top:.2rem; left:.2rem; width:1rem; height:1rem; background:white; border-radius:999px; box-shadow:0 1px 3px #0002; transition:transform .15s; }
+.wa-event-switch:checked { background:#059669; }
+.wa-event-switch:checked::after { transform:translateX(1.1rem); }
+.wa-event-switch:disabled { opacity:.5; cursor:default; }
+.wa-event-switch:focus-visible { outline:3px solid #a7f3d0; outline-offset:2px; }
 .wa-badge { display:inline-block; border-radius:999px; padding:.15rem .5rem; font-size:.65rem; font-weight:600; }
 </style>

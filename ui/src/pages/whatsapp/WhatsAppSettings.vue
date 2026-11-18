@@ -8,7 +8,10 @@
           notifikasi otomatis, pesan ke pelanggan, dan broadcast — gratis, dijalankan di server sendiri.
         </p>
       </div>
+      <div class="flex flex-wrap gap-3">
+        <RouterLink v-if="auth.hasPermission('roles.view')" :to="{ path: '/roles', query: { tab: 'notifications' } }" class="text-xs font-semibold text-emerald-700 hover:underline">Notifikasi setiap role →</RouterLink>
       <RouterLink to="/whatsapp/messages" class="text-xs font-semibold text-emerald-700 hover:underline">Lihat log pesan →</RouterLink>
+      </div>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
@@ -232,7 +235,7 @@
                     <AppActionButton icon="refresh" label="Gunakan penerima otomatis" :disabled="!canManage" @click="settings.event_roles[ev.key] = []" />
                     <p class="mt-1 text-[11px] text-gray-500">Perubahan diterapkan setelah menyimpan Pengaturan Umum & Template. Aturan khusus per role tetap berlaku.</p>
                   </div>
-                  <button type="button" class="mt-2 font-semibold text-emerald-700 hover:underline" @click="tab = 'role'">Atur penerimaan di Notifikasi per Role →</button>
+                  <RouterLink v-if="auth.hasPermission('roles.view')" :to="{ path: '/roles', query: { tab: 'notifications' } }" class="mt-2 inline-block font-semibold text-emerald-700 hover:underline">Atur notifikasi di masing-masing Role →</RouterLink>
                 </div>
               </div>
               <div>
@@ -249,13 +252,6 @@
       </div>
     </div>
 
-    <div v-show="tab === 'role'" class="space-y-4">
-      <AppAlert type="error" :message="roleError" />
-      <WhatsAppRoleNotifications v-if="settings" ref="roleEditor" :settings="savedNotificationSettings || settings" :events="events" :roles="roleOptions"
-        :role-name="routeRoleName" :can-manage="canManage" :can-view-roles="auth.hasPermission('roles.view')" :saving="busy.role"
-        @select-role="selectNotificationRole" @save="saveRoleNotifications" @reset="resetRoleNotifications" />
-    </div>
-
     <!-- ── Penerima ── -->
     <div v-show="tab === 'penerima'" class="space-y-4">
       <AppCard>
@@ -266,7 +262,7 @@
               Setiap pengguna hanya menerima event yang berkaitan dengan posisinya: ditentukan dari hak akses
               role-nya dan dibatasi outlet role tersebut. Nomor WhatsApp diatur di menu
               <RouterLink to="/admins" class="font-semibold text-emerald-700 hover:underline">Pengguna</RouterLink>;
-              jenis pesan dan cakupannya diatur di tab Notifikasi per Role. Rekap global atau lintas outlet hanya tersedia untuk role dengan akses semua outlet.
+              jenis pesan dan cakupannya diatur pada masing-masing role di menu Role & Hak Akses. Rekap global atau lintas outlet hanya tersedia untuk role dengan akses semua outlet.
             </p>
           </div>
           <button class="text-xs font-semibold text-emerald-700 hover:underline" @click="loadRecipientUsers">Segarkan</button>
@@ -433,9 +429,8 @@
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import WhatsAppRoleNotifications from '@/components/WhatsAppRoleNotifications.vue'
 import QRCode from 'qrcode'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -458,7 +453,6 @@ const canManage = computed(() => auth.isSuperadmin || (auth.permissions || []).i
 const TABS = [
   { key: 'koneksi', label: 'Koneksi' },
   { key: 'notifikasi', label: 'Pengaturan Umum & Template' },
-  { key: 'role', label: 'Notifikasi per Role' },
   { key: 'penerima', label: 'Penerima' },
 ]
 const GROUP_DESC = {
@@ -472,24 +466,24 @@ const GROUP_DESC = {
 }
 
 const tab = ref(TABS.some(item => item.key === route.query.tab) ? route.query.tab : 'koneksi')
-const routeRoleName = computed(() => typeof route.query.role === 'string' ? route.query.role : '')
-watch(() => route.query.tab, value => { if (TABS.some(item => item.key === value)) tab.value = value })
+const legacyRoleLink = route.query.tab === 'role'
+function redirectLegacyRoleLink() {
+  if (route.query.tab !== 'role') return
+  router.replace({ path: '/roles', query: { ...(typeof route.query.role === 'string' ? { role: route.query.role } : {}), tab: 'notifications' } })
+}
+redirectLegacyRoleLink()
+watch(() => route.query.tab, value => { if (value === 'role') redirectLegacyRoleLink(); else if (TABS.some(item => item.key === value)) tab.value = value })
 watch(tab, value => { if (route.query.tab !== value) router.replace({ query: { ...route.query, tab: value } }) })
-function selectNotificationRole(role) { roleError.value = ''; if (route.query.role !== role) router.replace({ query: { ...route.query, role } }) }
-const roleEditor = ref(null)
-const roleError = ref('')
 const status = ref(null)
 const settings = ref(null)
-const savedNotificationSettings = ref(null)
 const events = ref([])
 const recipients = ref([])
 const recipientUsers = ref([])
-const roleOptions = ref([])
 const expandedUser = ref({})
 const groups = ref([])
 const outlets = ref([])
 const errorMsg = ref('')
-const busy = ref({ status: false, login: false, logout: false, test: false, save: false, role: false, groups: false, recipient: false })
+const busy = ref({ status: false, login: false, logout: false, test: false, save: false, groups: false, recipient: false })
 const test = ref({ to: '', message: '' })
 const testResult = ref(null)
 const editing = ref({})
@@ -603,7 +597,6 @@ async function loadSettings() {
     s.role_notifications = s.role_notifications || {}
     for (const ev of res.events) if (!s.templates[ev.key]) s.templates[ev.key] = ev.template
     settings.value = s
-    savedNotificationSettings.value = JSON.parse(JSON.stringify(s))
     events.value = res.events
   } catch (e) { errorMsg.value = e?.message || 'Gagal memuat pengaturan' }
 }
@@ -634,10 +627,8 @@ async function saveSettings() {
     s.role_notifications = s.role_notifications || {}
     for (const ev of res.events) if (!s.templates[ev.key]) s.templates[ev.key] = ev.template
     settings.value = s
-    savedNotificationSettings.value = JSON.parse(JSON.stringify(s))
     events.value = res.events
     loadRecipientUsers()
-    loadRoles()
     refreshStatus(true)
   } catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { busy.value.save = false }
 }
@@ -652,9 +643,6 @@ function emptyRecipient() {
 async function loadRecipientUsers() {
   try { recipientUsers.value = await whatsappApi.recipientUsers() } catch (e) { errorMsg.value = e?.message || 'Gagal memuat pengguna' }
 }
-async function loadRoles() {
-  try { roleOptions.value = await whatsappApi.roles() } catch { roleOptions.value = [] }
-}
 function recipientNotificationScope(user) {
   const scope = user.notification_scope_type || user.scope_type
   const workUnits = user.notification_work_unit_names || []
@@ -666,35 +654,6 @@ function recipientNotificationScope(user) {
 }
 function eventLabel(key) {
   return events.value.find(e => e.key === key)?.label || key
-}
-async function applySavedRoleResponse(role, response) {
-  settings.value.role_notifications = response.settings?.role_notifications || {}
-  if (response.settings) savedNotificationSettings.value = JSON.parse(JSON.stringify(response.settings))
-  if (response.roles) roleOptions.value = response.roles
-  else await loadRoles()
-  await nextTick()
-  roleEditor.value?.acceptSaved(role)
-  await loadRecipientUsers()
-}
-async function saveRoleNotifications({ role, policy }) {
-  if (!canManage.value || busy.value.role) return
-  busy.value.role = true; roleError.value = ''
-  try {
-    const response = await whatsappApi.updateRoleNotifications(role, policy)
-    await applySavedRoleResponse(role, response)
-    toast.success(`Notifikasi role ${role} disimpan`)
-  } catch (error) { roleError.value = error?.message || 'Gagal menyimpan notifikasi role.' }
-  finally { busy.value.role = false }
-}
-async function resetRoleNotifications(role) {
-  if (!canManage.value || busy.value.role) return
-  busy.value.role = true; roleError.value = ''
-  try {
-    const response = await whatsappApi.resetRoleNotifications(role)
-    await applySavedRoleResponse(role, response)
-    toast.success(`Notifikasi role ${role} kembali ke aturan bawaan`)
-  } catch (error) { roleError.value = error?.message || 'Gagal memulihkan aturan notifikasi role.' }
-  finally { busy.value.role = false }
 }
 async function loadRecipients() {
   try { recipients.value = await whatsappApi.listRecipients() } catch (e) { errorMsg.value = e?.message || 'Gagal memuat penerima' }
@@ -744,7 +703,8 @@ function outletsLabel(ids) {
 }
 
 onMounted(async () => {
-  await Promise.all([refreshStatus(true), loadSettings(), loadRecipients(), loadRecipientUsers(), loadRoles(), loadOutlets()])
+  if (legacyRoleLink) return
+  await Promise.all([refreshStatus(true), loadSettings(), loadRecipients(), loadRecipientUsers(), loadOutlets()])
   if (status.value?.gateway.state === 'pairing') startPolling()
 })
 onUnmounted(stopPolling)

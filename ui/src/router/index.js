@@ -673,6 +673,11 @@ const router = createRouter({
 
 // ── Navigation guards ────────────────────────────────────────
 router.beforeEach(async (to) => {
+  // Legacy notification links now open the matching role before checking
+  // the WhatsApp connection-management permission.
+  if (to.path === '/whatsapp' && to.query.tab === 'role') {
+    return { path: '/roles', query: { ...(typeof to.query.role === 'string' ? { role: to.query.role } : {}), tab: 'notifications' }, replace: true }
+  }
   // Update page title
   if (to.meta.title) {
     document.title = to.meta.title

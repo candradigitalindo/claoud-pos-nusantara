@@ -5,7 +5,7 @@
     <div class="rp-hd">
       <div>
         <h1 class="rp-title">Role & Hak Akses</h1>
-        <p class="rp-sub">Kelola role dan atur wewenang setiap pengguna di sistem.</p>
+        <p class="rp-sub">Kelola hak akses, cakupan unit kerja, dan notifikasi masing-masing role.</p>
       </div>
       <button class="btn-new" @click="copyingFrom = ''; showCreate = true">
         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
@@ -23,13 +23,14 @@
     <!-- ── Roles list ── -->
     <div v-else class="roles-list">
       <div
-        v-for="role in roles"
+        v-for="role in displayRoles"
         :key="role.name"
+        :data-role="role.name"
         class="role-card"
         :class="{ 'role-card--open': expandedRole === role.name }"
       >
         <!-- Card summary -->
-        <div class="role-summary" @click="expandedRole = expandedRole === role.name ? '' : role.name">
+        <div class="role-summary" @click="toggleRolePanel(role)">
           <div class="role-avatar" :class="role.is_system ? 'avatar--sys' : 'avatar--custom'">
             {{ role.name.charAt(0).toUpperCase() }}
           </div>
@@ -50,7 +51,7 @@
                 <template v-if="role.is_system">Akses Penuh</template>
                 <template v-else>{{ countPerms(role.name) }} hak akses aktif</template>
               </span>
-              <span class="chip chip--redirect">
+              <span v-if="!role.notification_only" class="chip chip--redirect">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
                 Login → {{ getRedirectLabel(role.redirect_to) }}
               </span>
@@ -58,20 +59,27 @@
           </div>
 
           <div class="role-actions" @click.stop>
-            <RouterLink v-if="authStore.hasPermission('whatsapp.view')" :to="{ path: '/whatsapp', query: { tab: 'role', role: role.name } }"
-              class="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-              :aria-label="`Notifikasi WhatsApp role ${role.name}`" @click.stop>Notifikasi</RouterLink>
-            <AppActionButton icon="edit" label="Edit Role" @click.stop="openEditRole(role)" />
-            <AppActionButton icon="copy" label="Duplikat Role" @click.stop="openCopyRole(role)" />
-            <AppActionButton icon="delete" :label="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
+            <button type="button" class="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+              :aria-label="`Notifikasi role ${role.name}`" @click.stop="openNotifications(role.name)">Notifikasi</button>
+            <AppActionButton v-if="!role.notification_only" icon="edit" label="Edit Role" @click.stop="openEditRole(role)" />
+            <AppActionButton v-if="!role.notification_only" icon="copy" label="Duplikat Role" @click.stop="openCopyRole(role)" />
+            <AppActionButton v-if="!role.notification_only" icon="delete" :label="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
               @click.stop="!role.is_system && confirmDelete(role)" :disabled="role.is_system" />
-            <AppActionButton icon="access" :label="(expandedRole === role.name ? 'Tutup' : 'Kelola Akses')" @click="expandedRole = expandedRole === role.name ? '' : role.name" :aria-expanded="expandedRole === role.name" />
+            <AppActionButton v-if="!role.notification_only" icon="access" :label="(expandedRole === role.name ? 'Tutup' : 'Kelola Akses')" @click="toggleRolePanel(role)" :aria-expanded="expandedRole === role.name" />
           </div>
         </div>
 
         <!-- Expanded panel -->
         <div v-show="expandedRole === role.name" class="role-panel">
-
+          <div class="flex flex-wrap gap-2 border-b border-gray-100 px-4 py-3" role="tablist" :aria-label="`Pengaturan role ${role.name}`">
+            <button v-if="!role.notification_only" type="button" role="tab" :aria-selected="(roleTabs[role.name] || 'access') === 'access'"
+              class="rounded-lg px-3 py-2 text-sm font-semibold" :class="(roleTabs[role.name] || 'access') === 'access' ? 'bg-indigo-50 text-indigo-800' : 'text-gray-500 hover:bg-gray-50'"
+              @click="openAccessTab(role.name)">Hak Akses</button>
+            <button type="button" role="tab" :aria-selected="roleTabs[role.name] === 'notifications'"
+              class="rounded-lg px-3 py-2 text-sm font-semibold" :class="roleTabs[role.name] === 'notifications' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-500 hover:bg-gray-50'"
+              @click="openNotifications(role.name)">Notifikasi</button>
+          </div>
+          <div v-show="(roleTabs[role.name] || 'access') === 'access' && !role.notification_only">
           <div v-if="role.is_system" class="sys-notice">
             <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" class="sys-notice-icon"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
             <div>
@@ -133,10 +141,20 @@
             </div>
 
           </div><!-- /panel-body -->
+          </div>
+          <div v-show="roleTabs[role.name] === 'notifications'" class="p-3 sm:p-4">
+            <p v-if="notificationLoading && !notificationSettings" class="py-5 text-sm text-gray-500">Memuat notifikasi role…</p>
+            <AppAlert type="error" :message="notificationErrors[role.name] || notificationError" />
+            <button v-if="notificationError" type="button" class="mt-2 text-sm font-semibold text-emerald-700 underline" @click="loadRoleNotificationOptions">Coba muat lagi</button>
+            <WhatsAppRoleNotifications v-if="visitedNotifications[role.name] && notificationSettings && notificationRole(role.name)"
+              :ref="instance => setNotificationEditor(role.name, instance)" embedded :settings="notificationSettings" :events="notificationEvents"
+              :roles="[notificationRole(role.name)]" :role-name="role.name" :can-manage="canManageNotifications" :can-view-logs="authStore.hasPermission('whatsapp.view')"
+              :saving="Boolean(savingNotificationRole)" @save="saveRoleNotifications" @reset="resetRoleNotifications" />
+          </div>
         </div><!-- /role-panel -->
       </div>
 
-      <div v-if="roles.length === 0" class="empty-state">
+      <div v-if="displayRoles.length === 0" class="empty-state">
         <div class="empty-icon">
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
         </div>
@@ -334,12 +352,13 @@
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
-import { ref, reactive, watch, computed } from 'vue'
+import { ref, reactive, watch, computed, nextTick } from 'vue'
 import { adminsApi }    from '@/api/admins.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore }  from '@/stores/auth.js'
-import { useRouter }     from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import WhatsAppRoleNotifications from '@/components/WhatsAppRoleNotifications.vue'
 import { setLoginNotice } from '@/utils/session.js'
 import AppInput   from '@/components/ui/AppInput.vue'
 import AppAlert   from '@/components/ui/AppAlert.vue'
@@ -350,6 +369,7 @@ import PermissionMatrix from '@/components/PermissionMatrix.vue'
 const toast     = useToastStore()
 const authStore = useAuthStore()
 const router    = useRouter()
+const route = useRoute()
 
 // Mengganti nama role atau cakupannya menaikkan versi sesi SEMUA pengguna role
 // itu di server (T-55) — mereka dikeluarkan. Bila role itu milik akun yang
@@ -502,6 +522,85 @@ const errorMsg        = ref('')
 const savingRole      = ref('')
 const savingScope     = ref('')
 const expandedRole    = ref('')
+const roleTabs = ref({})
+const visitedNotifications = ref({})
+const notificationSettings = ref(null)
+const notificationEvents = ref([])
+const notificationRoles = ref([])
+const notificationLoading = ref(false)
+const notificationError = ref('')
+const notificationErrors = ref({})
+const savingNotificationRole = ref('')
+const notificationEditors = new Map()
+const canManageNotifications = computed(() => authStore.isSuperadmin || (authStore.permissions || []).includes('roles.update'))
+const displayRoles = computed(() => {
+  const result = [...roles.value]
+  const synthetic = notificationRoles.value.find(role => role.name === 'superadmin')
+  if (synthetic && !result.some(role => role.name === synthetic.name)) {
+    result.push({ ...synthetic, is_system: true, notification_only: true, redirect_to: '/' })
+  }
+  return result
+})
+function notificationRole(name) { return notificationRoles.value.find(role => role.name === name) }
+function setNotificationEditor(name, instance) { if (instance) notificationEditors.set(name, instance); else notificationEditors.delete(name) }
+function toggleRolePanel(role) {
+  if (expandedRole.value === role.name) { expandedRole.value = ''; return }
+  expandedRole.value = role.name
+  if (role.notification_only) openNotifications(role.name)
+}
+function openAccessTab(name) {
+  roleTabs.value[name] = 'access'
+  if (route.query.role === name) router.replace({ query: { ...route.query, tab: 'access' } })
+}
+function openNotifications(name) {
+  expandedRole.value = name
+  roleTabs.value[name] = 'notifications'
+  visitedNotifications.value[name] = true
+  if (route.query.role !== name || route.query.tab !== 'notifications') router.replace({ query: { ...route.query, role: name, tab: 'notifications' } })
+  if (!notificationSettings.value && !notificationLoading.value) loadRoleNotificationOptions()
+}
+watch([() => route.query.role, () => route.query.tab, () => displayRoles.value.map(role => role.name).join('|')], () => {
+  const name = typeof route.query.role === 'string' ? route.query.role : (route.query.tab === 'notifications' ? displayRoles.value[0]?.name : '')
+  if (!name || !displayRoles.value.some(role => role.name === name)) return
+  expandedRole.value = name
+  if (route.query.tab === 'notifications') { roleTabs.value[name] = 'notifications'; visitedNotifications.value[name] = true }
+  else if (route.query.tab === 'access') roleTabs.value[name] = 'access'
+}, { immediate: true })
+async function loadRoleNotificationOptions() {
+  notificationLoading.value = true; notificationError.value = ''
+  try {
+    const response = await adminsApi.roleNotificationOptions()
+    notificationSettings.value = response.settings
+    notificationRoles.value = response.roles || []
+    notificationEvents.value = response.events || []
+  } catch (error) { notificationError.value = error?.message || 'Gagal memuat notifikasi role.' }
+  finally { notificationLoading.value = false }
+}
+async function applyRoleNotificationResponse(name, response) {
+  notificationSettings.value = response.settings
+  notificationRoles.value = response.roles || []
+  if (response.events) notificationEvents.value = response.events
+  await nextTick()
+  notificationEditors.get(name)?.acceptSaved(name)
+}
+async function saveRoleNotifications({ role, policy }) {
+  if (!canManageNotifications.value || savingNotificationRole.value) return
+  savingNotificationRole.value = role; notificationErrors.value[role] = ''
+  try {
+    await applyRoleNotificationResponse(role, await adminsApi.updateRoleNotifications(role, policy))
+    toast.success(`Notifikasi role ${role} disimpan`)
+  } catch (error) { notificationErrors.value[role] = error?.message || 'Gagal menyimpan notifikasi role.' }
+  finally { savingNotificationRole.value = '' }
+}
+async function resetRoleNotifications(role) {
+  if (!canManageNotifications.value || savingNotificationRole.value) return
+  savingNotificationRole.value = role; notificationErrors.value[role] = ''
+  try {
+    await applyRoleNotificationResponse(role, await adminsApi.resetRoleNotifications(role))
+    toast.success(`Notifikasi role ${role} kembali ke aturan bawaan`)
+  } catch (error) { notificationErrors.value[role] = error?.message || 'Gagal memulihkan notifikasi role.' }
+  finally { savingNotificationRole.value = '' }
+}
 
 const showCreate  = ref(false)
 const creating    = ref(false)
@@ -590,6 +689,7 @@ async function updateScope(roleName, type, wuIDs) {
       signOutSelf('Cakupan role Anda diubah — silakan login ulang.')
       return
     }
+    await loadRoleNotificationOptions()
     toast.success(changed
       ? `Scope ${roleName} diperbarui — pengguna role ini dikeluarkan dan perlu login ulang`
       : `Scope ${roleName} diperbarui`)
@@ -620,6 +720,7 @@ async function loadRoles() {
     allPermissions.value  = rolesRes.all_permissions ?? []
     roleScopes.value      = rolesRes.scopes ?? {}
     workUnits.value       = Array.isArray(wuRes) ? wuRes : (wuRes?.data ?? wuRes ?? [])
+    await loadRoleNotificationOptions()
   } catch (err) {
     errorMsg.value = err?.message ?? 'Gagal memuat data role.'
   } finally { loading.value = false }
@@ -661,6 +762,7 @@ async function togglePermission(role, perm) {
       // Kirim snapshot TERKINI (bukan `updated` saat klik) supaya toggle yang
       // menyusul selama request sebelumnya ikut tersimpan.
       await adminsApi.updatePermissions(role, { permissions: rolePermissions.value[role] ?? [] })
+      await loadRoleNotificationOptions()
       toast.success(`Hak akses ${role} diperbarui`)
       if (role === authStore.admin?.role) await authStore.fetchPermissions()
     } catch (err) {

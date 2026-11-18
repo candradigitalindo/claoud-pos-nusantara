@@ -440,6 +440,7 @@ func WARoleOptions() []models.WARoleOption {
 			r.CentralWorkUnitNames = append(r.CentralWorkUnitNames, centralUnits[id])
 		}
 		r.EligibleEvents, r.AutomaticEvents, r.PersonalEvents = []string{}, []string{}, []string{}
+		canRequest := r.Name == "superadmin" || waRoleHasPermission(info.perms, "procurement.requests.submit") || waRoleHasPermission(info.perms, "procurement.rawmaterials.submit")
 		for i := range waEventSpecs {
 			spec := &waEventSpecs[i]
 			if spec.Audience != "internal" {
@@ -451,7 +452,7 @@ func WARoleOptions() []models.WARoleOption {
 			if waAutomaticMatchesEvent(spec, r.Name, info, settings, nil) || waAutomaticMatchesEvent(spec, r.Name, info, settings, waBahanPermMapper) {
 				r.AutomaticEvents = append(r.AutomaticEvents, spec.Key)
 			}
-			if strings.HasPrefix(spec.Key, "purchase.") && (spec.Extra != "" || spec.Key == "purchase.stale") {
+			if canRequest && strings.HasPrefix(spec.Key, "purchase.") && (spec.Extra != "" || spec.Key == "purchase.stale") {
 				r.PersonalEvents = append(r.PersonalEvents, spec.Key)
 			}
 		}

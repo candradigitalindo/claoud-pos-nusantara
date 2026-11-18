@@ -104,18 +104,27 @@ menjalankan transaksi stok.
 
 ## Notifikasi WhatsApp per role
 
-Buka **WhatsApp → Notifikasi per Role**, atau klik **Notifikasi** pada role
-di halaman Role. Pilih role, atur cakupan dan jenis pesan, lalu klik
-**Simpan notifikasi role**. Pengaturan ini mengatur pengiriman pesan tanpa
+Buka **Role & Hak Akses**, pilih **Notifikasi** pada kartu role yang diinginkan,
+lalu atur cakupan serta sakelar jenis pesannya. Daftar hanya menampilkan pesan
+yang berkaitan dengan hak akses atau pengajuan pribadi role tersebut, beserta
+aturan khusus yang sudah tersimpan. Klik **Simpan notifikasi role** untuk
+menerapkannya. Pengaturan ini mengatur pengiriman pesan tanpa
 mengubah hak akses, outlet yang boleh dibuka, atau sesi login pengguna.
 
-Setiap role memiliki sakelar notifikasi dan pilihan per kejadian:
+Setiap role memiliki sakelar seluruh notifikasi serta sakelar per jenis pesan:
 
 | Pilihan | Perilaku |
 | --- | --- |
-| Otomatis | Mengikuti izin dan aturan penerima yang sudah berlaku. |
 | Aktif | Berlangganan kejadian tersebut selama role mempunyai izin penerima yang sesuai. |
 | Nonaktif | Membisukan kejadian untuk role ini, termasuk pemberitahuan pengajuan miliknya sendiri. |
+
+Penanda **Bawaan** berarti mengikuti aturan penerima otomatis; pemulihan aturan
+mengembalikan perilaku tersebut. Pesan pengajuan pribadi yang diaktifkan tetap
+terbatas pada dokumen pengaju sendiri. Pengelola role memerlukan `roles.view`
+untuk melihat dan `roles.update` untuk mengubah preferensi ini. Hak akses sistem
+tetap terkunci pada role sistem, sedangkan preferensi notifikasinya dapat diatur.
+Koneksi WhatsApp, pengaturan umum, template, dan penerima tambahan tetap berada
+di halaman WhatsApp.
 
 **Sesuai cakupan role** mengikuti batas outlet/unit kerja pada role. Pilihan
 **Outlet tertentu** mempersempit penerimaan; outlet di luar hak akses role
@@ -140,7 +149,7 @@ terfokus. Nomor/grup penerima tambahan tetap memiliki filter outlet sendiri.
 Nomor yang juga terdaftar sebagai penerima tambahan mengikuti langganan
 tambahan tersebut secara terpisah dari pengaturan akun/role.
 
-Sakelar jenis pesan dan pengiriman utama di **Notifikasi & Template** tetap
+Sakelar jenis pesan dan pengiriman utama di **Pengaturan Umum & Template** tetap
 berlaku. Pengguna hanya menerima pesan jika akunnya aktif, mempunyai nomor
 WhatsApp yang sah, dan opsi penerimaan WA pada akunnya menyala. Perubahan
 berlaku untuk notifikasi baru setelah disimpan; pesan yang sudah masuk antrean
