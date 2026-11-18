@@ -143,9 +143,20 @@ function toFlat() {
   return flat
 }
 
-let lastEmitted = null
-watch(() => props.modelValue, (v) => { if (v !== lastEmitted) groups.value = fromFlat(v) }, { immediate: true })
-watch(groups, () => { lastEmitted = toFlat(); emit('update:modelValue', lastEmitted) }, { deep: true })
+// Induk menyimpan array hasil emit di ref(), jadi yang kembali lewat prop adalah
+// proxy reaktif — bukan objek yang sama. Membandingkan identitas membuat setiap
+// gema dianggap data baru: kelompok dibangun ulang, deep-watch emit lagi, dan
+// seterusnya tanpa henti hingga tab browser crash saat satu huruf diketik.
+// Bandingkan isinya; hanya perubahan nyata dari induk yang membangun ulang.
+const signature = (rows) => JSON.stringify(Array.from(rows || [], (r) =>
+  [r.id || '', r.section || '', r.name || '', r.kind || '', r.unit || '', r.qty ?? '', r.unit_price ?? '', r.notes || '']))
+let lastSignature = null
+watch(() => props.modelValue, (v) => { if (signature(v) !== lastSignature) groups.value = fromFlat(v) }, { immediate: true })
+watch(groups, () => {
+  const flat = toFlat()
+  lastSignature = signature(flat)
+  emit('update:modelValue', flat)
+}, { deep: true })
 
 const rowTotal = (r) => (Number(r.qty) || 0) * (Number(r.unit_price) || 0)
 const groupTotal = (g) => g.rows.reduce((s, r) => s + rowTotal(r), 0)
