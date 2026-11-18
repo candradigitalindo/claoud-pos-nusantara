@@ -14,6 +14,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -225,22 +226,23 @@ func GetWASettings() models.WASettings {
 	vals, _ := GetSettingsByKeys([]string{
 		"wa_enabled", "wa_gap_min_sec", "wa_gap_max_sec", "wa_daily_limit",
 		"wa_quiet_start", "wa_quiet_end", "wa_report_hour", "wa_reminder_hour",
-		"wa_device_offline_min", "wa_public_base_url", "wa_events", "wa_templates", "wa_event_roles",
+		"wa_device_offline_min", "wa_public_base_url", "wa_events", "wa_templates", "wa_event_roles", "wa_role_notifications",
 	})
 	s := models.WASettings{
-		Enabled:          vals["wa_enabled"] != "false",
-		GapMinSec:        waSettingInt(vals["wa_gap_min_sec"], 4, 1, 300),
-		GapMaxSec:        waSettingInt(vals["wa_gap_max_sec"], 9, 1, 600),
-		DailyLimit:       waSettingInt(vals["wa_daily_limit"], 400, 1, 10000),
-		QuietStart:       strings.TrimSpace(vals["wa_quiet_start"]),
-		QuietEnd:         strings.TrimSpace(vals["wa_quiet_end"]),
-		ReportHour:       waSettingInt(vals["wa_report_hour"], 22, 0, 23),
-		ReminderHour:     waSettingInt(vals["wa_reminder_hour"], 10, 0, 23),
-		DeviceOfflineMin: waSettingInt(vals["wa_device_offline_min"], 30, 5, 1440),
-		PublicBaseURL:    strings.TrimRight(strings.TrimSpace(vals["wa_public_base_url"]), "/"),
-		Events:           map[string]bool{},
-		Templates:        map[string]string{},
-		EventRoles:       map[string][]string{},
+		Enabled:           vals["wa_enabled"] != "false",
+		GapMinSec:         waSettingInt(vals["wa_gap_min_sec"], 4, 1, 300),
+		GapMaxSec:         waSettingInt(vals["wa_gap_max_sec"], 9, 1, 600),
+		DailyLimit:        waSettingInt(vals["wa_daily_limit"], 400, 1, 10000),
+		QuietStart:        strings.TrimSpace(vals["wa_quiet_start"]),
+		QuietEnd:          strings.TrimSpace(vals["wa_quiet_end"]),
+		ReportHour:        waSettingInt(vals["wa_report_hour"], 22, 0, 23),
+		ReminderHour:      waSettingInt(vals["wa_reminder_hour"], 10, 0, 23),
+		DeviceOfflineMin:  waSettingInt(vals["wa_device_offline_min"], 30, 5, 1440),
+		PublicBaseURL:     strings.TrimRight(strings.TrimSpace(vals["wa_public_base_url"]), "/"),
+		Events:            map[string]bool{},
+		Templates:         map[string]string{},
+		EventRoles:        map[string][]string{},
+		RoleNotifications: map[string]models.WARoleNotificationPolicy{},
 	}
 	// Belum pernah disetel: jam tenang bawaan 21:30–07:00 untuk pesan ke pelanggan.
 	// Nilai "-" berarti admin sengaja mematikannya.
@@ -267,6 +269,15 @@ func GetWASettings() models.WASettings {
 	}
 	if s.EventRoles == nil {
 		s.EventRoles = map[string][]string{}
+	}
+	if v := vals["wa_role_notifications"]; v != "" {
+		json.Unmarshal([]byte(v), &s.RoleNotifications)
+	}
+	if s.RoleNotifications == nil {
+		s.RoleNotifications = map[string]models.WARoleNotificationPolicy{}
+	}
+	if s.Events == nil {
+		s.Events = map[string]bool{}
 	}
 	for _, spec := range waEventSpecs {
 		if _, ok := s.Events[spec.Key]; !ok {
@@ -299,6 +310,8 @@ func waParseHHMM(s string) (int, bool) {
 }
 
 func UpdateWASettings(in models.WASettings) error {
+	writePolicies := in.RoleNotifications != nil && (in.ProvidedFields == nil || in.ProvidedFields["role_notifications"])
+	in = waMergeSettingsPatch(in, GetWASettings())
 	if in.GapMinSec < 1 || in.GapMinSec > 300 || in.GapMaxSec < in.GapMinSec || in.GapMaxSec > 600 {
 		return Invalid("jeda antar pesan harus 1–300 detik dan maksimum ≥ minimum")
 	}
@@ -371,7 +384,7 @@ func UpdateWASettings(in models.WASettings) error {
 	if qs == "" {
 		qs, qe = "-", "-"
 	}
-	return UpdateSettings(map[string]string{
+	updates := map[string]string{
 		"wa_enabled":            enabled,
 		"wa_gap_min_sec":        strconv.Itoa(in.GapMinSec),
 		"wa_gap_max_sec":        strconv.Itoa(in.GapMaxSec),
@@ -385,7 +398,62 @@ func UpdateWASettings(in models.WASettings) error {
 		"wa_events":             string(ev),
 		"wa_templates":          string(tp),
 		"wa_event_roles":        string(er),
-	})
+	}
+	var policies map[string]models.WARoleNotificationPolicy
+	if writePolicies {
+		var err error
+		policies, err = validateWARolePolicies(in.RoleNotifications)
+		if err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(policies)
+		if err != nil {
+			return err
+		}
+		updates["wa_role_notifications"] = string(encoded)
+	}
+	if in.ProvidedFields != nil {
+		for key := range updates {
+			if !in.ProvidedFields[strings.TrimPrefix(key, "wa_")] {
+				delete(updates, key)
+			}
+		}
+	}
+	// One transaction, deterministic locking order, and only submitted keys:
+	// template/general settings saves cannot replace per-role policies.
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	roleNames := make([]string, 0, len(policies))
+	for role := range policies {
+		if role != "superadmin" {
+			roleNames = append(roleNames, role)
+		}
+	}
+	sort.Strings(roleNames)
+	for _, role := range roleNames {
+		var locked string
+		if err := tx.QueryRow(`SELECT name FROM roles WHERE name = $1 FOR SHARE`, role).Scan(&locked); err != nil {
+			if err == sql.ErrNoRows {
+				return Invalid("role notifikasi %q berubah atau dihapus — muat ulang", role)
+			}
+			return err
+		}
+	}
+	keys := make([]string, 0, len(updates))
+	for key := range updates {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if _, err := tx.Exec(`INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, $3)
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`, key, updates[key], time.Now().UTC()); err != nil {
+			return fmt.Errorf("gagal menyimpan pengaturan %s: %w", key, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // waQuietWindow mengembalikan (mulai, selesai) dalam menit sejak 00:00, atau

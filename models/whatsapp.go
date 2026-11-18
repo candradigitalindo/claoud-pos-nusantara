@@ -1,5 +1,7 @@
 package models
 
+import "encoding/json"
+
 // ── WhatsApp ────────────────────────────────────────────────────────────────
 //
 // Gateway (wa-gateway) hanya tahu "kirim teks/gambar ke nomor/grup". Semua
@@ -72,6 +74,38 @@ type WASettings struct {
 	// EventRoles: daftar role penerima per event yang MENIMPA aturan otomatis
 	// (otomatis = role yang memegang izin terkait event). Kosong = otomatis.
 	EventRoles map[string][]string `json:"event_roles"`
+	// Nil on update preserves existing policies; an explicit empty map resets
+	// all roles to the defaults derived from their actual access scope.
+	RoleNotifications map[string]WARoleNotificationPolicy `json:"role_notifications"`
+	ProvidedFields    map[string]bool                     `json:"-"`
+}
+
+// UnmarshalJSON keeps field presence so a partial settings update never writes
+// zero values over unrelated delivery/template settings.
+func (s *WASettings) UnmarshalJSON(data []byte) error {
+	type settings WASettings
+	var decoded settings
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*s = WASettings(decoded)
+	s.ProvidedFields = map[string]bool{}
+	for key := range fields {
+		s.ProvidedFields[key] = true
+	}
+	return nil
+}
+
+type WARoleNotificationPolicy struct {
+	Enabled       bool              `json:"enabled"`
+	OutletMode    string            `json:"outlet_mode"` // role | selected
+	OutletIDs     []string          `json:"outlet_ids"`
+	IncludeGlobal bool              `json:"include_global"`
+	Events        map[string]string `json:"events"` // auto | on | off
 }
 
 // WAEventDef — satu jenis notifikasi untuk layar pengaturan.
@@ -91,7 +125,10 @@ type WAEventDef struct {
 	// Roles: daftar role penimpa (dari pengaturan); kosong = otomatis.
 	Roles []string `json:"roles"`
 	// RouteDesc: penjelasan singkat "dikirim ke siapa" untuk layar.
-	RouteDesc string `json:"route_desc"`
+	RouteDesc        string `json:"route_desc"`
+	ScopeKind        string `json:"scope_kind"`
+	ScopeDescription string `json:"scope_description"`
+	IsDigest         bool   `json:"is_digest"`
 }
 
 // WARecipient — penerima notifikasi internal (nomor pribadi atau grup WA).
@@ -174,16 +211,21 @@ type WATarget struct {
 
 // WARecipientUser — akun pengguna sebagai penerima notifikasi berdasarkan posisi.
 type WARecipientUser struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Username    string   `json:"username"`
-	Role        string   `json:"role"`
-	WAPhone     string   `json:"wa_phone"`
-	WANotify    bool     `json:"wa_notify"`
-	IsActive    bool     `json:"is_active"`
-	ScopeType   string   `json:"scope_type"` // all | specific
-	OutletNames []string `json:"outlet_names"`
-	Events      []string `json:"events"` // event internal yang akan diterimanya
+	ID                        string   `json:"id"`
+	Name                      string   `json:"name"`
+	Username                  string   `json:"username"`
+	Role                      string   `json:"role"`
+	WAPhone                   string   `json:"wa_phone"`
+	WANotify                  bool     `json:"wa_notify"`
+	IsActive                  bool     `json:"is_active"`
+	ScopeType                 string   `json:"scope_type"` // all | specific
+	OutletNames               []string `json:"outlet_names"`
+	Events                    []string `json:"events"`                  // event internal yang akan diterimanya
+	NotificationScopeType     string   `json:"notification_scope_type"` // all | specific | none
+	NotificationOutletNames   []string `json:"notification_outlet_names"`
+	NotificationWorkUnitNames []string `json:"notification_work_unit_names"`
+	RoleNotificationsEnabled  bool     `json:"role_notifications_enabled"`
+	IncludeGlobal             bool     `json:"include_global"`
 }
 
 // WARoleOption — pilihan role untuk penimpa posisi per event.
@@ -194,5 +236,14 @@ type WARoleOption struct {
 	Users       int    `json:"users"` // pengguna aktif ber-nomor WA pada role ini
 	// RequesterOnly: untuk pengadaan role ini hanya pengaju — tidak boleh
 	// menjadi penimpa penerima event pengadaan (pengaju saling menerima).
-	RequesterOnly bool `json:"requester_only"`
+	RequesterOnly        bool                     `json:"requester_only"`
+	OutletIDs            []string                 `json:"outlet_ids"`
+	OutletNames          []string                 `json:"outlet_names"`
+	CentralWorkUnitIDs   []string                 `json:"central_work_unit_ids"`
+	CentralWorkUnitNames []string                 `json:"central_work_unit_names"`
+	EligibleEvents       []string                 `json:"eligible_events"`
+	AutomaticEvents      []string                 `json:"automatic_events"`
+	PersonalEvents       []string                 `json:"personal_events"`
+	Policy               WARoleNotificationPolicy `json:"policy"`
+	HasPolicy            bool                     `json:"has_policy"`
 }

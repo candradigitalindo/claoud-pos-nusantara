@@ -102,6 +102,54 @@ kelompok F & B pada halaman Role. Izin Gudang tidak otomatis memberikan akses
 resep; jangan memberikan hak tulis resep hanya untuk mengizinkan petugas
 menjalankan transaksi stok.
 
+## Notifikasi WhatsApp per role
+
+Buka **WhatsApp → Notifikasi per Role**, atau klik **Notifikasi** pada role
+di halaman Role. Pilih role, atur cakupan dan jenis pesan, lalu klik
+**Simpan notifikasi role**. Pengaturan ini mengatur pengiriman pesan tanpa
+mengubah hak akses, outlet yang boleh dibuka, atau sesi login pengguna.
+
+Setiap role memiliki sakelar notifikasi dan pilihan per kejadian:
+
+| Pilihan | Perilaku |
+| --- | --- |
+| Otomatis | Mengikuti izin dan aturan penerima yang sudah berlaku. |
+| Aktif | Berlangganan kejadian tersebut selama role mempunyai izin penerima yang sesuai. |
+| Nonaktif | Membisukan kejadian untuk role ini, termasuk pemberitahuan pengajuan miliknya sendiri. |
+
+**Sesuai cakupan role** mengikuti batas outlet/unit kerja pada role. Pilihan
+**Outlet tertentu** mempersempit penerimaan; outlet di luar hak akses role
+tidak dapat ditambahkan. Informasi **global/pusat** hanya tersedia untuk role
+dengan akses seluruh outlet yang memakai cakupan sesuai role dan mengaktifkan
+opsi global. Saat memilih outlet tertentu, rekap selalu dibatasi ke pilihan
+tersebut dan informasi global/pusat tidak dikirim.
+
+Reservasi, tutup kasir, dan perangkat mengikuti outlet transaksi. Rekap
+penjualan, kedaluwarsa bahan, serta perawatan aset menghitung **jumlah dan
+isi pesan setelah penyaringan outlet**, sehingga total outlet lain tidak ikut
+terbawa. Saldo gudang induk masuk rekap pusat. Pengadaan unit kerja yang tidak
+memiliki outlet tetap mengikuti hak akses unit kerja tersebut saat memakai
+**Sesuai cakupan role**; dokumen tanpa outlet maupun unit kerja adalah informasi
+global/pusat. Pengaju pengadaan menerima perkembangan dokumennya sendiri;
+izin mengajukan tidak membuatnya menerima pengajuan pengguna lain.
+
+Contoh: manager Outlet A menerima laporan dan peringatan Outlet A; owner
+dengan akses seluruh outlet dapat menerima rekap gabungan dan informasi pusat.
+Role purchasing pusat juga dapat memilih beberapa outlet agar pesan lebih
+terfokus. Nomor/grup penerima tambahan tetap memiliki filter outlet sendiri.
+Nomor yang juga terdaftar sebagai penerima tambahan mengikuti langganan
+tambahan tersebut secara terpisah dari pengaturan akun/role.
+
+Sakelar jenis pesan dan pengiriman utama di **Notifikasi & Template** tetap
+berlaku. Pengguna hanya menerima pesan jika akunnya aktif, mempunyai nomor
+WhatsApp yang sah, dan opsi penerimaan WA pada akunnya menyala. Perubahan
+berlaku untuk notifikasi baru setelah disimpan; pesan yang sudah masuk antrean
+tetap memakai isinya semula dan dapat dibatalkan melalui Log Pesan. Mematikan
+notifikasi role tidak mematikan pesan untuk pelanggan. Pengaturan mengikuti
+role ketika namanya diubah. Jika role terakhir pada daftar penerima khusus
+dihapus, jenis pesan tersebut dimatikan agar tidak tiba-tiba dikirim ke
+penerima otomatis yang lebih luas.
+
 ## Kontrol pemakaian bahan (PPIC)
 
 **PPIC → Kontrol Pemakaian Bahan** membandingkan acuan pemakaian yang tercatat

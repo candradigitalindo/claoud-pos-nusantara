@@ -49,9 +49,10 @@ func waRoleHasPermission(perms []string, required string) bool {
 }
 
 type waRoleInfo struct {
-	perms     []string
-	scopeType string
-	outletIDs []string
+	perms       []string
+	scopeType   string
+	outletIDs   []string
+	workUnitIDs []string
 }
 
 // waLoadRoles memuat izin + batasan outlet semua role sekali per perutean.
@@ -66,8 +67,12 @@ func waLoadRoles() map[string]waRoleInfo {
 		for rows.Next() {
 			var name string
 			if rows.Scan(&name) == nil {
-				st, ids := GetRoleScopeOutletIDs(name)
-				out[name] = waRoleInfo{perms: perms[name], scopeType: st, outletIDs: ids}
+				scope, scopeErr := ResolveRoleScope(name)
+				if scopeErr != nil {
+					log.Printf("[WA] baca cakupan role %q: %v", name, scopeErr)
+					scope = RoleScope{Type: "specific"}
+				}
+				out[name] = waRoleInfo{perms: perms[name], scopeType: scope.Type, outletIDs: scope.OutletIDs, workUnitIDs: scope.WorkUnitIDs}
 			}
 		}
 		rows.Close()
@@ -107,11 +112,16 @@ func waLoadAdmins() []waAdminRow {
 // mapPerm (boleh nil) menerjemahkan izin pada spec sebelum dicocokkan —
 // mis. event pengadaan untuk pengajuan bahan baku memetakan
 // procurement.requests.approve ke procurement.rawmaterials.approve.
-func waUserMatchesEvent(spec *waEventSpec, role string, info waRoleInfo, s models.WASettings, mapPerm waPermMapper) bool {
+func waAutomaticMatchesEvent(spec *waEventSpec, role string, info waRoleInfo, s models.WASettings, mapPerm waPermMapper) bool {
+	if spec == nil || spec.Audience != "internal" || (strings.HasPrefix(spec.Key, "purchase.") && WARequesterOnlyRole(role, info)) {
+		return false
+	}
 	if override := s.EventRoles[spec.Key]; len(override) > 0 {
 		for _, r := range override {
 			if strings.EqualFold(strings.TrimSpace(r), role) {
-				return true
+				// A saved legacy allowlist selects recipients within their actual
+				// permissions; it cannot turn goods access into raw-material access.
+				return waRoleEventEligible(spec, role, info, mapPerm)
 			}
 		}
 		return false
@@ -130,14 +140,35 @@ func waUserMatchesEvent(spec *waEventSpec, role string, info waRoleInfo, s model
 	return false
 }
 
+func waUserMatchesEvent(spec *waEventSpec, role string, info waRoleInfo, s models.WASettings, mapPerm waPermMapper) bool {
+	if spec == nil || !waEventEnabled(s, spec.Key) {
+		return false
+	}
+	p, _ := waRolePolicy(role, info, s)
+	if !p.Enabled {
+		return false
+	}
+	switch p.Events[spec.Key] {
+	case "off":
+		return false
+	case "on":
+		return waRoleEventEligible(spec, role, info, mapPerm)
+	default:
+		return waAutomaticMatchesEvent(spec, role, info, s, mapPerm)
+	}
+}
+
 // waCentralOutlet: penanda perutean dokumen pusat (tanpa outlet & unit kerja)
 // — hanya role bercakupan semua outlet yang tercakup (lihat waPurchaseOutlet).
 // Bukan ULID, jadi tidak pernah cocok dengan outlet mana pun.
 const waCentralOutlet = "__pusat__"
 
 func waRoleCoversOutlet(info waRoleInfo, outletID string) bool {
-	if outletID == "" || info.scopeType != "specific" {
+	if info.scopeType == "all" {
 		return true
+	}
+	if info.scopeType != "specific" || outletID == "" || outletID == waCentralOutlet {
+		return false
 	}
 	for _, id := range info.outletIDs {
 		if id == outletID {
@@ -170,7 +201,7 @@ func waExtraMatches(extra string, a waAdminRow) bool {
 // dengan daftar tambahan; OutletIDs diisi dari batasan role (nil = semua).
 func waUserRecipients(event, outletID string, s models.WASettings, mapPerm waPermMapper, extraNames []string) []models.WARecipient {
 	spec := waSpec(event)
-	if spec == nil || spec.Audience != "internal" {
+	if spec == nil || spec.Audience != "internal" || !waEventEnabled(s, event) {
 		return nil
 	}
 	roles := waLoadRoles()
@@ -179,7 +210,14 @@ func waUserRecipients(event, outletID string, s models.WASettings, mapPerm waPer
 		if !a.Active || !a.Notify || a.Phone == "" {
 			continue
 		}
-		info := roles[a.Role]
+		info, exists := roles[a.Role]
+		if !exists {
+			continue
+		}
+		policy, _ := waRolePolicy(a.Role, info, s)
+		if !policy.Enabled || policy.Events[event] == "off" || !waPolicyCoversOutlet(info, policy, outletID) {
+			continue
+		}
 		named := false
 		for _, n := range extraNames {
 			if waExtraMatches(n, a) {
@@ -188,17 +226,11 @@ func waUserRecipients(event, outletID string, s models.WASettings, mapPerm waPer
 			}
 		}
 		if !named {
-			if !waUserMatchesEvent(spec, a.Role, info, s, mapPerm) || !waRoleCoversOutlet(info, outletID) {
+			if !waUserMatchesEvent(spec, a.Role, info, s, mapPerm) {
 				continue
 			}
 		}
-		var scope []string
-		if info.scopeType == "specific" {
-			scope = append([]string{}, info.outletIDs...)
-			if len(scope) == 0 {
-				scope = []string{"__none__"}
-			}
-		}
+		scope := waEffectiveRoleOutlets(info, policy)
 		out = append(out, models.WARecipient{
 			ID: a.ID, Name: a.Name, Target: a.Phone, Kind: "phone", Events: []string{event},
 			OutletIDs: scope, IsActive: true,
@@ -230,7 +262,10 @@ func waManualRecipients(event, outletID string) []models.WARecipient {
 		if !sub {
 			continue
 		}
-		if outletID != "" && len(r.OutletIDs) > 0 {
+		if (outletID == "" || outletID == waCentralOutlet) && len(r.OutletIDs) > 0 {
+			continue
+		}
+		if outletID != "" && outletID != waDigestOutlet && len(r.OutletIDs) > 0 {
 			ok := false
 			for _, o := range r.OutletIDs {
 				if strings.TrimSpace(o) == outletID {
@@ -264,6 +299,9 @@ func waBahanPermMapper(perm string) string {
 
 func waRecipientsForMapped(event, outletID string, mapPerm waPermMapper, extraNames ...string) []models.WARecipient {
 	s := GetWASettings()
+	if !s.Enabled || !waEventEnabled(s, event) {
+		return nil
+	}
 	seen := map[string]bool{}
 	out := []models.WARecipient{}
 	for _, r := range append(waUserRecipients(event, outletID, s, mapPerm, extraNames), waManualRecipients(event, outletID)...) {
@@ -285,22 +323,33 @@ func waRecipientsForMapped(event, outletID string, mapPerm waPermMapper, extraNa
 func WARecipientUsers() []models.WARecipientUser {
 	s := GetWASettings()
 	roles := waLoadRoles()
+	centralUnits, _ := waCentralWorkUnitNames()
 	outletNames := map[string]string{}
-	if rows, err := database.DB.Query(`SELECT id, name FROM outlets`); err == nil {
+	activeOutlets := map[string]string{}
+	if rows, err := database.DB.Query(`SELECT id, name, is_active FROM outlets`); err == nil {
 		for rows.Next() {
 			var id, name string
-			if rows.Scan(&id, &name) == nil {
-				outletNames[strings.TrimSpace(id)] = name
+			var active bool
+			if rows.Scan(&id, &name, &active) == nil {
+				id = strings.TrimSpace(id)
+				outletNames[id] = name
+				if active {
+					activeOutlets[id] = name
+				}
 			}
 		}
 		rows.Close()
 	}
 	out := []models.WARecipientUser{}
 	for _, a := range waLoadAdmins() {
-		info := roles[a.Role]
+		info, known := roles[a.Role]
+		policy, _ := waRolePolicy(a.Role, info, s)
 		u := models.WARecipientUser{
 			ID: a.ID, Name: a.Name, Username: a.Username, Role: a.Role, WAPhone: a.Phone,
 			WANotify: a.Notify, IsActive: a.Active, ScopeType: info.scopeType, OutletNames: []string{}, Events: []string{},
+			NotificationScopeType: "none", NotificationOutletNames: []string{},
+			NotificationWorkUnitNames: []string{},
+			RoleNotificationsEnabled:  known && policy.Enabled, IncludeGlobal: known && policy.Enabled && policy.IncludeGlobal,
 		}
 		if info.scopeType == "specific" {
 			for _, id := range info.outletIDs {
@@ -310,12 +359,34 @@ func WARecipientUsers() []models.WARecipientUser {
 			}
 			sort.Strings(u.OutletNames)
 		}
-		if a.Active && a.Notify && a.Phone != "" {
+		if u.RoleNotificationsEnabled {
+			for id, name := range centralUnits {
+				if waPolicyCoversOutlet(info, policy, waWorkUnitPrefix+id) {
+					u.NotificationWorkUnitNames = append(u.NotificationWorkUnitNames, name)
+				}
+			}
+			sort.Strings(u.NotificationWorkUnitNames)
+			effective := waEffectiveRoleOutlets(info, policy)
+			if len(effective) == 0 && (len(activeOutlets) > 0 || policy.IncludeGlobal) {
+				u.NotificationScopeType = "all"
+			} else {
+				for _, id := range effective {
+					if name, active := activeOutlets[id]; active {
+						u.NotificationOutletNames = append(u.NotificationOutletNames, name)
+					}
+				}
+				if len(u.NotificationOutletNames) > 0 || len(u.NotificationWorkUnitNames) > 0 {
+					u.NotificationScopeType = "specific"
+					sort.Strings(u.NotificationOutletNames)
+				}
+			}
+		}
+		if a.Active && a.Notify && a.Phone != "" && known && s.Enabled {
 			for i := range waEventSpecs {
 				spec := &waEventSpecs[i]
 				// Event pengadaan juga sampai ke pemegang izin bahan baku
 				// (untuk pengajuan berjenis bahan), jadi keduanya dihitung.
-				if spec.Audience == "internal" && (waUserMatchesEvent(spec, a.Role, info, s, nil) ||
+				if spec.Audience == "internal" && waRoleEventHasContext(spec, info, policy, activeOutlets, centralUnits) && (waUserMatchesEvent(spec, a.Role, info, s, nil) ||
 					waUserMatchesEvent(spec, a.Role, info, s, waBahanPermMapper)) {
 					u.Events = append(u.Events, spec.Key)
 				}
@@ -328,25 +399,76 @@ func WARecipientUsers() []models.WARecipientUser {
 
 // WARoleOptions: daftar role untuk pilihan penimpa posisi per event.
 func WARoleOptions() []models.WARoleOption {
+	settings := GetWASettings()
+	infos := waLoadRoles()
+	activeOutlets, _ := waActiveOutletNames()
+	centralUnits, _ := waCentralWorkUnitNames()
 	counts := map[string]int{}
 	for _, a := range waLoadAdmins() {
 		if a.Active && a.Notify && a.Phone != "" {
 			counts[a.Role]++
 		}
 	}
-	out := []models.WARoleOption{{Name: "superadmin", Description: "Pemilik sistem (semua akses)", ScopeType: "all", Users: counts["superadmin"]}}
+	decorate := func(r models.WARoleOption) models.WARoleOption {
+		info := infos[r.Name]
+		r.ScopeType = info.scopeType
+		r.Users = counts[r.Name]
+		r.RequesterOnly = WARequesterOnlyRole(r.Name, info)
+		r.Policy, r.HasPolicy = waRolePolicy(r.Name, info, settings)
+		r.OutletIDs, r.OutletNames = []string{}, []string{}
+		r.CentralWorkUnitIDs, r.CentralWorkUnitNames = []string{}, []string{}
+		for id := range activeOutlets {
+			if waRoleCoversOutlet(info, id) {
+				r.OutletIDs = append(r.OutletIDs, id)
+			}
+		}
+		sort.Slice(r.OutletIDs, func(i, j int) bool {
+			return activeOutlets[r.OutletIDs[i]] < activeOutlets[r.OutletIDs[j]]
+		})
+		for _, id := range r.OutletIDs {
+			r.OutletNames = append(r.OutletNames, activeOutlets[id])
+		}
+		for id := range centralUnits {
+			if waRoleCoversWorkUnit(info, id) {
+				r.CentralWorkUnitIDs = append(r.CentralWorkUnitIDs, id)
+			}
+		}
+		sort.Slice(r.CentralWorkUnitIDs, func(i, j int) bool {
+			return centralUnits[r.CentralWorkUnitIDs[i]] < centralUnits[r.CentralWorkUnitIDs[j]]
+		})
+		for _, id := range r.CentralWorkUnitIDs {
+			r.CentralWorkUnitNames = append(r.CentralWorkUnitNames, centralUnits[id])
+		}
+		r.EligibleEvents, r.AutomaticEvents, r.PersonalEvents = []string{}, []string{}, []string{}
+		for i := range waEventSpecs {
+			spec := &waEventSpecs[i]
+			if spec.Audience != "internal" {
+				continue
+			}
+			if waRoleEventEligibleAny(spec, r.Name, info) {
+				r.EligibleEvents = append(r.EligibleEvents, spec.Key)
+			}
+			if waAutomaticMatchesEvent(spec, r.Name, info, settings, nil) || waAutomaticMatchesEvent(spec, r.Name, info, settings, waBahanPermMapper) {
+				r.AutomaticEvents = append(r.AutomaticEvents, spec.Key)
+			}
+			if strings.HasPrefix(spec.Key, "purchase.") && (spec.Extra != "" || spec.Key == "purchase.stale") {
+				r.PersonalEvents = append(r.PersonalEvents, spec.Key)
+			}
+		}
+		return r
+	}
+	out := []models.WARoleOption{decorate(models.WARoleOption{Name: "superadmin", Description: "Pemilik sistem (semua akses)"})}
 	rows, err := database.DB.Query(`SELECT name, COALESCE(description,''), COALESCE(scope_type,'all') FROM roles ORDER BY name`)
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
-	infos := waLoadRoles()
 	for rows.Next() {
 		var r models.WARoleOption
 		if rows.Scan(&r.Name, &r.Description, &r.ScopeType) == nil {
-			r.Users = counts[r.Name]
-			r.RequesterOnly = WARequesterOnlyRole(r.Name, infos[r.Name])
-			out = append(out, r)
+			if r.Name != "superadmin" {
+				out = append(out, decorate(r))
+			}
 		}
 	}
 	return out

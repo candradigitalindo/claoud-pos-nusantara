@@ -765,8 +765,13 @@ func GetOutletIDsForScope(scopeType string, outletIDs []string) interface{} {
 }
 
 func DeleteRole(name string) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var isSystem bool
-	err := database.DB.QueryRow(`SELECT is_system FROM roles WHERE name = $1`, name).Scan(&isSystem)
+	err = tx.QueryRow(`SELECT is_system FROM roles WHERE name = $1 FOR UPDATE`, name).Scan(&isSystem)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("role tidak ditemukan")
@@ -778,7 +783,7 @@ func DeleteRole(name string) error {
 	}
 
 	var count int
-	err = database.DB.QueryRow(`SELECT COUNT(*) FROM cloud_admins WHERE role = $1`, name).Scan(&count)
+	err = tx.QueryRow(`SELECT COUNT(*) FROM cloud_admins WHERE role = $1`, name).Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -786,16 +791,15 @@ func DeleteRole(name string) error {
 		return fmt.Errorf("tidak dapat menghapus role yang masih digunakan oleh %d pengguna", count)
 	}
 
-	tx, err := database.DB.Begin()
-	if err != nil {
-		return err
-	}
-
 	if _, err := tx.Exec(`DELETE FROM role_permissions WHERE role = $1`, name); err != nil {
 		tx.Rollback()
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM role_work_unit_scope WHERE role = $1`, name); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := rewriteWARoleReferencesTx(tx, name, ""); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -886,6 +890,10 @@ func UpdateRole(currentName string, req models.UpdateRoleRequest) (*models.Role,
 			return nil, err
 		}
 		if _, err := tx.Exec(`UPDATE role_work_unit_scope SET role = $1 WHERE role = $2`, newName, currentName); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err := rewriteWARoleReferencesTx(tx, currentName, newName); err != nil {
 			tx.Rollback()
 			return nil, err
 		}

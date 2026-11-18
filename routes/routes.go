@@ -639,6 +639,8 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/whatsapp/preview", middleware.RequirePermission("whatsapp.view"), handlers.WAPreviewTemplate)
 	admin.Get("/whatsapp/recipients/users", middleware.RequirePermission("whatsapp.view"), handlers.WARecipientUsers)
 	admin.Get("/whatsapp/roles", middleware.RequirePermission("whatsapp.view"), handlers.WARoleOptions)
+	admin.Put("/whatsapp/roles/:role/notifications", middleware.RequirePermission("whatsapp.manage"), handlers.WAUpdateRoleNotifications)
+	admin.Delete("/whatsapp/roles/:role/notifications", middleware.RequirePermission("whatsapp.manage"), handlers.WAResetRoleNotifications)
 	admin.Get("/whatsapp/recipients", middleware.RequirePermission("whatsapp.view"), handlers.WAListRecipients)
 	admin.Post("/whatsapp/recipients", middleware.RequirePermission("whatsapp.manage"), handlers.WACreateRecipient)
 	admin.Put("/whatsapp/recipients/:id", middleware.RequirePermission("whatsapp.manage"), handlers.WAUpdateRecipient)

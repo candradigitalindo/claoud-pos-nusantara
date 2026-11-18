@@ -284,14 +284,14 @@ func GetMaintenance(id string, outletScope []string) (*models.AssetMaintenance, 
 
 // MaintenanceSummary adalah angka untuk kartu ringkasan halaman Perawatan.
 type MaintenanceSummary struct {
-	Overdue     int     `json:"overdue"`
-	DueWeek     int     `json:"due_week"`
-	DueMonth    int     `json:"due_month"`
-	InProgress  int     `json:"in_progress"`
-	CostYear    float64 `json:"cost_year"`
-	DoneYear    int     `json:"done_year"`
-	Preventive  int     `json:"preventive_year"`
-	Corrective  int     `json:"corrective_year"`
+	Overdue    int     `json:"overdue"`
+	DueWeek    int     `json:"due_week"`
+	DueMonth   int     `json:"due_month"`
+	InProgress int     `json:"in_progress"`
+	CostYear   float64 `json:"cost_year"`
+	DoneYear   int     `json:"done_year"`
+	Preventive int     `json:"preventive_year"`
+	Corrective int     `json:"corrective_year"`
 }
 
 func GetMaintenanceSummary(outletScope []string) (*MaintenanceSummary, error) {
@@ -670,7 +670,7 @@ func StartAssetMaintenanceScheduler() {
 func generateDueMaintenanceWorkOrders() {
 	rows, err := database.DB.Query(fmt.Sprintf(`
 		SELECT m.id, m.asset_id, m.type, TO_CHAR(m.next_due_date, 'YYYY-MM-DD'),
-		       COALESCE(m.wo_number, ''), COALESCE(a.name, '')
+		       COALESCE(m.wo_number, ''), COALESCE(a.name, ''), COALESCE(a.outlet_id, '')
 		FROM asset_maintenances m
 		JOIN assets a ON a.id = m.asset_id AND a.is_deleted = false
 		WHERE m.next_due_date IS NOT NULL
@@ -684,11 +684,11 @@ func generateDueMaintenanceWorkOrders() {
 		log.Printf("[Aset] Gagal membaca jadwal perawatan: %v", err)
 		return
 	}
-	type due struct{ srcID, assetID, woType, dueDate, srcWO, assetName string }
+	type due struct{ srcID, assetID, woType, dueDate, srcWO, assetName, outletID string }
 	pending := []due{}
 	for rows.Next() {
 		var d due
-		if err := rows.Scan(&d.srcID, &d.assetID, &d.woType, &d.dueDate, &d.srcWO, &d.assetName); err != nil {
+		if err := rows.Scan(&d.srcID, &d.assetID, &d.woType, &d.dueDate, &d.srcWO, &d.assetName, &d.outletID); err != nil {
 			continue
 		}
 		pending = append(pending, d)
@@ -722,7 +722,7 @@ func generateDueMaintenanceWorkOrders() {
 		}
 		if err := tx.Commit(); err == nil {
 			created++
-			dueList = append(dueList, WAMaintenanceDue{WONumber: wo, AssetName: d.assetName, Type: d.woType, DueDate: d.dueDate})
+			dueList = append(dueList, WAMaintenanceDue{WONumber: wo, AssetName: d.assetName, Type: d.woType, DueDate: d.dueDate, OutletID: strings.TrimSpace(d.outletID)})
 		}
 	}
 	if created > 0 {

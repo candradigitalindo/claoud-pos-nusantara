@@ -383,11 +383,13 @@ func WAEventCatalog(s models.WASettings) []models.WAEventDef {
 		if strings.TrimSpace(tpl) == "" {
 			tpl = spec.Template
 		}
+		scopeKind, scopeDescription := waEventScope(spec.Key)
 		out = append(out, models.WAEventDef{
 			Key: spec.Key, Label: spec.Label, Group: spec.Group, Audience: spec.Audience,
 			Description: spec.Description, Placeholders: spec.Placeholders,
 			Default: spec.Template, Template: tpl, Enabled: waEventEnabled(s, spec.Key), Scheduled: spec.Scheduled,
 			Permissions: spec.Permissions, Roles: s.EventRoles[spec.Key], RouteDesc: waRouteDesc(&spec),
+			ScopeKind: scopeKind, ScopeDescription: scopeDescription, IsDigest: waIsDigestEvent(spec.Key),
 		})
 	}
 	return out
@@ -868,52 +870,9 @@ func SendDailySalesSummary(day string) {
 	if len(all) == 0 {
 		return
 	}
-	tpl := s.Templates["sales.daily"]
-	if strings.TrimSpace(tpl) == "" {
-		tpl = waSpec("sales.daily").Template
-	}
-	globals := waGlobals()
-	for _, r := range waRecipientsFor("sales.daily", "") {
-		rows := all
-		if len(r.OutletIDs) > 0 {
-			rows = []waOutletSales{}
-			for _, o := range all {
-				for _, id := range r.OutletIDs {
-					if strings.TrimSpace(id) == o.ID {
-						rows = append(rows, o)
-					}
-				}
-			}
-		}
-		if len(rows) == 0 {
-			continue
-		}
-		var rev, unpaidAmt float64
-		var cnt, unpaidCnt, voidCnt int
-		lines := make([]string, 0, len(rows))
-		for _, o := range rows {
-			rev += o.Revenue
-			cnt += o.Count
-			unpaidCnt += o.UnpaidCount
-			unpaidAmt += o.UnpaidAmount
-			voidCnt += o.VoidCount
-			lines = append(lines, fmt.Sprintf("• %s: %s (%d trx)", o.Name, waRp(o.Revenue), o.Count))
-		}
-		avg := 0.0
-		if cnt > 0 {
-			avg = rev / float64(cnt)
-		}
-		vars := waMerge(globals, map[string]string{
-			"date": waDate(day), "outlets": strings.Join(lines, "\n"),
-			"total_revenue": waRp(rev), "total_count": fmt.Sprintf("%d", cnt), "avg": waRp(avg),
-			"unpaid_count": fmt.Sprintf("%d", unpaidCnt), "unpaid_amount": waRp(unpaidAmt),
-			"void_count": fmt.Sprintf("%d", voidCnt),
-		})
-		EnqueueWAMessage(models.WAMessage{
-			Target: r.Target, TargetName: r.Name, Audience: "internal", Kind: "notify",
-			Event: "sales.daily", RefID: day, Body: waRender(tpl, vars),
-		})
-	}
+	notifyWAScopedDigest("sales.daily", day, func(outletIDs []string) (map[string]string, bool) {
+		return waDailySalesVars(day, all, outletIDs)
+	})
 }
 
 // ── Pengadaan ───────────────────────────────────────────────────────────────
@@ -1030,21 +989,20 @@ func waRejectedItemsVars(pr *models.PurchaseRequest) (count, list string) {
 	return fmt.Sprintf("%d", len(items)), strings.Join(lines, "\n")
 }
 
-// waPurchaseOutlet: outlet perutean WA sebuah pengajuan. Pengajuan pusat
-// (tanpa outlet maupun unit kerja, mis. MRP Gudang Induk) hanya boleh dibuka
-// role bercakupan semua outlet (T-43), jadi pesannya pun hanya untuk mereka:
-// penanda waCentralOutlet tidak pernah ada di daftar outlet role per outlet,
-// dan penerima tambahan yang dibatasi outlet tidak ikut. Dulu outlet kosong
-// berarti "semua role", sehingga isi pengajuan pusat terkirim ke role per
-// outlet yang tidak bisa membuka dokumennya. Pengaju tetap dikabari (extra).
+// waPurchaseOutlet preserves the document's actual access scope: an outlet,
+// an assigned work unit without an outlet, or a genuinely central document
+// without either owner. Only the last case requires global access. Requesters
+// follow the same scope boundaries even as additional recipients.
 func waPurchaseOutlet(pr *models.PurchaseRequest) string {
 	if pr.OutletID != nil {
 		if o := strings.TrimSpace(*pr.OutletID); o != "" {
 			return o
 		}
 	}
-	if pr.WorkUnitID != nil && strings.TrimSpace(*pr.WorkUnitID) != "" {
-		return "" // unit kerja tanpa outlet: perutean lama (tanpa saring outlet)
+	if pr.WorkUnitID != nil {
+		if unit := strings.TrimSpace(*pr.WorkUnitID); unit != "" {
+			return waWorkUnitPrefix + unit
+		}
 	}
 	return waCentralOutlet
 }
@@ -1120,48 +1078,35 @@ func waPpicExpiryVars(day string, expired, expiring int, expLines []string) map[
 	}
 }
 
-func NotifyPpicAlert(expired, expiring int) {
+// The scheduler's organization totals only trigger this notification. Payload
+// counts are read again and computed within each recipient's effective scope.
+func NotifyPpicAlert(_, _ int) {
 	if waGatewayURL == "" {
 		return
 	}
 	day := waToday()
-	expLines := []string{}
-	rows, err := database.DB.Query(`
-		SELECT si.name, w.name, TO_CHAR(sb.expiry_date,'DD-MM'), sb.qty_base, si.base_unit
-		FROM stock_batches sb JOIN stock_items si ON si.id = sb.item_id JOIN warehouses w ON w.id = sb.warehouse_id
-		WHERE sb.qty_base > 0 AND sb.expiry_date IS NOT NULL AND sb.expiry_date < CURRENT_DATE + 3
-		  AND sb.ppic_ack_at IS NULL AND w.is_active = true
-		ORDER BY sb.expiry_date LIMIT 10`)
-	if err == nil {
-		for rows.Next() {
-			var item, wh, exp, unit string
-			var qty float64
-			if rows.Scan(&item, &wh, &exp, &qty, &unit) == nil {
-				expLines = append(expLines, fmt.Sprintf("• %s — %s — exp %s (%.0f %s)", item, wh, exp, qty, unit))
-			}
-		}
-		rows.Close()
+	groups, err := waPpicAlertGroups()
+	if err != nil {
+		log.Printf("[WA] baca peringatan kedaluwarsa: %v", err)
+		return
 	}
-	notifyWA("ppic.alert", day, "", waPpicExpiryVars(day, expired, expiring, expLines), "")
+	notifyWAScopedDigest("ppic.alert", day, func(outletIDs []string) (map[string]string, bool) {
+		return waPpicScopedVars(day, groups, outletIDs)
+	})
 }
 
 // ── Aset ────────────────────────────────────────────────────────────────────
 
-type WAMaintenanceDue struct{ WONumber, AssetName, Type, DueDate string }
+type WAMaintenanceDue struct{ WONumber, AssetName, Type, DueDate, OutletID string }
 
 func NotifyMaintenanceDue(list []WAMaintenanceDue) {
 	if len(list) == 0 {
 		return
 	}
-	lines := make([]string, 0, len(list))
-	for _, d := range list {
-		lines = append(lines, fmt.Sprintf("• %s %s — %s — %s", d.WONumber, d.AssetName, d.Type, waDate(d.DueDate)))
-	}
 	day := waToday()
-	vars := map[string]string{
-		"date": waDate(day), "count": fmt.Sprintf("%d", len(list)), "list": strings.Join(lines, "\n"),
-	}
-	notifyWA("asset.maintenance_due", day, "", vars, "")
+	notifyWAScopedDigest("asset.maintenance_due", day, func(outletIDs []string) (map[string]string, bool) {
+		return waMaintenanceVars(day, list, outletIDs)
+	})
 }
 
 // ── Perangkat ───────────────────────────────────────────────────────────────

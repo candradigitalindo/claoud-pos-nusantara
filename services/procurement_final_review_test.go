@@ -265,9 +265,10 @@ func TestWACentralPurchaseSkipsOutletScopedRoles(t *testing.T) {
 		}
 		return false
 	}
-	// Bukti perilaku lama: outlet kosong menjangkau role per outlet.
-	if !receives("") {
-		t.Fatal("prasyarat uji: outlet kosong seharusnya menjangkau semua role (perilaku lama)")
+	// An unspecified outlet is now explicitly global. It must be as strict
+	// as a central document, even when a caller forgets its central marker.
+	if receives("") {
+		t.Fatal("role per outlet menerima isi global tanpa outlet")
 	}
 	central := &models.PurchaseRequest{RequestType: RequestTypeBarang}
 	if receives(waPurchaseOutlet(central)) {

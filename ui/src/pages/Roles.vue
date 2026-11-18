@@ -58,6 +58,9 @@
           </div>
 
           <div class="role-actions" @click.stop>
+            <RouterLink v-if="authStore.hasPermission('whatsapp.view')" :to="{ path: '/whatsapp', query: { tab: 'role', role: role.name } }"
+              class="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+              :aria-label="`Notifikasi WhatsApp role ${role.name}`" @click.stop>Notifikasi</RouterLink>
             <AppActionButton icon="edit" label="Edit Role" @click.stop="openEditRole(role)" />
             <AppActionButton icon="copy" label="Duplikat Role" @click.stop="openCopyRole(role)" />
             <AppActionButton icon="delete" :label="role.is_system ? 'Role sistem tidak dapat dihapus' : 'Hapus Role'"
