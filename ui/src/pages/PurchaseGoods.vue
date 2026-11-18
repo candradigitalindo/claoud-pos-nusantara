@@ -2,7 +2,10 @@
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan {{ typeLabel }}</h1>
-      <AppButton v-if="authStore.hasPermission(perm('submit'))" @click="openCreate">+ Buat Pengajuan</AppButton>
+      <div class="flex flex-wrap items-center gap-2">
+        <AppButton variant="secondary" :loading="exportingPurchasing" @click="downloadPurchasingExcel">Excel per Vendor</AppButton>
+        <AppButton v-if="authStore.hasPermission(perm('submit'))" @click="openCreate">+ Buat Pengajuan</AppButton>
+      </div>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
@@ -21,7 +24,7 @@
         </div>
         <div class="flex w-full flex-col gap-1 sm:w-auto">
           <label class="text-sm font-medium text-gray-700">Status</label>
-          <SearchableSelect v-model="filterStatus"
+          <SearchableSelect v-model="filterStatus" aria-label="Filter status pengadaan"
             class="w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="">Semua Status</option>
             <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
@@ -148,8 +151,20 @@
         <div v-if="isBahan" class="modal-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
           Pengajuan bahan baku langsung <strong>menunggu persetujuan</strong> (tanpa verifikasi) dan masih bisa diubah sampai disetujui.
           Seluruh bahan baku diterima di <strong>Gudang Induk</strong> dan dicatat sebagai bahan (HPP).
-          <template v-if="!stockCatalogFailed">Ketik nama item lalu pilih saran dari katalog stok agar namanya sama dengan katalog dan satuannya terisi otomatis.</template>
-          <template v-else>Katalog stok tidak dapat dimuat — tulis nama bahan persis seperti di katalog Gudang agar mudah dipetakan saat serah terima.</template>
+          Pilih bahan melalui pencarian katalog; satuan pembeliannya terisi otomatis.
+        </div>
+        <div v-if="isBahan" class="modal-span-full space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label class="font-semibold">Gudang Induk untuk cek stok terakhir</label>
+            <button type="button" class="font-medium underline disabled:opacity-50" :disabled="stockCatalogLoading" @click="loadStockItemNames">{{ stockCatalogLoading ? 'Memuat…' : 'Perbarui stok' }}</button>
+          </div>
+          <SearchSelect v-if="stockWarehouses.length > 1" v-model="stockWarehouseId" :options="stockWarehouses"
+            aria-label="Gudang Induk untuk cek stok" placeholder="Pilih Gudang Induk milik pengaju…" searchPlaceholder="Cari Gudang Induk…" />
+          <p v-else-if="selectedStockWarehouse" class="font-semibold">{{ selectedStockWarehouse.name }}</p>
+          <p v-if="stockCatalogFailed" class="text-red-700">Katalog dan stok gagal dimuat. Klik Perbarui stok sebelum memilih bahan.</p>
+          <p v-else-if="!stockCatalogLoading && !stockWarehouses.length" class="text-amber-800">Belum ada Gudang Induk aktif dalam cakupan akun ini; stok tidak tersedia.</p>
+          <p v-else-if="!selectedStockWarehouse" class="text-amber-800">Pilih satu Gudang Induk untuk melihat stoknya.</p>
+          <p v-if="stockAsOf && selectedStockWarehouse" class="text-emerald-700">Diperbarui {{ formatDateTime(stockAsOf) }} · Stok dapat berubah selama pengajuan diproses.</p>
         </div>
 
         <!-- Items List -->
@@ -179,9 +194,13 @@
                         </div>
                         <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600">{{ rabWarn(sub) }}</p>
                       </div>
-                      <input v-model="sub.name" :placeholder="isBahan ? 'Nama bahan (ketik untuk saran katalog)' : 'Nama item'"
-                        :list="isBahan ? 'pg-stock-item-names' : null" autocomplete="off"
-                        class="input-sm col-span-2 sm:col-span-4" @input="isBahan && applyCatalogItem(sub)" />
+                      <div v-if="isBahan" class="col-span-2 sm:col-span-4">
+                        <SearchSelect v-model="sub.name" :options="stockItemOptions" value-key="name" label-key="label"
+                          :disabled="stockCatalogLoading || stockCatalogFailed" placeholder="Pilih bahan baku…" searchPlaceholder="Cari nama atau kode bahan baku…"
+                          :aria-label="`Bahan baku pengadaan ${i + 1} item ${j + 1}`" @change="applyCatalogItem(sub)" />
+                        <p v-if="sub.name" class="mt-1 text-[11px] text-emerald-700">{{ stockBalanceLabel(sub) }}</p>
+                      </div>
+                      <input v-else v-model="sub.name" placeholder="Nama item" autocomplete="off" class="input-sm col-span-2 sm:col-span-4" />
                       <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm sm:col-span-2" />
                       <input v-model="sub.unit" placeholder="Satuan" class="input-sm sm:col-span-1" />
                       <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" class="col-span-2" />
@@ -209,9 +228,6 @@
           <div class="mt-3">
             <button type="button" @click="addItem" class="text-sm text-emerald-600 hover:text-emerald-800 font-medium">+ Tambah Pengadaan</button>
           </div>
-          <datalist v-if="isBahan" id="pg-stock-item-names">
-            <option v-for="it in stockItemSuggestions" :key="it.id || it.key" :value="it.name" :label="it.unit ? `${it.name} (${it.unit})` : it.name" />
-          </datalist>
           <div v-if="mixedKind" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
             <p class="font-semibold">Pengajuan ini mencampur barang dapur dan peralatan.</p>
             <p class="mt-1">
@@ -450,7 +466,7 @@
                     <AppActionButton icon="delete" label="Hapus baris" v-if="canEditItems" @click="removeDetailSubItem(i, j)" />
                   </div>
                   <dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-                    <dt class="text-gray-400">Qty</dt>
+                    <dt class="text-gray-400">Qty diajukan</dt>
                     <dd class="text-gray-800">
                       <span v-if="canEditItems" class="inline-flex items-center gap-1">
                         <input v-model.number="sub.qty" type="number" min="1" class="w-20 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
@@ -458,6 +474,10 @@
                       </span>
                       <span v-else>{{ sub.qty }} {{ sub.unit }}</span>
                     </dd>
+                    <template v-if="sub.purchased_qty != null">
+                      <dt class="text-gray-400">Qty dibeli</dt>
+                      <dd class="font-semibold text-emerald-700">{{ purchaseQuantity(sub) }} {{ sub.unit }}</dd>
+                    </template>
                     <template v-if="showHps && sub.hps_source">
                       <dt class="text-gray-400">Sumber HPS</dt>
                       <dd class="min-w-0">
@@ -476,8 +496,8 @@
                     <dt class="text-gray-400">Harga</dt>
                     <dd class="text-gray-700">
                       <template v-if="sub.final_price">
-                        {{ formatRupiah(sub.final_price) }}<span class="text-gray-400"> × {{ sub.qty }} = </span>
-                        <strong class="text-emerald-700">{{ formatRupiah((sub.qty || 0) * sub.final_price) }}</strong>
+                        {{ formatRupiah(sub.final_price) }}<span class="text-gray-400"> × {{ purchaseQuantity(sub) }} = </span>
+                        <strong class="text-emerald-700">{{ formatRupiah(purchaseQuantity(sub) * sub.final_price) }}</strong>
                       </template>
                       <template v-else>-</template>
                     </dd>
@@ -491,7 +511,8 @@
                       <th v-if="canEditItems" class="py-1.5 w-8"></th>
                       <th class="py-1.5 pr-2">#</th>
                       <th class="py-1.5 pr-2">Nama Item</th>
-                      <th class="py-1.5 pr-2 text-right">Qty</th>
+                      <th class="py-1.5 pr-2 text-right">Qty Diajukan</th>
+                      <th class="py-1.5 pr-2 text-right">Qty Dibeli</th>
                       <th class="py-1.5 pr-2">Satuan</th>
                       <th v-if="showHps" class="py-1.5 pr-2 text-right">HPS Satuan</th>
                       <th v-if="showHps" class="py-1.5 pr-2 text-right">HPS Total</th>
@@ -514,6 +535,7 @@
                         <input v-if="canEditItems" v-model.number="sub.qty" type="number" min="1" class="w-24 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
                         <span v-else>{{ sub.qty }}</span>
                       </td>
+                      <td class="py-1.5 pr-2 text-right font-medium text-emerald-700">{{ sub.purchased_qty != null ? purchaseQuantity(sub) : '—' }}</td>
                       <td class="py-1.5 pr-2">{{ sub.unit }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(sub.hps_price) }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(detail.status === 'pending' ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</td>
@@ -525,7 +547,7 @@
                         <span v-else class="block truncate text-gray-600" :title="sub.hps_source">{{ sub.hps_source || '—' }}</span>
                       </td>
                       <td class="py-1.5 pr-2 text-right">{{ sub.final_price ? formatRupiah(sub.final_price) : '-' }}</td>
-                      <td class="py-1.5 text-right font-medium">{{ sub.final_price ? formatRupiah((sub.qty || 0) * sub.final_price) : '-' }}</td>
+                      <td class="py-1.5 text-right font-medium">{{ sub.final_price ? formatRupiah(purchaseQuantity(sub) * sub.final_price) : '-' }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -734,11 +756,12 @@
     </AppModal>
 
     <!-- Edit Final Price Modal -->
-    <AppModal v-model="showEditFinal" title="Isi Harga (Purchasing)" size="2xl">
+    <AppModal v-model="showEditFinal" title="Jumlah & Harga Pembelian (Purchasing)" size="2xl">
       <AppAlert type="error" :message="editFinalError" />
       <p class="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
-        Pengajuan sudah disetujui: nama, qty, satuan, dan HPS terkunci, dan baris tidak bisa ditambah atau dihapus.
-        Yang bisa diubah hanya harga final per item, vendor, dan nomor invoice.
+        Isi jumlah aktual yang dibeli dan harga satuannya. Jumlah pengajuan tetap tersimpan sebagai pembanding.
+        Nama, satuan, HPS, serta susunan item mengikuti pengajuan yang disetujui.
+        <span v-if="!canAdjustPurchaseQuantity" class="mt-1 block text-amber-700">Jumlah pembelian terkunci setelah ada penerimaan, struk, atau pembayaran.</span>
       </p>
       <div class="mb-4 bg-emerald-50 p-3 sm:p-4 rounded-xl border border-emerald-100">
         <label class="text-sm font-bold text-emerald-900 mb-1.5 block">Vendor / Supplier Utama</label>
@@ -753,20 +776,28 @@
         <input v-model="editFinalInvoice" type="text" placeholder="Masukkan nomor invoice dari vendor"
           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
       </div>
-      <p class="text-sm text-gray-500 mb-3">Masukkan harga per satuan untuk setiap item.</p>
+      <p class="text-sm text-gray-500 mb-3">Contoh: diajukan 10 kotak, tersedia 8 kotak — isi jumlah dibeli 8. Total harga dan penerimaan mengikuti jumlah dibeli.</p>
       <div class="space-y-4">
         <div v-for="(item, i) in editFinalItems" :key="i" class="bg-gray-50 rounded-lg p-3 border border-gray-200">
           <p class="text-sm font-semibold text-gray-900 mb-2">{{ item.name }}</p>
           <div class="space-y-2 sm:space-y-1.5">
             <div v-for="(sub, j) in item.items" :key="j"
               class="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
-              <p class="col-span-2 break-words text-sm text-gray-700 sm:col-span-4">{{ sub.name }}</p>
-              <p class="self-center text-xs text-gray-500 sm:col-span-2 sm:text-right">{{ sub.qty }} {{ sub.unit }}</p>
-              <div class="hidden sm:block sm:col-span-1"></div>
-              <div class="col-span-2 order-last sm:order-none sm:col-span-3">
+              <div class="col-span-2 sm:col-span-4">
+                <p class="break-words text-sm text-gray-700">{{ sub.name }}</p>
+                <p class="text-xs text-gray-500">Diajukan: {{ sub.qty }} {{ sub.unit }}</p>
+              </div>
+              <label class="sm:col-span-3 text-xs text-gray-500">
+                Jumlah dibeli ({{ sub.unit }})
+                <input v-model.number="sub.purchased_qty" type="number" min="1" :max="sub.qty" step="1"
+                  :disabled="!canAdjustPurchaseQuantity" :aria-label="`Jumlah dibeli ${sub.name}`"
+                  class="input-sm mt-1 w-full disabled:bg-gray-100 disabled:text-gray-500" />
+              </label>
+              <div class="sm:col-span-3">
+                <label class="mb-1 block text-xs text-gray-500">Harga/satuan</label>
                 <RupiahInput v-model="sub.final_price" placeholder="Harga/satuan" />
               </div>
-              <p class="self-center text-xs text-emerald-700 text-right font-medium sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</p>
+              <p class="self-center text-xs text-emerald-700 text-right font-medium sm:col-span-2">{{ formatRupiah(purchaseQuantity(sub) * (sub.final_price || 0)) }}</p>
             </div>
           </div>
           <p class="text-xs text-right mt-2 text-gray-500">Harga pengadaan: <strong class="text-emerald-700">{{ formatRupiah(calcEditItemFinal(item)) }}</strong></p>
@@ -777,7 +808,7 @@
       </p>
       <template #footer>
         <AppButton variant="secondary" @click="showEditFinal = false">Batal</AppButton>
-        <AppButton :loading="savingFinal" @click="submitEditFinal">Simpan Harga</AppButton>
+        <AppButton :loading="savingFinal" @click="submitEditFinal">Simpan Pembelian</AppButton>
       </template>
     </AppModal>
 
@@ -800,8 +831,8 @@
                   <p class="text-[10px] text-gray-400 uppercase font-semibold break-words">{{ sub.groupName }}</p>
                 </div>
                 <div class="text-right shrink-0">
-                  <p class="text-xs font-bold text-emerald-700">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</p>
-                  <p class="text-[10px] text-gray-500">{{ sub.qty }} {{ sub.unit }}</p>
+                  <p class="text-xs font-bold text-emerald-700">{{ formatRupiah(purchaseQuantity(sub) * (sub.final_price || 0)) }}</p>
+                  <p class="text-[10px] text-gray-500">Dibeli {{ purchaseQuantity(sub) }} {{ sub.unit }} · Diajukan {{ sub.qty }}</p>
                 </div>
               </div>
             </div>
@@ -987,33 +1018,62 @@ const canOpenReceiving = computed(() => {
 // untuk memperingatkan pengaju SEBELUM disimpan (pengadaan barang), dan sebagai
 // saran nama + satuan di form pengadaan bahan baku; server tetap yang memutuskan.
 const stockItems = ref([])
-// Katalog gagal dimuat (mis. tanpa izin): banner tidak menyuruh memilih saran.
 const stockCatalogFailed = ref(false)
+const stockCatalogLoading = ref(false)
+const stockWarehouses = ref([])
+const stockWarehouseId = ref('')
+const stockAsOf = ref('')
+const selectedStockWarehouse = computed(() => stockWarehouses.value.find(w => w.id === stockWarehouseId.value))
 const stockItemNames = computed(() => new Set(stockItems.value.map(r => r.key)))
 const stockItemByName = computed(() => Object.fromEntries(stockItems.value.map(r => [r.key, r])))
+const stockItemOptions = computed(() => stockItems.value.filter(r => r.active).map(r => ({
+  ...r, label: `${r.name}${r.code ? ` · ${r.code}` : ''}${r.unit ? ` (${r.unit})` : ''}`,
+})))
+let stockCatalogSeq = 0
 async function loadStockItemNames() {
+  const seq = ++stockCatalogSeq
+  const withStock = isBahan.value
+  stockCatalogLoading.value = true
   try {
-    const d = await stockItemsApi.names()
-    const rows = Array.isArray(d) ? d : (d?.data || d?.items || [])
+    const d = await stockItemsApi.names(withStock ? { include_stock: 1 } : {})
+    if (seq !== stockCatalogSeq) return
+    const rows = Array.isArray(d) ? d : (d?.items || d?.data || [])
     stockCatalogFailed.value = false
+    stockWarehouses.value = withStock ? (d?.warehouses || []) : []
+    stockAsOf.value = d?.as_of || ''
+    if (!stockWarehouses.value.some(w => w.id === stockWarehouseId.value)) {
+      stockWarehouseId.value = stockWarehouses.value.length === 1 ? stockWarehouses.value[0].id : ''
+    }
     stockItems.value = rows
       .filter(r => String(r.name || '').trim())
       .map(r => ({
-        id: r.id,
-        name: String(r.name).trim(),
-        key: String(r.name).trim().toLowerCase(),
-        active: r.is_active !== false,
-        // Satuan beli mengikuti draft MRP: label satuan distribusi → satuan distribusi → satuan dasar.
-        unit: r.unit || '',
+        ...r, name: String(r.name).trim(), key: String(r.name).trim().toLowerCase(),
+        active: r.is_active !== false, unit: r.unit || '',
       }))
-  } catch { stockItems.value = []; stockCatalogFailed.value = true }
+  } catch {
+    if (seq !== stockCatalogSeq) return
+    stockItems.value = []; stockWarehouses.value = []; stockAsOf.value = ''
+    stockCatalogFailed.value = true
+  } finally { if (seq === stockCatalogSeq) stockCatalogLoading.value = false }
 }
-// Saran datalist hanya item aktif; pencocokan nama tetap memakai seluruh katalog.
-const stockItemSuggestions = computed(() => stockItems.value.filter(r => r.active))
-// Memilih/mengetik nama yang persis ada di katalog mengisi satuannya.
 function applyCatalogItem(sub) {
   const it = stockItemByName.value[String(sub.name || '').trim().toLowerCase()]
   if (it?.unit) sub.unit = it.unit
+}
+function stockBalanceLabel(sub) {
+  const it = stockItemByName.value[String(sub.name || '').trim().toLowerCase()]
+  const warehouse = selectedStockWarehouse.value
+  if (!it || !warehouse) return 'Pilih Gudang Induk untuk melihat stok terakhir.'
+  const baseQty = Number(it.stock_by_warehouse?.[warehouse.id] || 0)
+  const formatQty = value => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 4 }).format(value)
+  const baseLabel = `${formatQty(baseQty)} ${it.base_unit}`
+  const ratio = Number(it.purchase_ratio)
+  const qtyLabel = it.unit && it.unit !== it.base_unit && ratio > 0
+    ? `${formatQty(baseQty / ratio)} ${it.unit} (${baseLabel})` : baseLabel
+  return `Stok ${warehouse.name}: ${qtyLabel}`
+}
+function purchaseQuantity(sub) {
+  return Number(sub.purchased_qty ?? sub.qty) || 0
 }
 
 const mixedKind = computed(() => {
@@ -1081,6 +1141,11 @@ function canEditStatus(st) {
   return (st === 'pending' || (isBahan.value && st === 'verified')) && authStore.hasPermission(perm('submit'))
 }
 const canEditItems = computed(() => canEditStatus(detail.value?.status))
+const canAdjustPurchaseQuantity = computed(() => {
+  const d = detail.value
+  return d?.status === 'approved' && authStore.hasPermission(perm('purchasing'))
+    && !d.receipt_status && !(d.paid_amount > 0) && !(d.struks || []).length
+})
 // Batal: sebelum ajukan bayar dan sebelum ada barang diterima.
 const canCancel = computed(() => {
   const d = detail.value
@@ -1190,7 +1255,7 @@ const editFinalItems = ref([])
 const editFinalError = ref('')
 const savingFinal = ref(false)
 const editFinalTotal = computed(() =>
-  editFinalItems.value.reduce((sum, it) => sum + (it.items || []).reduce((s, sub) => s + (sub.qty || 0) * (sub.final_price || 0), 0), 0)
+  editFinalItems.value.reduce((sum, it) => sum + (it.items || []).reduce((s, sub) => s + purchaseQuantity(sub) * (sub.final_price || 0), 0), 0)
 )
 
 // Split Vendor State
@@ -1219,7 +1284,7 @@ function openSplitVendor() {
 
 const canSplit = computed(() => splitItemsFlattened.value.some(it => it.selected) && splitVendorId.value)
 const splitTotal = computed(() =>
-  splitItemsFlattened.value.filter(it => it.selected).reduce((sum, it) => sum + (it.qty || 0) * (it.final_price || 0), 0)
+  splitItemsFlattened.value.filter(it => it.selected).reduce((sum, it) => sum + purchaseQuantity(it) * (it.final_price || 0), 0)
 )
 
 async function submitSplit() {
@@ -1279,7 +1344,7 @@ function calcItemHps(item) {
   return (item.items || []).reduce((s, sub) => s + (sub.qty || 0) * (sub.hps_price || 0), 0)
 }
 function calcEditItemFinal(item) {
-  return (item.items || []).reduce((s, sub) => s + (sub.qty || 0) * (sub.final_price || 0), 0)
+  return (item.items || []).reduce((s, sub) => s + purchaseQuantity(sub) * (sub.final_price || 0), 0)
 }
 
 // Status tak dikenal tampil apa adanya dengan warna netral (lihat utils/procurement.js).
@@ -1491,6 +1556,28 @@ async function fetchList() {
   finally { if (seq === listSeq) loading.value = false }
 }
 
+const exportingPurchasing = ref(false)
+async function downloadPurchasingExcel() {
+  if (exportingPurchasing.value) return
+  exportingPurchasing.value = true
+  errorMsg.value = ''
+  try {
+    const params = { type: requestType.value, status: filterStatus.value, parent_id: 'all' }
+    if (filterWorkUnit.value) params.work_unit_id = filterWorkUnit.value
+    const blob = await purchaseApi.exportPurchasing(params)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `Purchasing-${typeLabel.value.replaceAll(' ', '-')}-per-Vendor-${new Date().toLocaleDateString('en-CA')}.xlsx`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    errorMsg.value = err?.message || 'Gagal mengunduh Excel purchasing per vendor.'
+  } finally { exportingPurchasing.value = false }
+}
+
 // Pindah /purchase-goods ↔ /purchase-materials memakai ulang komponen ini
 // (onMounted tidak terpanggil lagi). Tutup semua dialog, kosongkan filter,
 // halaman, detail, dan form jenis sebelumnya, lalu muat daftar jenis baru.
@@ -1521,6 +1608,7 @@ watch(requestType, () => {
   totalPages.value = 1
   requests.value = []
   fetchList()
+  loadStockItemNames()
 })
 
 function goPage(p) { page.value = p; fetchList() }
@@ -1535,6 +1623,7 @@ function openCreate() {
   if (units.length === 1) form.value.work_unit_id = units[0].id
   else if (myWorkUnit.value && units.some(u => u.id === myWorkUnit.value.id)) form.value.work_unit_id = myWorkUnit.value.id
   showCreate.value = true
+  loadStockItemNames()
 }
 
 async function submitCreate() {
@@ -1544,6 +1633,13 @@ async function submitCreate() {
   if (!unit) { createError.value = 'Pilih unit kerja pengaju terlebih dahulu.'; return }
   const validItems = form.value.items.filter(it => it.name.trim())
   if (!validItems.length) { createError.value = 'Minimal 1 barang harus diisi.'; return }
+  if (isBahan.value && (stockCatalogFailed.value || stockCatalogLoading.value)) {
+    createError.value = 'Tunggu katalog bahan baku selesai dimuat, atau klik Perbarui stok.'; return
+  }
+  if (isBahan.value && validItems.some(g => !(g.items || []).length || g.items.some(sub =>
+    !stockItemByName.value[String(sub.name || '').trim().toLowerCase()]?.active))) {
+    createError.value = 'Pilih bahan baku aktif dari pencarian katalog untuk setiap item.'; return
+  }
 
   creating.value = true
   try {
@@ -1783,7 +1879,7 @@ function openEditFinal() {
   const items = getUnsplitItems(detail.value || {})
   editFinalItems.value = items.map(it => ({
     ...it,
-    items: (it.items || []).map(sub => ({ ...sub }))
+    items: (it.items || []).map(sub => ({ ...sub, purchased_qty: purchaseQuantity(sub) }))
   }))
   editFinalError.value = ''
   showEditFinal.value = true
@@ -1791,22 +1887,25 @@ function openEditFinal() {
 
 async function submitEditFinal() {
   if (!editFinalVendorId.value) { editFinalError.value = 'Silakan pilih vendor terlebih dahulu.'; return }
+  if (editFinalItems.value.some(g => (g.items || []).some(sub =>
+    !Number.isInteger(Number(sub.purchased_qty)) || Number(sub.purchased_qty) < 1 || Number(sub.purchased_qty) > Number(sub.qty)))) {
+    editFinalError.value = 'Jumlah dibeli harus bilangan bulat antara 1 dan jumlah yang diajukan.'; return
+  }
   savingFinal.value = true; editFinalError.value = ''
   try {
     const vendor = vendorList.value.find(v => v.id === editFinalVendorId.value)
-    // Status approved: server hanya menerima perubahan harga final, vendor, dan
-    // invoice — baris dikirim persis seperti tersimpan, hanya final_price yang baru.
+    // Original requested quantities remain unchanged; purchasing sets its own quantity.
     await purchaseApi.updateItems(detail.value.id, {
       items: editFinalItems.value.map(g => ({
         name: g.name,
-        items: (g.items || []).map(sub => ({ ...sub, final_price: Number(sub.final_price) || 0 })),
+        items: (g.items || []).map(sub => ({ ...sub, purchased_qty: Number(sub.purchased_qty), final_price: Number(sub.final_price) || 0 })),
       })),
       vendor_id: editFinalVendorId.value,
       vendor_name: vendor?.name || '',
       invoice_number: editFinalInvoice.value.trim(),
       version: detail.value.version,
     })
-    toast.success('Harga dan Vendor berhasil disimpan.')
+    toast.success('Jumlah pembelian, harga, dan vendor berhasil disimpan.')
     showEditFinal.value = false
     if (parentDetailId.value) {
       await backToParent()

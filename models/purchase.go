@@ -2,15 +2,18 @@ package models
 
 // PurchaseSubItem represents a single item inside a procurement entry.
 type PurchaseSubItem struct {
-	Name     string  `json:"name"`
-	Qty      int     `json:"qty"`
-	Unit     string  `json:"unit"`
-	HpsPrice float64 `json:"hps_price"`
+	Name string `json:"name"`
+	Qty  int    `json:"qty"`
+	// PurchasedQty is set by purchasing after approval. Qty remains the
+	// approved request; nil keeps legacy requests at the requested quantity.
+	PurchasedQty *int    `json:"purchased_qty,omitempty"`
+	Unit         string  `json:"unit"`
+	HpsPrice     float64 `json:"hps_price"`
 	// HpsSource: dari mana angka HPS itu didapat — nama toko yang ditelepon,
 	// tautan Shopee/Tokopedia, atau penawaran vendor. Tanpa ini, HPS hanya
 	// angka yang harus dipercaya begitu saja saat pengajuan ditinjau.
-	HpsSource     string  `json:"hps_source"`
-	HpsSubtotal   float64 `json:"hps_subtotal"`
+	HpsSource   string  `json:"hps_source"`
+	HpsSubtotal float64 `json:"hps_subtotal"`
 	// FinalPrice/FinalSubtotal hanya diisi pembelian setelah pengajuan
 	// disetujui; kiriman pengaju saat membuat atau mengubah pengajuan pending
 	// diabaikan server (T-39). Subtotal selalu dihitung ulang server.
@@ -28,6 +31,14 @@ type PurchaseSubItem struct {
 	// berlaku — mengganti nama/menonaktifkan item katalog tidak lagi
 	// memindahkan pengajuan terbuka antar meja.
 	GoodsKind string `json:"goods_kind,omitempty"`
+}
+
+// PurchaseQuantity is the quantity to bill and receive, in the purchase unit.
+func (s PurchaseSubItem) PurchaseQuantity() int {
+	if s.PurchasedQty != nil {
+		return *s.PurchasedQty
+	}
+	return s.Qty
 }
 
 // PurchaseRequestItem represents a procurement entry ("Nama Pengadaan") with aggregated totals.
@@ -59,65 +70,65 @@ type RejectedPurchaseItem struct {
 
 // PurchaseRequest represents a purchase request from an outlet.
 type PurchaseRequest struct {
-	ID                   string                `json:"id"`
-	RequestNumber        string                `json:"request_number"`
-	OutletID             *string               `json:"outlet_id"`
-	OutletName           *string               `json:"outlet_name,omitempty"`
-	WorkUnitID           *string               `json:"work_unit_id"`
-	WorkUnitName         string                `json:"work_unit_name,omitempty"`
-	RequestType          string                `json:"request_type"`
-	RequestedBy          string                `json:"requested_by"`
+	ID            string  `json:"id"`
+	RequestNumber string  `json:"request_number"`
+	OutletID      *string `json:"outlet_id"`
+	OutletName    *string `json:"outlet_name,omitempty"`
+	WorkUnitID    *string `json:"work_unit_id"`
+	WorkUnitName  string  `json:"work_unit_name,omitempty"`
+	RequestType   string  `json:"request_type"`
+	RequestedBy   string  `json:"requested_by"`
 	// Pelaku tiap tahap diisi dari sesi login, bukan dari isi permintaan
 	// (T-7). *_by_id NULL untuk token statis / data lama.
-	RequestedByID        *string               `json:"requested_by_id"`
-	VendorID             *string               `json:"vendor_id"`
-	VendorName           string                `json:"vendor_name"`
-	Status               string                `json:"status"`
-	Items                []PurchaseRequestItem `json:"items"`
-	TotalAmount          float64               `json:"total_amount"`
-	TotalHps             float64               `json:"total_hps"`
-	TotalFinal           float64               `json:"total_final"`
-	Notes                string                `json:"notes"`
-	InvoiceNumber        string                `json:"invoice_number"`
+	RequestedByID *string               `json:"requested_by_id"`
+	VendorID      *string               `json:"vendor_id"`
+	VendorName    string                `json:"vendor_name"`
+	Status        string                `json:"status"`
+	Items         []PurchaseRequestItem `json:"items"`
+	TotalAmount   float64               `json:"total_amount"`
+	TotalHps      float64               `json:"total_hps"`
+	TotalFinal    float64               `json:"total_final"`
+	Notes         string                `json:"notes"`
+	InvoiceNumber string                `json:"invoice_number"`
 	// Verifikasi (pending → verified): pemeriksa ketersediaan sebelum owner.
-	VerifiedBy           string                `json:"verified_by"`
-	VerifiedByID         *string               `json:"verified_by_id"`
-	VerifiedAt           *string               `json:"verified_at"`
-	VerificationNotes    string                `json:"verification_notes"`
-	ApprovedBy           *string               `json:"approved_by"`
-	ApprovedByID         *string               `json:"approved_by_id"`
-	ApprovedAt           *string               `json:"approved_at"`
-	RejectedReason       *string               `json:"rejected_reason"`
+	VerifiedBy        string  `json:"verified_by"`
+	VerifiedByID      *string `json:"verified_by_id"`
+	VerifiedAt        *string `json:"verified_at"`
+	VerificationNotes string  `json:"verification_notes"`
+	ApprovedBy        *string `json:"approved_by"`
+	ApprovedByID      *string `json:"approved_by_id"`
+	ApprovedAt        *string `json:"approved_at"`
+	RejectedReason    *string `json:"rejected_reason"`
 	// Penolak (verifikator saat pending, penyetuju saat verified). Dulu
 	// penolakan ditulis ke approved_by/approved_at (T-73).
-	RejectedBy           string                `json:"rejected_by"`
-	RejectedAt           *string               `json:"rejected_at"`
+	RejectedBy string  `json:"rejected_by"`
+	RejectedAt *string `json:"rejected_at"`
 	// RejectedItems: sub-item yang ditolak saat verifikasi. Selalu array.
 	RejectedItems        []RejectedPurchaseItem `json:"rejected_items"`
-	PaidBy               *string               `json:"paid_by"`
-	PaidAt               *string               `json:"paid_at"`
-	PaymentProof         *string               `json:"payment_proof"`
-	PaymentAccountDest   string                `json:"payment_account_dest"`
-	PaymentAccountSource string                `json:"payment_account_source"`
-	PaymentNotes         string                `json:"payment_notes"`
-	PaidAmount           float64               `json:"paid_amount"`
-	ReceivedBy           *string               `json:"received_by"`
-	ReceivedAt           *string               `json:"received_at"`
+	PaidBy               *string                `json:"paid_by"`
+	PaidAt               *string                `json:"paid_at"`
+	PaymentProof         *string                `json:"payment_proof"`
+	PaymentAccountDest   string                 `json:"payment_account_dest"`
+	PaymentAccountSource string                 `json:"payment_account_source"`
+	PaymentNotes         string                 `json:"payment_notes"`
+	PaidAmount           float64                `json:"paid_amount"`
+	ReceivedBy           *string                `json:"received_by"`
+	ReceivedAt           *string                `json:"received_at"`
 	// ReceiptStatus berdiri sendiri dari Status: '' (belum diterima), 'partial',
 	// atau 'received'. Barang bisa datang sebelum maupun sesudah dibayar.
-	ReceiptStatus string `json:"receipt_status"`
-	ProjectID            *string               `json:"project_id"`
-	ProjectName          string                `json:"project_name,omitempty"`
-	ParentID             *string               `json:"parent_id"`
-	ParentNumber         string                `json:"parent_number,omitempty"`
-	SplitStatus          *string               `json:"split_status"` // 'master' or nil
-	Children             []PurchaseRequest     `json:"children,omitempty"`
-	CreatedAt            string                `json:"created_at"`
-	UpdatedAt            string                `json:"updated_at"`
+	ReceiptStatus string            `json:"receipt_status"`
+	ProjectID     *string           `json:"project_id"`
+	ProjectName   string            `json:"project_name,omitempty"`
+	ParentID      *string           `json:"parent_id"`
+	ParentNumber  string            `json:"parent_number,omitempty"`
+	SplitStatus   *string           `json:"split_status"` // 'master' or nil
+	Children      []PurchaseRequest `json:"children,omitempty"`
+	CreatedAt     string            `json:"created_at"`
+	UpdatedAt     string            `json:"updated_at"`
 	// Version = updated_at (UTC, RFC3339Nano). Dikirim balik pada aksi verify
 	// (wajib) dan approve/edit (opsional); bila dokumen sudah berubah server
 	// membalas 409 "Pengajuan berubah, muat ulang".
-	Version              string                `json:"version"`
+	Version string `json:"version"`
 	// Struks & Pickups hanya diisi pada detail (GetPurchaseRequest).
 	Struks  []PurchaseStruk  `json:"struks,omitempty"`
 	Pickups []PurchasePickup `json:"pickups,omitempty"`
@@ -176,20 +187,20 @@ type SplitPurchaseRequestInput struct {
 
 // CreatePurchaseRequestInput is the payload for creating a purchase request.
 type CreatePurchaseRequestInput struct {
-	OutletID    string                `json:"outlet_id"`
-	WorkUnitID  string                `json:"work_unit_id"`
-	RequestType string                `json:"request_type" validate:"required"`
+	OutletID    string `json:"outlet_id"`
+	WorkUnitID  string `json:"work_unit_id"`
+	RequestType string `json:"request_type" validate:"required"`
 	// RequestedBy/RequestedByID selalu ditimpa handler dari sesi login;
 	// nilai requested_by di body diabaikan (T-7).
 	RequestedBy   string `json:"requested_by"`
 	RequestedByID string `json:"-"`
-	VendorID    string                `json:"vendor_id"`
-	VendorName  string                `json:"vendor_name"`
+	VendorID      string `json:"vendor_id"`
+	VendorName    string `json:"vendor_name"`
 	// ProjectID opsional: mengikat pengajuan ini sebagai satu belanja tahap
 	// dari sebuah projek pembangunan/renovasi.
 	ProjectID string                `json:"project_id"`
 	Items     []PurchaseRequestItem `json:"items" validate:"required"`
-	Notes       string                `json:"notes"`
+	Notes     string                `json:"notes"`
 }
 
 // UpdatePurchaseStatusInput is the payload for advancing purchase request status.
@@ -205,6 +216,14 @@ type UpdatePurchaseStatusInput struct {
 	PaymentAccountSource string  `json:"payment_account_source,omitempty"`
 	PaymentNotes         string  `json:"payment_notes,omitempty"`
 	PaymentAmount        float64 `json:"payment_amount,omitempty"`
+	// Marketplace virtual accounts belong to this payment/order, never the
+	// vendor master. An omitted method keeps the registered-account behavior.
+	PaymentMethod        string `json:"payment_method,omitempty"`
+	PaymentMarketplace   string `json:"payment_marketplace,omitempty"`
+	PaymentOrderNumber   string `json:"payment_order_number,omitempty"`
+	PaymentBankName      string `json:"payment_bank_name,omitempty"`
+	PaymentAccountNumber string `json:"payment_account_number,omitempty"`
+	PaymentAccountHolder string `json:"payment_account_holder,omitempty"`
 	// Version = PurchaseRequest.version dari GET. Wajib untuk verify; untuk
 	// aksi lain diperiksa bila dikirim. Beda → 409.
 	Version string `json:"version,omitempty"`
@@ -237,12 +256,12 @@ type VerifyRejectedItemInput struct {
 // memang mengosongkannya. Sebelumnya bertipe string biasa, sehingga pengaju
 // yang sekadar mengubah qty diam-diam menghapus vendor dan nomor invoice.
 type UpdatePurchaseItemsInput struct {
-	Items         []PurchaseRequestItem `json:"items" validate:"required"`
-	VendorID      *string               `json:"vendor_id,omitempty"`
-	VendorName    *string               `json:"vendor_name,omitempty"`
+	Items      []PurchaseRequestItem `json:"items" validate:"required"`
+	VendorID   *string               `json:"vendor_id,omitempty"`
+	VendorName *string               `json:"vendor_name,omitempty"`
 	// InvoiceNumber hanya berlaku pada pengajuan yang sudah disetujui (diisi
 	// pembelian); pada pending diabaikan (T-39).
-	InvoiceNumber *string               `json:"invoice_number,omitempty"`
+	InvoiceNumber *string `json:"invoice_number,omitempty"`
 	// Version opsional (lihat UpdatePurchaseStatusInput.Version).
 	Version string `json:"version,omitempty"`
 	// ActorName: nama akun yang login — diisi handler, bukan body — untuk
@@ -264,10 +283,9 @@ type PurchaseRequestListResponse struct {
 
 // PaymentHistory represents a single payment entry for a purchase request.
 //
-// Vendor & rekening tujuan dipotret server saat pembayaran dicatat, dari data
-// vendor saat itu — transaksi lama tidak ikut berubah bila vendor kemudian
-// mengganti rekeningnya. DestManual = rekening/cara bayar diketik pembayar
-// karena vendornya tidak punya rekening terdaftar (mis. Tunai).
+// Vendor and payment destination are snapshotted for each payment. A marketplace
+// VA belongs to that order, while standard transfers use the vendor's registered
+// account. DestManual marks payer-entered destinations, including marketplace VAs.
 type PaymentHistory struct {
 	ID                   string  `json:"id"`
 	PurchaseRequestID    string  `json:"purchase_request_id"`
@@ -284,6 +302,9 @@ type PaymentHistory struct {
 	DestAccountNumber    string  `json:"dest_account_number"`
 	DestAccountHolder    string  `json:"dest_account_holder"`
 	DestManual           bool    `json:"dest_manual"`
+	PaymentMethod        string  `json:"payment_method"`
+	PaymentMarketplace   string  `json:"payment_marketplace"`
+	PaymentOrderNumber   string  `json:"payment_order_number"`
 	// Struk yang dilunasi pembayaran ini (kosong = tanpa struk).
 	StrukID     string `json:"struk_id"`
 	StrukNumber string `json:"struk_number"`

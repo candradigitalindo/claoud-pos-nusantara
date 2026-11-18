@@ -390,8 +390,13 @@
                   <span class="text-gray-400">Rek Tujuan:</span>
                   <span class="font-mono text-gray-700 ml-1">{{ ph.payment_account_dest }}</span>
                   <span v-if="ph.vendor_name" class="ml-1 text-gray-500">({{ ph.vendor_name }})</span>
-                  <span v-if="ph.dest_manual" class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+                  <span v-if="ph.payment_method === 'marketplace_va'" class="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">VA Marketplace</span>
+                  <span v-else-if="ph.dest_manual" class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
                     title="Vendor belum punya rekening terdaftar — rekening/cara bayar diketik pembayar">manual</span>
+                </div>
+                <div v-if="ph.payment_marketplace" class="col-span-2">
+                  <span class="text-gray-400">Marketplace / Pesanan:</span>
+                  <span class="text-gray-700 ml-1">{{ ph.payment_marketplace }} · {{ ph.payment_order_number }}</span>
                 </div>
                 <div v-if="ph.struk_number">
                   <span class="text-gray-400">Struk:</span>
@@ -503,7 +508,7 @@
             </div>
 
             <!-- Card 2: Bank Info -->
-            <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div v-if="payForm.payment_method !== 'marketplace_va'" class="rounded-lg border border-gray-200 bg-white overflow-hidden">
               <div class="bg-blue-50 px-4 py-2.5 border-b border-blue-100">
                 <p class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Rekening Vendor</p>
               </div>
@@ -551,7 +556,23 @@
 
           <!-- Form 2-col -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-            <div v-if="payVendor?.account_number">
+            <div class="sm:col-span-2">
+              <label for="payment-method" class="block text-sm font-medium text-gray-700 mb-1">Metode Pembayaran</label>
+              <select id="payment-method" :value="payForm.payment_method" :disabled="!payVendor || payLoading" @change="changePaymentMethod($event.target.value)" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                <option value="vendor_account">Rekening Vendor / Cara Bayar Manual</option>
+                <option value="marketplace_va" :disabled="payTargets.length > 1">Virtual Account Marketplace</option>
+              </select>
+              <p v-if="payTargets.length > 1" class="mt-1 text-[11px] leading-snug text-gray-500">Pembayaran marketplace dilakukan per pengajuan agar nomor pesanan dan virtual account sesuai transaksi.</p>
+            </div>
+            <template v-if="payForm.payment_method === 'marketplace_va'">
+              <div class="sm:col-span-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">Isi virtual account dari checkout pesanan ini. Nomornya dapat berubah setiap transaksi dan disimpan pada riwayat pembayaran.</div>
+              <AppInput v-model="payForm.payment_marketplace" label="Marketplace *" placeholder="Shopee, Tokopedia, dll." maxlength="100" />
+              <AppInput v-model="payForm.payment_order_number" label="Nomor Pesanan *" placeholder="Nomor pesanan marketplace" maxlength="100" />
+              <AppInput v-model="payForm.payment_bank_name" label="Bank Virtual Account *" placeholder="Contoh: BCA, Mandiri, BRI" maxlength="100" />
+              <AppInput v-model="payForm.payment_account_number" label="Nomor Virtual Account *" placeholder="Nomor VA dari checkout" inputmode="numeric" maxlength="50" />
+              <AppInput v-model="payForm.payment_account_holder" label="Atas Nama Virtual Account" placeholder="Nama penerima di checkout" maxlength="200" />
+            </template>
+            <div v-else-if="payVendor?.account_number">
               <label class="block text-sm font-medium text-gray-700 mb-1">Rekening Tujuan</label>
               <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 break-words">{{ payForm.payment_account_dest }}</p>
               <p class="mt-1 text-[11px] leading-snug text-gray-500">Diambil dari data vendor dan tersimpan permanen di riwayat pembayaran ini.</p>
@@ -561,9 +582,11 @@
               <p v-if="payVendor" class="mt-1 text-[11px] leading-snug text-amber-700">Vendor ini belum punya rekening terdaftar — tulis cara bayarnya (mis. Tunai). Tercatat sebagai pembayaran manual.</p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Rekening Asal (Perusahaan)</label>
+              <label for="payment-account-source" class="block text-sm font-medium text-gray-700 mb-1">Rekening Asal (Perusahaan)</label>
               <SearchSelect
+                id="payment-account-source"
                 v-model="payForm.payment_account_source"
+                aria-label="Rekening Asal (Perusahaan)"
                 :options="bankAccountOptions"
                 placeholder="Pilih rekening…"
                 searchPlaceholder="Cari rekening…"
@@ -729,7 +752,25 @@ const payVendorLoading = ref(false)
 // menunjuk vendor terdaftar, jadi pesan tidak boleh menyuruh bagian pembelian
 // memilih vendor lewat Isi Harga.
 const payVendorError = ref('')
-const payForm = ref({ payment_account_dest: '', payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0 })
+function newPayForm() {
+  return {
+    payment_account_dest: '', payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0,
+    payment_method: 'vendor_account', payment_marketplace: '', payment_order_number: '',
+    payment_bank_name: '', payment_account_number: '', payment_account_holder: '',
+  }
+}
+const payForm = ref(newPayForm())
+
+function changePaymentMethod(method) {
+  payForm.value.payment_method = method
+  payForm.value.payment_account_dest = method === 'vendor_account' && payVendor.value?.account_number
+    ? bankText(payVendor.value.bank_name, payVendor.value.account_number, payVendor.value.account_holder) : ''
+  payForm.value.payment_marketplace = ''
+  payForm.value.payment_order_number = ''
+  payForm.value.payment_bank_name = ''
+  payForm.value.payment_account_number = ''
+  payForm.value.payment_account_holder = ''
+}
 
 const paymentHistories = ref([])
 const paymentHistoriesLoading = ref(false)
@@ -1022,7 +1063,7 @@ async function fetchPayStruks(id) {
 
 function openPayModal(row) {
   payTargets.value = [row]
-  payForm.value = { payment_account_dest: '', payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0 }
+  payForm.value = newPayForm()
   payVendor.value = null
   uploadedFileUrl.value = ''
   uploadedFileName.value = ''
@@ -1044,7 +1085,7 @@ function openBatchPay() {
   ++payStruksSeq
   payStruks.value = []
   payStrukId.value = ''
-  payForm.value = { payment_account_dest: '', payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0 }
+  payForm.value = newPayForm()
   payVendor.value = null
   uploadedFileUrl.value = ''
   uploadedFileName.value = ''
@@ -1081,7 +1122,7 @@ async function fetchPayVendor(vendorId) {
     const v = await vendorsApi.get(vendorId)
     if (seq !== payVendorSeq) return
     payVendor.value = v
-    if (v.account_number) {
+    if (v.account_number && payForm.value.payment_method === 'vendor_account') {
       payForm.value.payment_account_dest = bankText(v.bank_name, v.account_number, v.account_holder)
     }
   } catch (err) {
@@ -1135,7 +1176,13 @@ async function submitPay() {
       : 'Pengajuan ini belum memilih vendor dari daftar vendor — minta bagian pembelian memilihnya lewat Isi Harga.')
     return
   }
-  if (!payForm.value.payment_account_dest.trim()) { toast.error('Rekening tujuan / cara bayar wajib diisi.'); return }
+  if (payForm.value.payment_method === 'marketplace_va') {
+    if (payTargets.value.length !== 1) { toast.error('Pembayaran marketplace dilakukan per pengajuan.'); return }
+    if (![payForm.value.payment_marketplace, payForm.value.payment_order_number, payForm.value.payment_bank_name, payForm.value.payment_account_number].every(v => v.trim())) {
+      toast.error('Marketplace, nomor pesanan, bank, dan nomor virtual account wajib diisi.'); return
+    }
+    if (!/^\d+$/.test(payForm.value.payment_account_number.trim())) { toast.error('Nomor virtual account harus berisi angka.'); return }
+  } else if (!payForm.value.payment_account_dest.trim()) { toast.error('Rekening tujuan / cara bayar wajib diisi.'); return }
   if (!payForm.value.payment_account_source) { toast.error('Rekening asal wajib diisi.'); return }
   const paymentAmount = payForm.value.payment_amount || 0
   if (payTargets.value.length === 1 && paymentAmount > 0 && paymentAmount > payRemainingAmount.value) {
@@ -1151,6 +1198,7 @@ async function submitPay() {
   payLoading.value = true
   let successCount = 0
   let failCount = 0
+  let failureMessage = ''
   try {
     for (const target of payTargets.value) {
       try {
@@ -1159,18 +1207,28 @@ async function submitPay() {
           actor_name: adminName(),
           payment_proof: [payForm.value.payment_proof.trim(), uploadedFileUrl.value].filter(Boolean).join(' | '),
           payment_account_dest: payForm.value.payment_account_dest.trim(),
+          payment_method: payForm.value.payment_method,
+          payment_marketplace: payForm.value.payment_marketplace.trim(),
+          payment_order_number: payForm.value.payment_order_number.trim(),
+          payment_bank_name: payForm.value.payment_bank_name.trim(),
+          payment_account_number: payForm.value.payment_account_number.trim(),
+          payment_account_holder: payForm.value.payment_account_holder.trim(),
           payment_account_source: accountSourceText,
           payment_notes: payForm.value.payment_notes.trim(),
           payment_amount: payTargets.value.length === 1 ? paymentAmount : 0,
           struk_id: payTargets.value.length === 1 && payStrukId.value ? payStrukId.value : undefined,
         })
         successCount++
-      } catch { failCount++ }
+      } catch (err) {
+        failCount++
+        failureMessage = err?.message || 'Gagal mencatat pembayaran.'
+      }
     }
     if (failCount === 0) {
       toast.success(payTargets.value.length > 1 ? `${successCount} pembayaran berhasil dicatat.` : 'Pembayaran berhasil dicatat.')
     } else {
-      toast.error(`${successCount} berhasil, ${failCount} gagal.`)
+      toast.error(payTargets.value.length === 1 ? failureMessage : `${successCount} berhasil, ${failCount} gagal.`)
+      if (successCount === 0) return
     }
     showPayModal.value = false
     clearSelection()

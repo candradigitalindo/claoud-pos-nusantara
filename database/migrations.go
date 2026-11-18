@@ -3068,6 +3068,9 @@ func RunMigrations() error {
 		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS dest_account_number VARCHAR(50) NOT NULL DEFAULT ''`,
 		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS dest_account_holder VARCHAR(200) NOT NULL DEFAULT ''`,
 		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS dest_manual BOOLEAN NOT NULL DEFAULT false`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30) NOT NULL DEFAULT ''`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS payment_marketplace VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS payment_order_number VARCHAR(100) NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS vendor_bank_changes (
 			id                 CHAR(26) PRIMARY KEY,
 			vendor_id          CHAR(26) NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,

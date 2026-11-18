@@ -237,7 +237,7 @@ func docReceiptState(q receivingQuerier, id string, items []models.PurchaseReque
 		if rec > 0 {
 			started = true
 		}
-		if rec >= sub.Qty {
+		if rec >= sub.PurchaseQuantity() {
 			complete++
 		}
 		return nil
@@ -336,8 +336,8 @@ func buildReceivingDraft(q receivingQuerier, prID string, outletScope []string) 
 			line := models.ReceivingLine{
 				PRItemKey: receivingLineID(d.PurchaseRequestID, src.ID, key), ItemKey: key,
 				SourcePRID: src.ID, EntryName: entry.Name, Name: sub.Name,
-				Qty: sub.Qty, Unit: sub.Unit, UnitPrice: price,
-				Subtotal: price * float64(sub.Qty), Recorded: recorded,
+				Qty: sub.PurchaseQuantity(), Unit: sub.Unit, UnitPrice: price,
+				Subtotal: price * float64(sub.PurchaseQuantity()), Recorded: recorded,
 			}
 			line.Remaining = line.Qty - line.Recorded
 			if line.Remaining < 0 {
@@ -1148,7 +1148,7 @@ func ListIncompleteReceipts(outletScope []string, kind string) ([]IncompleteRece
 			if err != nil {
 				return err
 			}
-			missing := sub.Qty - recorded
+			missing := sub.PurchaseQuantity() - recorded
 			if missing <= 0 {
 				return nil
 			}
@@ -1163,7 +1163,7 @@ func ListIncompleteReceipts(outletScope []string, kind string) ([]IncompleteRece
 			out = append(out, IncompleteReceipt{
 				PurchaseRequestID: d.id, RequestNumber: d.number, OutletName: d.outlet,
 				VendorName: d.vendor, ReceivedAt: d.extra, EntryName: entry.Name,
-				Name: sub.Name, Unit: sub.Unit, Qty: sub.Qty, Recorded: recorded,
+				Name: sub.Name, Unit: sub.Unit, Qty: sub.PurchaseQuantity(), Recorded: recorded,
 				Missing: missing, UnitPrice: price, MissingValue: price * float64(missing),
 				Kind: lineKind,
 			})
@@ -1301,7 +1301,7 @@ func ListReceivingQueue(kind string, outletScope []string, allowedTypes []string
 			if err != nil {
 				return err
 			}
-			remaining := sub.Qty - recorded
+			remaining := sub.PurchaseQuantity() - recorded
 			if remaining <= 0 {
 				return nil
 			}
@@ -1518,6 +1518,12 @@ func clonePurchaseItems(items []models.PurchaseRequestItem) []models.PurchaseReq
 	for i, g := range items {
 		out[i] = g
 		out[i].Items = append([]models.PurchaseSubItem(nil), g.Items...)
+		for j := range out[i].Items {
+			if g.Items[j].PurchasedQty != nil {
+				qty := *g.Items[j].PurchasedQty
+				out[i].Items[j].PurchasedQty = &qty
+			}
+		}
 	}
 	return out
 }

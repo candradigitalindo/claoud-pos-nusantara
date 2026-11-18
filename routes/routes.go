@@ -372,6 +372,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// (lihat ListPurchaseRequests/GetPurchaseRequest). Tanpa kunci itu di sini,
 	// role keuangan murni ditolak sebelum aturan handler sempat berlaku.
 	admin.Get("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.ListPurchaseRequests)
+	admin.Get("/purchasing/export", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.ExportPurchasing)
 	admin.Get("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetPurchaseRequest)
 	admin.Get("/purchase-requests/:id/payment-histories", middleware.RequirePermission("finance.payments.view"), handlers.GetPaymentHistories)
 	admin.Post("/purchase-requests/:id/split", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), handlers.SplitPurchaseRequest)

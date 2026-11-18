@@ -240,21 +240,17 @@ func requireRegisteredVendorTx(tx *sql.Tx, id string) error {
 	return nil
 }
 
-// paymentDest: rekening tujuan satu pembayaran, dipotret dari data vendor.
+// paymentDest: snapshot of the vendor and destination for one payment.
 type paymentDest struct {
 	vendorID, vendorName, bank, number, holder, text string
+	method, marketplace, orderNumber                 string
 	manual                                           bool
 }
 
-// vendorPaymentDestTx memotret rekening tujuan pembayaran dari data vendor
-// SAAT pembayaran dicatat (keputusan owner 14 Okt 2026). Rekening ketikan
-// pembayar diabaikan bila vendornya punya rekening terdaftar — dulu rekening
-// tujuan berupa teks bebas, sehingga pembayaran bisa dialihkan ke rekening
-// lain tanpa jejak (T-65). Vendor tanpa rekening (mis. belanja tunai di pasar)
-// memakai keterangan ketikan pembayar dan ditandai manual. FOR SHARE:
-// perubahan rekening vendor yang bersamaan menunggu pembayaran ini selesai,
-// jadi potretnya selalu rekening yang berlaku saat dibayar.
-func vendorPaymentDestTx(tx *sql.Tx, vendorID, typed string) (paymentDest, error) {
+// vendorPaymentDestTx reads the registered vendor under a shared lock and
+// snapshots its account, a manual destination when no account exists, or the
+// explicit marketplace VA belonging to this payment/order.
+func vendorPaymentDestTx(tx *sql.Tx, vendorID string, input models.UpdatePurchaseStatusInput) (paymentDest, error) {
 	vendorID = strings.TrimSpace(vendorID)
 	if vendorID == "" {
 		return paymentDest{}, Invalid("pengajuan ini belum memilih vendor dari daftar vendor — rekening tujuan pembayaran diambil dari data vendor")
@@ -269,19 +265,7 @@ func vendorPaymentDestTx(tx *sql.Tx, vendorID, typed string) (paymentDest, error
 	if err != nil {
 		return paymentDest{}, err
 	}
-	d.vendorName = strings.TrimSpace(d.vendorName)
-	d.bank, d.number, d.holder = strings.TrimSpace(d.bank), strings.TrimSpace(d.number), strings.TrimSpace(d.holder)
-	if d.number != "" {
-		d.text = formatAccountDest(d.bank, d.number, d.holder)
-		return d, nil
-	}
-	d.manual = true
-	d.bank, d.holder = "", ""
-	d.text = strings.TrimSpace(typed)
-	if d.text == "" {
-		return paymentDest{}, Invalid("vendor %s belum punya rekening terdaftar — isi rekening tujuan atau cara bayarnya (mis. Tunai), atau lengkapi rekening di data vendor", d.vendorName)
-	}
-	return d, nil
+	return resolvePaymentDestination(d, input)
 }
 
 // formatAccountDest: "BCA 1234567890 a.n. CV Sumber" — format yang sama dengan
@@ -400,7 +384,7 @@ func recalcItems(items []models.PurchaseRequestItem) (totalHps, totalFinal float
 		for j := range items[i].Items {
 			sub := &items[i].Items[j]
 			sub.HpsSubtotal = float64(sub.Qty) * sub.HpsPrice
-			sub.FinalSubtotal = float64(sub.Qty) * sub.FinalPrice
+			sub.FinalSubtotal = float64(sub.PurchaseQuantity()) * sub.FinalPrice
 			groupHps += sub.HpsSubtotal
 			groupFinal += sub.FinalSubtotal
 		}
@@ -412,8 +396,8 @@ func recalcItems(items []models.PurchaseRequestItem) (totalHps, totalFinal float
 	return totalHps, totalFinal
 }
 
-// clearFinalPrices mengosongkan harga final, subtotal final, dan total final
-// grup. Harga final hanya diisi pembelian setelah pengajuan disetujui (T-39):
+// clearFinalPrices mengosongkan jumlah beli aktual, harga final, subtotal final,
+// dan total final grup. Data pembelian hanya diisi setelah disetujui (T-39):
 // angka kiriman pengaju — saat membuat maupun mengubah pengajuan pending —
 // selalu diabaikan, supaya hutang, akrual, dan tagihan tidak pernah memakai
 // harga pilihan pengaju sendiri.
@@ -421,6 +405,7 @@ func clearFinalPrices(items []models.PurchaseRequestItem) {
 	for i := range items {
 		items[i].FinalTotal = 0
 		for j := range items[i].Items {
+			items[i].Items[j].PurchasedQty = nil
 			items[i].Items[j].FinalPrice = 0
 			items[i].Items[j].FinalSubtotal = 0
 		}
@@ -1597,10 +1582,9 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 		notice.amount = payAmount
 		newPaid := math.Round(currentPaid*100+payCents) / 100
 
-		// Rekening tujuan dipotret dari data vendor saat ini, bukan ketikan
-		// pembayar (T-65) — riwayat pembayaran lama tidak ikut berubah bila
-		// vendor kemudian mengganti rekeningnya.
-		dest, destErr := vendorPaymentDestTx(tx, vendorID, input.PaymentAccountDest)
+		// Snapshot the registered account or this order's explicit marketplace
+		// VA. Neither changes to the vendor nor future orders alter this history.
+		dest, destErr := vendorPaymentDestTx(tx, vendorID, input)
 		if destErr != nil {
 			return notice, destErr
 		}
@@ -1615,12 +1599,14 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 		for _, a := range allocs {
 			if _, insErr := tx.Exec(
 				`INSERT INTO payment_histories (id, purchase_request_id, amount, payment_proof, payment_account_dest, payment_account_source, payment_notes, paid_by, created_at,
-					vendor_id, vendor_name, dest_bank_name, dest_account_number, dest_account_holder, dest_manual, struk_id)
-				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+					vendor_id, vendor_name, dest_bank_name, dest_account_number, dest_account_holder, dest_manual, struk_id,
+					payment_method, payment_marketplace, payment_order_number)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 				NewULID(), id, a.cents/100, input.PaymentProof,
 				dest.text, input.PaymentAccountSource, input.PaymentNotes,
 				input.ActorName, now,
 				dest.vendorID, dest.vendorName, dest.bank, dest.number, dest.holder, dest.manual, nilIfEmpty(a.strukID),
+				dest.method, dest.marketplace, dest.orderNumber,
 			); insErr != nil {
 				return notice, fmt.Errorf("gagal menyimpan histori pembayaran: %w", insErr)
 			}
@@ -2019,10 +2005,10 @@ func syncFamilyStatusTx(tx *sql.Tx, masterID string, actor Actor) error {
 }
 
 // approvedLockMsg: isi pengajuan yang sudah disetujui terkunci (T-6).
-const approvedLockMsg = "pengajuan sudah disetujui — isinya terkunci; pembelian hanya boleh mengisi harga final per baris, vendor, dan nomor invoice"
+const approvedLockMsg = "pengajuan sudah disetujui — isinya terkunci; pembelian hanya boleh mengisi jumlah beli aktual, harga final per baris, vendor, dan nomor invoice"
 
 // applyApprovedPriceEdit membandingkan kiriman dengan isi tersimpan pengajuan
-// berstatus approved. Yang boleh berubah hanya final_price per baris; nama
+// berstatus approved. Yang boleh berubah hanya final_price dan purchased_qty;
 // pengadaan, nama item, qty, satuan, HPS, sumber HPS, rujukan baris RAB,
 // serta jumlah baris (tambah/hapus) terkunci. Hasilnya = isi tersimpan dengan
 // harga final baru, sehingga field lain dari klien tidak pernah ikut tersimpan.
@@ -2060,6 +2046,13 @@ func applyApprovedPriceEdit(stored, incoming []models.PurchaseRequestItem) ([]mo
 			}
 			if field != "" {
 				return nil, Invalid("%s (%s pada item %q tidak boleh diubah)", approvedLockMsg, field, s.Name)
+			}
+			if in.PurchasedQty != nil {
+				qty := *in.PurchasedQty
+				if qty <= 0 || qty > s.Qty {
+					return nil, Invalid("jumlah beli aktual item %q harus antara 1 dan jumlah pengajuan (%d)", s.Name, s.Qty)
+				}
+				s.PurchasedQty = &qty
 			}
 			s.FinalPrice = in.FinalPrice
 			og.Items[i] = s
@@ -2137,6 +2130,11 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 			return nil, err
 		}
 		items = merged
+		if purchaseQuantitiesChanged(stored, items) {
+			if err := ensurePurchaseQuantitiesEditable(tx, id, hasReceipts); err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		// Pending (atau bahan baku yang menunggu persetujuan): pengaju bebas
 		// mengubah isi, tetapi harga final tetap urusan pembelian setelah
@@ -2441,7 +2439,8 @@ func GetPaymentHistories(purchaseRequestID string) ([]models.PaymentHistory, err
 		       ph.payment_account_dest, ph.payment_account_source, ph.payment_notes,
 		       ph.paid_by, ph.created_at,
 		       COALESCE(ph.vendor_id, ''), ph.vendor_name, ph.dest_bank_name, ph.dest_account_number, ph.dest_account_holder, ph.dest_manual,
-		       COALESCE(ph.struk_id, ''), COALESCE(s.struk_number, '')
+		       COALESCE(ph.struk_id, ''), COALESCE(s.struk_number, ''),
+		       ph.payment_method, ph.payment_marketplace, ph.payment_order_number
 		FROM payment_histories ph
 		LEFT JOIN purchase_struks s ON s.id = ph.struk_id
 		WHERE ph.purchase_request_id = $1
@@ -2460,7 +2459,7 @@ func GetPaymentHistories(purchaseRequestID string) ([]models.PaymentHistory, err
 			&h.PaymentAccountDest, &h.PaymentAccountSource, &h.PaymentNotes,
 			&h.PaidBy, &createdAt,
 			&h.VendorID, &h.VendorName, &h.DestBankName, &h.DestAccountNumber, &h.DestAccountHolder, &h.DestManual,
-			&h.StrukID, &h.StrukNumber); err != nil {
+			&h.StrukID, &h.StrukNumber, &h.PaymentMethod, &h.PaymentMarketplace, &h.PaymentOrderNumber); err != nil {
 			return nil, err
 		}
 		h.VendorID = strings.TrimSpace(h.VendorID)

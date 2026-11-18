@@ -41,6 +41,14 @@ export const purchaseApi = {
   getPaymentHistories: (id) =>
     apiClient.get(`/admin/purchase-requests/${id}/payment-histories`),
 
+  // Satu workbook dengan sheet terpisah per vendor, termasuk pecahan vendor.
+  exportPurchasing: (params) =>
+    apiClient.get('/admin/purchasing/export', {
+      params,
+      responseType: 'blob',
+      timeout: 120000,
+    }),
+
   // Download Excel — responseType blob melewati unwrap envelope di client.js;
   // timeout dinaikkan karena file dibuat on-the-fly di server.
   exportPayments: (params) =>

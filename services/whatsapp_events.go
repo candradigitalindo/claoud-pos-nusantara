@@ -944,7 +944,11 @@ func waPurchaseVars(pr *models.PurchaseRequest) map[string]string {
 			if len(lines) >= 12 {
 				break
 			}
-			lines = append(lines, fmt.Sprintf("• %s ×%d %s", it.Name, it.Qty, it.Unit))
+			if it.PurchasedQty != nil && it.PurchaseQuantity() != it.Qty {
+				lines = append(lines, fmt.Sprintf("• %s ×%d %s (pengajuan %d)", it.Name, it.PurchaseQuantity(), it.Unit, it.Qty))
+			} else {
+				lines = append(lines, fmt.Sprintf("• %s ×%d %s", it.Name, it.Qty, it.Unit))
+			}
 		}
 	}
 	if len(lines) == 0 {

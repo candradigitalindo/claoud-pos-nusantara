@@ -768,9 +768,16 @@ func GetGoodsReceipt(c *fiber.Ctx) error {
 }
 
 // ListStockCatalogNames — nama + satuan katalog stok untuk saran di form
-// pengadaan bahan baku. Tanpa qty/biaya, jadi boleh dibuka pemegang izin
-// pengadaan bahan baku yang tidak punya izin gudang.
+// pengadaan bahan baku. include_stock menambahkan saldo Gudang Induk dalam
+// cakupan akun, tanpa biaya, untuk pemegang izin pengadaan bahan baku.
 func ListStockCatalogNames(c *fiber.Ctx) error {
+	if c.Query("include_stock") == "1" || c.Query("include_stock") == "true" {
+		catalog, err := services.ListProcurementStockCatalog(getOutletScope(c))
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Error: "Gagal memuat stok bahan baku: " + err.Error()})
+		}
+		return c.JSON(models.APIResponse{Success: true, Data: catalog})
+	}
 	list, err := services.ListStockCatalogNames()
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Error: "Gagal memuat katalog stok: " + err.Error()})

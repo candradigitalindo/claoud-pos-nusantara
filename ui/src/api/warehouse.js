@@ -3,8 +3,8 @@ import { apiClient as api } from './client.js'
 // ── Stock Items ───────────────────────────────────────────────
 export const stockItemsApi = {
   list: (params = {}) => api.get('/admin/stock-items', { params }),
-  // Nama + satuan katalog saja (tanpa qty/biaya) — saran di form pengadaan bahan baku.
-  names: () => api.get('/admin/stock-item-names'),
+  // include_stock=1 adds accessible central-warehouse quantities, without costs.
+  names: (params = {}) => api.get('/admin/stock-item-names', { params }),
   get: (id) => api.get(`/admin/stock-items/${id}`),
   create: (data) => api.post('/admin/stock-items', data),
   update: (id, data) => api.put(`/admin/stock-items/${id}`, data),

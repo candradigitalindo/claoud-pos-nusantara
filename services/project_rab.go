@@ -79,7 +79,7 @@ type rabAbsorption struct {
 // disepakati, selain itu HPS — sama seperti amountOf di tingkat dokumen.
 func subItemAmount(s models.PurchaseSubItem) (amount float64, isEstimate bool) {
 	if s.FinalPrice > 0 {
-		return float64(s.Qty) * s.FinalPrice, false
+		return float64(s.PurchaseQuantity()) * s.FinalPrice, false
 	}
 	return float64(s.Qty) * s.HpsPrice, true
 }
