@@ -918,3 +918,62 @@ aplikasi. Perilaku pemasangan per merek tablet (satu ketukan atau tanpa
 ketukan) belum diuji di perangkat fisik — lihat `docs/APP_UPDATE.md` di repo
 aplikasi. Bukti privat: `/home/candra/projects/pos-integration-staging/releases/20261118-204623-app-update/` dan
 `/home/candra/projects/pos-integration-staging/releases/20261118-v10.19/`.
+
+## Rilis Bayar Pengadaan dari Kas Kasir Outlet (v10.20) — 19 November 2026
+
+Cloud commit `74d1847` (API + dashboard) dipasang pada **05:13 WIB**, saat
+tidak ada lalu lintas tablet. Hanya container app dan nginx yang dibuat ulang.
+Perubahan database **aditif**: tabel baru `procurement_cash_payouts` serta
+kolom `cash_payout_id` di `payment_histories` dan `cloud_cash_movements`;
+tidak ada data yang diubah atau dihapus. Sebelum deploy dibuat backup
+`pg_dump -Fc`, dan image sebelumnya disimpan sebagai
+`before-outlet-cash-payout-20261119-045655` untuk rollback (image lama tidak
+membaca tabel/kolom baru, jadi rollback image saja sudah cukup). Isi rilis
+cloud:
+
+- Halaman **Pembayaran**: Keuangan memilih **Sumber Dana** — Kantor Pusat
+  (seperti sebelumnya) atau **Kas Kasir Outlet**. Pilihan kedua membuat tugas
+  untuk tablet outlet pengajuan itu; belum ada uang keluar atau jurnal sampai
+  kasir menyerahkan kas. Tugas bisa ditarik hanya sebelum diproses kasir.
+- Rute outlet `GET /outlets/:id/procurement-payouts` serta `claim`,
+  `complete`, `return`, `release`. Penyelesaian membayar pengajuan lewat jalur
+  bayar yang sama (metode `outlet_cash`) dan idempoten; kas keluar tablet yang
+  membawa `cash_payout_id` menuntaskan tugas bila balasan `complete` hilang.
+- Tercatat sekali: jurnal `pos_cash` melewati kas keluar yang sudah menjadi
+  pembayaran pengadaan, dan kas keluar tertaut tidak bisa diklasifikasi ulang.
+  Bayar Kantor Pusat ditolak selama tugas outlet masih terbuka.
+- Panduan: `docs/panduan-pengadaan.md` §4.4.
+
+APK universal **v10.20** dari Flutter commit `b4d51a8` dipublikasikan pada
+**05:15 WIB**: [unduh APK](https://pos.nbp.co.id/uploads/apps/app-universal-release-v10.20.apk).
+Ukuran **64.670.895 byte**, versionCode `95008427` → `95013423`, tanda tangan
+sama dengan v10.18/v10.19 (sertifikat `3d2fb26f…`), SHA-256
+`9b675daeb0458cf1409754c37b75e7f2901604985ab03c1768c622e6b8fd6af2`.
+Isi v10.20 (mencakup seluruh isi v10.19): tombol **Bayar Pengadaan** + lencana
+di header kasir hanya bila ada tugas; tugas diambil langsung dari cloud (tanpa
+menunggu sinkron) dan hanya bisa diproses saat online; penyerahan kas wajib PIN
+Manager/SVP dengan nominal persis (bila berbeda: **Kembalikan ke Keuangan**
+dengan alasan), peringatan bila kas laci kurang, kas keluar dicatat di shift
+berjalan, dan **Bukti Penyerahan Kas** bisa dicetak ulang (skema DB tablet
+v18). Rincian teknis: `docs/BAYAR_PENGADAAN.md` di repo aplikasi.
+
+Validasi: 248 tes Flutter lulus (4 e2e dilewati) pada master `b4d51a8`; suite Go
+penuh lulus (termasuk alur penuh dan
+penjaga tugas kas outlet); uji ujung-ke-ujung di stack terisolasi dengan
+aplikasi v10.20 (tugas → tablet → serah kas → pengajuan lunas, satu riwayat
+pembayaran, kas keluar tertaut, total kas keluar pembukuan tercatat sekali).
+Gladi pada **salinan database produksi** di jaringan internal: image lama vs
+baru menghasilkan 11 laporan (laba rugi, arus kas, neraca, buku besar,
+operasi keuangan, daftar pengajuan, dan lain-lain) yang identik byte demi
+byte, migrasi tanpa peringatan, dan dua pengajuan uji yang dibuat lewat API di
+salinan lolos seluruh alur (termasuk penolakan untuk outlet lain, pengembalian,
+penarikan, dan bayar Kantor Pusat yang tetap berjalan). Setelah deploy:
+skema baru ada, ping lokal/publik 200, chunk halaman baru tersaji, rute admin
+dan outlet menjawab; unduhan HTTPS publik dan endpoint pembaruan diverifikasi
+(tablet v10.18/v10.19 ditawari v10.20).
+
+**v10.20 perlu dipasang manual sekali** di setiap tablet: saat rilis belum ada
+tablet di v10.19 (4 di v10.18, 5 di v10.17, 1 di v10.14). Setelah itu versi
+berikutnya ditawarkan dari dalam aplikasi. Bukti privat:
+`/home/candra/projects/pos-integration-staging/releases/20261119-045655-outlet-cash-payout/` dan
+`/home/candra/projects/pos-integration-staging/releases/20261118-v10.20/`.
