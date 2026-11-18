@@ -882,7 +882,7 @@ sebagai `frontend/live-balance-today-desktop.png` dan
 
 Cloud commit `27535b9` (API + dashboard) dipasang pada **20:49 WIB**; hanya
 container app dan nginx yang dibuat ulang, tanpa perubahan database. Image
-sebelumnya disimpan sebagai `before-app-update-20261118-204623-app-update` untuk
+sebelumnya disimpan sebagai `before-app-update-20261118-204623` untuk
 rollback. Isi rilis cloud:
 
 - `GET /api/v1/app-update/pos?current=<versionCode>` (publik, `no-store`):
