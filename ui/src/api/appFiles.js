@@ -2,6 +2,8 @@ import { apiClient } from './client.js'
 
 export const appFilesApi = {
   list: () => apiClient.get('/admin/app-files'),
+  // Versi aplikasi di tablet tiap outlet (dari heartbeat) vs APK POS terbaru.
+  devices: () => apiClient.get('/admin/app-files/devices'),
   upload: (file, onProgress) => {
     const fd = new FormData()
     fd.append('file', file)

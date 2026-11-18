@@ -29,6 +29,10 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Public
 	api.Get("/ping", handlers.Ping)
 	api.Get("/timezone", handlers.GetTimezone) // public — used by frontend for time formatting
+	// Pembaruan dalam-aplikasi POS: APK POS terbaru (versionCode, URL, SHA-256).
+	// Publik karena APK-nya sendiri memang publik di /uploads/apps; tanpa auth
+	// supaya tablet station (tanpa API key outlet) juga bisa memeriksa.
+	api.Get("/app-update/pos", handlers.PosAppUpdate)
 
 	// Public reservation (no auth) — per-outlet by slug, dibatasi per IP
 	public := api.Group("/public", middleware.PublicRateLimiter())
@@ -161,6 +165,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// App POS distributables (APK upload + download URL) — Master Data
 	admin.Get("/app-files", middleware.RequirePermission("appfiles.view"), handlers.ListAppFiles)
+	admin.Get("/app-files/devices", middleware.RequirePermission("appfiles.view"), handlers.AppFileDevices)
 	admin.Post("/app-files", middleware.RequirePermission("appfiles.create"), handlers.UploadAppFile)
 	admin.Delete("/app-files/:name", middleware.RequirePermission("appfiles.delete"), handlers.DeleteAppFile)
 	admin.Delete("/work-units/:id", middleware.RequirePermission("workunits.delete"), handlers.DeleteWorkUnit)

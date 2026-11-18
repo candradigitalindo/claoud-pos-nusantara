@@ -99,6 +99,31 @@
       </AppCard>
     </div>
 
+    <section v-if="devices.length" aria-label="Versi di tablet outlet">
+      <AppCard :padding="false">
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 p-5">
+          <div class="min-w-0">
+            <h2 class="font-semibold text-gray-900">Versi di tablet outlet</h2>
+            <p class="mt-1 text-xs leading-relaxed text-gray-500">Dari laporan berkala tablet. Tablet dengan fitur pembaruan otomatis menawarkan versi terbaru sendiri; versi lama perlu dipasang manual sekali.</p>
+          </div>
+          <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium" :class="upToDateCount === reportingCount ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'">
+            {{ upToDateCount }} dari {{ reportingCount }} tablet terbaru
+          </span>
+        </div>
+        <ul class="divide-y divide-gray-100">
+          <li v-for="device in sortedDevices" :key="device.outlet_id" class="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-900">{{ device.outlet_name }}</p>
+              <p class="mt-0.5 text-xs text-gray-500">
+                {{ deviceVersionText(device) }}<template v-if="device.has_data"> · {{ device.model || 'Perangkat tidak dikenal' }}<span v-if="device.os"> · {{ device.os }}</span> · terakhir {{ device.last_seen || '—' }}</template>
+              </p>
+            </div>
+            <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium" :class="deviceBadge(device).class">{{ deviceBadge(device).text }}</span>
+          </li>
+        </ul>
+      </AppCard>
+    </section>
+
     <section aria-label="Arsip aplikasi">
       <AppCard :padding="false">
         <div class="space-y-4 border-b border-gray-100 p-5">
@@ -132,9 +157,12 @@
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <p class="text-sm font-semibold text-gray-900">{{ platformLabel(row) }}<span v-if="releaseVersion(row)"> · {{ releaseVersion(row) }}</span></p>
-                  <span v-if="row.name === latestApk?.name" class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">APK terbaru</span>
+                  <span v-if="row.name === latestApk?.name" class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{{ isPosApk(latestApk) ? 'Terbaru · ditawarkan ke tablet' : 'APK terbaru' }}</span>
                 </div>
                 <p class="mt-1 break-all text-xs text-gray-500">{{ row.name }}</p>
+                <p v-if="row.version_code" class="mt-1 text-xs text-gray-500">
+                  Build {{ row.version_code }}<span v-if="row.package && row.package !== POS_PACKAGE"> · paket lain ({{ row.package }}) — tidak ditawarkan ke tablet</span>
+                </p>
                 <p class="mt-1 text-xs text-gray-500">{{ fmtSize(row.size) }} <span class="mx-1 text-gray-300">·</span> {{ fmtDate(row.uploaded_at) }}</p>
               </div>
             </div>
@@ -181,9 +209,20 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 
-// Release evidence: docs/pos-master-integration.md, "Rilis produksi — 31 Oktober 2026".
+// Release evidence: docs/pos-master-integration.md, "Rilis produksi — 31 Oktober 2026";
+// v10.19: pos-integration-staging/releases/20261118-v10.19 (sha256 0491b93e…).
 // Match the exact artifact so future uploads never inherit these release claims.
 const RELEASES = {
+  'app-universal-release-v10.19.apk': {
+    size: 64392299,
+    summary: 'Status sinkron yang akurat, cetak ulang laporan tutup kasir, dan pembaruan aplikasi langsung dari tablet.',
+    compatibility: 'Android 7.0+ · Universal',
+    highlights: [
+      { title: 'Status sinkron yang akurat', description: 'Tombol Sinkron hanya menyebut offline bila cloud benar-benar tak terjangkau. Data yang ditolak cloud tampil terpisah beserta alasannya, dan katalog tetap diperbarui.' },
+      { title: 'Cetak ulang laporan tutup kasir', description: 'Salinan bertanda CETAK ULANG dengan isi identik cetakan pertama — langsung setelah tutup kasir atau dari daftar shift.' },
+      { title: 'Pembaruan dari aplikasi', description: 'Versi berikutnya diunduh otomatis dan dipasang dengan satu ketukan, tanpa membuka browser. Versi ini perlu dipasang manual sekali.' },
+    ],
+  },
   'app-universal-release-v10.18.apk': {
     size: 64178671,
     summary: 'Pembaruan tutup kasir dan rincian menu terjual, dengan jenis produk yang mengikuti katalog Cloud.',
@@ -196,10 +235,12 @@ const RELEASES = {
   },
 }
 const INSTALL_STEPS = [
-  { title: 'Unduh APK di perangkat kasir', description: 'Buka halaman ini dari tablet atau kirim tautan unduh ke perangkat Android yang digunakan.' },
-  { title: 'Pasang sebagai pembaruan', description: 'Buka file APK, lalu pilih Perbarui / Update pada aplikasi yang sudah terpasang. Tidak perlu menghapus aplikasi lama.' },
-  { title: 'Buka POS dan sinkronkan Cloud', description: 'Jalankan sinkronisasi katalog Cloud setelah pembaruan, lalu periksa menu dan koneksi printer sebelum mulai digunakan.' },
+  { title: 'Tablet dengan pembaruan otomatis', description: 'Aplikasi mengunduh versi terbaru sendiri. Setelah tutup kasir, tekan Pasang pada tawaran pembaruan lalu Perbarui. Data dan pengaturan tetap tersimpan.' },
+  { title: 'Tablet versi lama: unduh APK sekali', description: 'Buka halaman ini dari tablet atau kirim tautan unduh, buka file APK, lalu pilih Perbarui / Update. Tidak perlu menghapus aplikasi lama.' },
+  { title: 'Buka POS dan sinkronkan Cloud', description: 'Jalankan sinkronisasi setelah pembaruan, lalu periksa menu dan koneksi printer sebelum mulai digunakan.' },
 ]
+// Paket aplikasi kasir — hanya APK paket ini yang ditawarkan ke tablet.
+const POS_PACKAGE = 'com.candradigital.pos_resto'
 const FILE_FORMATS = ['apk', 'aab', 'ipa', 'zip', 'exe', 'dmg']
 const PLATFORMS = { apk: 'Android', aab: 'Android App Bundle', ipa: 'iOS', zip: 'Arsip ZIP', exe: 'Windows', dmg: 'macOS' }
 const toast = useToastStore()
@@ -207,6 +248,7 @@ const auth = useAuthStore()
 const canUpload = computed(() => auth.hasPermission('appfiles.create'))
 const canDelete = computed(() => auth.hasPermission('appfiles.delete'))
 const files = ref([])
+const devices = ref([])
 const loading = ref(true)
 const errorMsg = ref('')
 const search = ref('')
@@ -222,7 +264,19 @@ const sortedFiles = computed(() => [...files.value].sort((a, b) => {
   const byDate = timestamp(b.uploaded_at) - timestamp(a.uploaded_at)
   return byDate || b.name.localeCompare(a.name, undefined, { numeric: true })
 }))
-const latestApk = computed(() => sortedFiles.value.find(file => fileExtension(file) === 'apk'))
+// Versi tertinggi aplikasi kasir = yang ditawarkan ke tablet (unggahan ulang
+// build lama tidak menggeser). Tanpa info versi, pakai APK terakhir diunggah.
+const latestApk = computed(() => {
+  const pos = sortedFiles.value.filter(isPosApk)
+  if (pos.length) return pos.reduce((best, file) => (Number(file.version_code) > Number(best.version_code) ? file : best))
+  return sortedFiles.value.find(file => fileExtension(file) === 'apk')
+})
+const reportingDevices = computed(() => devices.value.filter(device => device.has_data))
+const reportingCount = computed(() => reportingDevices.value.length)
+const upToDateCount = computed(() => reportingDevices.value.filter(device => device.up_to_date).length)
+const sortedDevices = computed(() => [...devices.value].sort((a, b) => (
+  deviceRank(a) - deviceRank(b) || a.outlet_name.localeCompare(b.outlet_name, 'id-ID')
+)))
 const latestRelease = computed(() => {
   const file = latestApk.value
   const release = file && RELEASES[file.name]
@@ -237,6 +291,18 @@ const filteredFiles = computed(() => {
 })
 
 function fileExtension(file) { return file.name.split('.').pop().toLowerCase() }
+function isPosApk(file) { return !!file && file.package === POS_PACKAGE && Number(file.version_code) > 0 }
+function deviceRank(device) { return !device.has_data ? 2 : device.up_to_date ? 1 : 0 }
+function deviceVersionText(device) {
+  if (!device.has_data) return 'Belum pernah melapor ke cloud'
+  if (device.label) return `Terpasang ${device.label}`
+  return device.version_code ? `Terpasang build ${device.version_code}` : 'Versi tidak diketahui'
+}
+function deviceBadge(device) {
+  if (!device.has_data) return { text: 'Belum ada data', class: 'bg-gray-100 text-gray-600' }
+  if (device.up_to_date) return { text: 'Terbaru', class: 'bg-emerald-50 text-emerald-700' }
+  return { text: 'Perlu update', class: 'bg-amber-50 text-amber-800' }
+}
 function platformLabel(file) { return PLATFORMS[fileExtension(file)] || 'File aplikasi' }
 function releaseVersion(file) { return file.name.match(/(?:^|[-_])(v\d+(?:\.\d+)*)(?=\.[a-z]+$|[-_]|$)/i)?.[1] || '' }
 function timestamp(value) { return Date.parse(value) || 0 }
@@ -263,6 +329,19 @@ async function load() {
     errorMsg.value = error?.message || 'Gagal memuat daftar file. Coba muat ulang.'
   } finally {
     loading.value = false
+  }
+  loadDevices()
+}
+
+// Status versi tablet bersifat pelengkap: gagal memuatnya tidak menghalangi
+// unduh/unggah APK.
+async function loadDevices() {
+  try {
+    const res = await appFilesApi.devices()
+    const payload = res?.devices ? res : res?.data
+    devices.value = Array.isArray(payload?.devices) ? payload.devices : []
+  } catch {
+    devices.value = []
   }
 }
 

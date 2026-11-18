@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -98,32 +97,21 @@ type appFileInfo struct {
 	URL        string `json:"url"`
 	Size       int64  `json:"size"`
 	UploadedAt string `json:"uploaded_at"`
+	// Label versi dari nama berkas (mis. "v10.18").
+	Label string `json:"label,omitempty"`
+	// Identitas APK dibaca dari AndroidManifest (kosong untuk non-APK).
+	Package     string `json:"package,omitempty"`
+	VersionCode int64  `json:"version_code,omitempty"`
+	VersionName string `json:"version_name,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
 }
 
 // ListAppFiles lists distributable app files (APK, etc.) with their download URLs.
 func ListAppFiles(c *fiber.Ctx) error {
-	entries, err := os.ReadDir(appFilesDir)
+	files, err := listAppFileInfos()
 	if err != nil {
-		// directory not created yet → empty list
 		return c.JSON(models.APIResponse{Success: true, Data: []appFileInfo{}})
 	}
-	files := make([]appFileInfo, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		files = append(files, appFileInfo{
-			Name:       e.Name(),
-			URL:        "/uploads/apps/" + e.Name(),
-			Size:       info.Size(),
-			UploadedAt: info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
-		})
-	}
-	sort.Slice(files, func(i, j int) bool { return files[i].UploadedAt > files[j].UploadedAt })
 	return c.JSON(models.APIResponse{Success: true, Data: files})
 }
 
@@ -151,15 +139,19 @@ func UploadAppFile(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Gagal menyimpan file."})
 	}
 
-	return c.Status(201).JSON(models.APIResponse{
-		Success: true,
-		Data: appFileInfo{
-			Name:       name,
-			URL:        "/uploads/apps/" + name,
-			Size:       file.Size,
-			UploadedAt: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		},
-	})
+	// Baca versi APK sekarang juga (sekaligus mengisi cache) agar tablet yang
+	// memeriksa pembaruan langsung mendapat versi baru tanpa jeda.
+	data := appFileInfo{
+		Name:       name,
+		URL:        "/uploads/apps/" + name,
+		Size:       file.Size,
+		UploadedAt: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		Label:      releaseLabel(name),
+	}
+	if info, err := os.Stat(savePath); err == nil {
+		data = newAppFileInfo(name, info)
+	}
+	return c.Status(201).JSON(models.APIResponse{Success: true, Data: data})
 }
 
 // DownloadAppFile serves an app file with the correct MIME type and a download
@@ -198,6 +190,7 @@ func DeleteAppFile(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Gagal menghapus file."})
 	}
+	forgetAPKMeta(name)
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"deleted": name}})
 }
 
