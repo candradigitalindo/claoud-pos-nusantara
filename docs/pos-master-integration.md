@@ -1002,3 +1002,52 @@ produksi menghasilkan 10 dari 11 laporan keuangan identik byte demi byte (daftar
 hanya bertambah field `pay_to`) dan 31 cek alur lulus. Pengajuan lama yang vendornya belum
 punya rekening (saat rilis: 071126001) menunggu Pembelian melengkapi detailnya. Bukti privat:
 `/home/candra/projects/pos-integration-staging/releases/20261119-060846-purchasing-payment-details/`.
+
+## Rilis tingkat kebutuhan & Pembelian Darurat — 19 November 2026
+
+Cloud commit `1c7e3fa` (API + dashboard) dipasang pada **13:13 WIB**. Hanya container app dan
+nginx yang dibuat ulang. Saat itu tablet sedang aktif (jam makan siang); gangguannya beberapa
+detik, dan 4 outlet sudah sinkron lagi dalam 2 menit. Perubahan database **aditif**:
+
+- 15 kolom baru di `purchase_requests`: `urgency`, `emergency*`, `ratification*`;
+- 2 CHECK dan 2 index parsial;
+- batas `procurement_emergency_max` = 500000 dan `procurement_emergency_monthly_cap` = 0
+  (tanpa plafon) di `app_settings`;
+- izin `procurement.requests.emergency` diberikan sekali ke 13 role pemegang
+  `procurement.requests.submit`.
+
+Backup `pg_dump -Fc` dibuat tepat sebelum deploy. Image sebelumnya disimpan sebagai
+`before-procurement-urgency-20261119-130820`, dan rollback image saja sudah cukup.
+
+- **Tingkat kebutuhan** (keputusan owner 19 Nov): Rutin / Prioritas / Urgent.
+  - Prioritas dan Urgent wajib bertanggal butuh. Urgent paling lambat 7 hari lagi dan wajib
+    menjelaskan dampaknya.
+  - Antrean menaruh urgent, lalu prioritas, yang belum dibayar paling atas.
+  - Pengingat tertahan: urgent setelah 4 jam, prioritas setelah 1 hari, rutin setelah 2 hari.
+  - Pesan WA pengadaan membawa penanda tingkatnya.
+- **Pembelian Darurat ≤ Rp500.000**:
+  - Manajer outlet mencatatnya di dashboard. Dokumen lahir `payment_requested` (berkomitmen) dan
+    langsung membuat tugas Kas Kasir Outlet.
+  - Kasir menyerahkan kas lewat menu **Bayar Pengadaan** App POS v10.20 (PIN Manager/SVP). Tidak
+    ada perubahan aplikasi tablet.
+  - Pengaju mengunggah foto struk, lalu pemegang `procurement.requests.approve` mengesahkan atau
+    menolak. Penolakan menjadi temuan dan tidak membalik pembukuan.
+  - Pembelian Darurat tidak butuh vendor terdaftar dan tidak bisa ditransfer Kantor Pusat.
+  - Batal atau kirim ulang hanya bisa sebelum kas keluar.
+  - Endpoint baru: `/admin/purchase-requests/emergency` (+ `/context`), `/:id/emergency/{proof,decision,cancel,resend}`,
+    dan `/admin/procurement/emergency-settings`.
+  - Event WA baru: `purchase.emergency_created`, `purchase.emergency_reviewed`,
+    `purchase.emergency_followup`.
+
+**Prasyarat di outlet:** per 19 Nov **belum ada tablet di v10.20** (sebaran sama dengan rilis
+v10.20). Tugas kas darurat baru muncul setelah v10.20 terpasang manual sekali di tablet outlet itu.
+Form Pembelian Darurat memperingatkan bila tablet outlet belum siap.
+
+Validasi:
+- suite Go penuh dan 7 tes baru lulus;
+- tes browser baru `procurement-emergency` dan regresi pengadaan lulus;
+- E2E API di stack uji lulus, termasuk endpoint tablet klaim/selesai;
+- `smoke.sh` pada image rilis dengan salinan database produksi (jaringan tanpa internet):
+  16/16 cek lulus.
+
+Bukti privat: `/home/candra/projects/pos-integration-staging/releases/20261119-130820-procurement-urgency/`.
