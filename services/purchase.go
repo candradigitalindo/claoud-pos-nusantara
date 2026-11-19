@@ -312,7 +312,10 @@ func purchaseSelectCols(totalAmount, totalHps, totalFinal string) string {
 		pr.pay_to_method, pr.pay_to_marketplace, pr.pay_to_order_number, pr.pay_to_bank_name,
 		pr.pay_to_account_number, pr.pay_to_account_holder, pr.pay_to_text, pr.pay_to_note,
 		pr.pay_to_set_by, pr.pay_to_set_at, pr.pay_to_returned_at, pr.pay_to_returned_by, pr.pay_to_return_reason,
-		COALESCE(pvd.bank_name,''), COALESCE(pvd.account_number,''), COALESCE(pvd.account_holder,'')`,
+		COALESCE(pvd.bank_name,''), COALESCE(pvd.account_number,''), COALESCE(pvd.account_holder,''),
+		pr.urgency, pr.need_by_date, pr.emergency, pr.emergency_category, pr.emergency_reason, pr.emergency_recipient,
+		pr.emergency_proof_url, pr.emergency_proof_total, pr.emergency_proof_notes, pr.emergency_proof_by, pr.emergency_proof_at,
+		pr.ratification_status, pr.ratified_by, pr.ratified_at, pr.ratification_notes`,
 		totalAmount, totalHps, totalFinal)
 }
 
@@ -340,6 +343,10 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 	var createdAt, updatedAt time.Time
 	var st payToStored
 	var vendorAcct vendorAccount
+	var needBy, proofAt, ratifiedAt *time.Time
+	var emergency bool
+	var em models.PurchaseEmergency
+	var proofTotal sql.NullFloat64
 
 	if err := sc.Scan(
 		&r.ID, &r.RequestNumber, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
@@ -359,14 +366,36 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 		&st.number, &st.holder, &st.text, &st.note,
 		&st.setBy, &st.setAt, &st.returnedAt, &st.returnedBy, &st.returnReason,
 		&vendorAcct.bank, &vendorAcct.number, &vendorAcct.holder,
+		&r.Urgency, &needBy, &emergency, &em.Category, &em.Reason, &em.Recipient,
+		&em.ProofURL, &proofTotal, &em.ProofNotes, &em.ProofBy, &proofAt,
+		&em.Ratification, &em.RatifiedBy, &ratifiedAt, &em.RatificationNotes,
 	); err != nil {
 		return r, err
+	}
+	if needBy != nil {
+		s := needBy.Format("2006-01-02")
+		r.NeedByDate = &s
+	}
+	if emergency {
+		em.CategoryLabel = EmergencyCategoryLabel(em.Category)
+		if proofTotal.Valid {
+			v := proofTotal.Float64
+			em.ProofTotal = &v
+		}
+		em.ProofAt = fmtTimePtr(proofAt)
+		em.RatifiedAt = fmtTimePtr(ratifiedAt)
+		r.Emergency = &em
 	}
 	vendorID := ""
 	if r.VendorID != nil {
 		vendorID = *r.VendorID
 	}
 	r.PayTo = buildPayTo(st, vendorID, vendorAcct)
+	if r.Emergency != nil {
+		// Tidak pernah ditransfer Kantor Pusat: tunai lewat tablet kasir.
+		r.PayTo.Ready = false
+		r.PayTo.Problem = "Pembelian Darurat dibayar tunai dari Kas Kasir Outlet lewat tablet kasir"
+	}
 
 	json.Unmarshal(itemsJSON, &r.Items)
 	if r.Items == nil {
@@ -564,6 +593,28 @@ func insertWithRequestNumber(now time.Time, insert func(reqNumber string) error)
 // lihat ViewableRequestTypes). nil = tanpa batas; slice kosong = tidak ada
 // jenis yang boleh dilihat sehingga hasilnya kosong.
 func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, parentID string, excludeMasters bool, search string, scopeIDs []string, wuScopeIDs []string, allowedTypes []string, page, limit int) (*models.PurchaseRequestListResponse, error) {
+	return ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectID, parentID, excludeMasters, search,
+		scopeIDs, wuScopeIDs, allowedTypes, page, limit, PurchaseListExtra{})
+}
+
+// PurchaseListExtra: saringan & urutan tambahan daftar pengajuan (layar).
+type PurchaseListExtra struct {
+	Urgency      string // rutin | prioritas | urgent; "" = semua
+	Ratification string // pending | ratified | rejected; "" = semua
+	Emergency    bool   // hanya Pembelian Darurat
+	// UrgentFirst: pengajuan URGENT lalu PRIORITAS yang masih berjalan
+	// (belum dibayar) tampil paling atas; sisanya terbaru dulu. Ekspor
+	// tetap kronologis.
+	UrgentFirst bool
+}
+
+// purchaseOpenUrgencyRank: peringkat antrean — 0 urgent, 1 prioritas
+// (menurut tanggal butuh), 2 sisanya. Hanya dokumen yang masih menunggu
+// tindakan sebelum dibayar.
+const purchaseOpenUrgencyRank = `CASE WHEN pr.status IN ('pending','verified','approved','payment_requested')
+	THEN CASE pr.urgency WHEN 'urgent' THEN 0 WHEN 'prioritas' THEN 1 ELSE 2 END ELSE 2 END`
+
+func ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectID, parentID string, excludeMasters bool, search string, scopeIDs []string, wuScopeIDs []string, allowedTypes []string, page, limit int, extra PurchaseListExtra) (*models.PurchaseRequestListResponse, error) {
 	// Normalize outlet filter
 	var filterIDs []string
 	if outletID != "" {
@@ -624,6 +675,19 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, 
 		args = append(args, projectID)
 		idx++
 	}
+	if extra.Urgency != "" {
+		where += fmt.Sprintf(" AND pr.urgency = $%d", idx)
+		args = append(args, extra.Urgency)
+		idx++
+	}
+	if extra.Ratification != "" {
+		where += fmt.Sprintf(" AND pr.emergency AND pr.ratification_status = $%d", idx)
+		args = append(args, extra.Ratification)
+		idx++
+	}
+	if extra.Emergency {
+		where += " AND pr.emergency"
+	}
 
 	// Default: only show main requests (not children) unless explicitly filtering for children or parents
 	if parentID == "" {
@@ -677,14 +741,20 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, 
 			"pr.%[1]s + CASE WHEN pr.split_status = 'master' THEN COALESCE((SELECT SUM(c.%[1]s) FROM purchase_requests c WHERE c.parent_id = pr.id), 0) ELSE 0 END",
 			col)
 	}
+	orderBy := "pr.created_at DESC"
+	if extra.UrgentFirst {
+		orderBy = purchaseOpenUrgencyRank + `,
+		CASE WHEN ` + purchaseOpenUrgencyRank + ` < 2 THEN pr.need_by_date END ASC NULLS LAST,
+		pr.created_at DESC`
+	}
 	query := fmt.Sprintf(`
 		SELECT %s
 		%s
 		%s
-		ORDER BY pr.created_at DESC
+		ORDER BY %s
 		LIMIT $%d OFFSET $%d
 	`, purchaseSelectCols(totalExpr("total_amount"), totalExpr("total_hps"), totalExpr("total_final")),
-		purchaseSelectJoins, where, idx, idx+1)
+		purchaseSelectJoins, where, orderBy, idx, idx+1)
 	args = append(args, limit, offset)
 
 	rows, err := database.DB.Query(query, args...)
@@ -754,6 +824,13 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 	if err := validateReceivableItemText(input.Items, input.RequestType); err != nil {
 		return nil, err
 	}
+	// Tingkat kebutuhan (keputusan owner 19 Nov 2026): prioritas & urgent
+	// wajib bertanggal butuh; urgent wajib menjelaskan dampaknya. Jalur
+	// otomatis (MRP, work order) tidak mengirimnya → rutin.
+	urgency, needBy, err := normalizeUrgency(input.Urgency, input.NeedByDate, input.Notes, time.Now())
+	if err != nil {
+		return nil, err
+	}
 	// Pengadaan barang dipisah sejak awal: dapur ke Gudang Induk, peralatan ke
 	// bagian Aset. Lihat ClassifyPurchaseItems untuk alasannya. Bahan baku
 	// tidak diklasifikasi: seluruh barisnya urusan Gudang Induk, termasuk
@@ -793,13 +870,13 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 			}
 		}
 		_, err = tx.Exec(`
-			INSERT INTO purchase_requests (id, request_number, outlet_id, work_unit_id, request_type, requested_by, requested_by_id, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, project_id, goods_kind, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $18, $10, $11, $12, $13, $14, $15, $16, $17, $17)
+			INSERT INTO purchase_requests (id, request_number, outlet_id, work_unit_id, request_type, requested_by, requested_by_id, vendor_id, vendor_name, status, items, total_amount, total_hps, total_final, notes, project_id, goods_kind, created_at, updated_at, urgency, need_by_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $18, $10, $11, $12, $13, $14, $15, $16, $17, $17, $19, $20)
 		`, id, reqNumber, nilIfEmpty(outletID), nilIfEmpty(workUnitID), input.RequestType, input.RequestedBy,
 			nilIfEmpty(validActorID(input.RequestedByID)),
 			nilIfEmpty(input.VendorID), input.VendorName, itemsJSON,
 			amountOf(totalHps, totalFinal), totalHps, totalFinal, input.Notes, nilIfEmpty(input.ProjectID), goodsKind, now,
-			initialStatus)
+			initialStatus, urgency, needBy)
 		if err != nil {
 			return err
 		}
@@ -1589,11 +1666,12 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 		// click / retry) tidak boleh sama-sama membaca paid_amount lama — tanpa
 		// lock ini histori pembayaran bisa dobel dan status jadi tidak konsisten.
 		var totalFinal, currentPaid float64
-		var receipt, splitStatus, vendorID string
+		var receipt, splitStatus, vendorID, vendorName string
+		var emergency bool
 		if scanErr := tx.QueryRow(`
 			SELECT COALESCE(total_final,0), COALESCE(paid_amount,0), COALESCE(receipt_status,''), COALESCE(split_status,''),
-			       COALESCE(vendor_id, '')
-			FROM purchase_requests WHERE id=$1 FOR UPDATE`, id).Scan(&totalFinal, &currentPaid, &receipt, &splitStatus, &vendorID); scanErr != nil {
+			       COALESCE(vendor_id, ''), COALESCE(vendor_name, ''), emergency
+			FROM purchase_requests WHERE id=$1 FOR UPDATE`, id).Scan(&totalFinal, &currentPaid, &receipt, &splitStatus, &vendorID, &vendorName, &emergency); scanErr != nil {
 			return notice, fmt.Errorf("gagal memeriksa tagihan: %w", scanErr)
 		}
 		// Sumber dana tunggal: selama tugas Kas Kasir Outlet masih terbuka,
@@ -1665,9 +1743,16 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 		// gagal karena isian Pembelian berubah sesudahnya.
 		var dest paymentDest
 		var destErr error
-		if input.CashPayoutID != "" {
+		switch {
+		case input.CashPayoutID != "" && emergency && strings.TrimSpace(vendorID) == "":
+			// Pembelian Darurat: tunai diserahkan ke staf yang berbelanja di
+			// toko mana pun — tidak ada vendor terdaftar maupun rekening.
+			dest, destErr = resolvePaymentDestination(paymentDest{vendorName: vendorName}, input)
+		case input.CashPayoutID != "":
 			dest, destErr = vendorPaymentDestTx(tx, vendorID, input)
-		} else {
+		case emergency:
+			destErr = Invalid("Pembelian Darurat hanya dibayar tunai dari Kas Kasir Outlet lewat tablet kasir — kirim ulang tugas kasnya bila tugas sebelumnya dikembalikan")
+		default:
 			dest, destErr = payToDestTx(tx, id)
 		}
 		if destErr != nil {
@@ -1690,7 +1775,7 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 				NewULID(), id, a.cents/100, input.PaymentProof,
 				dest.text, input.PaymentAccountSource, input.PaymentNotes,
 				input.ActorName, now,
-				dest.vendorID, dest.vendorName, dest.bank, dest.number, dest.holder, dest.manual, nilIfEmpty(a.strukID),
+				nilIfEmpty(dest.vendorID), dest.vendorName, dest.bank, dest.number, dest.holder, dest.manual, nilIfEmpty(a.strukID),
 				dest.method, dest.marketplace, dest.orderNumber, nilIfEmpty(input.CashPayoutID),
 			); insErr != nil {
 				return notice, fmt.Errorf("gagal menyimpan histori pembayaran: %w", insErr)

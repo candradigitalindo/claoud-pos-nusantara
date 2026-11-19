@@ -2,7 +2,11 @@
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan Jasa</h1>
-      <AppButton v-if="authStore.hasPermission(perm('submit'))" @click="openCreate">+ Buat Pengajuan</AppButton>
+      <div class="flex flex-wrap items-center gap-2">
+        <AppButton v-if="canApprove" variant="ghost" @click="showEmergencySettings = true">Batas Darurat</AppButton>
+        <AppButton v-if="canEmergency" variant="danger" @click="openEmergency">Pembelian Darurat</AppButton>
+        <AppButton v-if="authStore.hasPermission(perm('submit'))" @click="openCreate">+ Buat Pengajuan</AppButton>
+      </div>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
@@ -27,6 +31,13 @@
             <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">{{ s.label }}</option>
           </SearchableSelect>
         </div>
+        <div class="flex w-full flex-col gap-1 sm:w-auto">
+          <label class="text-sm font-medium text-gray-700">Tingkat Kebutuhan</label>
+          <SearchableSelect v-model="filterUrgency" aria-label="Filter tingkat kebutuhan"
+            class="w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <option v-for="o in URGENCY_FILTERS" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </SearchableSelect>
+        </div>
         <button @click="page = 1; fetchList()"
           class="w-full sm:w-auto px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
           Tampilkan
@@ -46,6 +57,7 @@
               <button @click="viewDetail(row)" class="min-w-0 flex-1 text-left">
                 <p class="font-mono text-[11px] text-gray-500">{{ row.request_number || '-' }}</p>
                 <p class="mt-0.5 text-sm font-medium text-gray-900 break-words">{{ purchaseDisplayNames(row) }}</p>
+                <PurchaseUrgencyBadges :doc="row" class="mt-1" />
               </button>
               <div class="flex shrink-0 flex-col items-end gap-1">
                 <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
@@ -95,6 +107,7 @@
         <template #cell-status="{ row }">
           <div class="flex flex-col items-start gap-1">
             <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+            <PurchaseUrgencyBadges :doc="row" />
             <span v-if="payToReturned(row)" class="payto-returned-badge" title="Keuangan mengembalikan detail pembayaran — perbaiki di detail pengajuan">Detail bayar dikembalikan</span>
           </div>
         </template>
@@ -207,7 +220,10 @@
           </p>
         </div>
 
-        <AppInput class="modal-span-full" v-model="form.notes" label="Catatan / Scope of Work" placeholder="Deskripsi pekerjaan, jadwal, dsb. (opsional)" />
+        <PurchaseUrgencyFields class="modal-span-full" v-model:urgency="form.urgency" v-model:need-by="form.need_by_date"
+          :can-emergency="canEmergency" :emergency-max="emergencyMax" @emergency="switchToEmergency" />
+        <AppInput class="modal-span-full" v-model="form.notes" label="Catatan / Scope of Work"
+          :placeholder="form.urgency === 'urgent' ? 'Wajib: dampaknya bila tidak segera dikerjakan' : 'Deskripsi pekerjaan, jadwal, dsb. (opsional)'" />
       </form>
       <template #footer>
         <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
@@ -224,12 +240,16 @@
         </button>
         <div class="flex flex-wrap items-center gap-2 text-xs">
           <span :class="statusBadge(detail.status)" class="text-sm">{{ statusLabel(detail.status) }}</span>
+          <PurchaseUrgencyBadges :doc="detail" />
           <span v-if="detail.request_number" class="font-mono text-sm text-gray-600">No. {{ detail.request_number }}</span>
           <span class="text-gray-400">•</span>
           <span class="text-gray-500">{{ detail.work_unit_name || '-' }}</span>
           <span class="text-gray-400">•</span>
           <span class="text-gray-500">{{ formatDateTime(detail.created_at) }}</span>
         </div>
+        <!-- Pembelian Darurat: kas dari laci outlet, bukti belanja, pengesahan. -->
+        <EmergencyPurchasePanel v-if="detail.emergency" :doc="detail" :can-submit-side="canEmergencySide"
+          :can-approve="canApprove" @changed="afterEmergencyChange" />
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <!-- Permohonan -->
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -240,6 +260,8 @@
                 <dd class="font-medium text-gray-900">{{ detail.requested_by }}</dd>
                 <dt class="text-gray-400">Diajukan</dt>
                 <dd class="text-gray-600">{{ formatDateTime(detail.created_at) }}</dd>
+                <dt class="text-gray-400">Kebutuhan</dt>
+                <dd class="text-gray-700">{{ urgencyLabel(detail.urgency) }}<template v-if="detail.need_by_date"> · butuh {{ formatDateStr(detail.need_by_date) }}</template></dd>
                 <template v-if="detail.work_unit_name">
                   <dt class="text-gray-400">Unit</dt>
                   <dd class="font-medium text-gray-900">{{ detail.work_unit_name }}</dd>
@@ -356,7 +378,7 @@
 
           <!-- Tujuan pembayaran: diisi Pembelian saat mengajukan; Keuangan hanya
                membaca. Bisa diubah selama tagihan belum lunas. -->
-          <div v-if="payToEdit.show" class="col-span-1 sm:col-span-2">
+          <div v-if="payToEdit.show && !detail.emergency" class="col-span-1 sm:col-span-2">
             <PurchasePayToCard :pay-to="detail.pay_to" :amount="detailRemaining">
               <div v-if="canPurchasingPayTo" class="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-4 py-2">
                 <p v-if="!payToEdit.editable" class="mr-auto text-[11px] text-amber-700">{{ payToEdit.reason }}</p>
@@ -624,7 +646,8 @@
 
         <!-- Struk pembelian (sejak disetujui): struk/nota tiap transaksi di
              vendor dibayar Keuangan per struk. Jasa tidak punya pengambilan. -->
-        <PurchaseStrukSection v-if="showStrukSection" :doc="detail" :can-manage="canManageStruk" @changed="reloadDetail" />
+        <!-- Pembelian Darurat punya bukti belanjanya sendiri (panel di atas). -->
+        <PurchaseStrukSection v-if="showStrukSection && !detail.emergency" :doc="detail" :can-manage="canManageStruk" @changed="reloadDetail" />
 
         <!-- Verifikasi (status pending, izin procurement.requests.verify):
              pastikan jasa memang perlu dibeli sebelum diteruskan ke penyetuju. -->
@@ -901,6 +924,11 @@
         <AppButton variant="danger" @click="confirmRemoveDetailSubItem">Hapus</AppButton>
       </template>
     </AppModal>
+
+    <!-- Pembelian Darurat (≤ batas): kas dari laci outlet lewat tablet kasir -->
+    <EmergencyPurchaseDialog v-model="showEmergency" request-type="jasa" :work-units="emergencyUnits"
+      :default-work-unit-id="myWorkUnit?.id || ''" @created="onEmergencyCreated" />
+    <EmergencySettingsDialog v-if="canApprove" v-model="showEmergencySettings" @saved="s => emergencyMax = Number(s?.max_amount) || emergencyMax" />
   </div>
 </template>
 
@@ -912,7 +940,7 @@ import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
-import { formatRupiah, formatDateTime } from '@/utils/format.js'
+import { formatRupiah, formatDateTime, formatDateStr } from '@/utils/format.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import AppButton     from '@/components/ui/AppButton.vue'
@@ -929,11 +957,17 @@ import { projectsApi } from '@/api/projects.js'
 import PurchaseStrukSection from '@/components/PurchaseStrukSection.vue'
 import PurchasePayToForm from '@/components/PurchasePayToForm.vue'
 import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
+import PurchaseUrgencyBadges from '@/components/PurchaseUrgencyBadges.vue'
+import PurchaseUrgencyFields from '@/components/PurchaseUrgencyFields.vue'
+import EmergencyPurchaseDialog from '@/components/EmergencyPurchaseDialog.vue'
+import EmergencyPurchasePanel from '@/components/EmergencyPurchasePanel.vue'
+import EmergencySettingsDialog from '@/components/EmergencySettingsDialog.vue'
 import {
   procurementPerm, purchaseStatusLabel, purchaseStatusBadge, purchaseStatusOptions,
   VERIFY_REASON_MIN, reasonLength, isConflictError,
   requestPaymentReadiness, purchaseDisplayNames, RECEIVABLE_PURCHASE_STATUSES,
   newPayToForm, payToFormError, payToPayload, payToReturned, payToEditState,
+  urgencyLabel, URGENT_NOTES_MIN,
 } from '@/utils/procurement.js'
 
 const toast = useToastStore()
@@ -954,6 +988,43 @@ const REQUEST_TYPE = 'jasa'
 function perm(action) { return procurementPerm(REQUEST_TYPE, action) }
 const canVerify  = computed(() => authStore.hasPermission(perm('verify')))
 const canApprove = computed(() => authStore.hasPermission(perm('approve')))
+
+// ── Tingkat kebutuhan & Pembelian Darurat (keputusan owner 19 Nov 2026) ──
+// Jasa darurat (mis. servis genset) dibeli dulu dari kas laci outlet lewat
+// tugas Bayar Pengadaan di tablet kasir, disahkan penyetuju sesudahnya.
+const canEmergency = computed(() => authStore.hasPermission('procurement.requests.emergency'))
+// Sisi outlet (unggah struk, batalkan sebelum kas keluar, kirim ulang).
+const canEmergencySide = computed(() => authStore.hasPermission('procurement.requests.emergency') || authStore.hasPermission('procurement.requests.submit'))
+const showEmergency = ref(false)
+const showEmergencySettings = ref(false)
+const emergencyMax = ref(500000)
+const filterUrgency = ref('')
+const URGENCY_FILTERS = [
+  { value: '', label: 'Semua Tingkat' },
+  { value: 'urgent', label: 'Urgent' },
+  { value: 'prioritas', label: 'Prioritas' },
+  { value: 'rutin', label: 'Rutin' },
+  { value: 'emergency', label: 'Pembelian Darurat' },
+  { value: 'emergency_pending', label: 'Darurat — menunggu pengesahan' },
+]
+// Kas darurat diambil dari laci kasir outlet: hanya unit kerja ber-outlet.
+const emergencyUnits = computed(() => workUnits.value.filter(u => u.outlet_id))
+function openEmergency() { showEmergency.value = true }
+function switchToEmergency() { showCreate.value = false; showEmergency.value = true }
+function onEmergencyCreated(pr) {
+  fetchList()
+  if (pr?.id) viewDetail(pr)
+}
+async function afterEmergencyChange() {
+  await reloadDetail()
+  fetchList()
+}
+async function loadEmergencyMax() {
+  try {
+    const s = await purchaseApi.getEmergencySettings()
+    emergencyMax.value = Number(s?.max_amount) || 500000
+  } catch { /* bawaan Rp500.000 tetap dipakai untuk petunjuk */ }
+}
 
 // HPS terlihat oleh pengaju, verifikator, dan penyetuju; disembunyikan dari tim purchasing
 const showHps = computed(() => authStore.hasPermission(perm('submit')) || canVerify.value || canApprove.value)
@@ -1242,6 +1313,7 @@ function emptyForm() {
     outlet_id: '', work_unit_id: '', requested_by: '', vendor_id: '', vendor_name: '', project_id: '',
     items: [{ name: '', items: [{ name: '', qty: 1, unit: 'paket', hps_price: 0, hps_source: '', rab_item_id: '' }] }],
     notes: '',
+    urgency: 'rutin', need_by_date: '',
   }
 }
 function addItem() {
@@ -1353,7 +1425,7 @@ async function fetchProjects() {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors(), fetchProjects()])
+  await Promise.all([fetchList(), fetchWorkUnits(), fetchMyWorkUnit(), fetchVendors(), fetchProjects(), loadEmergencyMax()])
   // Datang lewat tombol "Belanja Tahap Baru" di halaman Projek: buka form
   // pengajuan dengan projeknya sudah terpilih.
   const pid = String(route.query.project_id || '')
@@ -1403,6 +1475,9 @@ async function fetchList() {
     const params = { page: page.value, limit: 20, type: REQUEST_TYPE }
     if (filterWorkUnit.value) params.work_unit_id = filterWorkUnit.value
     if (filterStatus.value) params.status = filterStatus.value
+    if (filterUrgency.value === 'emergency') params.emergency = 'true'
+    else if (filterUrgency.value === 'emergency_pending') params.ratification = 'pending'
+    else if (filterUrgency.value) params.urgency = filterUrgency.value
     const data = await purchaseApi.list(params)
     requests.value = data.requests || []
     totalPages.value = data.total_pages || 1
@@ -1431,6 +1506,13 @@ async function submitCreate() {
   if (!unit) { createError.value = 'Pilih unit kerja pengaju terlebih dahulu.'; return }
   const validItems = form.value.items.filter(it => it.name.trim())
   if (!validItems.length) { createError.value = 'Minimal 1 jasa harus diisi.'; return }
+  // Tingkat kebutuhan: aturan yang sama dengan server (normalizeUrgency).
+  if (form.value.urgency !== 'rutin' && !form.value.need_by_date) {
+    createError.value = `Isi tanggal dibutuhkan untuk pengajuan ${urgencyLabel(form.value.urgency).toUpperCase()}.`; return
+  }
+  if (form.value.urgency === 'urgent' && [...form.value.notes.trim()].length < URGENT_NOTES_MIN) {
+    createError.value = `Pengajuan URGENT wajib menjelaskan dampaknya di Catatan (minimal ${URGENT_NOTES_MIN} huruf).`; return
+  }
 
   creating.value = true
   try {
@@ -1445,6 +1527,8 @@ async function submitCreate() {
       requested_by: form.value.requested_by.trim(),
       items: validItems,
       notes: form.value.notes.trim(),
+      urgency: form.value.urgency,
+      need_by_date: form.value.urgency === 'rutin' ? '' : form.value.need_by_date,
     })
     toast.success('Pengajuan jasa berhasil dikirim.')
     showCreate.value = false; fetchList()

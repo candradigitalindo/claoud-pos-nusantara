@@ -1382,7 +1382,7 @@ func RunMigrations() error {
 		"finance.payments.view", "finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete",
 		"procurement.dashboard.view", "procurement.requests.view", "procurement.requests.submit",
 		"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing",
-		"procurement.requests.pickup",
+		"procurement.requests.pickup", "procurement.requests.emergency",
 		"procurement.rawmaterials.view", "procurement.rawmaterials.submit",
 		"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing", "procurement.rawmaterials.pickup",
 		"vendors.view", "vendors.create", "vendors.update", "vendors.delete",

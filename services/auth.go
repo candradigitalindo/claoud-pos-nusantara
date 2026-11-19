@@ -84,6 +84,10 @@ var AllPermissions = []string{
 	// sebelum diantar ke tempat penerimaan. Opsional: barang yang diantar
 	// vendor langsung diterima tanpa langkah ini.
 	"procurement.requests.pickup", "procurement.rawmaterials.pickup",
+	// Pembelian Darurat (barang/jasa ≤ batas, keputusan owner 19 Nov 2026):
+	// dibeli dulu dari kas laci outlet lewat tugas Bayar Pengadaan di tablet
+	// (PIN Manager), lalu disahkan pemegang procurement.requests.approve.
+	"procurement.requests.emergency",
 	// Projek pembangunan/renovasi: payung RAB di atas pengadaan.
 	// .manage = buat/ubah/hapus projek dan menetapkan RAB-nya.
 	"procurement.projects.view", "procurement.projects.manage",

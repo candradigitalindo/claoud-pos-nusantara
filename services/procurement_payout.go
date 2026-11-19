@@ -152,35 +152,45 @@ func AssignCashPayout(in models.AssignCashPayoutInput) (*models.ProcurementCashP
 	if _, ok := validTransitions["pay"][cur.Status]; !ok {
 		return nil, Invalid("pengajuan belum dalam tahap pembayaran")
 	}
-	var outletID, vendorID, vendorName string
+	var outletID, vendorID, vendorName, emergencyRecipient string
 	var totalFinal, paid float64
+	var emergency bool
 	if err := tx.QueryRow(`
 		SELECT COALESCE(outlet_id,''), COALESCE(vendor_id,''), COALESCE(vendor_name,''),
-		       COALESCE(total_final,0), COALESCE(paid_amount,0)
-		FROM purchase_requests WHERE id = $1`, prID).Scan(&outletID, &vendorID, &vendorName, &totalFinal, &paid); err != nil {
+		       COALESCE(total_final,0), COALESCE(paid_amount,0), emergency, emergency_recipient
+		FROM purchase_requests WHERE id = $1`, prID).Scan(&outletID, &vendorID, &vendorName, &totalFinal, &paid,
+		&emergency, &emergencyRecipient); err != nil {
 		return nil, err
 	}
 	outletID = strings.TrimSpace(outletID)
 	if outletID == "" {
 		return nil, Invalid("pengajuan tanpa outlet hanya bisa dibayar Kantor Pusat")
 	}
-	if strings.TrimSpace(vendorID) == "" {
-		return nil, Invalid("pengajuan ini belum memilih vendor terdaftar")
-	}
-	// Tujuan pembayaran milik Pembelian: tugas kas tidak boleh berjalan di atas
-	// detail yang sedang dikembalikan / belum diisi, dan VA marketplace
-	// dibayar lewat transfer Kantor Pusat.
-	payTo, err := payToForPRTx(tx, prID)
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case payTo.ReturnedAt != nil:
-		return nil, Invalid("detail pembayaran pengajuan ini sedang dikembalikan ke Pembelian — tunggu perbaikannya")
-	case payTo.Effective == PayToMarketplaceVA:
-		return nil, Invalid("Virtual Account Marketplace dibayar lewat transfer Kantor Pusat, bukan Kas Kasir Outlet")
-	case !payTo.Ready:
-		return nil, Invalid("belum bisa dibayar: %s", payTo.Problem)
+	if emergency {
+		// Pembelian Darurat: tunai untuk staf yang berbelanja — tidak memakai
+		// vendor terdaftar maupun detail pembayaran dari Pembelian.
+		if recipient == "" {
+			recipient = strings.TrimSpace(emergencyRecipient)
+		}
+	} else {
+		if strings.TrimSpace(vendorID) == "" {
+			return nil, Invalid("pengajuan ini belum memilih vendor terdaftar")
+		}
+		// Tujuan pembayaran milik Pembelian: tugas kas tidak boleh berjalan di
+		// atas detail yang sedang dikembalikan / belum diisi, dan VA
+		// marketplace dibayar lewat transfer Kantor Pusat.
+		payTo, err := payToForPRTx(tx, prID)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case payTo.ReturnedAt != nil:
+			return nil, Invalid("detail pembayaran pengajuan ini sedang dikembalikan ke Pembelian — tunggu perbaikannya")
+		case payTo.Effective == PayToMarketplaceVA:
+			return nil, Invalid("Virtual Account Marketplace dibayar lewat transfer Kantor Pusat, bukan Kas Kasir Outlet")
+		case !payTo.Ready:
+			return nil, Invalid("belum bisa dibayar: %s", payTo.Problem)
+		}
 	}
 	var active bool
 	if err := tx.QueryRow(`SELECT is_active FROM outlets WHERE id = $1`, outletID).Scan(&active); err != nil || !active {

@@ -59,6 +59,12 @@ func main() {
 	if err := database.RunFinanceMigrations(); err != nil {
 		log.Fatalf("Finance migration failed: %v", err)
 	}
+	// Tingkat kebutuhan & Pembelian Darurat: setelah semua migrasi yang
+	// menyemai izin pengadaan, supaya pemberian izin sekali-jalan membaca
+	// pemegang procurement.requests.submit yang sudah final.
+	if err := database.RunProcurementUrgencyMigrations(); err != nil {
+		log.Fatalf("Procurement urgency migration failed: %v", err)
+	}
 	// Grant document access after all migrations that seed roles have completed.
 	if err := database.RunDocumentMigrations(); err != nil {
 		log.Fatalf("Document migration failed: %v", err)

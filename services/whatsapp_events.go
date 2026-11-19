@@ -202,8 +202,8 @@ _{company}_`,
 		Key: "purchase.submitted", Label: "Pengajuan pengadaan baru (menunggu verifikasi)", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{"procurement.requests.verify"}, Extra: "pengaju",
 		Description:  "Pengajuan baru menunggu verifikasi; pengaju menerima tanda terima.",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes"},
-		Template: `📝 *Pengajuan Baru {number}*
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes", "urgency"},
+		Template: `📝 *Pengajuan Baru {number}*{urgency}
 Jenis: {type} · Oleh: {requested_by}
 Unit: {outlet} {work_unit} {project}
 Perkiraan: *{total}*
@@ -220,8 +220,8 @@ Menunggu verifikasi.`,
 		Key: "purchase.rawmaterial_submitted", Label: "Pengajuan bahan baku baru (menunggu persetujuan)", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{"procurement.rawmaterials.approve"}, Extra: "pengaju",
 		Description:  "Pengajuan bahan baku baru langsung menunggu persetujuan (tanpa verifikasi); pengaju menerima tanda terima.",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes"},
-		Template: `📝 *Pengajuan Bahan Baku {number}*
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes", "urgency"},
+		Template: `📝 *Pengajuan Bahan Baku {number}*{urgency}
 Oleh: {requested_by} · {outlet} {work_unit}
 Perkiraan: *{total}*
 
@@ -234,8 +234,8 @@ Menunggu persetujuan.`,
 		Key: "purchase.verified", Label: "Pengajuan terverifikasi (menunggu persetujuan)", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{"procurement.requests.approve"}, Extra: "pengaju",
 		Description:  "Verifikator meloloskan pengajuan; item yang ditolak beserta alasannya ikut disebut.",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "actor", "rejected_count", "rejected_list", "verification_notes"},
-		Template: `🔎 *Pengajuan {number} terverifikasi* oleh {actor}
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "actor", "rejected_count", "rejected_list", "verification_notes", "urgency"},
+		Template: `🔎 *Pengajuan {number} terverifikasi* oleh {actor}{urgency}
 {type} · {requested_by} · {outlet} {work_unit} {project}
 Nilai: *{total}*
 
@@ -249,8 +249,8 @@ Menunggu persetujuan.`,
 	{
 		Key: "purchase.approved", Label: "Pengajuan disetujui", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{"procurement.requests.purchasing"}, Extra: "pengaju",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "actor"},
-		Template: `✅ *Pengajuan {number} disetujui* oleh {actor}
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "actor", "urgency"},
+		Template: `✅ *Pengajuan {number} disetujui* oleh {actor}{urgency}
 {type} · {requested_by} · {outlet} {work_unit}
 Nilai: {total}. Lanjut ke pembelian.`,
 	},
@@ -269,16 +269,16 @@ Alasan: {reason}
 		Key: "purchase.priced", Label: "Harga & vendor ditetapkan", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{}, Extra: "pengaju",
 		Description:  "Pembelian mengisi harga final dan vendor; pengaju tahu perkembangan pengajuannya.",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "total", "actor"},
-		Template: `🛒 *Pengajuan {number} siap dibeli*
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "total", "actor", "urgency"},
+		Template: `🛒 *Pengajuan {number} siap dibeli*{urgency}
 Vendor: {vendor} · harga final *{total}*
 Ditetapkan oleh {actor}. Selanjutnya menunggu pembayaran.`,
 	},
 	{
 		Key: "purchase.payment_requested", Label: "Pengajuan pembayaran ke keuangan", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{"finance.payments.pay"}, Extra: "pengaju",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "total", "actor"},
-		Template: `💰 *Permintaan Pembayaran {number}*
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "vendor", "total", "actor", "urgency"},
+		Template: `💰 *Permintaan Pembayaran {number}*{urgency}
 Vendor: {vendor}
 Tagihan: *{total}* · {outlet} {work_unit}
 Diajukan oleh {actor}. Mohon diproses di menu Pembayaran.`,
@@ -311,11 +311,52 @@ Total dibayar: {paid_total} dari {total}`,
 		// status saat dikirim; Permissions di sini hanya bawaan untuk layar.
 		Key: "purchase.stale", Label: "Pengingat pengajuan tertahan (> 2 hari)", Group: "Pengadaan", Audience: "internal", Scheduled: true,
 		Permissions:  []string{"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing", "finance.payments.pay"},
-		Description:  "Setiap hari pada jam pengingat: pengajuan yang belum ditindak lebih dari 2 hari dikirim ke pemegang tahapnya (dan pengaju).",
-		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "status_label", "days", "next_action"},
-		Template: `⏰ *Pengajuan {number} tertahan {days} hari*
+		Description:  "Setiap hari pada jam pengingat: pengajuan yang belum ditindak dikirim ke pemegang tahapnya (dan pengaju) — rutin > 2 hari, prioritas > 1 hari, urgent > 4 jam.",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "status_label", "days", "next_action", "urgency", "duration"},
+		Template: `⏰ *Pengajuan {number} tertahan {duration}*{urgency}
 Status: {status_label} · {type} · {requested_by} · {outlet} {work_unit}
 Nilai: {total}
+{next_action}`,
+	},
+	{
+		// Pembelian Darurat (keputusan owner 19 Nov 2026): dibeli dulu dari kas
+		// laci outlet, disahkan sesudahnya. Penyetuju tahu sejak dicatat;
+		// Keuangan tahu kas laci outlet akan keluar.
+		Key: "purchase.emergency_created", Label: "Pembelian Darurat dicatat (kas outlet)", Group: "Pengadaan", Audience: "internal",
+		Permissions: []string{"procurement.requests.approve", "finance.payments.pay"}, Extra: "pengaju",
+		Description:  "Manajer outlet mencatat Pembelian Darurat (≤ batas): kasir menyerahkan kas lewat tablet dengan PIN Manager, struk diunggah setelah belanja, lalu penyetuju mengesahkan.",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "items", "category", "reason", "recipient"},
+		Template: `🚨 *Pembelian Darurat {number}*
+{type} · {outlet} {work_unit} · {category}
+Nilai: *{total}* dari kas laci outlet · diserahkan ke {recipient}
+Alasan: {reason}
+
+{items}
+
+Dicatat {requested_by}. Kasir menyerahkan kas dengan PIN Manager; struk diunggah setelah belanja, lalu mohon disahkan.`,
+	},
+	{
+		Key: "purchase.emergency_reviewed", Label: "Pembelian Darurat disahkan / ditolak", Group: "Pengadaan", Audience: "internal",
+		// Penolakan = temuan yang ditindaklanjuti Keuangan (mis. tanggungan
+		// manajer outlet); pengaju tahu hasilnya.
+		Permissions: []string{"finance.payments.pay"}, Extra: "pengaju",
+		Description:  "Penyetuju memutus Pembelian Darurat; penolakan menjadi temuan yang ditindaklanjuti Keuangan.",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "actor", "decision", "decision_icon", "reason"},
+		Template: `{decision_icon} *Pembelian Darurat {number} {decision}* oleh {actor}
+{type} · {requested_by} · {outlet} {work_unit}
+Nilai: {total}
+Catatan: {reason}`,
+	},
+	{
+		// Pengingat harian: struk belum diunggah > 1 hari setelah kas
+		// diserahkan (ke pengaju), atau sudah berstruk tetapi belum disahkan
+		// > 1 hari (ke penyetuju).
+		Key: "purchase.emergency_followup", Label: "Pengingat Pembelian Darurat (struk / pengesahan)", Group: "Pengadaan", Audience: "internal", Scheduled: true,
+		Permissions: []string{"procurement.requests.approve"}, Extra: "pengaju",
+		Description:  "Setiap hari pada jam pengingat: struk Pembelian Darurat belum diunggah lebih dari 1 hari setelah kas diserahkan (ke pengaju), atau belum disahkan lebih dari 1 hari setelah struk diunggah (ke penyetuju).",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "duration", "next_action"},
+		Template: `⏰ *Pembelian Darurat {number}* · {duration}
+{type} · {requested_by} · {outlet} {work_unit} · {total}
 {next_action}`,
 	},
 	{
@@ -933,12 +974,50 @@ func waPurchaseVars(pr *models.PurchaseRequest) map[string]string {
 		// gabungan yang terbaca seperti tagihan tambahan (T-62).
 		vendor, total = waSplitVendorBreakdown(pr)
 	}
-	return map[string]string{
+	vars := map[string]string{
 		"number": pr.RequestNumber, "type": waOr(RequestTypeLabel(pr.RequestType), "-"),
 		"requested_by": waOr(pr.RequestedBy, "-"), "outlet": waOr(outlet, "Pusat"), "work_unit": wu, "project": project,
 		"vendor": vendor, "total": waRp(total), "items": strings.Join(lines, "\n"),
 		"notes": waOr(pr.Notes, "-"), "paid_total": waRp(pr.PaidAmount),
+		"urgency": waUrgencyTag(pr),
 	}
+	if e := pr.Emergency; e != nil {
+		vars["category"] = waOr(e.CategoryLabel, "-")
+		vars["reason"] = waOr(e.Reason, "-")
+		vars["recipient"] = waOr(e.Recipient, "-")
+	}
+	return vars
+}
+
+// waUrgencyTag: penanda tingkat kebutuhan di judul pesan pengadaan —
+// " · 🔴 URGENT (butuh Jum, 20 Nov 2026)"; kosong untuk rutin.
+func waUrgencyTag(pr *models.PurchaseRequest) string {
+	if pr.Emergency != nil {
+		return " · 🚨 DARURAT"
+	}
+	needBy := ""
+	if pr.NeedByDate != nil && *pr.NeedByDate != "" {
+		needBy = " (butuh " + waDate(*pr.NeedByDate) + ")"
+	}
+	switch pr.Urgency {
+	case UrgencyUrgent:
+		return " · 🔴 URGENT" + needBy
+	case UrgencyPrioritas:
+		return " · 🟠 PRIORITAS" + needBy
+	}
+	return ""
+}
+
+// waDuration: "5 jam" / "3 hari" untuk pengingat.
+func waDuration(d time.Duration) string {
+	if d < 24*time.Hour {
+		h := int(d.Hours())
+		if h < 1 {
+			h = 1
+		}
+		return fmt.Sprintf("%d jam", h)
+	}
+	return fmt.Sprintf("%d hari", int(d.Hours()/24))
 }
 
 // waSplitVendorBreakdown: rincian per vendor sebuah induk hasil pecah vendor
@@ -1029,6 +1108,8 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 		// Pembelian mengubah/memperbaiki tujuan pembayaran → Keuangan diberi
 		// tahu tagihannya siap diproses; Keuangan mengembalikan → Pembelian.
 		"payment_details": "purchase.payment_requested", "payment_returned": "purchase.payment_returned",
+		// Pembelian Darurat: dicatat (kas outlet) & diputus penyetuju.
+		"emergency_created": "purchase.emergency_created", "emergency_reviewed": "purchase.emergency_reviewed",
 	}[action]
 	if event == "" {
 		return
@@ -1056,6 +1137,16 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 		vars["rejected_list"] = ""
 	}
 	vars["verification_notes"] = waOr(pr.VerificationNotes, "-")
+	if action == "emergency_created" && pr.Emergency != nil {
+		// {reason} = alasan darurat (bukan alasan aksi).
+		vars["reason"] = waOr(pr.Emergency.Reason, "-")
+	}
+	if action == "emergency_reviewed" && pr.Emergency != nil {
+		vars["decision"], vars["decision_icon"] = "disahkan", "✅"
+		if pr.Emergency.Ratification == "rejected" {
+			vars["decision"], vars["decision_icon"] = "DITOLAK pengesahannya", "⛔"
+		}
+	}
 	outletID := waPurchaseOutlet(pr)
 	ref := pr.ID + ":" + action
 	if action == "pay" {
@@ -1177,31 +1268,48 @@ var stalePurchaseStage = map[string]struct {
 	"payment_requested": {"finance.payments.pay", "Mohon diproses pembayarannya."},
 }
 
-// SendStalePurchaseReminders mengirim pengingat untuk pengajuan yang berhenti
-// di satu tahap lebih dari dua hari (dihitung dari perubahan terakhir).
-// Dipanggil penjadwal sekali sehari pada jam pengingat; dedupe antrean
-// (event, ref, target) memakai ref ber-tanggal supaya besok dikirim lagi.
-func SendStalePurchaseReminders(now time.Time) {
+type stalePurchase struct{ id, status string }
+
+// stalePurchaseCandidates: pengajuan (bukan Pembelian Darurat) yang tertahan
+// melewati batas tingkat kebutuhannya.
+func stalePurchaseCandidates(now time.Time) ([]stalePurchase, error) {
 	rows, err := database.DB.Query(`
 		SELECT id, status FROM purchase_requests
 		WHERE status IN ('pending', 'verified', 'approved', 'payment_requested')
 		  AND parent_id IS NULL
+		  AND NOT emergency
 		  AND NOT (status = 'approved' AND COALESCE(total_final, 0) > 0)
-		  AND updated_at < $1
-		ORDER BY updated_at`, now.UTC().Add(-48*time.Hour))
+		  AND updated_at < CASE urgency WHEN 'urgent' THEN $2::timestamp WHEN 'prioritas' THEN $3::timestamp ELSE $1::timestamp END
+		ORDER BY updated_at`, now.UTC().Add(-48*time.Hour), now.UTC().Add(-4*time.Hour), now.UTC().Add(-24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []stalePurchase
+	for rows.Next() {
+		var st stalePurchase
+		if err := rows.Scan(&st.id, &st.status); err != nil {
+			return nil, err
+		}
+		st.id = strings.TrimSpace(st.id)
+		list = append(list, st)
+	}
+	return list, rows.Err()
+}
+
+// SendStalePurchaseReminders mengirim pengingat untuk pengajuan yang berhenti
+// di satu tahap (dihitung dari perubahan terakhir) lebih lama dari batas
+// tingkat kebutuhannya: rutin 2 hari, prioritas 1 hari, urgent 4 jam.
+// Dipanggil penjadwal sekali sehari pada jam pengingat; dedupe antrean
+// (event, ref, target) memakai ref ber-tanggal supaya besok dikirim lagi.
+// Pembelian Darurat punya pengingat sendiri (SendEmergencyPurchaseFollowups).
+func SendStalePurchaseReminders(now time.Time) {
+	defer SendEmergencyPurchaseFollowups(now)
+	list, err := stalePurchaseCandidates(now)
 	if err != nil {
 		log.Printf("[WA] pengingat pengajuan tertahan: %v", err)
 		return
 	}
-	type stale struct{ id, status string }
-	var list []stale
-	for rows.Next() {
-		var st stale
-		if rows.Scan(&st.id, &st.status) == nil {
-			list = append(list, stale{strings.TrimSpace(st.id), st.status})
-		}
-	}
-	rows.Close()
 	day := now.In(GetTimezoneLocation()).Format("2006-01-02")
 	for _, st := range list {
 		stage, ok := stalePurchaseStage[st.status]
@@ -1221,6 +1329,7 @@ func SendStalePurchaseReminders(now time.Time) {
 		vars["status_label"] = purchaseStatusLabel(pr.Status)
 		updated, _ := time.Parse(time.RFC3339, pr.UpdatedAt)
 		vars["days"] = fmt.Sprintf("%d", int(now.Sub(updated).Hours()/24))
+		vars["duration"] = waDuration(now.Sub(updated))
 		vars["next_action"] = stage.next
 		extra := pr.RequestedBy
 		if pr.RequestedByID != nil && strings.TrimSpace(*pr.RequestedByID) != "" {
@@ -1233,5 +1342,73 @@ func SendStalePurchaseReminders(now time.Time) {
 	}
 	if len(list) > 0 {
 		log.Printf("[WA] %d pengingat pengajuan tertahan diantrekan (%s)", len(list), day)
+	}
+}
+
+type emergencyFollowup struct {
+	id      string
+	noProof bool
+	since   time.Time
+}
+
+// emergencyFollowupCandidates: Pembelian Darurat yang kasnya sudah keluar tetapi struknya
+// belum diunggah, atau sudah berstruk tetapi belum diputus, > 1 hari.
+func emergencyFollowupCandidates(now time.Time) ([]emergencyFollowup, error) {
+	rows, err := database.DB.Query(`
+		SELECT id, emergency_proof_url = '', COALESCE(emergency_proof_at, paid_at, updated_at)
+		FROM purchase_requests
+		WHERE emergency AND ratification_status = 'pending'
+		  AND status NOT IN ('cancelled', 'rejected') AND COALESCE(paid_amount, 0) > 0
+		  AND COALESCE(emergency_proof_at, paid_at, updated_at) < $1::timestamp
+		ORDER BY 3`, now.UTC().Add(-24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []emergencyFollowup
+	for rows.Next() {
+		var p emergencyFollowup
+		if err := rows.Scan(&p.id, &p.noProof, &p.since); err != nil {
+			return nil, err
+		}
+		p.id = strings.TrimSpace(p.id)
+		list = append(list, p)
+	}
+	return list, rows.Err()
+}
+
+// SendEmergencyPurchaseFollowups: pengingat harian Pembelian Darurat yang
+// kasnya sudah diserahkan tetapi belum tuntas — struk belum diunggah > 1 hari
+// (ke pengaju), atau berstruk tetapi belum disahkan > 1 hari (ke penyetuju).
+func SendEmergencyPurchaseFollowups(now time.Time) {
+	list, err := emergencyFollowupCandidates(now)
+	if err != nil {
+		log.Printf("[WA] pengingat Pembelian Darurat: %v", err)
+		return
+	}
+	day := now.In(GetTimezoneLocation()).Format("2006-01-02")
+	for _, p := range list {
+		pr, err := GetPurchaseRequest(p.id)
+		if err != nil {
+			continue
+		}
+		vars := waPurchaseVars(pr)
+		perm := "procurement.requests.approve"
+		vars["duration"] = "struk diunggah " + waDuration(now.Sub(p.since)) + " lalu"
+		vars["next_action"] = "Mohon disahkan atau ditolak (dengan alasan) di detail pengajuan."
+		if p.noProof {
+			perm = "" // hanya pengaju (dan superadmin)
+			vars["duration"] = "kas diserahkan " + waDuration(now.Sub(p.since)) + " lalu"
+			vars["next_action"] = "Struk belum diunggah — mohon unggah foto struk dan total belanjanya di detail pengajuan."
+		}
+		extra := pr.RequestedBy
+		if pr.RequestedByID != nil && strings.TrimSpace(*pr.RequestedByID) != "" {
+			extra = waExtraIDPrefix + strings.TrimSpace(*pr.RequestedByID)
+		}
+		notifyWAWith("purchase.emergency_followup", pr.ID+":emergency:"+day, waPurchaseOutlet(pr), vars, "",
+			func(string) string { return perm }, extra)
+	}
+	if len(list) > 0 {
+		log.Printf("[WA] %d pengingat Pembelian Darurat diantrekan (%s)", len(list), day)
 	}
 }

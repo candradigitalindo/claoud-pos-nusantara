@@ -232,9 +232,13 @@ func payToEditableTx(tx *sql.Tx, cur *lockedPurchase) error {
 		return Invalid("pengajuan induk ini tidak punya tagihan sendiri — detail pembayaran diatur di pecahannya")
 	}
 	var totalFinal, paid float64
-	if err := tx.QueryRow(`SELECT COALESCE(total_final, 0), COALESCE(paid_amount, 0) FROM purchase_requests WHERE id = $1`,
-		cur.ID).Scan(&totalFinal, &paid); err != nil {
+	var emergency bool
+	if err := tx.QueryRow(`SELECT COALESCE(total_final, 0), COALESCE(paid_amount, 0), emergency FROM purchase_requests WHERE id = $1`,
+		cur.ID).Scan(&totalFinal, &paid, &emergency); err != nil {
 		return err
+	}
+	if emergency {
+		return Invalid("Pembelian Darurat dibayar tunai dari Kas Kasir Outlet lewat tablet kasir — tidak memakai detail pembayaran")
 	}
 	if cents(totalFinal)-cents(paid) <= 0 {
 		return Invalid("tagihan pengajuan ini sudah lunas")

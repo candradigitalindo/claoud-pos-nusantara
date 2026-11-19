@@ -163,7 +163,26 @@ func ListPurchaseRequests(c *fiber.Ctx) error {
 		allowedTypes = acc.viewableTypes()
 	}
 
-	result, err := services.ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, parentID, excludeMasters, search, scopeIDs, wuScopeIDs, allowedTypes, page, limit)
+	// Tingkat kebutuhan & Pembelian Darurat: saringan opsional; antrean layar
+	// selalu menaruh URGENT lalu PRIORITAS yang masih berjalan paling atas.
+	extra := services.PurchaseListExtra{
+		Urgency:      strings.TrimSpace(c.Query("urgency", "")),
+		Ratification: strings.TrimSpace(c.Query("ratification", "")),
+		Emergency:    c.Query("emergency", "") == "true",
+		UrgentFirst:  true,
+	}
+	switch extra.Urgency {
+	case "", services.UrgencyRutin, services.UrgencyPrioritas, services.UrgencyUrgent:
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "urgency harus 'rutin', 'prioritas', atau 'urgent'."})
+	}
+	switch extra.Ratification {
+	case "", "pending", "ratified", "rejected":
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "ratification harus 'pending', 'ratified', atau 'rejected'."})
+	}
+
+	result, err := services.ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectID, parentID, excludeMasters, search, scopeIDs, wuScopeIDs, allowedTypes, page, limit, extra)
 	if err != nil {
 		log.Printf("ListPurchaseRequests error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{

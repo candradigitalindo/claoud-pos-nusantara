@@ -193,6 +193,7 @@
                 <td class="px-4 py-3 align-middle">
                   <div class="flex flex-col items-start gap-1">
                     <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+                    <PurchaseUrgencyBadges :doc="row" />
                     <span v-if="isPhysicalPurchaseType(row.request_type)" :class="receiptBadgeCls(row)" :title="receiptHint(row)">
                       {{ receiptLabel(row) }}
                     </span>
@@ -311,8 +312,14 @@
           </div>
 
           <!-- Tujuan pembayaran: diisi Pembelian, Keuangan hanya membaca. -->
-          <div v-if="PAYABLE_STATUSES.includes(detail.status) && remainingOf(detail) > 0" class="sm:col-span-2">
+          <div v-if="PAYABLE_STATUSES.includes(detail.status) && remainingOf(detail) > 0 && !detail.emergency" class="sm:col-span-2">
             <PurchasePayToCard :pay-to="detail.pay_to" :amount="remainingOf(detail)" />
+          </div>
+          <!-- Pembelian Darurat: tunai dari laci outlet lewat tablet kasir. -->
+          <div v-else-if="detail.emergency" class="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900">
+            <p class="font-semibold">Pembelian Darurat — {{ detail.emergency.category_label || '-' }}</p>
+            <p class="mt-0.5">{{ detail.emergency.reason }}</p>
+            <p class="mt-1 text-rose-800">Dibayar tunai dari Kas Kasir Outlet lewat tablet (PIN Manager/SVP) kepada {{ detail.emergency.recipient || '-' }}; tidak ditransfer Kantor Pusat. Struk &amp; pengesahan ada di halaman Pengadaan.</p>
           </div>
 
           <!-- Pembayaran -->
@@ -721,6 +728,7 @@ import { bankAccountsApi } from '@/api/bankAccounts.js'
 import { projectsApi } from '@/api/projects.js'
 import { purchaseTypeLabel, normalizePurchaseType, isPhysicalPurchaseType, purchaseStatusLabel, purchaseStatusBadge, isConflictError } from '@/utils/procurement.js'
 import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
+import PurchaseUrgencyBadges from '@/components/PurchaseUrgencyBadges.vue'
 import { safeUrl, isImageUrl } from '@/utils/safeUrl.js'
 
 const toast = useToastStore()
@@ -871,7 +879,8 @@ function isPayable(r) {
 // Tujuan pembayaran milik Pembelian: tagihan yang detailnya dikembalikan atau
 // belum diisi tidak bisa dibayar sampai Pembelian melengkapinya.
 function payToBlocked(r) {
-  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !r.pay_to?.ready
+  // Pembelian Darurat dibayar tunai lewat tablet kasir, tanpa detail Pembelian.
+  return !!r && !r.emergency && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !r.pay_to?.ready
 }
 function payToBlockLabel(r) { return r?.pay_to?.returned_at ? 'Dikembalikan ke Pembelian' : 'Menunggu detail Pembelian' }
 function payToBlockCls(r) {
@@ -881,7 +890,7 @@ function payToBlockCls(r) {
 // Kembalikan ke Pembelian: selama masih ditagih, tidak sedang dibayar dari
 // Kas Kasir Outlet, dan belum dikembalikan (cermin payToEditableTx).
 function canReturnPayTo(r) {
-  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r) && !r.pay_to?.returned_at
+  return !!r && !r.emergency && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r) && !r.pay_to?.returned_at
 }
 const showReturnPayTo = ref(false)
 const returnTarget = ref(null)

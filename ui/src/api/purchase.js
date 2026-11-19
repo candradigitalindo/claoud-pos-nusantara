@@ -48,6 +48,34 @@ export const purchaseApi = {
   delete: (id) =>
     apiClient.delete(`/admin/purchase-requests/${id}`),
 
+  // Pembelian Darurat (≤ batas, keputusan owner 19 Nov 2026): dibeli dulu
+  // dari kas laci outlet lewat tugas Bayar Pengadaan di tablet kasir, struk
+  // diunggah sesudahnya, lalu disahkan penyetuju.
+  emergencyContext: (workUnitId) =>
+    apiClient.get('/admin/purchase-requests/emergency/context', { params: { work_unit_id: workUnitId } }),
+
+  createEmergency: (data) =>
+    apiClient.post('/admin/purchase-requests/emergency', data),
+
+  submitEmergencyProof: (id, data) =>
+    apiClient.post(`/admin/purchase-requests/${id}/emergency/proof`, data),
+
+  // decision: 'ratify' | 'reject'
+  decideEmergency: (id, data) =>
+    apiClient.post(`/admin/purchase-requests/${id}/emergency/decision`, data),
+
+  cancelEmergency: (id, data) =>
+    apiClient.post(`/admin/purchase-requests/${id}/emergency/cancel`, data),
+
+  resendEmergency: (id, data = {}) =>
+    apiClient.post(`/admin/purchase-requests/${id}/emergency/resend`, data),
+
+  getEmergencySettings: () =>
+    apiClient.get('/admin/procurement/emergency-settings'),
+
+  updateEmergencySettings: (data) =>
+    apiClient.put('/admin/procurement/emergency-settings', data),
+
   getDashboard: () =>
     apiClient.get('/admin/procurement-dashboard'),
 

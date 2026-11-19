@@ -387,6 +387,18 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// rute yang sama; handler membatasinya ke daftar exclude_masters dan detail
 	// (lihat ListPurchaseRequests/GetPurchaseRequest). Tanpa kunci itu di sini,
 	// role keuangan murni ditolak sebelum aturan handler sempat berlaku.
+	// Pembelian Darurat (keputusan owner 19 Nov 2026): barang/jasa urgent ≤
+	// batas dibeli dulu dari kas laci outlet (tugas Bayar Pengadaan di
+	// tablet, PIN Manager), struk diunggah, lalu disahkan penyetuju.
+	// Didaftarkan sebelum rute ber-:id.
+	admin.Get("/purchase-requests/emergency/context", middleware.RequirePermission("procurement.requests.emergency"), handlers.GetEmergencyContext)
+	admin.Post("/purchase-requests/emergency", middleware.RequirePermission("procurement.requests.emergency"), handlers.CreateEmergencyPurchase)
+	admin.Post("/purchase-requests/:id/emergency/proof", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit"), handlers.SubmitEmergencyProof)
+	admin.Post("/purchase-requests/:id/emergency/decision", middleware.RequirePermission("procurement.requests.approve"), handlers.DecideEmergencyPurchase)
+	admin.Post("/purchase-requests/:id/emergency/cancel", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit", "procurement.requests.approve"), handlers.CancelEmergencyPurchase)
+	admin.Post("/purchase-requests/:id/emergency/resend", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit"), handlers.ResendEmergencyPayout)
+	admin.Get("/procurement/emergency-settings", middleware.RequirePermission("procurement.requests.view"), handlers.GetEmergencySettings)
+	admin.Put("/procurement/emergency-settings", middleware.RequirePermission("procurement.requests.approve"), handlers.UpdateEmergencySettings)
 	admin.Get("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.ListPurchaseRequests)
 	admin.Get("/purchasing/export", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.ExportPurchasing)
 	admin.Get("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetPurchaseRequest)

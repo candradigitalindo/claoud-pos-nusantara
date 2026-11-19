@@ -138,6 +138,100 @@ type PurchaseRequest struct {
 	// Struks & Pickups hanya diisi pada detail (GetPurchaseRequest).
 	Struks  []PurchaseStruk  `json:"struks,omitempty"`
 	Pickups []PurchasePickup `json:"pickups,omitempty"`
+	// Urgency: tingkat kebutuhan — rutin | prioritas | urgent. NeedByDate
+	// (YYYY-MM-DD) wajib untuk prioritas & urgent.
+	Urgency    string  `json:"urgency"`
+	NeedByDate *string `json:"need_by_date"`
+	// Emergency: hanya untuk Pembelian Darurat (beli dulu dari kas laci
+	// outlet, disahkan penyetuju sesudahnya). nil untuk pengajuan biasa.
+	Emergency *PurchaseEmergency `json:"emergency,omitempty"`
+}
+
+// PurchaseEmergency: data Pembelian Darurat — alasan, penerima kas, bukti
+// belanja yang diunggah sesudahnya, dan pengesahan penyetuju.
+type PurchaseEmergency struct {
+	Category      string `json:"category"`
+	CategoryLabel string `json:"category_label"`
+	Reason        string `json:"reason"`
+	// Recipient: staf yang menerima kas dari laci untuk berbelanja.
+	Recipient string `json:"recipient"`
+	// Bukti belanja: foto struk + total yang tertera di struk.
+	ProofURL   string   `json:"proof_url"`
+	ProofTotal *float64 `json:"proof_total"`
+	ProofNotes string   `json:"proof_notes"`
+	ProofBy    string   `json:"proof_by"`
+	ProofAt    *string  `json:"proof_at"`
+	// Ratification: pending | ratified | rejected.
+	Ratification      string  `json:"ratification"`
+	RatifiedBy        string  `json:"ratified_by"`
+	RatifiedAt        *string `json:"ratified_at"`
+	RatificationNotes string  `json:"ratification_notes"`
+}
+
+// EmergencyPurchaseItemInput: satu barang/jasa yang dibeli darurat. Price =
+// harga satuan yang sudah dikonfirmasi ke toko/teknisi (uang yang dibawa).
+type EmergencyPurchaseItemInput struct {
+	Name  string  `json:"name"`
+	Qty   int     `json:"qty"`
+	Unit  string  `json:"unit"`
+	Price float64 `json:"price"`
+}
+
+// CreateEmergencyPurchaseInput: Pembelian Darurat dari manajer outlet.
+type CreateEmergencyPurchaseInput struct {
+	WorkUnitID    string                       `json:"work_unit_id"`
+	RequestType   string                       `json:"request_type"` // barang | jasa
+	Category      string                       `json:"category"`
+	Reason        string                       `json:"reason"`
+	ShopName      string                       `json:"shop_name"`
+	RecipientName string                       `json:"recipient_name"`
+	Notes         string                       `json:"notes"`
+	Items         []EmergencyPurchaseItemInput `json:"items"`
+	// Diisi handler dari sesi login.
+	RequestedBy   string `json:"-"`
+	RequestedByID string `json:"-"`
+}
+
+// EmergencyProofInput: bukti belanja Pembelian Darurat (foto struk wajib).
+type EmergencyProofInput struct {
+	ProofURL   string  `json:"proof_url"`
+	ProofTotal float64 `json:"proof_total"`
+	Notes      string  `json:"notes"`
+	Version    string  `json:"version"`
+	ActorName  string  `json:"-"`
+}
+
+// EmergencyDecisionInput: pengesahan (ratify), penolakan (reject), atau
+// pembatalan/kirim ulang oleh pemilik pengajuan.
+type EmergencyDecisionInput struct {
+	Decision  string `json:"decision"` // ratify | reject (aksi ratify)
+	Notes     string `json:"notes"`
+	Version   string `json:"version"`
+	ActorName string `json:"-"`
+	ActorID   string `json:"-"`
+}
+
+// EmergencySettings: batas Pembelian Darurat. MonthlyCap 0 = tanpa plafon.
+type EmergencySettings struct {
+	MaxAmount  float64 `json:"max_amount"`
+	MonthlyCap float64 `json:"monthly_cap"`
+}
+
+// EmergencyContext: bekal form Pembelian Darurat untuk satu unit kerja.
+type EmergencyContext struct {
+	EmergencySettings
+	OutletID   string `json:"outlet_id"`
+	OutletName string `json:"outlet_name"`
+	// UsedThisMonth: nilai Pembelian Darurat outlet ini bulan berjalan
+	// (yang tidak dibatalkan). Remaining nil bila tanpa plafon.
+	UsedThisMonth  float64  `json:"used_this_month"`
+	CountThisMonth int      `json:"count_this_month"`
+	Remaining      *float64 `json:"remaining"`
+	// TabletReady: tablet kasir outlet sudah memakai versi App POS yang
+	// punya menu Bayar Pengadaan (tugas kas muncul di sana).
+	TabletReady   bool   `json:"tablet_ready"`
+	TabletVersion string `json:"tablet_version"`
+	TabletNote    string `json:"tablet_note"`
 }
 
 // PurchaseStruk: satu struk/nota pembelian dari vendor. Satu pengajuan bisa
@@ -207,6 +301,10 @@ type CreatePurchaseRequestInput struct {
 	ProjectID string                `json:"project_id"`
 	Items     []PurchaseRequestItem `json:"items" validate:"required"`
 	Notes     string                `json:"notes"`
+	// Urgency: rutin (bawaan) | prioritas | urgent. NeedByDate YYYY-MM-DD,
+	// wajib untuk prioritas & urgent.
+	Urgency    string `json:"urgency"`
+	NeedByDate string `json:"need_by_date"`
 }
 
 // UpdatePurchaseStatusInput is the payload for advancing purchase request status.

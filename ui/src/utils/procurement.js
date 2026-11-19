@@ -321,3 +321,46 @@ export function grnNumbersOf(res) {
     : String(res?.grn_number || '').split(',')
   return [...new Set(list.map(s => String(s || '').trim()).filter(Boolean))]
 }
+
+// ── Tingkat kebutuhan & Pembelian Darurat ──────────────────────────────────
+// Keputusan owner 19 Nov 2026 (cermin services/procurement_emergency.go):
+//   rutin      — kebutuhan terencana, alur penuh;
+//   prioritas  — dibutuhkan dalam beberapa hari, tanggal butuh wajib;
+//   urgent     — operasional berhenti: ≤ batas (bawaan Rp500.000) lewat
+//                Pembelian Darurat (beli dulu dari kas laci outlet, disahkan
+//                sesudahnya); di atas batas tetap disetujui dulu.
+export const URGENCY_OPTIONS = [
+  { value: 'rutin',     label: 'Rutin',     hint: 'Kebutuhan terencana — alur biasa.' },
+  { value: 'prioritas', label: 'Prioritas', hint: 'Dibutuhkan dalam beberapa hari; tampil di atas antrean.' },
+  { value: 'urgent',    label: 'Urgent',    hint: 'Operasional terhenti / keselamatan — paling lambat 7 hari lagi.' },
+]
+
+// Server: URGENT paling lambat 7 hari lagi dan wajib menjelaskan dampaknya.
+export const URGENT_MAX_LEAD_DAYS = 7
+export const URGENT_NOTES_MIN = 10
+
+export function urgencyLabel(u) {
+  return URGENCY_OPTIONS.find(o => o.value === u)?.label || 'Rutin'
+}
+
+// Kategori Pembelian Darurat (cermin services.EmergencyCategories).
+export const EMERGENCY_CATEGORIES = [
+  { value: 'peralatan_rusak', label: 'Peralatan operasional rusak/mati', hint: 'mis. genset, mesin kopi, kompor, pompa air' },
+  { value: 'bangunan',        label: 'Kerusakan bangunan/instalasi',      hint: 'mis. atap bocor, pintu, listrik, saluran air' },
+  { value: 'keselamatan',     label: 'Keselamatan & keamanan',            hint: 'mis. APAR, kunci, lampu darurat' },
+  { value: 'keamanan_pangan', label: 'Keamanan pangan',                   hint: 'mis. kulkas/freezer, air bersih' },
+  { value: 'lainnya',         label: 'Lainnya',                           hint: 'jelaskan di alasan' },
+]
+export const EMERGENCY_REASON_MIN = 10
+
+// Status pengesahan Pembelian Darurat.
+export const RATIFICATION = {
+  pending:  { label: 'Menunggu Pengesahan', cls: 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200' },
+  ratified: { label: 'Disahkan',            cls: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200' },
+  rejected: { label: 'Pengesahan Ditolak',  cls: 'bg-red-100 text-red-700 ring-1 ring-inset ring-red-300' },
+}
+
+// Pembelian Darurat: kas sudah diserahkan kasir (pembayaran tercatat).
+export function emergencyCashHanded(doc) {
+  return Math.round((Number(doc?.paid_amount) || 0) * 100) > 0
+}

@@ -302,6 +302,7 @@ const CATEGORIES = [
           { key: 'procurement.requests.approve',    label: 'Approval', hint: 'Menyetujui atau menolak pengajuan yang sudah diverifikasi' },
           { key: 'procurement.requests.purchasing', label: 'Pembelian Barang & Perlengkapan', hint: 'Mengisi harga final, vendor, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran (termasuk jasa)' },
           { key: 'procurement.requests.pickup',     label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan barang dari vendor (foto & waktu) sebelum diantar ke tempat penerimaan, termasuk struk yang dibawa' },
+          { key: 'procurement.requests.emergency',  label: 'Pembelian Darurat', hint: 'Manajer outlet: mencatat barang/jasa urgent ≤ batas yang dibeli dulu dengan kas laci outlet (diserahkan kasir lewat tablet dengan PIN Manager), lalu mengunggah strukny; disahkan pemegang Approval sesudahnya' },
         ],
       },
       {

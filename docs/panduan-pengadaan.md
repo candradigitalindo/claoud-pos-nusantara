@@ -32,6 +32,10 @@ pengajuan Kepala Gudang Induk langsung menunggu persetujuan Manager Logistik (li
 **Satu pengajuan tidak boleh mencampur barang dapur dan peralatan.** Serah terimanya berada di
 dua tempat berbeda, dan sistem menolak pengajuan campuran sejak dibuat.
 
+Setiap pengajuan punya **tingkat kebutuhan**: Rutin, Prioritas, atau Urgent. Kebutuhan urgent yang
+nilainya **≤ Rp500.000** boleh dibeli dulu lewat **Pembelian Darurat**, lalu disahkan sesudahnya (lihat
+§13). Selain itu, semua pengajuan tetap melewati verifikasi dan persetujuan sebelum dibeli.
+
 ---
 
 ## 2. Tahap 1 — Pengajuan
@@ -377,9 +381,9 @@ datang sebelum maupun sesudah dibayar.
 
 | Peran | Hak akses |
 |---|---|
-| **Manager Outlet / Head Store** | `procurement.requests.view`, `procurement.requests.submit` |
+| **Manager Outlet / Head Store** | `procurement.requests.view`, `procurement.requests.submit`, `procurement.requests.emergency` (Pembelian Darurat, §13) |
 | **Bagian Perlengkapan (verifikator)** | `procurement.requests.view`, `procurement.requests.verify` |
-| **Penyetuju (owner)** | `procurement.requests.approve` |
+| **Penyetuju (owner)** | `procurement.requests.approve` (termasuk mengesahkan Pembelian Darurat dan mengatur batasnya) |
 | **Petugas Logistik** | `procurement.requests.pickup` dan/atau `procurement.rawmaterials.pickup` (Pengambilan Barang) |
 | **Pembelian Barang & Perlengkapan** | `procurement.requests.view`, `procurement.requests.purchasing` (termasuk mengisi & mengubah tujuan pembayaran) |
 | **Keuangan** | `finance.payments.view`, `finance.payments.pay` (membayar, memilih sumber dana, mengembalikan detail pembayaran ke Pembelian) |
@@ -392,7 +396,7 @@ datang sebelum maupun sesudah dibayar.
 | **Pembelian Bahan Baku** | `procurement.rawmaterials.view`, `procurement.rawmaterials.purchasing` (termasuk tujuan pembayaran) |
 
 Di menu **Role**, izin ini tampil sebagai pilihan **Lihat · Buat/Hapus · Verifikasi · Approval ·
-Pembelian · Pengambilan Barang** pada baris *Pengadaan Barang, Perlengkapan & Jasa*, dan **Lihat ·
+Pembelian · Pengambilan Barang · Pembelian Darurat** pada baris *Pengadaan Barang, Perlengkapan & Jasa*, dan **Lihat ·
 Buat/Hapus · Approval · Pembelian · Pengambilan Barang** pada *Pengadaan Bahan Baku*. Satu
 izin boleh diberikan ke beberapa role sekaligus. Perubahan berlaku begitu disimpan; pengguna role
 itu cukup memuat ulang halaman. Cakupan outlet role ikut berlaku: role bercakupan outlet tertentu
@@ -436,6 +440,13 @@ dan terpantau di laporan "Pengadaan Belum Lengkap".
 Verifikator menolak item itu saat verifikasi dengan alasannya, lalu pemindahannya dikonfirmasi ke
 bagian perlengkapan (Mutasi Aset / Transfer Stok). Item lain di pengajuan yang sama tetap lanjut
 ke persetujuan.
+
+**Ada kebutuhan mendesak — harus menunggu persetujuan atau boleh langsung beli?**
+Bila nilainya ≤ Rp500.000 dan tidak bisa menunggu (operasional berhenti, keselamatan, keamanan
+pangan), catat sebagai **Pembelian Darurat**. Kasnya diambil dari laci kasir lewat tablet, dan
+penyetuju mengesahkannya sesudah struk diunggah. Di atas batas itu, buat pengajuan biasa bertingkat
+**Urgent**. Pengajuan ini tampil paling atas dan diingatkan lebih cepat, tetapi tetap disetujui dulu
+(§13).
 
 **Vendor mengganti nomor rekening — apakah pembayaran lama ikut berubah?**
 Tidak. Rekening disimpan pada setiap pembayaran saat dicatat. Pembayaran berikutnya memakai
@@ -556,3 +567,83 @@ belakangan (bayar mundur), atau dibayar dulu baru diambil.
 7. Larangan mencampur barang dapur dan peralatan (§1) tidak berlaku di sini karena seluruh
    isinya memang bahan dapur. Peralatan dapur (kompor, freezer) tetap diajukan lewat Pengadaan
    Barang.
+
+---
+
+## 13. Tingkat Kebutuhan & Pembelian Darurat
+
+*Berlaku sejak keputusan owner 19 November 2026.*
+
+### Tingkat kebutuhan
+
+Setiap pengajuan barang, jasa, maupun bahan baku memilih tingkat kebutuhannya di form pengajuan:
+
+| Tingkat | Kapan dipakai | Ketentuan |
+|---|---|---|
+| **Rutin** | Kebutuhan terencana | Alur penuh seperti biasa. Tanggal butuh boleh dikosongkan. |
+| **Prioritas** | Dibutuhkan dalam beberapa hari, operasional belum berhenti | **Tanggal dibutuhkan wajib**. Tampil di atas antrean, diurutkan menurut tanggal butuh. |
+| **Urgent** | Operasional terhenti, keselamatan, atau keamanan pangan | Tanggal dibutuhkan wajib dan **paling lambat 7 hari lagi**. **Catatan wajib menjelaskan dampaknya** (minimal 10 huruf). Tampil paling atas. |
+
+Pengajuan Prioritas dan Urgent **tetap melewati verifikasi dan persetujuan**. Bedanya ada pada urutan
+antrean dan kecepatan pengingat WhatsApp untuk pemegang tahapnya:
+
+- Rutin diingatkan bila tertahan lebih dari **2 hari**.
+- Prioritas diingatkan bila tertahan lebih dari **1 hari**.
+- Urgent diingatkan bila tertahan lebih dari **4 jam** (dicek setiap hari pada jam pengingat).
+
+Pesan WhatsApp pengadaan mencantumkan penanda **URGENT** atau **PRIORITAS** beserta tanggal butuhnya.
+Daftar pengajuan bisa disaring lewat **Tingkat Kebutuhan**.
+
+### Pembelian Darurat (≤ Rp500.000)
+
+Untuk kebutuhan **urgent** yang tidak bisa menunggu persetujuan, misalnya genset mati, mesin kopi
+bocor, atau atap bocor di atas dapur. Barang/jasa **dibeli dulu** dengan kas laci kasir outlet, lalu
+disahkan sesudahnya.
+
+```
+  MANAJER OUTLET            KASIR (tablet)             STAF              MANAJER            PENYETUJU
+  Catat Pembelian   ──▶  Bayar Pengadaan →     ──▶  Belanja ke   ──▶  Unggah foto   ──▶  Sahkan / Tolak
+  Darurat (web/HP)       Serahkan Kas +             toko/teknisi       struk + total      (dengan alasan)
+  ≤ Rp500.000            PIN Manager/SVP,
+                         cetak bukti
+```
+
+**Ketentuan**
+
+1. **Batas per pembelian Rp500.000**, dihitung dari total seluruh baris. Di atas batas, server
+   menolak. Buat pengajuan biasa bertingkat **Urgent** supaya disetujui dulu. Penyetuju bisa mengubah
+   batas dan memasang **plafon bulanan per outlet** lewat tombol **Batas Darurat**. Plafon bawaannya
+   kosong (tanpa plafon), dan Pembelian Darurat yang dibatalkan tidak dihitung.
+2. **Hanya barang dan jasa**, hanya untuk **unit kerja outlet** (kasnya dari laci kasir outlet itu).
+   Bahan baku tetap lewat Transfer Stok / Pengadaan Bahan Baku.
+3. **Wajib diisi:** kategori darurat, alasan (apa yang berhenti bila tidak dibeli sekarang, minimal 10
+   huruf), barang/jasa beserta harga yang **sudah dikonfirmasi ke toko/teknisi**, dan nama **staf
+   penerima kas**. Harga inilah jumlah yang diserahkan kasir.
+4. **Uang belum keluar saat dicatat.** Tugasnya muncul di tablet kasir outlet (menu **Bayar
+   Pengadaan**). Kasir menekan **Serahkan Kas**, memasukkan **PIN Manager/SVP**, lalu mencetak bukti
+   penyerahan. Tablet harus **online** dan memakai **App POS v10.20** atau lebih baru. Form Pembelian
+   Darurat memberi peringatan bila tablet outlet belum siap.
+5. **Sebelum kas diserahkan**, Pembelian Darurat bisa **dibatalkan** (dengan alasan). Bila kasir
+   mengembalikan tugasnya (mis. kas laci kurang), manajer bisa **Kirim Ulang ke Kasir** atau
+   membatalkannya. Kantor Pusat tidak mentransfer Pembelian Darurat.
+6. **Setelah belanja**, manajer mengunggah **foto struk** dan **total di struk** di detail pengajuan.
+   Bila struk lebih kecil dari kas yang diserahkan, sisanya dikembalikan ke laci kasir dan dicatat
+   sebagai Kas Masuk. Sistem menampilkan selisihnya.
+7. **Pengesahan** oleh pemegang Approval: **Sahkan** (butuh struk) atau **Tolak** (dengan alasan).
+   Menolak **tidak membatalkan pembayaran** karena uangnya sudah keluar. Penolakan menjadi temuan yang
+   ditindaklanjuti Keuangan, misalnya menjadi tanggungan manajer outlet.
+8. **Barang** tetap diterima lewat **Serah Terima** (foto dan pencatatan aset/stok per baris).
+   **Jasa** diselesaikan dengan tombol Selesai.
+9. **Pengingat WhatsApp:**
+   - saat dicatat → penyetuju & Keuangan;
+   - struk belum diunggah lebih dari 1 hari setelah kas diserahkan → pengaju;
+   - sudah berstruk tetapi belum disahkan lebih dari 1 hari → penyetuju;
+   - hasil pengesahan → pengaju & Keuangan.
+
+**Di pembukuan**, Pembelian Darurat dicatat seperti pengajuan yang disetujui saat dicatat, lalu
+dibayar dari Kas Kasir Outlet. Kas keluar tablet yang tertaut tidak dihitung dua kali (§4.4).
+
+**Belanja barang/jasa lewat Kas Keluar biasa di tablet** (tanpa Pembelian Darurat) tidak tercatat
+sebagai pengadaan. Belanja seperti itu tidak punya alasan, struk, pengesahan, maupun catatan aset.
+Gunakan Kas Keluar biasa hanya untuk biaya operasional rutin seperti BBM, token listrik, dan gaji
+harian.
