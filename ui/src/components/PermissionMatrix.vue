@@ -188,7 +188,7 @@ const CATEGORIES = [
     label: 'Perlengkapan', icon: IC.warehouse,
     items: [
       { type: 'single', key: 'assets.dashboard.view', label: 'Dashboard Aset', icon: IC.dashboard },
-      { type: 'crud', module: 'assets', label: 'Data Aset', icon: IC.warehouse },
+      { type: 'crud', module: 'assets', label: 'Data Aset & Penerimaan Peralatan', icon: IC.warehouse },
       {
         type: 'toggles', label: 'Opname Aset', icon: IC.ledger,
         toggles: [
@@ -241,41 +241,8 @@ const CATEGORIES = [
     ],
   },
   {
-    label: 'Laporan', icon: IC.finance,
+    label: 'Keuangan', icon: IC.wallet,
     items: [
-      {
-        type: 'toggles', label: 'Laporan (per jenis)', icon: IC.report,
-        toggles: [
-          { key: 'reports.sales.view',         label: 'Pendapatan' },
-          { key: 'reports.product_sales.view', label: 'Penjualan Produk' },
-          { key: 'reports.ledger.view',        label: 'Buku Besar' },
-          { key: 'reports.cashflow.view',      label: 'Kas Masuk/Keluar' },
-          { key: 'reports.pnl.view',           label: 'Profit & Loss' },
-          { key: 'reports.balance.view',       label: 'Neraca' },
-          { key: 'reports.tax.view',           label: 'Pajak' },
-          { key: 'reports.void.view',          label: 'Void (Transaksi & Item)' },
-          { key: 'reports.titipan.view',       label: 'Titipan' },
-          { key: 'reports.discount.view',      label: 'Diskon & Komplimen' },
-          { key: 'reports.business_analysis.view', label: 'Analisa Bisnis' },
-          { key: 'reports.business_analysis.manage', label: 'Analisa Bisnis: kelola kalender libur' },
-        ],
-      },
-      {
-        type: 'toggles', label: 'Kinerja Markom (IG/TikTok)', icon: IC.report,
-        toggles: [
-          { key: 'social.view',   label: 'Lihat' },
-          { key: 'social.manage', label: 'Kelola akun & isi manual' },
-        ],
-      },
-      { type: 'single', key: 'cashier_shifts.view', label: 'Laporan Shift Kasir', icon: IC.report },
-      { type: 'single', key: 'shift_reconciliation.view', label: 'Rekonsiliasi Shift', icon: IC.report },
-      {
-        type: 'toggles', label: 'Pembayaran Pengadaan', icon: IC.wallet,
-        toggles: [
-          { key: 'finance.payments.view', label: 'Lihat' },
-          { key: 'finance.payments.pay',  label: 'Bayar' },
-        ],
-      },
       {
         type: 'toggles', label: 'Operasional Keuangan', icon: IC.wallet,
         toggles: [
@@ -285,7 +252,51 @@ const CATEGORIES = [
           { key: 'finance.entries.void', label: 'Batalkan / balik' },
         ],
       },
+      {
+        type: 'toggles', label: 'Pembayaran Pengadaan', icon: IC.wallet,
+        toggles: [
+          { key: 'finance.payments.view',    label: 'Lihat & Ajukan Pembayaran', hint: 'Membuka halaman Pembayaran Pengadaan, membuat Pembayaran Manual, serta menceklis tagihan untuk diajukan pembayarannya' },
+          { key: 'finance.payments.approve', label: 'Approve Pengajuan Pembayaran', hint: 'Menyetujui atau menolak pengajuan pembayaran & pembayaran manual (Manager Keuangan / General Manager)' },
+          { key: 'finance.payments.pay',     label: 'Bayar / Cairkan', hint: 'Mencairkan pembayaran atas tagihan yang sudah disetujui pembayarannya' },
+        ],
+      },
+      {
+        type: 'toggles', label: 'Laporan Keuangan', icon: IC.report,
+        toggles: [
+          { key: 'reports.ledger.view',   label: 'Buku Besar' },
+          { key: 'reports.cashflow.view', label: 'Pemasukan & Pengeluaran' },
+          { key: 'reports.pnl.view',      label: 'Profit & Loss' },
+          { key: 'reports.balance.view',  label: 'Laporan Neraca' },
+        ],
+      },
       { type: 'crud', module: 'finance.bank', label: 'Data Rekening', icon: IC.bank },
+    ],
+  },
+  {
+    label: 'Laporan', icon: IC.finance,
+    items: [
+      {
+        type: 'toggles', label: 'Laporan Penjualan & Operasional POS', icon: IC.report,
+        toggles: [
+          { key: 'reports.sales.view',               label: 'Pendapatan' },
+          { key: 'reports.product_sales.view',       label: 'Penjualan Produk' },
+          { key: 'reports.tax.view',                 label: 'Laporan Pajak' },
+          { key: 'reports.void.view',                label: 'Void (Transaksi & Item)' },
+          { key: 'reports.titipan.view',             label: 'Titipan' },
+          { key: 'reports.discount.view',            label: 'Diskon & Komplimen' },
+          { key: 'reports.business_analysis.view',   label: 'Analisa Bisnis' },
+          { key: 'reports.business_analysis.manage', label: 'Analisa Bisnis: kelola kalender libur' },
+        ],
+      },
+      { type: 'single', key: 'cashier_shifts.view', label: 'Laporan Shift Kasir', icon: IC.report },
+      { type: 'single', key: 'shift_reconciliation.view', label: 'Rekonsiliasi Shift', icon: IC.report },
+      {
+        type: 'toggles', label: 'Kinerja Markom (IG/TikTok)', icon: IC.report,
+        toggles: [
+          { key: 'social.view',   label: 'Lihat' },
+          { key: 'social.manage', label: 'Kelola akun & isi manual' },
+        ],
+      },
     ],
   },
   {
@@ -293,36 +304,34 @@ const CATEGORIES = [
     items: [
       { type: 'single', key: 'procurement.dashboard.view', label: 'Dashboard Pengadaan', icon: IC.gauge },
       {
-        // Alur: Buat → Verifikasi (cek ketersediaan di outlet lain) → Approval → Pembelian.
+        // Alur: Buat → Verifikasi (cek ketersediaan di outlet lain) → Approval Barang & Jasa → Pembelian.
         type: 'toggles', label: 'Pengadaan Barang, Perlengkapan & Jasa', icon: IC.cart,
         toggles: [
           { key: 'procurement.requests.view',       label: 'Lihat', hint: 'Melihat daftar & detail pengajuan barang, perlengkapan, dan jasa' },
-          { key: 'procurement.requests.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan, mengubah isinya selama menunggu verifikasi, membatalkan sebelum diajukan bayar, menghapus, dan serah terima barang' },
+          { key: 'procurement.requests.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan, mengubah isinya selama menunggu verifikasi, membatalkan sebelum diajukan bayar, dan menghapus' },
           { key: 'procurement.requests.verify',     label: 'Verifikasi', hint: 'Memeriksa ketersediaan di outlet lain: menolak per item atau meneruskan pengajuan ke persetujuan' },
-          { key: 'procurement.requests.approve',    label: 'Approval', hint: 'Menyetujui atau menolak pengajuan yang sudah diverifikasi' },
-          { key: 'procurement.requests.purchasing', label: 'Pembelian Barang & Perlengkapan', hint: 'Mengisi harga final, vendor, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran (termasuk jasa)' },
+          { key: 'procurement.requests.approve',    label: 'Approval Barang & Jasa', hint: 'Menyetujui/menolak pengajuan barang & jasa (termasuk pengajuan Urgent langsung), serta mengarahkan ke Pembayaran Kasir Outlet atau Proses Melalui Umum' },
+          { key: 'procurement.requests.purchasing', label: 'Pembelian Barang & Jasa', hint: 'Mengisi harga final, vendor, tujuan pembayaran, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran (termasuk jasa)' },
           { key: 'procurement.requests.pickup',     label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan barang dari vendor (foto & waktu) sebelum diantar ke tempat penerimaan, termasuk struk yang dibawa' },
-          { key: 'procurement.requests.emergency',  label: 'Pembelian Darurat', hint: 'Manajer outlet: mencatat barang/jasa urgent ≤ batas yang dibeli dulu dengan kas laci outlet (diserahkan kasir lewat tablet dengan PIN Manager), lalu mengunggah strukny; disahkan pemegang Approval sesudahnya' },
-        ],
-      },
-      {
-        // Pengajuan jenis 'bahan' diatur izin terpisah dari Barang & Jasa.
-        // Alur: Buat (Kepala Gudang Induk) → Approval (Manager Logistik) →
-        // Pembelian → Pengambilan oleh logistik (opsional) — tanpa verifikasi.
-        type: 'toggles', label: 'Pengadaan Bahan Baku', icon: IC.stockitem,
-        toggles: [
-          { key: 'procurement.rawmaterials.view',       label: 'Lihat', hint: 'Melihat daftar & detail pengajuan bahan baku' },
-          { key: 'procurement.rawmaterials.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan bahan baku, mengubah isinya selama menunggu persetujuan, membatalkan, menghapus, dan serah terima' },
-          { key: 'procurement.rawmaterials.approve',    label: 'Approval', hint: 'Menyetujui atau menolak pengajuan bahan baku (tanpa tahap verifikasi)' },
-          { key: 'procurement.rawmaterials.purchasing', label: 'Pembelian Bahan Baku', hint: 'Mengisi harga final, vendor, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran bahan baku' },
-          { key: 'procurement.rawmaterials.pickup',     label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan bahan dari vendor (foto & waktu) sebelum diantar ke Gudang Induk, termasuk struk yang dibawa' },
         ],
       },
       {
         type: 'toggles', label: 'Projek (Pembangunan/Renovasi)', icon: IC.workunit,
         toggles: [
-          { key: 'procurement.projects.view',   label: 'Lihat' },
-          { key: 'procurement.projects.manage', label: 'Kelola & Tetapkan RAB' },
+          { key: 'procurement.projects.view',   label: 'Lihat Projek & RAB', hint: 'Melihat daftar projek, rincian RAB, dan memilih item RAB saat membuat pengajuan' },
+          { key: 'procurement.projects.manage', label: 'Approval & Kelola RAB Projek', hint: 'Membuat/mengubah projek serta menetapkan (mengunci) dan membuka kembali RAB projek (wewenang Penyetuju Barang, Jasa & Proyek)' },
+        ],
+      },
+      {
+        // Pengajuan jenis 'bahan' diatur izin terpisah dari Barang, Jasa & Projek.
+        // Alur: Buat (Kepala Gudang Induk) → Approval Bahan Baku → Pembelian → Pengambilan oleh logistik (opsional) — tanpa verifikasi.
+        type: 'toggles', label: 'Pengadaan Bahan Baku', icon: IC.stockitem,
+        toggles: [
+          { key: 'procurement.rawmaterials.view',       label: 'Lihat', hint: 'Melihat daftar & detail pengajuan bahan baku' },
+          { key: 'procurement.rawmaterials.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan bahan baku, mengubah isinya selama menunggu persetujuan, membatalkan, dan menghapus' },
+          { key: 'procurement.rawmaterials.approve',    label: 'Approval Bahan Baku', hint: 'Khusus menyetujui atau menolak pengajuan bahan baku (tanpa tahap verifikasi, terpisah dari penyetuju barang, jasa & proyek)' },
+          { key: 'procurement.rawmaterials.purchasing', label: 'Pembelian Bahan Baku', hint: 'Mengisi harga final, vendor, tujuan pembayaran, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran bahan baku' },
+          { key: 'procurement.rawmaterials.pickup',     label: 'Pengambilan Bahan Baku', hint: 'Petugas logistik: mencatat pengambilan bahan dari vendor (foto & waktu) sebelum diantar ke Gudang Induk, termasuk struk yang dibawa' },
         ],
       },
       { type: 'crud', module: 'vendors', label: 'Vendor', icon: IC.vendor },
@@ -385,6 +394,13 @@ const CATEGORIES = [
       { type: 'single', key: 'warehouse_dashboard.view', label: 'Dashboard Gudang', icon: IC.gauge },
       { type: 'crud', module: 'stockitems', label: 'Item Stok', icon: IC.stockitem },
       {
+        type: 'toggles', label: 'Buku Stok & Penerimaan Pengadaan', icon: IC.ledger,
+        toggles: [
+          { key: 'stockledger.view',   label: 'Lihat Buku Stok & Penerimaan Barang', hint: 'Membuka halaman Buku Stok dan riwayat Penerimaan Barang' },
+          { key: 'stockledger.adjust', label: 'Penerimaan Pengadaan, Penyesuaian & Produksi', hint: 'Menerima serah terima barang dapur/bahan baku di halaman Penerimaan dari Pengadaan, mencatat penerimaan manual, penyesuaian stok, dan produksi' },
+        ],
+      },
+      {
         // Setujui dan terima dipisah dari kirim/batalkan, sama seperti mutasi aset.
         type: 'toggles', label: 'Transfer Stok', icon: IC.transfer,
         toggles: [
@@ -396,7 +412,13 @@ const CATEGORIES = [
           { key: 'stocktransfers.reject', label: 'Reject Barang' },
         ],
       },
-      { type: 'single', key: 'stockwastes.view', label: 'Riwayat Pembuangan Stok', icon: IC.waste },
+      {
+        type: 'toggles', label: 'Stok Rusak/Hilang (Pembuangan Stok)', icon: IC.waste,
+        toggles: [
+          { key: 'stockwastes.view',   label: 'Lihat Riwayat' },
+          { key: 'stockwastes.create', label: 'Catat Stok Rusak/Hilang' },
+        ],
+      },
       { type: 'single', key: 'stockquality.view', label: 'Lihat Reject, Retur & Kedaluwarsa', icon: IC.waste },
       { type: 'toggles', label: 'Mutu Stok Gudang Induk', icon: IC.warehouse, toggles: [
         { key: 'stockquality.central.report', label: 'Lapor & Karantina' },
@@ -411,13 +433,6 @@ const CATEGORIES = [
         { key: 'stockquality.outlet.execute', label: 'Kirim Retur / Musnahkan' },
       ] },
       { type: 'single', key: 'stockquality.refund', label: 'Finance: Catat Refund Supplier Diterima', icon: IC.wallet },
-      {
-        type: 'toggles', label: 'Buku Stok', icon: IC.ledger,
-        toggles: [
-          { key: 'stockledger.view',   label: 'Lihat' },
-          { key: 'stockledger.adjust', label: 'Penyesuaian & Produksi' },
-        ],
-      },
     ],
   },
   {
@@ -436,7 +451,7 @@ const CATEGORIES = [
   {
     label: 'Pengaturan', icon: IC.settings,
     items: [
-      { type: 'toggles', label: 'Identitas Perusahaan', icon: IC.company, toggles: [{ key: 'settings.company.view', label: 'Lihat' }, { key: 'settings.company.update', label: 'Ubah' }] },
+      { type: 'toggles', label: 'Identitas Perusahaan & Cadangan Foto', icon: IC.company, toggles: [{ key: 'settings.company.view', label: 'Lihat' }, { key: 'settings.company.update', label: 'Ubah' }] },
       { type: 'toggles', label: 'Zona Waktu', icon: IC.clock, toggles: [{ key: 'settings.timezone.view', label: 'Lihat' }, { key: 'settings.timezone.update', label: 'Ubah' }] },
       { type: 'toggles', label: 'Pajak', icon: IC.tax, toggles: [{ key: 'settings.tax.view', label: 'Lihat' }, { key: 'settings.tax.update', label: 'Ubah' }] },
       { type: 'single', key: 'devices.view', label: 'Perangkat (Monitoring)', icon: IC.gauge },

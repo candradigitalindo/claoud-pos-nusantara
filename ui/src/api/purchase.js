@@ -10,6 +10,15 @@ export const purchaseApi = {
   create: (data) =>
     apiClient.post('/admin/purchase-requests', data),
 
+  createManualPayment: (data) =>
+    apiClient.post('/admin/purchase-requests/manual-payment', data),
+
+  submitPaymentApprovals: (data) =>
+    apiClient.post('/admin/purchase-requests/payment-submissions', data),
+
+  decidePaymentApprovals: (data) =>
+    apiClient.post('/admin/purchase-requests/payment-approvals', data),
+
   updateStatus: (id, data) =>
     apiClient.put(`/admin/purchase-requests/${id}/status`, data),
 
@@ -75,6 +84,17 @@ export const purchaseApi = {
 
   updateEmergencySettings: (data) =>
     apiClient.put('/admin/procurement/emergency-settings', data),
+
+  // Rekap bulanan Pembelian Darurat untuk audit Keuangan ({ month: 'YYYY-MM', outlet_id }).
+  emergencyRecap: (params) =>
+    apiClient.get('/admin/procurement/emergency-recap', { params }),
+
+  exportEmergencyRecap: (params) =>
+    apiClient.get('/admin/procurement/emergency-recap/export', {
+      params,
+      responseType: 'blob',
+      timeout: 120000,
+    }),
 
   getDashboard: () =>
     apiClient.get('/admin/procurement-dashboard'),

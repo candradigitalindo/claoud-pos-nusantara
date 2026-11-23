@@ -90,6 +90,7 @@ type PurchaseRequest struct {
 	TotalFinal    float64               `json:"total_final"`
 	Notes         string                `json:"notes"`
 	InvoiceNumber string                `json:"invoice_number"`
+	InvoiceURL    string                `json:"invoice_url"`
 	// Verifikasi (pending → verified): pemeriksa ketersediaan sebelum owner.
 	VerifiedBy        string  `json:"verified_by"`
 	VerifiedByID      *string `json:"verified_by_id"`
@@ -145,6 +146,70 @@ type PurchaseRequest struct {
 	// Emergency: hanya untuk Pembelian Darurat (beli dulu dari kas laci
 	// outlet, disahkan penyetuju sesudahnya). nil untuk pengajuan biasa.
 	Emergency *PurchaseEmergency `json:"emergency,omitempty"`
+	// Pembayaran Manual & Pengajuan / Persetujuan Pembayaran (Mgr Keuangan / GM)
+	IsManualPayment        bool    `json:"is_manual_payment"`
+	PaymentApprovalStatus  string  `json:"payment_approval_status"`
+	PaymentBatchNumber     string  `json:"payment_batch_number"`
+	PaymentSubmittedBy     string  `json:"payment_submitted_by"`
+	PaymentSubmittedAt     *string `json:"payment_submitted_at"`
+	PaymentSubmissionNotes string  `json:"payment_submission_notes"`
+	PaymentApprovedBy      string  `json:"payment_approved_by"`
+	PaymentApprovedAt      *string `json:"payment_approved_at"`
+	PaymentRejectedBy      string  `json:"payment_rejected_by"`
+	PaymentRejectedAt      *string `json:"payment_rejected_at"`
+	PaymentRejectionReason string  `json:"payment_rejection_reason"`
+}
+
+// ManualPaymentItemInput: satu baris item pada Pembayaran Manual (di luar pengajuan).
+type ManualPaymentItemInput struct {
+	Name  string  `json:"name"`
+	Qty   int     `json:"qty"`
+	Unit  string  `json:"unit"`
+	Price float64 `json:"price"`
+}
+
+// CreateManualPaymentInput: payload membuat Pembayaran Manual di halaman Pembayaran Pengadaan.
+type CreateManualPaymentInput struct {
+	RequestType          string                   `json:"request_type"` // barang | jasa | bahan
+	GoodsKind            string                   `json:"goods_kind"`   // perlengkapan | dapur | ""
+	WorkUnitID           string                   `json:"work_unit_id"`
+	ProjectID            string                   `json:"project_id"`
+	Title                string                   `json:"title"`
+	VendorID             string                   `json:"vendor_id"`
+	VendorName           string                   `json:"vendor_name"`
+	PayToMethod          string                   `json:"pay_to_method"` // vendor_account | marketplace_va | manual
+	PayToBankName        string                   `json:"pay_to_bank_name"`
+	PayToAccountNumber   string                   `json:"pay_to_account_number"`
+	PayToAccountHolder   string                   `json:"pay_to_account_holder"`
+	PayToMarketplace     string                   `json:"pay_to_marketplace"`
+	PayToOrderNumber     string                   `json:"pay_to_order_number"`
+	PayToText            string                   `json:"pay_to_text"`
+	PayToNote            string                   `json:"pay_to_note"`
+	InvoiceNumber        string                   `json:"invoice_number"`
+	InvoiceURL           string                   `json:"invoice_url"`
+	Notes                string                   `json:"notes"`
+	Items                []ManualPaymentItemInput `json:"items"`
+	ActorName            string                   `json:"-"`
+	ActorID              string                   `json:"-"`
+}
+
+// SubmitPaymentApprovalInput: daftar tagihan menunggu pembayaran yang diceklis
+// untuk dibuatkan pengajuan pembayaran ke Manager Keuangan / General Manager.
+type SubmitPaymentApprovalInput struct {
+	IDs       []string `json:"ids"`
+	Notes     string   `json:"notes"`
+	ActorName string   `json:"-"`
+	ActorID   string   `json:"-"`
+}
+
+// DecidePaymentApprovalInput: persetujuan atau penolakan pengajuan pembayaran
+// oleh Manager Keuangan / General Manager.
+type DecidePaymentApprovalInput struct {
+	IDs       []string `json:"ids"`
+	Decision  string   `json:"decision"` // approve | reject
+	Reason    string   `json:"reason"`
+	ActorName string   `json:"-"`
+	ActorID   string   `json:"-"`
 }
 
 // PurchaseEmergency: data Pembelian Darurat — alasan, penerima kas, bukti
@@ -215,6 +280,74 @@ type EmergencyDecisionInput struct {
 type EmergencySettings struct {
 	MaxAmount  float64 `json:"max_amount"`
 	MonthlyCap float64 `json:"monthly_cap"`
+}
+
+// EmergencyRecapRow: satu Pembelian Darurat di rekap audit Keuangan.
+type EmergencyRecapRow struct {
+	ID            string  `json:"id"`
+	RequestNumber string  `json:"request_number"`
+	CreatedAt     string  `json:"created_at"`
+	OutletID      string  `json:"outlet_id"`
+	OutletName    string  `json:"outlet_name"`
+	WorkUnitName  string  `json:"work_unit_name"`
+	RequestType   string  `json:"request_type"`
+	Items         string  `json:"items"`
+	CategoryLabel string  `json:"category_label"`
+	Reason        string  `json:"reason"`
+	RequestedBy   string  `json:"requested_by"`
+	Recipient     string  `json:"recipient"`
+	Amount        float64 `json:"amount"`
+	Status        string  `json:"status"`
+	// Stage: waiting_cash | waiting_proof | waiting_ratification | ratified |
+	// rejected | cancelled.
+	Stage        string   `json:"stage"`
+	PaidAmount   float64  `json:"paid_amount"`
+	PaidAt       *string  `json:"paid_at"`
+	Cashier      string   `json:"cashier"`
+	AuthorizedBy string   `json:"authorized_by"`
+	ProofURL     string   `json:"proof_url"`
+	ProofTotal   *float64 `json:"proof_total"`
+	// Difference = kas diserahkan − total struk (positif: sisa harus kembali
+	// ke laci). nil bila belum ada struk atau kas belum diserahkan.
+	Difference        *float64 `json:"difference"`
+	RatifiedBy        string   `json:"ratified_by"`
+	RatifiedAt        *string  `json:"ratified_at"`
+	RatificationNotes string   `json:"ratification_notes"`
+	CancelReason      string   `json:"cancel_reason"`
+}
+
+// EmergencyRecapBucket: jumlah & nilai satu kelompok.
+type EmergencyRecapBucket struct {
+	Count  int     `json:"count"`
+	Amount float64 `json:"amount"`
+}
+
+// EmergencyRecapOutlet: ringkasan satu outlet (atau total semua outlet).
+type EmergencyRecapOutlet struct {
+	OutletID   string `json:"outlet_id"`
+	OutletName string `json:"outlet_name"`
+	// Recorded: Pembelian Darurat yang tidak dibatalkan.
+	Recorded            EmergencyRecapBucket `json:"recorded"`
+	WaitingCash         EmergencyRecapBucket `json:"waiting_cash"`
+	WaitingProof        EmergencyRecapBucket `json:"waiting_proof"`
+	WaitingRatification EmergencyRecapBucket `json:"waiting_ratification"`
+	Ratified            EmergencyRecapBucket `json:"ratified"`
+	Rejected            EmergencyRecapBucket `json:"rejected"`
+	Cancelled           EmergencyRecapBucket `json:"cancelled"`
+	ProofDifference     float64              `json:"proof_difference"`
+	// OtherCashOut: Kas Keluar tablet yang BUKAN tugas Bayar Pengadaan
+	// (gaji harian, BBM, refund, belanja di luar sistem).
+	OtherCashOut EmergencyRecapBucket `json:"other_cash_out"`
+}
+
+// EmergencyRecap: rekap bulanan Pembelian Darurat untuk audit Keuangan.
+type EmergencyRecap struct {
+	Month      string                 `json:"month"` // YYYY-MM (zona aplikasi)
+	MonthLabel string                 `json:"month_label"`
+	Settings   EmergencySettings      `json:"settings"`
+	Totals     EmergencyRecapOutlet   `json:"totals"`
+	Outlets    []EmergencyRecapOutlet `json:"outlets"`
+	Rows       []EmergencyRecapRow    `json:"rows"`
 }
 
 // EmergencyContext: bekal form Pembelian Darurat untuk satu unit kerja.
@@ -320,6 +453,7 @@ type UpdatePurchaseStatusInput struct {
 	PaymentAccountSource string  `json:"payment_account_source,omitempty"`
 	PaymentNotes         string  `json:"payment_notes,omitempty"`
 	PaymentAmount        float64 `json:"payment_amount,omitempty"`
+	BankFee              float64 `json:"bank_fee,omitempty"`
 	// Marketplace virtual accounts belong to this payment/order, never the
 	// vendor master. An omitted method keeps the registered-account behavior.
 	PaymentMethod        string `json:"payment_method,omitempty"`
@@ -349,6 +483,12 @@ type UpdatePurchaseStatusInput struct {
 	// PayTo (aksi request_payment): tujuan pembayaran dari bagian Pembelian.
 	// Kosong = rekening vendor terdaftar (bila vendor punya rekening).
 	PayTo *PurchasePaymentDetailsInput `json:"pay_to,omitempty"`
+	// DirectCashPayout (aksi approve): penyetuju langsung mengarahkan pembayaran
+	// ke Kas Kasir Outlet (menggunakan HPS sebagai harga final) tanpa melalui
+	// tahap Purchasing.
+	DirectCashPayout bool   `json:"direct_cash_payout,omitempty"`
+	PayoutRecipient  string `json:"payout_recipient,omitempty"`
+	PayoutNotes      string `json:"payout_notes,omitempty"`
 }
 
 // PurchasePayTo: tujuan pembayaran sebuah pengajuan. Diisi bagian Pembelian
@@ -432,9 +572,10 @@ type UpdatePurchaseItemsInput struct {
 	Items      []PurchaseRequestItem `json:"items" validate:"required"`
 	VendorID   *string               `json:"vendor_id,omitempty"`
 	VendorName *string               `json:"vendor_name,omitempty"`
-	// InvoiceNumber hanya berlaku pada pengajuan yang sudah disetujui (diisi
+	// InvoiceNumber & InvoiceURL hanya berlaku pada pengajuan yang sudah disetujui (diisi
 	// pembelian); pada pending diabaikan (T-39).
 	InvoiceNumber *string `json:"invoice_number,omitempty"`
+	InvoiceURL    *string `json:"invoice_url,omitempty"`
 	// Version opsional (lihat UpdatePurchaseStatusInput.Version).
 	Version string `json:"version,omitempty"`
 	// ActorName: nama akun yang login — diisi handler, bukan body — untuk
@@ -463,6 +604,7 @@ type PaymentHistory struct {
 	ID                   string  `json:"id"`
 	PurchaseRequestID    string  `json:"purchase_request_id"`
 	Amount               float64 `json:"amount"`
+	BankFee              float64 `json:"bank_fee"`
 	PaymentProof         string  `json:"payment_proof"`
 	PaymentAccountDest   string  `json:"payment_account_dest"`
 	PaymentAccountSource string  `json:"payment_account_source"`

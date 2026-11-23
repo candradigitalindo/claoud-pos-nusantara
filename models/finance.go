@@ -80,6 +80,7 @@ type FinanceOperation struct {
 	WorkUnitID   string           `json:"work_unit_id"`
 	WorkUnitName string           `json:"work_unit_name"`
 	Description  string           `json:"description"`
+	Detail       string           `json:"detail,omitempty"`
 	Notes        string           `json:"notes"`
 	Actor        string           `json:"actor"`
 	Counterparty string           `json:"counterparty"`

@@ -65,6 +65,10 @@ func main() {
 	if err := database.RunProcurementUrgencyMigrations(); err != nil {
 		log.Fatalf("Procurement urgency migration failed: %v", err)
 	}
+	// Tanggal saldo awal aset (penyusutan & aset awal di laporan keuangan).
+	if err := database.RunAssetOpeningMigrations(); err != nil {
+		log.Fatalf("Asset opening migration failed: %v", err)
+	}
 	// Grant document access after all migrations that seed roles have completed.
 	if err := database.RunDocumentMigrations(); err != nil {
 		log.Fatalf("Document migration failed: %v", err)

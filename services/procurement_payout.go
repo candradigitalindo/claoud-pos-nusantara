@@ -173,15 +173,16 @@ func AssignCashPayout(in models.AssignCashPayoutInput) (*models.ProcurementCashP
 			recipient = strings.TrimSpace(emergencyRecipient)
 		}
 	} else {
-		if strings.TrimSpace(vendorID) == "" {
-			return nil, Invalid("pengajuan ini belum memilih vendor terdaftar")
-		}
-		// Tujuan pembayaran milik Pembelian: tugas kas tidak boleh berjalan di
+		// Tujuan pembayaran milik Pembelian (atau hasil arahan langsung
+		// penyetuju ke Kas Kasir Outlet): tugas kas tidak boleh berjalan di
 		// atas detail yang sedang dikembalikan / belum diisi, dan VA
 		// marketplace dibayar lewat transfer Kantor Pusat.
 		payTo, err := payToForPRTx(tx, prID)
 		if err != nil {
 			return nil, err
+		}
+		if strings.TrimSpace(vendorID) == "" && !(payTo.Effective == PayToManual && payTo.Ready) {
+			return nil, Invalid("pengajuan ini belum memilih vendor terdaftar")
 		}
 		switch {
 		case payTo.ReturnedAt != nil:

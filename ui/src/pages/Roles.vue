@@ -182,8 +182,28 @@
               <AppAlert class="role-wide" type="error" :message="createError" />
 
               <div class="role-identity">
+                <!-- Template Role Cepat -->
+                <div class="preset-box">
+                  <div class="preset-hd">
+                    <span class="preset-title">✨ Template Role Cepat</span>
+                    <span class="preset-sub">Klik untuk mengisi otomatis hak akses &amp; halaman awal</span>
+                  </div>
+                  <div class="preset-list">
+                    <button
+                      v-for="pr in ROLE_PRESETS"
+                      :key="pr.key"
+                      type="button"
+                      class="preset-chip"
+                      :class="{ 'preset-chip--active': activePresetKey === pr.key }"
+                      @click="applyRolePreset(pr)"
+                    >
+                      {{ pr.label }}
+                    </button>
+                  </div>
+                </div>
+
                 <div class="form-row">
-                  <AppInput v-model="form.name" label="Nama Role" placeholder="contoh: kasir" :error="formErrors.name" />
+                  <AppInput v-model="form.name" label="Nama Role" placeholder="contoh: penyetuju barang, jasa & proyek" :error="formErrors.name" />
                   <AppInput v-model="form.description" label="Deskripsi (opsional)" placeholder="Deskripsi singkat role" />
                 </div>
 
@@ -392,24 +412,27 @@ const REDIRECT_GROUPS = [
     { value: '/', label: 'Dashboard', perm: 'dashboard' },
   ]},
   { category: 'Master Data', options: [
-    { value: '/outlets',      label: 'Outlet',       perm: 'outlets.view' },
-    { value: '/work-units',   label: 'Unit Kerja',   perm: 'workunits.view' },
-    { value: '/warehouses',   label: 'Gudang',       perm: 'warehouses.view' },
+    { value: '/outlets',      label: 'Outlet',           perm: 'outlets.view' },
+    { value: '/work-units',   label: 'Unit Kerja',       perm: 'workunits.view' },
+    { value: '/warehouses',   label: 'Gudang',           perm: 'warehouses.view' },
     { value: '/roles',        label: 'Role & Hak Akses', perm: 'roles.view' },
-    { value: '/app-pos',      label: 'App POS',      perm: 'appfiles.view' },
+    { value: '/app-pos',      label: 'App POS',          perm: 'appfiles.view' },
+  ]},
+  { category: 'Dokumen', options: [
+    { value: '/documents',    label: 'Pustaka Dokumen',  perm: 'documents.view' },
   ]},
   { category: 'Perlengkapan', options: [
-    { value: '/perlengkapan/dashboard', label: 'Dashboard Aset',   perm: 'assets.dashboard.view' },
-    { value: '/perlengkapan',        label: 'Daftar Aset',         perm: 'assets.view' },
-    { value: '/perlengkapan/penerimaan', label: 'Penerimaan Peralatan', perm: 'assets.create' },
+    { value: '/perlengkapan/dashboard',         label: 'Dashboard Aset',           perm: 'assets.dashboard.view' },
+    { value: '/perlengkapan',                   label: 'Daftar Aset',              perm: 'assets.view' },
+    { value: '/perlengkapan/penerimaan',        label: 'Penerimaan Peralatan',     perm: 'assets.create' },
     { value: '/perlengkapan/penggunaan-projek', label: 'Penggunaan Barang Projek', perm: 'assets.usage.view' },
-    { value: '/perlengkapan/distribusi', label: 'Distribusi Aset ke PIC', perm: 'assets.view' },
-    { value: '/perlengkapan/mutasi', label: 'Mutasi Antar Outlet', perm: 'assets.transfer.view' },
-    { value: '/perlengkapan/perawatan', label: 'Perawatan Aset', perm: 'assets.maintenance.view' },
-    { value: '/perlengkapan/opname', label: 'Opname Aset', perm: 'assets.opname.view' },
-    { value: '/perlengkapan/penghapusan', label: 'Penghapusan Aset', perm: 'assets.disposal.view' },
-    { value: '/perlengkapan/laporan', label: 'Laporan Aset', perm: 'assets.report.view' },
-    { value: '/perlengkapan/kategori', label: 'Kategori Aset', perm: 'assets.view' },
+    { value: '/perlengkapan/distribusi',        label: 'Distribusi Aset ke PIC',   perm: 'assets.view' },
+    { value: '/perlengkapan/mutasi',            label: 'Mutasi Antar Outlet',      perm: 'assets.transfer.view' },
+    { value: '/perlengkapan/perawatan',         label: 'Perawatan Aset',           perm: 'assets.maintenance.view' },
+    { value: '/perlengkapan/opname',            label: 'Opname Aset',              perm: 'assets.opname.view' },
+    { value: '/perlengkapan/penghapusan',       label: 'Penghapusan Aset',         perm: 'assets.disposal.view' },
+    { value: '/perlengkapan/laporan',           label: 'Laporan Aset',             perm: 'assets.report.view' },
+    { value: '/perlengkapan/kategori',          label: 'Kategori Aset',            perm: 'assets.view' },
   ]},
   { category: 'Produk', options: [
     { value: '/products', label: 'Produk & Kategori', perm: 'products.view' },
@@ -418,54 +441,57 @@ const REDIRECT_GROUPS = [
     { value: '/reservations', label: 'Reservasi', perm: 'reservations.view' },
     { value: '/customers',    label: 'Pelanggan', perm: 'customers.view' },
   ]},
+  { category: 'Keuangan', options: [
+    { value: '/finance-operations',   label: 'Operasional Keuangan',    perm: 'finance.entries.view' },
+    { value: '/procurement-payments', label: 'Pembayaran Pengadaan',    perm: 'finance.payments.view' },
+    { value: '/general-ledger',       label: 'Buku Besar',              perm: 'reports.ledger.view' },
+    { value: '/cash-flow-report',     label: 'Pemasukan & Pengeluaran', perm: 'reports.cashflow.view' },
+    { value: '/profit-loss-report',   label: 'Profit & Loss',           perm: 'reports.pnl.view' },
+    { value: '/balance-report',       label: 'Laporan Neraca',          perm: 'reports.balance.view' },
+    { value: '/bank-accounts',        label: 'Data Rekening',           perm: 'finance.bank.view' },
+  ]},
   { category: 'Laporan', options: [
-    { value: '/sales-report',          label: 'Laporan Pendapatan',       perm: 'reports.sales.view' },
-    { value: '/cashier-shifts',        label: 'Shift Kasir',              perm: 'cashier_shifts.view' },
-    { value: '/shift-reconciliation',  label: 'Rekonsiliasi Shift',       perm: 'shift_reconciliation.view' },
-    { value: '/procurement-payments',  label: 'Pembayaran',               perm: 'finance.payments.view' },
-    { value: '/finance-operations', label: 'Operasional Keuangan', perm: 'finance.entries.view' },
-    { value: '/product-sales-report',  label: 'Penjualan Produk',         perm: 'reports.product_sales.view' },
-    { value: '/general-ledger',        label: 'Buku Besar',               perm: 'reports.ledger.view' },
-    { value: '/cash-flow-report',      label: 'Pemasukan & Pengeluaran',  perm: 'reports.cashflow.view' },
-    { value: '/profit-loss-report',    label: 'Profit & Loss',            perm: 'reports.pnl.view' },
-    { value: '/balance-report',        label: 'Laporan Neraca',           perm: 'reports.balance.view' },
-    { value: '/tax-report',            label: 'Laporan Pajak',            perm: 'reports.tax.view' },
-    { value: '/void-report',           label: 'Void & Titipan',           perm: 'reports.void.view' },
-    { value: '/discount-report',       label: 'Diskon & Komplimen',       perm: 'reports.discount.view' },
-    { value: '/business-analysis',     label: 'Analisa Bisnis',           perm: 'reports.business_analysis.view' },
-    { value: '/social-performance',    label: 'Kinerja Markom',           perm: 'social.view' },
-    { value: '/bank-accounts',         label: 'Data Rekening',            perm: 'finance.bank.view' },
+    { value: '/sales-report',          label: 'Laporan Pendapatan',  perm: 'reports.sales.view' },
+    { value: '/cashier-shifts',        label: 'Shift Kasir',         perm: 'cashier_shifts.view' },
+    { value: '/shift-reconciliation',  label: 'Rekonsiliasi Shift',  perm: 'shift_reconciliation.view' },
+    { value: '/product-sales-report',  label: 'Penjualan Produk',    perm: 'reports.product_sales.view' },
+    { value: '/tax-report',            label: 'Laporan Pajak',       perm: 'reports.tax.view' },
+    { value: '/void-report',           label: 'Void & Titipan',      perm: 'reports.void.view' },
+    { value: '/discount-report',       label: 'Diskon & Komplimen',  perm: 'reports.discount.view' },
+    { value: '/business-analysis',     label: 'Analisa Bisnis',      perm: 'reports.business_analysis.view' },
+    { value: '/social-performance',    label: 'Kinerja Markom',      perm: 'social.view' },
   ]},
   { category: 'Pengadaan', options: [
-    { value: '/procurement-dashboard', label: 'Dashboard Pengadaan', perm: 'procurement.dashboard.view' },
-    { value: '/purchase-goods',        label: 'Pengadaan Barang',    perm: 'procurement.requests.view' },
+    { value: '/procurement-dashboard', label: 'Dashboard Pengadaan',  perm: 'procurement.dashboard.view' },
+    { value: '/purchase-goods',        label: 'Pengadaan Barang',     perm: 'procurement.requests.view' },
     { value: '/purchase-materials',    label: 'Pengadaan Bahan Baku', perm: 'procurement.rawmaterials.view' },
-    { value: '/purchase-services',     label: 'Pengadaan Jasa',      perm: 'procurement.requests.view' },
-    { value: '/projects',              label: 'Projek',              perm: 'procurement.projects.view' },
-    { value: '/vendors',               label: 'Vendor',              perm: 'vendors.view' },
+    { value: '/purchase-services',     label: 'Pengadaan Jasa',       perm: 'procurement.requests.view' },
+    { value: '/projects',              label: 'Projek',               perm: 'procurement.projects.view' },
+    { value: '/vendors',               label: 'Vendor',               perm: 'vendors.view' },
   ]},
   { category: 'PPIC', options: [
     { value: '/ppic/usage-control',    label: 'Kontrol Pemakaian Bahan', perm: 'ppic.control.view' },
-    { value: '/ppic/opname',           label: 'Stock Opname',          perm: 'ppic.opname.view' },
-    { value: '/ppic/expiry',           label: 'Monitor Kedaluwarsa',   perm: 'ppic.expiry.view' },
+    { value: '/ppic/opname',           label: 'Stock Opname',            perm: 'ppic.opname.view' },
+    { value: '/ppic/expiry',           label: 'Monitor Kedaluwarsa',     perm: 'ppic.expiry.view' },
   ]},
   { category: 'Pengguna', options: [
     { value: '/admins', label: 'User (Admin)', perm: 'users.view' },
   ]},
   { category: 'Gudang', options: [
-    { value: '/warehouse-dashboard', label: 'Dashboard Gudang',     perm: 'warehouse_dashboard.view' },
-    { value: '/stock-items',         label: 'Item Stok',            perm: 'stockitems.view' },
-    { value: '/goods-receipts',      label: 'Penerimaan Barang',    perm: 'stockledger.view' },
-    { value: '/stock-transfers',     label: 'Transfer Stok',        perm: 'stocktransfers.view' },
-    { value: '/stock-wastes',        label: 'Stok Rusak/Hilang',    perm: 'stockwastes.view' },
-    { value: '/stock-quality', label: 'Reject, Retur & Kedaluwarsa', perm: 'stockquality.view' },
-    { value: '/stock-ledger',        label: 'Buku Stok',            perm: 'stockledger.view' },
+    { value: '/warehouse-dashboard',         label: 'Dashboard Gudang',          perm: 'warehouse_dashboard.view' },
+    { value: '/stock-items',                 label: 'Item Stok',                 perm: 'stockitems.view' },
+    { value: '/goods-receipts',              label: 'Penerimaan Barang',         perm: 'stockledger.view' },
+    { value: '/gudang/penerimaan-pengadaan', label: 'Penerimaan dari Pengadaan', perm: 'stockledger.adjust' },
+    { value: '/stock-transfers',             label: 'Transfer Stok',             perm: 'stocktransfers.view' },
+    { value: '/stock-wastes',                label: 'Stok Rusak/Hilang',         perm: 'stockwastes.view' },
+    { value: '/stock-quality',               label: 'Reject, Retur & Kedaluwarsa', perm: 'stockquality.view' },
+    { value: '/stock-ledger',                label: 'Buku Stok',                 perm: 'stockledger.view' },
   ]},
   { category: 'F & B', options: [
-    { value: '/fnb/dashboard', label: 'Dashboard F&B', perm: 'fnb.dashboard.view' },
+    { value: '/fnb/dashboard',   label: 'Dashboard F&B',       perm: 'fnb.dashboard.view' },
     { value: '/fnb/development', label: 'Pengembangan Produk', perm: 'fnb.development.view' },
-    { value: '/fnb/costing', label: 'HPP Menu', perm: 'fnb.costing.view' },
-    { value: '/fnb/recipes', label: 'Resep & Formula', perm: 'recipes.view' },
+    { value: '/fnb/costing',     label: 'HPP Menu',            perm: 'fnb.costing.view' },
+    { value: '/fnb/recipes',     label: 'Resep & Formula',     perm: 'recipes.view' },
   ]},
   { category: 'WhatsApp', options: [
     { value: '/whatsapp',           label: 'Koneksi & Notifikasi', perm: 'whatsapp.view' },
@@ -473,14 +499,175 @@ const REDIRECT_GROUPS = [
     { value: '/whatsapp/messages',  label: 'Log Pesan',            perm: 'whatsapp.view' },
   ]},
   { category: 'Pengaturan', options: [
-    { value: '/settings/company',  label: 'Identitas Perusahaan', perm: 'settings.company.view' },
-    { value: '/settings/timezone', label: 'Zona Waktu',           perm: 'settings.timezone.view' },
-    { value: '/settings/tax',      label: 'Pajak',                perm: 'settings.tax.view' },
-    { value: '/settings/devices',  label: 'Perangkat',            perm: 'devices.view' },
+    { value: '/settings/company',      label: 'Identitas Perusahaan', perm: 'settings.company.view' },
+    { value: '/settings/photo-backup', label: 'Cadangan Bukti Foto',  perm: 'settings.company.view' },
+    { value: '/settings/timezone',     label: 'Zona Waktu',           perm: 'settings.timezone.view' },
+    { value: '/settings/tax',          label: 'Pajak',                perm: 'settings.tax.view' },
+    { value: '/settings/devices',      label: 'Perangkat',            perm: 'devices.view' },
+    { value: '/settings/cctv',         label: 'CCTV',                 perm: 'cameras.view' },
   ]},
   { category: 'Log Akses', options: [
     { value: '/access-logs', label: 'Log Akses', perm: 'access_logs.view' },
   ]},
+]
+
+// Template role cepat untuk mempermudah pendaftaran role sesuai struktur operasional.
+const ROLE_PRESETS = [
+  {
+    key: 'approver_goods_projects',
+    label: 'Penyetuju Barang, Jasa & Proyek',
+    name: 'penyetuju barang, jasa & proyek',
+    description: 'Penyetuju pengadaan barang, perlengkapan, jasa, serta pengelola & penetap RAB proyek',
+    redirect_to: '/procurement-dashboard',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.approve',
+      'procurement.projects.view', 'procurement.projects.manage',
+      'vendors.view', 'assets.usage.view',
+    ],
+  },
+  {
+    key: 'approver_raw_materials',
+    label: 'Penyetuju Bahan Baku',
+    name: 'penyetuju bahan baku',
+    description: 'Penyetuju khusus pengadaan bahan baku (tanpa barang, jasa, dan proyek)',
+    redirect_to: '/purchase-materials',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.rawmaterials.view', 'procurement.rawmaterials.approve',
+      'vendors.view', 'warehouse_dashboard.view', 'stockitems.view', 'stockledger.view',
+    ],
+  },
+  {
+    key: 'verifier_procurement',
+    label: 'Verifikator Pengadaan',
+    name: 'verifikator pengadaan',
+    description: 'Verifikator pengadaan barang, perlengkapan & jasa (cek ketersediaan lintas outlet sebelum persetujuan)',
+    redirect_to: '/purchase-goods',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.verify',
+      'procurement.projects.view', 'assets.view', 'stockitems.view', 'stockledger.view',
+    ],
+  },
+  {
+    key: 'purchasing_goods',
+    label: 'Purchasing Barang & Jasa',
+    name: 'purchasing barang & jasa',
+    description: 'Tim pembelian pengadaan barang, perlengkapan & jasa (negosiasi vendor, harga final & pengajuan bayar)',
+    redirect_to: '/purchase-goods',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.purchasing',
+      'procurement.requests.pickup', 'procurement.projects.view',
+      'vendors.view', 'vendors.create', 'vendors.update',
+    ],
+  },
+  {
+    key: 'purchasing_raw',
+    label: 'Purchasing Bahan Baku',
+    name: 'purchasing bahan baku',
+    description: 'Tim pembelian khusus pengadaan bahan baku (negosiasi supplier, harga final & pengajuan bayar)',
+    redirect_to: '/purchase-materials',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.rawmaterials.view', 'procurement.rawmaterials.purchasing',
+      'procurement.rawmaterials.pickup',
+      'vendors.view', 'vendors.create', 'vendors.update',
+    ],
+  },
+  {
+    key: 'logistics_pickup',
+    label: 'Logistik Pengadaan',
+    name: 'logistik pengadaan',
+    description: 'Petugas logistik pengambilan barang & bahan baku dari vendor (catat pickup & foto struk)',
+    redirect_to: '/purchase-goods',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.pickup',
+      'procurement.rawmaterials.view', 'procurement.rawmaterials.pickup', 'vendors.view',
+    ],
+  },
+  {
+    key: 'central_warehouse_head',
+    label: 'Kepala Gudang Induk',
+    name: 'kepala gudang induk',
+    description: 'Kepala Gudang Induk: pengajuan bahan baku, penerimaan pengadaan dapur, stok & transfer gudang induk',
+    redirect_to: '/warehouse-dashboard',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'warehouse_dashboard.view', 'warehouses.view',
+      'stockitems.view', 'stockitems.create', 'stockitems.update',
+      'stockledger.view', 'stockledger.adjust',
+      'stocktransfers.view', 'stocktransfers.create', 'stocktransfers.update', 'stocktransfers.approve', 'stocktransfers.receive', 'stocktransfers.reject',
+      'stockwastes.view', 'stockwastes.create',
+      'stockquality.view', 'stockquality.central.report', 'stockquality.central.receive',
+      'procurement.dashboard.view', 'procurement.rawmaterials.view', 'procurement.rawmaterials.submit', 'vendors.view',
+    ],
+  },
+  {
+    key: 'asset_equipment',
+    label: 'Perlengkapan & Aset',
+    name: 'perlengkapan',
+    description: 'Kelola perlengkapan, penerimaan peralatan dari pengadaan, distribusi PIC, mutasi & perawatan aset',
+    redirect_to: '/perlengkapan/dashboard',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'assets.dashboard.view', 'assets.view', 'assets.create', 'assets.update', 'assets.delete',
+      'assets.transfer.view', 'assets.transfer.create', 'assets.transfer.approve', 'assets.transfer.receive',
+      'assets.maintenance.view', 'assets.maintenance.create',
+      'assets.opname.view', 'assets.opname.create', 'assets.opname.approve',
+      'assets.disposal.view', 'assets.disposal.create',
+      'assets.usage.view', 'assets.usage.create', 'assets.usage.verify',
+      'assets.report.view',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.verify', 'procurement.projects.view',
+    ],
+  },
+  {
+    key: 'finance_payment',
+    label: 'Keuangan & Pembayaran',
+    name: 'keuangan pembayaran',
+    description: 'Keuangan: pencairan pembayaran pengadaan, operasional keuangan, rekening & laporan keuangan',
+    redirect_to: '/procurement-payments',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'finance.payments.view', 'finance.payments.pay',
+      'finance.entries.view', 'finance.entries.create', 'finance.entries.post',
+      'finance.bank.view', 'finance.bank.create', 'finance.bank.update',
+      'reports.ledger.view', 'reports.cashflow.view', 'reports.pnl.view', 'reports.balance.view',
+      'reports.sales.view', 'reports.tax.view', 'cashier_shifts.view', 'shift_reconciliation.view',
+    ],
+  },
+  {
+    key: 'outlet_manager',
+    label: 'Manager Outlet',
+    name: 'manager outlet',
+    description: 'Manager Outlet: operasional outlet, pengajuan barang & jasa, stok outlet, opname & laporan outlet',
+    redirect_to: '/',
+    scope_type: 'specific',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download', 'devices.view',
+      'products.view', 'products.create', 'products.update', 'recipes.view',
+      'reservations.view', 'reservations.create', 'reservations.update', 'reservations.delete', 'customers.view',
+      'cashier_shifts.view', 'shift_reconciliation.view',
+      'reports.sales.view', 'reports.product_sales.view', 'reports.discount.view', 'reports.void.view', 'reports.titipan.view',
+      'reports.cashflow.view', 'reports.pnl.view', 'reports.balance.view', 'reports.ledger.view',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.submit', 'procurement.projects.view',
+      'warehouse_dashboard.view', 'stockitems.view', 'stockledger.view', 'stockledger.adjust',
+      'stocktransfers.view', 'stocktransfers.create', 'stocktransfers.update', 'stocktransfers.receive',
+      'stockwastes.view', 'stockwastes.create',
+      'ppic.expiry.view', 'ppic.expiry.ack', 'ppic.opname.view', 'ppic.opname.create',
+    ],
+  },
 ]
 const REDIRECT_OPTIONS = REDIRECT_GROUPS.flatMap(g => g.options)
 
@@ -602,12 +789,33 @@ async function resetRoleNotifications(role) {
   finally { savingNotificationRole.value = '' }
 }
 
-const showCreate  = ref(false)
-const creating    = ref(false)
-const createError = ref('')
-const copyingFrom = ref('')   // source role name when duplicating
-const form        = reactive({ name: '', description: '', permissions: [], scope_type: 'all', work_unit_ids: [], redirect_to: '/' })
-const formErrors  = reactive({ name: '' })
+const showCreate      = ref(false)
+const creating        = ref(false)
+const createError     = ref('')
+const copyingFrom     = ref('')   // source role name when duplicating
+const activePresetKey = ref('')
+const form            = reactive({ name: '', description: '', permissions: [], scope_type: 'all', work_unit_ids: [], redirect_to: '/' })
+const formErrors      = reactive({ name: '' })
+
+function filterValidPermissions(perms) {
+  if (!Array.isArray(perms)) return []
+  if (!allPermissions.value.length) return [...new Set(perms)]
+  const valid = new Set(allPermissions.value)
+  return [...new Set(perms.filter(p => valid.has(p)))]
+}
+
+function applyRolePreset(preset) {
+  activePresetKey.value = preset.key
+  copyingFrom.value = ''
+  const isPresetName = ROLE_PRESETS.some(p => p.name === form.name.trim().toLowerCase())
+  if (!form.name.trim() || isPresetName) {
+    form.name = preset.name
+  }
+  form.description = preset.description
+  form.redirect_to = preset.redirect_to || '/'
+  form.scope_type = preset.scope_type || 'all'
+  form.permissions = filterValidPermissions(preset.permissions)
+}
 
 const showEdit       = ref(false)
 const editing        = ref(false)
@@ -761,7 +969,7 @@ async function togglePermission(role, perm) {
     try {
       // Kirim snapshot TERKINI (bukan `updated` saat klik) supaya toggle yang
       // menyusul selama request sebelumnya ikut tersimpan.
-      await adminsApi.updatePermissions(role, { permissions: rolePermissions.value[role] ?? [] })
+      await adminsApi.updatePermissions(role, { permissions: filterValidPermissions(rolePermissions.value[role] ?? []) })
       await loadRoleNotificationOptions()
       toast.success(`Hak akses ${role} diperbarui`)
       if (role === authStore.admin?.role) await authStore.fetchPermissions()
@@ -807,7 +1015,7 @@ async function createRole() {
   try {
     await adminsApi.createRole({
       name: form.name.trim(), description: form.description.trim(),
-      permissions: form.permissions, scope_type: form.scope_type,
+      permissions: filterValidPermissions(form.permissions), scope_type: form.scope_type,
       work_unit_ids: form.scope_type === 'specific' ? form.work_unit_ids : [],
       redirect_to: form.redirect_to || '/',
     })
@@ -823,9 +1031,10 @@ async function createRole() {
 // scope so the admin only needs to change the name & work units.
 function openCopyRole(role) {
   copyingFrom.value = role.name
+  activePresetKey.value = ''
   form.name = `${role.name} copy`
   form.description = role.description || ''
-  form.permissions = [...(rolePermissions.value[role.name] ?? [])]
+  form.permissions = filterValidPermissions(rolePermissions.value[role.name] ?? [])
   form.scope_type = roleScopes.value[role.name]?.scope_type ?? role.scope_type ?? 'all'
   form.work_unit_ids = [...(roleScopes.value[role.name]?.work_unit_ids ?? [])]
   form.redirect_to = role.redirect_to || '/'
@@ -885,12 +1094,29 @@ watch(showCreate, v => {
   if (!v) {
     form.name = ''; form.description = ''; form.permissions = []
     form.scope_type = 'all'; form.work_unit_ids = []; form.redirect_to = '/'
-    formErrors.name = ''; createError.value = ''; copyingFrom.value = ''
+    formErrors.name = ''; createError.value = ''; copyingFrom.value = ''; activePresetKey.value = ''
   }
 })
 </script>
 
 <style scoped>
+/* ─── Presets in Create Modal ─────────────────── */
+.preset-box {
+  margin-bottom: 1rem; padding: .7rem .8rem; border-radius: .65rem;
+  border: 1.5px solid #e0e7ff; background: linear-gradient(135deg, #f8fafc, #eef2ff);
+}
+.preset-hd { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .35rem; margin-bottom: .5rem; }
+.preset-title { font-size: .76rem; font-weight: 700; color: #3730a3; }
+.preset-sub { font-size: .68rem; color: #6366f1; }
+.preset-list { display: flex; flex-wrap: wrap; gap: .35rem; }
+.preset-chip {
+  font-size: .7rem; font-weight: 600; padding: .28rem .65rem; border-radius: 999px;
+  border: 1.5px solid #c7d2fe; background: #fff; color: #4338ca; cursor: pointer;
+  transition: all .12s;
+}
+.preset-chip:hover { background: #e0e7ff; border-color: #818cf8; }
+.preset-chip--active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+.preset-chip--active:hover { background: #4338ca; }
 /* ─── Page ─────────────────────────────────────── */
 .rp { display: flex; flex-direction: column; gap: 1.25rem; }
 

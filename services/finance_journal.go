@@ -214,6 +214,30 @@ func loadFinanceJournalWithOpening(from, to, outlet string, scope []string, open
 	}); err != nil {
 		return nil, err
 	}
+	// Biaya admin transfer antarbank saat pembayaran pengadaan (bila ada):
+	// dicatat sebagai Beban Administrasi Bank (5-350) terhadap Kas & Setara Kas (1-100).
+	if err := read("procurement_payment", `SELECT ph.id||'-fee' id,ph.created_at at,pr.outlet_id outletid,pr.work_unit_id workunitid,
+		pr.request_number reference,'Biaya admin bank: '||pr.request_number||' · '||COALESCE(wu.name,'-')||' — '||COALESCE(NULLIF(ph.vendor_name,''),pr.requested_by) description,
+		TRIM(BOTH E'\n' FROM COALESCE(NULLIF(ph.payment_account_source,'')||' → '||NULLIF(ph.payment_account_dest,''),'')||CASE WHEN COALESCE(ph.payment_notes,'')<>'' THEN E'\n'||ph.payment_notes ELSE '' END) notes,
+		ph.paid_by actor,ph.payment_proof proofurl,ph.vendor_name counterparty,COALESCE(ph.bank_fee,0) amount
+		FROM `+procurementCashOutFrom+` LEFT JOIN work_units wu ON wu.id=pr.work_unit_id WHERE `+countableCond("pr")+` AND COALESCE(ph.bank_fee,0)>0`, func(o *models.FinanceOperation, r financeSource) {
+		o.ProofURL = ""
+		for _, part := range strings.Split(r.ProofURL, " | ") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if ValidateUploadURL(part) == nil {
+				o.ProofURL = part
+			} else {
+				o.Notes = strings.TrimSpace(o.Notes + "\nReferensi pembayaran: " + part)
+			}
+		}
+		o.CashCategory = "opex"
+		financePair(o, "5-350", glAccCash, r.Amount)
+	}); err != nil {
+		return nil, err
+	}
 	// Consumables accepted as habis are expensed at receipt, rather than kept
 	// indefinitely in equipment/project assets. The original payment stays put.
 	if err := read("procurement_consumed", `SELECT d.id,d.created_at at,pr.outlet_id outletid,pr.work_unit_id workunitid,

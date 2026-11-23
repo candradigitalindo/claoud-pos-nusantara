@@ -270,8 +270,8 @@ func GetPaymentStats(scopeIDs []string, wuScopeIDs []string) (*models.PaymentSta
 			-- 'partial' akan melaporkan tagihan penuh sebagai sudah dibayar.
 			COALESCE(SUM(paid_amount), 0) AS total_paid,
 			COUNT(*) FILTER (WHERE status = 'received') AS received,
-			COUNT(*) FILTER (WHERE `+outstandingCond+`) AS ap_count,
-			COALESCE(SUM(total_final - paid_amount) FILTER (WHERE `+outstandingCond+`), 0) AS ap_total
+			COUNT(*) FILTER (WHERE `+outstandingCond+` AND `+countableCond("")+`) AS ap_count,
+			COALESCE(SUM(total_final - paid_amount) FILTER (WHERE `+outstandingCond+` AND `+countableCond("")+`), 0) AS ap_total
 		FROM purchase_requests
 		%s NOT `+fullySplitMasterCond("")+`
 	`, scopeClause)

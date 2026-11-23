@@ -7,6 +7,15 @@
         <p class="mt-0.5 text-sm text-gray-500">Inventaris barang beserta nilai buku, riwayat lokasi, dan perawatannya.</p>
       </div>
       <div class="flex flex-col gap-2 sm:flex-row">
+        <!-- Unduh Excel tidak ikut paginasi: berkasnya memuat SEMUA aset yang cocok dengan filter. -->
+        <button class="btn-soft w-full sm:w-auto" :disabled="exporting || !total" @click="exportExcel"
+          title="Semua perlengkapan yang cocok dengan filter — tidak dibatasi 100 baris per halaman">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          {{ exporting ? 'Menyiapkan…' : 'Unduh Excel' }}
+        </button>
         <button v-if="canCreate" class="btn-soft w-full sm:w-auto" @click="importModal = true">Impor Excel</button>
         <AppButton v-if="canCreate" class="w-full sm:w-auto" @click="openCreate">+ Tambah Perlengkapan</AppButton>
       </div>
@@ -14,8 +23,8 @@
 
     <AppAlert type="error" :message="errorMsg" />
 
-    <!-- Ringkasan -->
-    <div v-if="!loading && assets.length" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <!-- Ringkasan: dihitung server atas SEMUA aset yang cocok dengan filter, bukan hanya halaman ini -->
+    <div v-if="summary.count" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <AppCard class="min-w-0"><p class="stat-lbl">Jumlah Aset</p><p class="stat-val">{{ summary.count }}</p><p class="stat-sub">{{ summary.units }} unit</p></AppCard>
       <AppCard class="min-w-0"><p class="stat-lbl">Nilai Perolehan</p><p class="stat-val">{{ formatRupiah(summary.acquisition) }}</p><p class="stat-sub">total harga beli</p></AppCard>
       <AppCard class="min-w-0"><p class="stat-lbl">Nilai Buku</p><p class="stat-val">{{ formatRupiah(summary.book) }}</p><p class="stat-sub">setelah penyusutan</p></AppCard>
@@ -25,12 +34,12 @@
     <!-- Filter -->
     <AppCard>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SearchSelect v-model="filterOutlet" :options="outletFilterOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" @change="load" />
-        <SearchableSelect v-model="filterStatus" @change="load" class="form-input">
+        <SearchSelect v-model="filterOutlet" :options="outletFilterOptions" placeholder="Semua outlet" searchPlaceholder="Cari outlet…" @change="reloadFirstPage" />
+        <SearchableSelect v-model="filterStatus" @change="reloadFirstPage" class="form-input">
           <option value="">Semua status</option>
           <option v-for="(lbl, key) in STATUSES" :key="key" :value="key">{{ lbl }}</option>
         </SearchableSelect>
-        <SearchableSelect v-model="filterCondition" @change="load" class="form-input">
+        <SearchableSelect v-model="filterCondition" @change="reloadFirstPage" class="form-input">
           <option value="">Semua kondisi</option>
           <option v-for="(lbl, key) in CONDITIONS" :key="key" :value="key">{{ lbl }}</option>
         </SearchableSelect>
@@ -42,6 +51,7 @@
     <div v-if="selected.length"
       class="sticky bottom-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
       <span class="text-sm font-semibold text-emerald-800">{{ selected.length }} aset dipilih</span>
+      <span v-if="selectedOffPage" class="text-xs text-emerald-700">· {{ selectedOffPage }} di luar halaman ini</span>
       <div class="ml-auto flex flex-wrap gap-2">
         <button class="btn-soft" @click="selected = []">Batal</button>
         <button class="btn-soft" @click="printSelected('50x25')">Label 50×25</button>
@@ -49,8 +59,8 @@
       </div>
     </div>
 
-    <!-- Daftar -->
-    <AppCard :padding="false">
+    <!-- Daftar (100 aset per halaman) -->
+    <AppCard ref="listCard" :padding="false">
       <!-- Mobile: kartu -->
       <div class="sm:hidden">
         <div v-if="loading" class="space-y-3 p-4">
@@ -130,8 +140,10 @@
       </AppTable>
     </AppCard>
 
+    <AppPagination :page="page" :total-pages="totalPages" :total="total" @change="goPage" />
+
     <!-- Impor massal: staf mendata di Excel sambil berkeliling, lalu diunggah -->
-    <AssetImportDialog v-model="importModal" @done="load" />
+    <AssetImportDialog v-model="importModal" @done="reloadFirstPage" />
 
     <!-- ── Modal tambah/edit ── -->
     <AppModal v-model="assetModal" :title="editing ? 'Edit Perlengkapan' : 'Tambah Perlengkapan'" size="2xl">
@@ -266,7 +278,7 @@ import { assetsApi } from '@/api/assets.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
-import { formatRupiah, formatDateStr } from '@/utils/format.js'
+import { formatRupiah, formatDateStr, todayDateString } from '@/utils/format.js'
 import {
   CONDITIONS, STATUSES, EDITABLE_STATUSES, SYSTEM_STATUSES, TRACKING_MODES,
   condCls, condLabel, statusCls, statusLabel, printAssetLabels,
@@ -277,6 +289,7 @@ import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
 import AssetImportDialog from '@/components/AssetImportDialog.vue'
 
 const route = useRoute()
@@ -298,6 +311,10 @@ const COLUMNS = [
   { key: 'actions',     label: '' },
 ]
 
+// Daftar ditampilkan 100 aset per halaman. Kartu ringkasan dan Unduh Excel
+// tetap mencakup SEMUA aset yang cocok dengan filter.
+const PER_PAGE = 100
+
 const assets = ref([])
 const outlets = ref([])
 const loading = ref(false)
@@ -306,7 +323,21 @@ const filterOutlet = ref('')
 const filterCondition = ref('')
 const filterStatus = ref('')
 const search = ref('')
+const page = ref(1)
+const total = ref(0)
+const totalPages = ref(1)
+const exporting = ref(false)
+const listCard = ref(null)
+
+// Pilihan cetak label berlaku lintas halaman: id yang dicentang tetap
+// tersimpan saat pindah halaman, dan baris yang pernah dimuat disimpan di sini
+// supaya labelnya tetap bisa dicetak dari halaman mana pun.
 const selected = ref([])
+const seenRows = new Map()
+const selectedOffPage = computed(() => {
+  const onPage = new Set(assets.value.map(a => a.id))
+  return selected.value.filter(id => !onPage.has(id)).length
+})
 
 const outletFilterOptions = computed(() => [{ id: '', name: 'Semua outlet' }, ...outlets.value])
 // Kategori berasal dari master, bukan ketikan bebas: "Elektronik",
@@ -324,41 +355,73 @@ const emptyText = computed(() => hasFilter.value
   ? 'Tidak ada perlengkapan yang cocok dengan filter ini. Ubah atau kosongkan filter untuk melihat semuanya.'
   : (canCreate ? 'Belum ada perlengkapan. Tambahkan lewat tombol di kanan atas.' : 'Belum ada perlengkapan terdata.'))
 
-const summary = computed(() => {
-  const rows = assets.value
-  return {
-    count: rows.length,
-    units: rows.reduce((s, a) => s + (a.quantity || 0), 0),
-    acquisition: rows.reduce((s, a) => s + (a.purchase_price || 0) * (a.quantity || 1), 0),
-    book: rows.reduce((s, a) => s + (a.book_value || 0) * (a.quantity || 1), 0),
-    attention: rows.filter(a => a.condition !== 'baik' || a.status === 'perbaikan').length,
-  }
-})
+// Angka kartu ringkasan dihitung server atas seluruh hasil filter — halaman
+// ini hanya memegang 100 baris, jadi menjumlah di layar akan salah.
+function blankSummary() { return { count: 0, units: 0, acquisition: 0, book: 0, attention: 0 } }
+const summary = ref(blankSummary())
 
-// apiClient tidak membuka amplop untuk respons non-paginasi.
+// Respons berhalaman dikembalikan utuh oleh client.js → barisnya di .data.
 function asArray(d) { return Array.isArray(d) ? d : (d?.data || []) }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
-  try {
-    const data = await assetsApi.list({
-      outlet_id: filterOutlet.value || undefined,
-      condition: filterCondition.value || undefined,
-      status: filterStatus.value || undefined,
-      search: search.value.trim() || undefined,
-    })
-    assets.value = asArray(data)
-    // Buang pilihan yang sudah tidak ada di hasil terbaru.
-    const ids = new Set(assets.value.map(a => a.id))
-    selected.value = selected.value.filter(id => ids.has(id))
-  } catch (e) {
-    errorMsg.value = e?.message || 'Gagal memuat perlengkapan'
-  } finally {
-    loading.value = false
+function filterParams() {
+  return {
+    outlet_id: filterOutlet.value || undefined,
+    condition: filterCondition.value || undefined,
+    status: filterStatus.value || undefined,
+    search: search.value.trim() || undefined,
   }
 }
+
+// Jawaban yang datang terlambat (ketikan pencarian sebelumnya, klik halaman
+// beruntun) tidak boleh menimpa hasil permintaan terbaru.
+let loadSeq = 0
+async function load() {
+  const seq = ++loadSeq
+  loading.value = true; errorMsg.value = ''
+  try {
+    const res = await assetsApi.list({ ...filterParams(), page: page.value, limit: PER_PAGE })
+    if (seq !== loadSeq) return
+    assets.value = asArray(res)
+    for (const a of assets.value) seenRows.set(a.id, a)
+    total.value = res?.total ?? assets.value.length
+    totalPages.value = res?.total_pages || 1
+    // Server menggeser halaman yang sudah tidak ada (mis. baris terakhirnya dihapus).
+    if (res?.page) page.value = res.page
+    summary.value = res?.summary || blankSummary()
+  } catch (e) {
+    if (seq === loadSeq) errorMsg.value = e?.message || 'Gagal memuat perlengkapan'
+  } finally {
+    if (seq === loadSeq) loading.value = false
+  }
+}
+// Filter berubah / data baru masuk → mulai lagi dari halaman pertama.
+function reloadFirstPage() { page.value = 1; return load() }
 let _t = null
-function debouncedLoad() { clearTimeout(_t); _t = setTimeout(load, 350) }
+function debouncedLoad() { clearTimeout(_t); _t = setTimeout(reloadFirstPage, 350) }
+
+function goPage(p) {
+  page.value = p
+  load()
+  listCard.value?.$el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+}
+
+// Unduh Excel tidak ikut paginasi: semua aset yang cocok dengan filter.
+async function exportExcel() {
+  exporting.value = true
+  try {
+    const blob = await assetsApi.exportExcel(filterParams())
+    const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Daftar-Perlengkapan_${todayDateString()}.xlsx`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (e) {
+    toast.error(e?.message || 'Gagal mengunduh Excel')
+  } finally {
+    exporting.value = false
+  }
+}
 
 async function loadOutlets() {
   try {
@@ -370,7 +433,10 @@ async function loadOutlets() {
 function goDetail(a) { router.push(`/perlengkapan/${a.id}`) }
 
 async function printSelected(size) {
-  const rows = assets.value.filter(a => selected.value.includes(a.id))
+  // Pilihan bisa berasal dari beberapa halaman; label dicetak menurut urutan
+  // daftar (terbaru dulu), sama seperti sebelum ada paginasi.
+  const rows = selected.value.map(id => seenRows.get(id)).filter(Boolean)
+    .sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0) || String(b.id).localeCompare(String(a.id)))
   const r = await printAssetLabels(rows, { size })
   if (r?.blocked) toast.error('Jendela cetak diblokir browser. Izinkan pop-up untuk situs ini.')
 }
@@ -418,27 +484,39 @@ async function saveAsset() {
   if (form.value.tracking_mode === 'tunggal') form.value.quantity = 1
   saving.value = true
   try {
-    if (editing.value) await assetsApi.update(editing.value.id, form.value)
-    else await assetsApi.create(form.value)
-    toast.success(editing.value ? 'Perlengkapan diperbarui' : 'Perlengkapan ditambahkan')
+    const creating = !editing.value
+    if (creating) await assetsApi.create(form.value)
+    else await assetsApi.update(editing.value.id, form.value)
+    toast.success(creating ? 'Perlengkapan ditambahkan' : 'Perlengkapan diperbarui')
     assetModal.value = false
+    // Aset baru selalu di urutan teratas → tampilkan halaman pertama.
+    if (creating) page.value = 1
     await load()
   } catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { saving.value = false }
 }
 async function confirmDelete(a) {
   if (!window.confirm(`Hapus data "${a.name}" dari daftar? Gunakan ini hanya untuk salah input — barang yang rusak atau dijual dicatat lewat penghapusan aset.`)) return
-  try { await assetsApi.remove(a.id); toast.success('Data perlengkapan dihapus'); await load() }
-  catch (e) { toast.error(e?.message || 'Gagal menghapus') }
+  try {
+    await assetsApi.remove(a.id)
+    selected.value = selected.value.filter(id => id !== a.id)
+    seenRows.delete(a.id)
+    toast.success('Data perlengkapan dihapus')
+    await load()
+  } catch (e) { toast.error(e?.message || 'Gagal menghapus') }
 }
 
 onMounted(async () => {
   await Promise.all([loadOutlets(), loadCategories()])
   await load()
-  // Datang dari halaman detail lewat tombol Edit.
+  // Datang dari halaman detail lewat tombol Edit. Asetnya belum tentu ada di
+  // halaman pertama, jadi bila tidak ketemu diambil langsung.
   const id = route.query.edit
   if (id) {
-    const found = assets.value.find(a => a.id === String(id))
-    if (found && canUpdate) openEdit(found)
+    let found = assets.value.find(a => a.id === String(id))
+    if (!found && canUpdate) {
+      try { found = await assetsApi.get(String(id)) } catch { found = null }
+    }
+    if (found?.id && canUpdate) openEdit(found)
     router.replace({ path: '/perlengkapan' })
   }
 })
@@ -469,6 +547,7 @@ onMounted(async () => {
   color: #374151; background: #fff; border: 1px solid rgba(0,0,0,.08); min-height: 40px;
 }
 .btn-soft:hover { background: #f3f4f6; }
+.btn-soft:disabled { opacity: .5; cursor: not-allowed; }
 .act-btn {
   flex: 1; min-height: 40px; border-radius: .6rem; padding: .4rem .5rem;
   font-size: .75rem; font-weight: 600; text-align: center;

@@ -3,8 +3,6 @@
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan Jasa</h1>
       <div class="flex flex-wrap items-center gap-2">
-        <AppButton v-if="canApprove" variant="ghost" @click="showEmergencySettings = true">Batas Darurat</AppButton>
-        <AppButton v-if="canEmergency" variant="danger" @click="openEmergency">Pembelian Darurat</AppButton>
         <AppButton v-if="authStore.hasPermission(perm('submit'))" @click="openCreate">+ Buat Pengajuan</AppButton>
       </div>
     </div>
@@ -221,7 +219,7 @@
         </div>
 
         <PurchaseUrgencyFields class="modal-span-full" v-model:urgency="form.urgency" v-model:need-by="form.need_by_date"
-          :can-emergency="canEmergency" :emergency-max="emergencyMax" @emergency="switchToEmergency" />
+          :can-emergency="false" :emergency-max="emergencyMax" />
         <AppInput class="modal-span-full" v-model="form.notes" label="Catatan / Scope of Work"
           :placeholder="form.urgency === 'urgent' ? 'Wajib: dampaknya bila tidak segera dikerjakan' : 'Deskripsi pekerjaan, jadwal, dsb. (opsional)'" />
       </form>
@@ -247,9 +245,6 @@
           <span class="text-gray-400">•</span>
           <span class="text-gray-500">{{ formatDateTime(detail.created_at) }}</span>
         </div>
-        <!-- Pembelian Darurat: kas dari laci outlet, bukti belanja, pengesahan. -->
-        <EmergencyPurchasePanel v-if="detail.emergency" :doc="detail" :can-submit-side="canEmergencySide"
-          :can-approve="canApprove" @changed="afterEmergencyChange" />
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <!-- Permohonan -->
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -405,8 +400,8 @@
           </div>
 
           <!-- No. Invoice & Catatan -->
-          <div v-if="detail.invoice_number || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
-            <div class="border-l-4 border-gray-400 px-3 py-2.5">
+          <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
+            <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-2">
               <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
                   <dt class="text-gray-400">No. Invoice</dt>
@@ -417,6 +412,7 @@
                   <dd class="text-gray-700">{{ detail.notes }}</dd>
                 </template>
               </dl>
+              <AppActionButton v-if="safeUrl(detail.invoice_url)" icon="photo" label="Lihat Invoice Vendor" :href="safeUrl(detail.invoice_url)" target="_blank" />
             </div>
           </div>
         </div>
@@ -702,10 +698,11 @@
           </div>
         </div>
 
-        <!-- Persetujuan: hanya untuk pengajuan yang sudah diverifikasi. -->
-        <div v-if="detail.status === 'verified' && canApprove" class="rounded-xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4">
+        <!-- Persetujuan: untuk pengajuan verified, atau pengajuan urgent yang masih pending. -->
+        <div v-if="canShowApprovePanel" class="rounded-xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4">
           <p class="mb-3 text-xs text-gray-600">
-            Diverifikasi oleh <strong>{{ detail.verified_by || '-' }}</strong><template v-if="detail.verified_at"> · {{ formatDateTime(detail.verified_at) }}</template><template v-if="detail.rejected_items?.length"> · {{ detail.rejected_items.length }} item ditolak saat verifikasi</template>.
+            <template v-if="detail.status === 'pending'">Diajukan oleh <strong>{{ detail.requested_by || '-' }}</strong> · {{ formatDateTime(detail.created_at) }} — pengajuan <strong>Urgent</strong> dapat langsung diputuskan penyetuju.</template>
+            <template v-else>Diverifikasi oleh <strong>{{ detail.verified_by || '-' }}</strong><template v-if="detail.verified_at"> · {{ formatDateTime(detail.verified_at) }}</template><template v-if="detail.rejected_items?.length"> · {{ detail.rejected_items.length }} item ditolak saat verifikasi</template>.</template>
           </p>
           <!-- Anggaran projek baru terpakai saat disetujui: peringatkan bila melampaui sisa baris RAB. -->
           <div v-if="approvalRabWarnings.length" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -714,6 +711,38 @@
               <li v-for="w in approvalRabWarnings" :key="w.id">{{ w.name }} — sisa {{ formatRupiah(w.remaining) }}, pengajuan ini {{ formatRupiah(w.amount) }}</li>
             </ul>
             <p class="mt-1 text-amber-700">Persetujuan tetap bisa dilakukan. Bila perlu, revisi RAB di halaman Projek lebih dulu.</p>
+          </div>
+          <!-- Pilihan jalur proses setelah disetujui: Proses Umum atau Langsung ke Kas Kasir Outlet -->
+          <div v-if="detail.outlet_id && !detail.children?.length && !detailRejectMode" class="mb-3 rounded-lg border border-blue-200 bg-white p-3 text-xs">
+            <p class="mb-2 font-semibold text-gray-800">Arahkan Pembayaran / Proses</p>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label class="flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 transition"
+                :class="!approveDirectCash ? 'border-blue-500 bg-blue-50/60 ring-1 ring-blue-500' : 'border-gray-200 hover:border-blue-200'">
+                <input v-model="approveDirectCash" type="radio" :value="false" class="mt-0.5 text-blue-600" />
+                <div>
+                  <p class="font-semibold text-gray-900">Proses Melalui Umum</p>
+                  <p class="mt-0.5 text-[11px] text-gray-500">Dilanjutkan ke bagian Purchasing untuk pengisian harga final, vendor, dan pembayaran reguler.</p>
+                </div>
+              </label>
+              <label class="flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 transition"
+                :class="approveDirectCash ? 'border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-500' : 'border-gray-200 hover:border-emerald-200'">
+                <input v-model="approveDirectCash" type="radio" :value="true" class="mt-0.5 text-emerald-600" />
+                <div>
+                  <p class="font-semibold text-gray-900">Langsung Pembayaran Kasir Outlet</p>
+                  <p class="mt-0.5 text-[11px] text-gray-500">Kirim tugas penyerahan kas senilai HPS ({{ formatRupiah(detail.total_hps) }}) langsung ke tablet kasir outlet.</p>
+                </div>
+              </label>
+            </div>
+            <div v-if="approveDirectCash" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <label class="mb-1 block text-[11px] font-medium text-gray-700">Diserahkan Kepada (Penerima Kas) *</label>
+                <input v-model="approvePayoutRecipient" type="text" placeholder="Nama staf / teknisi penerima kas" class="input-sm w-full" />
+              </div>
+              <div>
+                <label class="mb-1 block text-[11px] font-medium text-gray-700">Catatan untuk Kasir <span class="font-normal text-gray-400">(opsional)</span></label>
+                <input v-model="approvePayoutNotes" type="text" placeholder="Mis. servis mendesak" class="input-sm w-full" />
+              </div>
+            </div>
           </div>
           <!-- Reject reason input -->
           <div v-if="detailRejectMode" class="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -729,7 +758,7 @@
           <!-- Action buttons -->
           <div v-else class="flex flex-wrap items-center justify-end gap-2">
             <AppActionButton icon="reject" label="Tolak" @click="detailRejectMode = true" />
-            <AppActionButton icon="approve" label="Setujui" @click="submitDetailApprove" :disabled="actionLoading" />
+            <AppActionButton icon="approve" :label="approveDirectCash ? 'Setujui &amp; Kirim ke Kasir' : 'Setujui'" @click="submitDetailApprove" :disabled="actionLoading" />
           </div>
         </div>
       </div>
@@ -738,7 +767,7 @@
           <!-- Nonaktif selama ada item tanpa harga final; alasannya tampil di atas. -->
           <AppActionButton icon="pay" :label="paymentReadiness.ok ? 'Ajukan Pembayaran' : 'Belum bisa diajukan — lihat keterangan di atas'" v-if="detail && detail.status === 'approved' && authStore.hasPermission(perm('purchasing')) && !detail.parent_id" :disabled="!paymentReadiness.ok"
             @click="confirmDetailAction('request_payment')" />
-          <AppActionButton icon="receive" label="Selesaikan Jasa" v-if="detail && detail.status === 'paid' && authStore.hasPermission(perm('submit'))" @click="confirmDetailAction('receive')" />
+          <AppActionButton icon="receive" label="Selesaikan Jasa" v-if="canFinishService" @click="confirmDetailAction('receive')" />
           <AppActionButton icon="cancel" label="Batalkan" v-if="canCancel" @click="confirmDetailAction('cancel')" />
         </div>
         <AppButton variant="secondary" @click="parentDetailId ? backToParent() : (showDetail = false)">{{ parentDetailId ? '← Kembali' : 'Tutup' }}</AppButton>
@@ -760,10 +789,34 @@
           <option v-for="v in vendorList" :key="v.id" :value="v.id">{{ v.name }}</option>
         </SearchableSelect>
       </div>
-      <div class="mb-4">
-        <label class="text-sm font-medium text-gray-700 mb-1 block">No. Invoice Vendor</label>
-        <input v-model="editFinalInvoice" type="text" placeholder="Masukkan nomor invoice dari vendor"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
+      <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-1 block">No. Invoice Vendor</label>
+          <input v-model="editFinalInvoice" type="text" placeholder="Masukkan nomor invoice dari vendor"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-1 block">File / Foto Invoice Vendor <span class="text-xs font-normal text-gray-400">(opsional)</span></label>
+          <div v-if="invoiceUploadLoading" class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+            <svg class="w-4 h-4 animate-spin text-emerald-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            Mengunggah invoice...
+          </div>
+          <div v-else-if="!safeUrl(editFinalInvoiceUrl)" class="relative">
+            <label class="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/70 hover:bg-gray-100 hover:border-emerald-400 cursor-pointer transition-colors px-3 py-2">
+              <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+              <span class="text-xs text-gray-600 truncate">Upload foto / PDF invoice (maks 5MB)</span>
+              <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.pdf" @change="handleInvoiceUpload" />
+            </label>
+          </div>
+          <div v-else class="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+            <a :href="safeUrl(editFinalInvoiceUrl)" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-emerald-700 hover:underline truncate">
+              Lihat Berkas Invoice ↗
+            </a>
+            <button type="button" @click="editFinalInvoiceUrl = ''" class="shrink-0 p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors" title="Hapus file invoice">
+              ✕
+            </button>
+          </div>
+        </div>
       </div>
       <p class="text-sm text-gray-500 mb-3">Masukkan harga per satuan untuk setiap item jasa.</p>
       <div class="space-y-4">
@@ -787,9 +840,13 @@
       <p class="mt-3 text-sm font-semibold text-gray-700">
         Total Harga: <span class="text-emerald-700">{{ formatRupiah(editFinalTotal) }}</span>
       </p>
+      <div v-if="editFinalVendorId && !detail?.children?.length" class="mt-4 border-t border-gray-200 pt-4">
+        <PurchasePayToForm v-model="editFinalPayToForm" :pay-to="editFinalPayToMeta" :error="editFinalPayToError" />
+      </div>
       <template #footer>
         <AppButton variant="secondary" @click="showEditFinal = false">Batal</AppButton>
-        <AppButton :loading="savingFinal" @click="submitEditFinal">Simpan Harga</AppButton>
+        <AppButton variant="secondary" :loading="savingFinal" @click="submitEditFinal(false)">Simpan Harga Saja</AppButton>
+        <AppButton v-if="!detail?.children?.length" :loading="savingFinal" :disabled="!editFinalAllPriced" @click="submitEditFinal(true)">Simpan &amp; Ajukan Pembayaran</AppButton>
       </template>
     </AppModal>
 
@@ -924,11 +981,6 @@
         <AppButton variant="danger" @click="confirmRemoveDetailSubItem">Hapus</AppButton>
       </template>
     </AppModal>
-
-    <!-- Pembelian Darurat (≤ batas): kas dari laci outlet lewat tablet kasir -->
-    <EmergencyPurchaseDialog v-model="showEmergency" request-type="jasa" :work-units="emergencyUnits"
-      :default-work-unit-id="myWorkUnit?.id || ''" @created="onEmergencyCreated" />
-    <EmergencySettingsDialog v-if="canApprove" v-model="showEmergencySettings" @saved="s => emergencyMax = Number(s?.max_amount) || emergencyMax" />
   </div>
 </template>
 
@@ -938,6 +990,8 @@ import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
+import { apiClient } from '@/api/client.js'
+import { safeUrl } from '@/utils/safeUrl.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
 import { formatRupiah, formatDateTime, formatDateStr } from '@/utils/format.js'
@@ -1004,9 +1058,21 @@ const URGENCY_FILTERS = [
   { value: 'urgent', label: 'Urgent' },
   { value: 'prioritas', label: 'Prioritas' },
   { value: 'rutin', label: 'Rutin' },
-  { value: 'emergency', label: 'Pembelian Darurat' },
-  { value: 'emergency_pending', label: 'Darurat — menunggu pengesahan' },
 ]
+const canShowApprovePanel = computed(() => {
+  const d = detail.value
+  if (!d || !canApprove.value) return false
+  return d.status === 'verified' || (d.status === 'pending' && d.urgency === 'urgent')
+})
+const canFinishService = computed(() => {
+  const d = detail.value
+  if (!d || d.status !== 'paid') return false
+  return authStore.hasPermission(perm('submit')) || authStore.hasPermission(perm('approve')) ||
+    authStore.hasPermission(perm('purchasing')) || authStore.hasPermission('finance.payments.pay')
+})
+const approveDirectCash = ref(false)
+const approvePayoutRecipient = ref('')
+const approvePayoutNotes = ref('')
 // Kas darurat diambil dari laci kasir outlet: hanya unit kerja ber-outlet.
 const emergencyUnits = computed(() => workUnits.value.filter(u => u.outlet_id))
 function openEmergency() { showEmergency.value = true }
@@ -1191,6 +1257,25 @@ const savingFinal = ref(false)
 const editFinalTotal = computed(() =>
   editFinalItems.value.reduce((sum, it) => sum + (it.items || []).reduce((s, sub) => s + (sub.qty || 0) * (sub.final_price || 0), 0), 0)
 )
+const editFinalAllPriced = computed(() =>
+  !!editFinalVendorId.value && editFinalItems.value.length > 0 &&
+  editFinalItems.value.every(g => (g.items || []).length > 0 && (g.items || []).every(sub => Number(sub.final_price) > 0))
+)
+const editFinalPayToForm = ref(newPayToForm())
+const editFinalPayToError = ref('')
+const editFinalPayToMeta = computed(() => {
+  const v = vendorList.value.find(x => x.id === editFinalVendorId.value)
+  return {
+    ...(detail.value?.pay_to || {}),
+    vendor_bank_name: v?.bank_name || '',
+    vendor_account_number: v?.account_number || '',
+    vendor_account_holder: v?.account_holder || '',
+  }
+})
+watch(editFinalVendorId, () => {
+  editFinalPayToError.value = ''
+  editFinalPayToForm.value = newPayToForm(editFinalPayToMeta.value)
+})
 
 // Split Vendor State
 const showSplitModal = ref(false)
@@ -1544,6 +1629,9 @@ async function viewDetail(row) {
     detailItems.value = getUnsplitItems(d)
     detailRejectMode.value = false
     detailRejectReason.value = ''
+    approveDirectCash.value = false
+    approvePayoutRecipient.value = d?.requested_by || ''
+    approvePayoutNotes.value = ''
     showDetail.value = true
   } catch { toast.error('Gagal memuat detail.') }
 }
@@ -1669,10 +1757,22 @@ async function submitVerify() {
 
 async function submitDetailApprove() {
   if (!detail.value || actionLoading.value) return
+  if (approveDirectCash.value && !approvePayoutRecipient.value.trim()) {
+    toast.error('Nama penerima kas wajib diisi untuk diarahkan ke Kas Kasir Outlet.')
+    return
+  }
   actionLoading.value = true
   try {
-    await purchaseApi.updateStatus(detail.value.id, { action: 'approve', actor_name: adminName(), version: detail.value.version })
-    toast.success('Pengajuan berhasil disetujui.')
+    const body = { action: 'approve', actor_name: adminName(), version: detail.value.version }
+    if (approveDirectCash.value) {
+      body.direct_cash_payout = true
+      body.payout_recipient = approvePayoutRecipient.value.trim()
+      body.payout_notes = approvePayoutNotes.value.trim()
+    }
+    await purchaseApi.updateStatus(detail.value.id, body)
+    toast.success(approveDirectCash.value
+      ? 'Pengajuan disetujui & tugas kas dikirim ke tablet kasir outlet.'
+      : 'Pengajuan berhasil disetujui.')
     await reloadDetail()
     fetchList()
   } catch (err) { await handleConflict(err, 'Gagal menyetujui.') }
@@ -1786,26 +1886,60 @@ async function submitDelete() {
   finally { actionLoading.value = false }
 }
 
+const editFinalInvoiceUrl = ref('')
+const invoiceUploadLoading = ref(false)
+
+async function handleInvoiceUpload(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (file.size > 5 * 1024 * 1024) { toast.error('Ukuran file maksimal 5MB.'); e.target.value = ''; return }
+  invoiceUploadLoading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await apiClient.post('/admin/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const url = safeUrl(res?.url ?? res?.data?.url)
+    if (!url) throw new Error('Server tidak mengembalikan alamat berkas yang sah.')
+    editFinalInvoiceUrl.value = url
+  } catch (err) {
+    toast.error(err?.message ?? 'Gagal mengunggah file invoice.')
+  } finally {
+    invoiceUploadLoading.value = false
+    e.target.value = ''
+  }
+}
+
 function openEditFinal() {
   editFinalVendorId.value = detail.value?.vendor_id || ''
   editFinalInvoice.value = detail.value?.invoice_number || ''
+  editFinalInvoiceUrl.value = detail.value?.invoice_url || ''
   const items = getUnsplitItems(detail.value || {})
   editFinalItems.value = items.map(it => ({
     ...it,
     items: (it.items || []).map(sub => ({ ...sub }))
   }))
+  editFinalPayToForm.value = newPayToForm(editFinalPayToMeta.value)
+  editFinalPayToError.value = ''
   editFinalError.value = ''
   showEditFinal.value = true
 }
 
-async function submitEditFinal() {
+async function submitEditFinal(andRequestPayment = false) {
   if (!editFinalVendorId.value) { editFinalError.value = 'Silakan pilih vendor terlebih dahulu.'; return }
+  if (andRequestPayment) {
+    if (!editFinalAllPriced.value) {
+      editFinalError.value = 'Isi harga final semua item terlebih dahulu sebelum mengajukan pembayaran.'; return
+    }
+    const pErr = payToFormError(editFinalPayToForm.value, editFinalPayToMeta.value)
+    editFinalPayToError.value = pErr
+    if (pErr) return
+  }
   savingFinal.value = true; editFinalError.value = ''
   try {
     const vendor = vendorList.value.find(v => v.id === editFinalVendorId.value)
     // Status approved: server hanya menerima perubahan harga final, vendor, dan
     // invoice — baris dikirim persis seperti tersimpan, hanya final_price yang baru.
-    await purchaseApi.updateItems(detail.value.id, {
+    const updated = await purchaseApi.updateItems(detail.value.id, {
       items: editFinalItems.value.map(g => ({
         name: g.name,
         items: (g.items || []).map(sub => ({ ...sub, final_price: Number(sub.final_price) || 0 })),
@@ -1813,9 +1947,20 @@ async function submitEditFinal() {
       vendor_id: editFinalVendorId.value,
       vendor_name: vendor?.name || '',
       invoice_number: editFinalInvoice.value.trim(),
+      invoice_url: editFinalInvoiceUrl.value || '',
       version: detail.value.version,
     })
-    toast.success('Harga dan Vendor berhasil disimpan.')
+    if (andRequestPayment) {
+      await purchaseApi.updateStatus(detail.value.id, {
+        action: 'request_payment',
+        actor_name: adminName(),
+        pay_to: payToPayload(editFinalPayToForm.value),
+        version: updated?.version || undefined,
+      })
+      toast.success('Harga disimpan & pembayaran berhasil diajukan ke Keuangan.')
+    } else {
+      toast.success('Harga dan Vendor berhasil disimpan.')
+    }
     showEditFinal.value = false
     if (parentDetailId.value) {
       await backToParent()

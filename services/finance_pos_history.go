@@ -542,7 +542,11 @@ func financePOSEmitPayments(entity *financePOSEntity, voided time.Time, evidence
 		if method == ReservationDpMethod {
 			debit = glAccCustomerDep
 		}
-		emit(at, "sale", id, state, debit, credit, payment.Amount, "sales", review)
+		// Metode bayar per pembayaran (order tidak punya metode di header)
+		// supaya rincian Buku Besar bisa menyebut Tunai/QRIS.
+		withMethod := state
+		withMethod.Method = method
+		emit(at, "sale", id, withMethod, debit, credit, payment.Amount, "sales", review)
 	}
 	for i, payment := range payments {
 		review := ""

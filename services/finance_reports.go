@@ -17,12 +17,13 @@ func financeLedger(from, to, outlet, filter string, scope []string) (*models.Gen
 		return nil, err
 	}
 	rep := &models.GeneralLedgerResponse{DateFrom: from, DateTo: to, AccountAll: filter == "", Accounts: []models.GeneralLedgerAccount{}}
+	details, descs := financeLedgerDetails(ops)
 	for _, meta := range FinanceAccounts {
 		if filter != "" && filter != meta.Code {
 			continue
 		}
 		a := models.GeneralLedgerAccount{Code: meta.Code, Name: meta.Name, Group: meta.Group, Entries: []models.GeneralLedgerEntry{}}
-		for _, o := range ops {
+		for oi, o := range ops {
 			for _, p := range o.Postings {
 				if p.AccountCode != meta.Code {
 					continue
@@ -34,7 +35,7 @@ func financeLedger(from, to, outlet, filter string, scope []string) (*models.Gen
 				} else {
 					a.Balance += p.Credit - p.Debit
 				}
-				a.Entries = append(a.Entries, models.GeneralLedgerEntry{Date: o.Date, Description: o.Description, Debit: p.Debit, Credit: p.Credit, Balance: round2(a.Balance), Source: o.Source, SourceID: o.SourceID, Reference: o.Reference, OutletName: o.OutletName, Notes: o.Notes, ProofURL: o.ProofURL})
+				a.Entries = append(a.Entries, models.GeneralLedgerEntry{Date: o.Date, Description: descs[oi], Detail: details[oi], Debit: p.Debit, Credit: p.Credit, Balance: round2(a.Balance), Source: o.Source, SourceID: o.SourceID, Reference: o.Reference, OutletName: o.OutletName, Notes: o.Notes, ProofURL: o.ProofURL})
 			}
 		}
 		a.TotalDebit = round2(a.TotalDebit)
@@ -247,7 +248,39 @@ func financeProfitLoss(from, to, outlet string, scope []string) (*models.ProfitL
 	return rep, nil
 }
 
+func includeFinanceOperation(o models.FinanceOperation, source, direction, account string, includeReceivable bool) bool {
+	if o.Source == "receivable" && !includeReceivable && source != "receivable" && account != glAccReceivable {
+		return false
+	}
+	if source == "review" && o.ReviewNote == "" {
+		return false
+	}
+	if source != "" && source != "review" && o.Source != source {
+		return false
+	}
+	if direction == "in" && o.CashIn == 0 || direction == "out" && o.CashOut == 0 || direction == "noncash" && (o.CashIn != 0 || o.CashOut != 0) {
+		return false
+	}
+	if account != "" {
+		for _, p := range o.Postings {
+			if p.AccountCode == account {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
 func ListFinanceOperations(from, to, outlet, source, direction, account, search string, page, limit int, scope []string) (*models.FinanceOperationsResponse, error) {
+	return listFinanceOperations(from, to, outlet, source, direction, account, search, page, limit, scope, false)
+}
+
+func ListFinanceOperationsFiltered(from, to, outlet, source, direction, account, search string, page, limit int, scope []string, includeReceivable bool) (*models.FinanceOperationsResponse, error) {
+	return listFinanceOperations(from, to, outlet, source, direction, account, search, page, limit, scope, includeReceivable)
+}
+
+func listFinanceOperations(from, to, outlet, source, direction, account, search string, page, limit int, scope []string, includeReceivable bool) (*models.FinanceOperationsResponse, error) {
 	ops, err := loadFinanceJournal(from, to, outlet, scope)
 	if err != nil {
 		return nil, err
@@ -257,30 +290,26 @@ func ListFinanceOperations(from, to, outlet, source, direction, account, search 
 	filtered := []models.FinanceOperation{}
 	for i := len(ops) - 1; i >= 0; i-- {
 		o := ops[i]
-		if source == "review" && o.ReviewNote == "" {
-			continue
-		}
-		if source != "" && source != "review" && o.Source != source {
-			continue
-		}
-		if direction == "in" && o.CashIn == 0 || direction == "out" && o.CashOut == 0 || direction == "noncash" && (o.CashIn != 0 || o.CashOut != 0) {
-			continue
-		}
-		if account != "" {
-			found := false
-			for _, p := range o.Postings {
-				if p.AccountCode == account {
-					found = true
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-		if search != "" && !strings.Contains(strings.ToLower(o.Reference+" "+o.Description+" "+o.Notes+" "+o.Counterparty+" "+o.OutletName+" "+o.WorkUnitName), search) {
+		if !includeFinanceOperation(o, source, direction, account, includeReceivable) {
 			continue
 		}
 		filtered = append(filtered, o)
+	}
+	if search != "" {
+		// Lengkapi rincian terlebih dahulu agar pencarian juga cocok dengan nomor struk, meja, pelanggan, dan kasir.
+		details, descs := financeLedgerDetails(filtered)
+		matched := make([]models.FinanceOperation, 0, len(filtered))
+		for i, o := range filtered {
+			origDesc := o.Description
+			o.Description, o.Detail = descs[i], details[i]
+			hay := strings.ToLower(o.Reference + " " + origDesc + " " + o.Description + " " + o.Detail + " " + o.Notes + " " + o.Counterparty + " " + o.Actor + " " + o.OutletName + " " + o.WorkUnitName)
+			if strings.Contains(hay, search) {
+				matched = append(matched, o)
+			}
+		}
+		filtered = matched
+	}
+	for _, o := range filtered {
 		rep.CashIn += o.CashIn
 		rep.CashOut += o.CashOut
 		if o.ReviewNote != "" {
@@ -304,6 +333,14 @@ func ListFinanceOperations(from, to, outlet, source, direction, account, search 
 			end = len(filtered)
 		}
 		rep.Rows = filtered[start:end]
+	}
+	if search == "" {
+		// Rincian terbaca hanya untuk baris halaman ini (POS: struk · meja ·
+		// pelanggan · kasir · metode). ID mentah tetap di Reference untuk audit.
+		details, descs := financeLedgerDetails(rep.Rows)
+		for i := range rep.Rows {
+			rep.Rows[i].Description, rep.Rows[i].Detail = descs[i], details[i]
+		}
 	}
 	rep.CashIn = round2(rep.CashIn)
 	rep.CashOut = round2(rep.CashOut)

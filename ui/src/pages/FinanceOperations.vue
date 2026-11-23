@@ -22,13 +22,16 @@
           <label><span class="field-label">Jenis pencatatan</span><SearchableSelect v-model="filters.direction" class="field"><option value="">Semua jenis</option><option value="in">Kas masuk</option><option value="out">Kas keluar</option><option value="noncash">Nonkas</option></SearchableSelect></label>
           <label><span class="field-label">Akun</span><SearchableSelect v-model="filters.account" class="field"><option value="">Semua akun</option><option v-for="a in lookups.accounts" :key="a.code" :value="a.code">{{ a.code }} · {{ a.name }}</option></SearchableSelect></label>
         </div>
-        <p class="mb-3 text-xs text-gray-500">Transaksi operasional otomatis dibaca dari dokumen asal. Draf manual masuk laporan setelah dibukukan. Pencatatan nonkas tidak menambah pemasukan/pengeluaran kas.</p>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+          <p>Transaksi operasional otomatis dibaca dari dokumen asal. Draf manual masuk laporan setelah dibukukan. Pencatatan nonkas tidak menambah pemasukan/pengeluaran kas.</p>
+          <label v-if="filters.source !== 'receivable' && filters.account !== '1-200'" class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 font-medium text-gray-600 select-none"><input v-model="filters.include_receivable" type="checkbox" class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />Tampilkan pengakuan piutang POS</label>
+        </div>
         <div v-if="loading" class="p-6 text-center"><AppSpinner /></div>
         <div v-else-if="!operations.rows.length" class="p-6 text-center text-sm text-gray-500">Belum ada transaksi untuk filter ini.</div>
         <ul v-else class="divide-y divide-gray-100">
           <li v-for="row in operations.rows" :key="row.id" class="flex flex-wrap items-start gap-3 py-4">
-            <div class="min-w-0 flex-1"><p class="text-xs text-gray-500">{{ row.date }} · {{ sources[row.source] || row.source }} · {{ row.reference || '—' }}</p><p class="mt-1 break-words font-semibold text-gray-800">{{ row.description }}</p><p class="mt-1 text-xs text-gray-500">{{ row.outlet_name }}<span v-if="row.work_unit_name"> / {{ row.work_unit_name }}</span></p><p v-if="row.notes" class="mt-1 break-words text-sm text-gray-600">{{ row.notes }}</p><p v-if="row.review_note" class="mt-1 text-xs text-amber-700">{{ row.review_note }}</p><p class="mt-1 text-xs text-gray-500">{{ [...new Set(row.postings.map(p => p.account_code + ' ' + p.account_name))].join(' · ') }}</p></div>
-            <div class="text-right text-sm"><p v-if="row.cash_in" class="font-semibold text-emerald-700">+ {{ formatRupiah(row.cash_in) }}</p><p v-if="row.cash_out" class="font-semibold text-red-600">− {{ formatRupiah(row.cash_out) }}</p><p v-if="!row.cash_in && !row.cash_out" class="text-gray-500">Nonkas</p></div>
+            <div class="min-w-0 flex-1"><p class="text-xs text-gray-500" :title="row.reference || undefined">{{ row.date }}<template v-if="formatTime(row.at)"> {{ formatTime(row.at) }}</template> · {{ sources[row.source] || row.source }}<template v-if="metaRef(row)"> · {{ metaRef(row) }}</template></p><p class="mt-1 break-words font-semibold text-gray-800">{{ rowTitle(row) }}</p><p v-if="rowDetail(row)" class="mt-0.5 break-words text-sm text-gray-600">{{ rowDetail(row) }}</p><p class="mt-1 text-xs text-gray-500">{{ row.outlet_name }}<span v-if="row.work_unit_name"> / {{ row.work_unit_name }}</span></p><p v-if="row.notes" class="mt-1 break-words text-sm text-gray-600">{{ row.notes }}</p><p v-if="row.review_note" class="mt-1 text-xs text-amber-700">{{ row.review_note }}</p><p class="mt-1 text-xs text-gray-500">{{ [...new Set(row.postings.map(p => p.account_code + ' ' + p.account_name))].join(' · ') }}</p></div>
+            <div class="text-right text-sm"><p v-if="row.cash_in" class="font-semibold text-emerald-700">+ {{ formatRupiah(row.cash_in) }}</p><p v-if="row.cash_out" class="font-semibold text-red-600">− {{ formatRupiah(row.cash_out) }}</p><template v-if="!row.cash_in && !row.cash_out"><p v-if="nonCashAmount(row)" class="font-semibold text-gray-800">{{ formatRupiah(nonCashAmount(row)) }}</p><p :class="nonCashAmount(row) ? 'text-xs text-gray-400' : 'text-gray-500'">Nonkas</p></template></div>
             <AppActionButton icon="view" label="Detail pencatatan" @click="openOperation(row)" />
           </li>
         </ul>
@@ -80,7 +83,7 @@
       <div v-if="detail" class="space-y-3 text-sm"><p class="font-semibold">{{ detail.number }} · {{ statusName(detail.status) }}</p><p>{{ detail.description }}</p><p>{{ accountName(detail.account_code) }} · {{ formatRupiah(detail.amount) }}</p><p>{{ detail.outlet_name }} / {{ detail.work_unit_name || '—' }} · {{ detail.counterparty }}</p><p>Tanggal {{ detail.occurred_at.replace('T', ' ') }} · Periode {{ detail.period || '—' }}</p><p>{{ detail.method }} · {{ detail.bank_label || 'Kas tunai' }} · Referensi {{ detail.reference || '—' }}</p><p class="whitespace-pre-wrap">{{ detail.notes || 'Tidak ada catatan tambahan.' }}</p><a v-if="safeUrl(detail.proof_url)" :href="safeUrl(detail.proof_url)" target="_blank" rel="noopener" class="text-emerald-700 underline">Lihat bukti transaksi</a><h3 class="font-semibold pt-3">Riwayat</h3><ul class="space-y-2"><li v-for="(h, i) in detail.history" :key="i">{{ formatStamp(h.at) }} · {{ historyName(h.action) }} · {{ h.actor }}<p v-if="h.notes" class="text-gray-500 whitespace-pre-wrap">{{ h.notes }}</p></li></ul></div>
     </AppModal>
     <AppModal v-model="showOperation" title="Detail Pencatatan Operasional" size="xl">
-      <div v-if="operation" class="space-y-3 text-sm"><p class="font-semibold">{{ operation.description }}</p><p>{{ sources[operation.source] }} · {{ operation.reference || '—' }} · {{ operation.outlet_name }}</p><p>{{ formatStamp(operation.at) }} · {{ operation.actor || 'Sistem' }} · {{ operation.counterparty || '—' }}</p><p class="whitespace-pre-wrap">{{ operation.notes || 'Tidak ada catatan tambahan dari sumber.' }}</p><p v-if="operation.review_note" class="text-amber-700">{{ operation.review_note }}</p><a v-if="safeUrl(operation.proof_url)" :href="safeUrl(operation.proof_url)" target="_blank" rel="noopener" class="text-emerald-700 underline">Lihat bukti</a><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th scope="col" class="text-left py-2">Akun</th><th scope="col" class="text-right">Debit</th><th scope="col" class="text-right">Kredit</th></tr></thead><tbody><tr v-for="(p, i) in operation.postings" :key="i" class="border-t border-gray-100"><td class="py-2">{{ p.account_code }} · {{ p.account_name }}</td><td class="text-right whitespace-nowrap">{{ formatRupiah(p.debit) }}</td><td class="text-right whitespace-nowrap">{{ formatRupiah(p.credit) }}</td></tr></tbody></table></div></div>
+      <div v-if="operation" class="space-y-3 text-sm"><p class="font-semibold">{{ operation.description }}</p><p v-if="operation.detail" class="text-gray-700">{{ operation.detail }}</p><p>{{ sources[operation.source] }} · {{ operation.outlet_name }}</p><p>{{ formatStamp(operation.at) }} · {{ operation.actor || 'Sistem' }} · {{ operation.counterparty || '—' }}</p><p class="whitespace-pre-wrap">{{ operation.notes || 'Tidak ada catatan tambahan dari sumber.' }}</p><p v-if="operation.review_note" class="text-amber-700">{{ operation.review_note }}</p><p v-if="operation.reference" class="break-all text-xs text-gray-400">Ref. {{ operation.reference }}</p><a v-if="safeUrl(operation.proof_url)" :href="safeUrl(operation.proof_url)" target="_blank" rel="noopener" class="text-emerald-700 underline">Lihat bukti</a><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th scope="col" class="text-left py-2">Akun</th><th scope="col" class="text-right">Debit</th><th scope="col" class="text-right">Kredit</th></tr></thead><tbody><tr v-for="(p, i) in operation.postings" :key="i" class="border-t border-gray-100"><td class="py-2">{{ p.account_code }} · {{ p.account_name }}</td><td class="text-right whitespace-nowrap">{{ formatRupiah(p.debit) }}</td><td class="text-right whitespace-nowrap">{{ formatRupiah(p.credit) }}</td></tr></tbody></table></div></div>
       <div v-if="operation?.source === 'pos_cash' && can('post')" class="mt-5 space-y-3 border-t border-gray-100 pt-4">
         <h3 class="text-sm font-semibold">Klasifikasi Akun Kas POS</h3><AppAlert type="error" :message="classificationError" />
         <label><span class="field-label">Akun sesuai keperluan</span><SearchableSelect v-model="classificationAccount" class="field"><option value="" disabled>Pilih akun</option><option v-for="a in classificationAccounts" :key="a.code" :value="a.code">{{ a.code }} · {{ a.name }}</option></SearchableSelect></label>
@@ -113,7 +116,7 @@ import SummaryCard from '@/components/SummaryCard.vue'
 
 const auth = useAuthStore(), toast = useToastStore(), can = action => auth.hasPermission('finance.entries.' + action)
 const today = todayDateString(), range = ref({ from: today.slice(0, 8) + '01', to: today, label: 'Bulan Ini' })
-const filters = reactive({ outlet_id: '', source: '', direction: '', account: '', search: '' })
+const filters = reactive({ outlet_id: '', source: '', direction: '', account: '', search: '', include_receivable: false })
 const lookups = ref({ accounts: [], outlets: [], work_units: [], banks: [], allow_central: false })
 const operations = ref({ rows: [], total: 0, cash_in: 0, cash_out: 0, review_count: 0 }), entries = ref([])
 const tab = ref('operations'), page = ref(1), loading = ref(false), error = ref('')
@@ -122,6 +125,28 @@ const accountName = code => lookups.value.accounts.find(a => a.code === code)?.n
 const statusName = code => ({ draft: 'Draf', posted: 'Dibukukan', voided: 'Dibatalkan' })[code] || code
 const historyName = code => ({ created: 'Draf dibuat', updated: 'Draf diubah', post: 'Dibukukan', void: 'Dibatalkan / dibalik' })[code] || code
 const formatStamp = stamp => stamp ? new Date(stamp).toLocaleString('id-ID') : '—'
+// ID mentah (ULID/UUID) tidak bermakna di daftar; tetap terlihat di tooltip & detail.
+const opaqueId = /^([0-9A-HJKMNP-TV-Z]{26}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+function readableRef(ref) { const r = String(ref || '').trim(); return opaqueId.test(r) ? '' : r }
+function formatTime(stamp) {
+  if (!stamp) return ''
+  const d = new Date(stamp)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).replace('.', ':')
+}
+function metaRef(row) {
+  const r = readableRef(row?.reference)
+  if (!r) return ''
+  return String(row?.description || '').includes(r) || String(row?.detail || '').includes(r) ? '' : r
+}
+function promoteDetail(row) {
+  if (!row?.detail) return false
+  const src = String(sources[row?.source] || '').toLowerCase()
+  const desc = String(row?.description || '').trim().toLowerCase()
+  return (!!src && desc === src) || String(row?.source || '').startsWith('sale')
+}
+const rowTitle = row => promoteDetail(row) ? row.detail : row?.description
+const rowDetail = row => promoteDetail(row) ? '' : (row?.detail || '')
+const nonCashAmount = row => (row?.postings || []).reduce((sum, p) => sum + (Number(p.debit) || 0), 0)
 const visibleEntries = computed(() => entries.value.filter(r => !filters.search || [r.number, r.description, r.counterparty, r.notes].join(' ').toLowerCase().includes(filters.search.toLowerCase())))
 let request = 0
 async function load() {
@@ -135,7 +160,7 @@ async function load() {
 }
 function reload() { page.value = 1; load() }
 function changePage(p) { page.value = p; load() }
-watch([range, () => filters.outlet_id, () => filters.source, () => filters.direction, () => filters.account], reload)
+watch([range, () => filters.outlet_id, () => filters.source, () => filters.direction, () => filters.account, () => filters.include_receivable], reload)
 onMounted(async () => { try { lookups.value = await financeApi.lookups(); await load() } catch (e) { error.value = e.message } })
 const showForm = ref(false), editing = ref(''), form = reactive({}), formError = ref(''), saving = ref(false), uploading = ref(false)
 const entryAccounts = computed(() => lookups.value.accounts.filter(a => a.direction === form.direction || a.direction === 'both'))

@@ -487,11 +487,8 @@ func RunMigrations() error {
 		`ALTER TABLE roles ADD COLUMN IF NOT EXISTS redirect_to VARCHAR(100) NOT NULL DEFAULT '/'`,
 		// Set default redirect_to for seeded roles
 		`UPDATE roles SET redirect_to = '/' WHERE name = 'admin' AND redirect_to = '/'`,
-		`UPDATE roles SET redirect_to = '/manager-dashboard' WHERE name = 'manager' AND redirect_to IN ('/', '/outlets')`,
+		`UPDATE roles SET redirect_to = '/' WHERE name = 'manager' AND redirect_to IN ('/', '/outlets', '/manager-dashboard')`,
 		`UPDATE roles SET redirect_to = '/sales-report' WHERE name = 'viewer' AND redirect_to = '/'`,
-		// Seed dashboard.manager permission for admin and manager roles
-		`INSERT INTO role_permissions (role, permission) VALUES ('admin', 'dashboard.manager') ON CONFLICT (role, permission) DO NOTHING`,
-		`INSERT INTO role_permissions (role, permission) VALUES ('manager', 'dashboard.manager') ON CONFLICT (role, permission) DO NOTHING`,
 		// Migrate old-style permissions (outlets, products) to new format (module.view)
 		`UPDATE role_permissions SET permission = 'outlets.view' WHERE permission = 'outlets'`,
 		`UPDATE role_permissions SET permission = 'products.view' WHERE permission = 'products'`,
@@ -871,7 +868,7 @@ func RunMigrations() error {
 
 	// Ensure superadmin has all CRUD permissions in DB
 	allPerms := []string{
-		"dashboard", "dashboard.manager",
+		"dashboard",
 		"outlets.view", "outlets.create", "outlets.update", "outlets.delete",
 		"products.view", "products.create", "products.update", "products.delete",
 		"reports",
@@ -930,9 +927,12 @@ func RunMigrations() error {
 		}
 	}
 
-	// Add invoice_number to purchase_requests
+	// Add invoice_number & invoice_url to purchase_requests
 	if _, err := DB.Exec(`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS invoice_number TEXT NOT NULL DEFAULT ''`); err != nil {
 		log.Printf("Invoice number migration skipped: %v", err)
+	}
+	if _, err := DB.Exec(`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS invoice_url TEXT NOT NULL DEFAULT ''`); err != nil {
+		log.Printf("Invoice URL migration skipped: %v", err)
 	}
 
 	// Bank accounts table
@@ -1255,7 +1255,7 @@ func RunMigrations() error {
 	// Ensure superadmin has all CRUD permissions (runs after conversion)
 	{
 		allPerms := []string{
-			"dashboard", "dashboard.manager",
+			"dashboard",
 			"outlets.view", "outlets.create", "outlets.update", "outlets.delete",
 			"products.view", "products.create", "products.update", "products.delete",
 			"reports",
@@ -1379,10 +1379,12 @@ func RunMigrations() error {
 		"reports.cashflow.view", "reports.pnl.view", "reports.balance.view",
 		"reports.tax.view", "reports.void.view", "reports.titipan.view", "reports.discount.view",
 		"cashier_shifts.view", "shift_reconciliation.view",
-		"finance.payments.view", "finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete",
+		"finance.payments.view", "finance.payments.pay", "finance.payments.approve",
+		"finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete",
 		"procurement.dashboard.view", "procurement.requests.view", "procurement.requests.submit",
 		"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing",
-		"procurement.requests.pickup", "procurement.requests.emergency",
+		"procurement.requests.pickup",
+		"procurement.projects.view", "procurement.projects.manage",
 		"procurement.rawmaterials.view", "procurement.rawmaterials.submit",
 		"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing", "procurement.rawmaterials.pickup",
 		"vendors.view", "vendors.create", "vendors.update", "vendors.delete",
@@ -3251,6 +3253,7 @@ func RunMigrations() error {
 		`CREATE INDEX IF NOT EXISTS idx_cash_payout_outlet ON procurement_cash_payouts(outlet_id, status)`,
 		`CREATE INDEX IF NOT EXISTS idx_cash_payout_pr ON procurement_cash_payouts(purchase_request_id, assigned_at DESC)`,
 		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS cash_payout_id CHAR(26)`,
+		`ALTER TABLE payment_histories ADD COLUMN IF NOT EXISTS bank_fee NUMERIC(15,2) NOT NULL DEFAULT 0`,
 		`CREATE INDEX IF NOT EXISTS idx_payment_histories_payout ON payment_histories(cash_payout_id) WHERE cash_payout_id IS NOT NULL`,
 		`ALTER TABLE cloud_cash_movements ADD COLUMN IF NOT EXISTS cash_payout_id CHAR(26)`,
 		`CREATE INDEX IF NOT EXISTS idx_cash_movements_payout ON cloud_cash_movements(cash_payout_id) WHERE cash_payout_id IS NOT NULL`,
@@ -3303,6 +3306,188 @@ func RunMigrations() error {
 			} else {
 				log.Printf("CHECK pembayaran pengadaan dipasang (chk_purchase_requests_paid_v1)")
 			}
+		}
+	}
+
+	// Bersihkan izin yatim 'dashboard.manager' (tidak ada di AllPermissions) dan
+	// 'procurement.requests.emergency' (fitur Pembelian Darurat dihapus), serta
+	// arahkan redirect_to '/manager-dashboard' ke '/'.
+	DB.Exec(`DELETE FROM role_permissions WHERE permission IN ('dashboard.manager', 'procurement.requests.emergency')`)
+	DB.Exec(`UPDATE roles SET redirect_to = '/' WHERE redirect_to = '/manager-dashboard'`)
+
+	// Pemisahan role Penyetuju (Nov 2026):
+	// 1. Penyetuju Barang, Jasa & Proyek (procurement.requests.approve + procurement.projects.manage)
+	// 2. Penyetuju Bahan Baku (procurement.rawmaterials.approve)
+	// Sekaligus melengkapi role standar alur pengadaan/gudang dan merapikan role
+	// eksisting yang tumpang tindih (dijalankan sekali dengan marker).
+	{
+		var splitDone int
+		DB.QueryRow(`SELECT COUNT(*) FROM app_settings WHERE key = 'mig_procurement_split_approver_roles_v1'`).Scan(&splitDone)
+		if splitDone == 0 {
+			standardRoles := []struct {
+				name, description, redirectTo string
+				perms                         []string
+			}{
+				{
+					name:        "penyetuju barang, jasa & proyek",
+					description: "Penyetuju pengadaan barang, perlengkapan, jasa, serta pengelola & penetap RAB proyek",
+					redirectTo:  "/procurement-dashboard",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.requests.view", "procurement.requests.approve",
+						"procurement.projects.view", "procurement.projects.manage",
+						"vendors.view", "assets.usage.view",
+					},
+				},
+				{
+					name:        "penyetuju bahan baku",
+					description: "Penyetuju khusus pengadaan bahan baku (tanpa barang, jasa, dan proyek)",
+					redirectTo:  "/purchase-materials",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.rawmaterials.view", "procurement.rawmaterials.approve",
+						"vendors.view",
+						"warehouse_dashboard.view", "stockitems.view", "stockledger.view",
+					},
+				},
+				{
+					name:        "verifikator pengadaan",
+					description: "Verifikator pengadaan barang, perlengkapan & jasa (cek ketersediaan lintas outlet sebelum persetujuan)",
+					redirectTo:  "/purchase-goods",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.requests.view", "procurement.requests.verify",
+						"procurement.projects.view",
+						"assets.view", "stockitems.view", "stockledger.view",
+					},
+				},
+				{
+					name:        "logistik pengadaan",
+					description: "Petugas logistik pengambilan barang & bahan baku dari vendor (catat pickup & foto struk)",
+					redirectTo:  "/purchase-goods",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.requests.view", "procurement.requests.pickup",
+						"procurement.rawmaterials.view", "procurement.rawmaterials.pickup",
+						"vendors.view",
+					},
+				},
+				{
+					name:        "kepala gudang induk",
+					description: "Kepala Gudang Induk: pengajuan bahan baku, penerimaan pengadaan dapur, stok & transfer gudang induk",
+					redirectTo:  "/warehouse-dashboard",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"warehouse_dashboard.view", "warehouses.view",
+						"stockitems.view", "stockitems.create", "stockitems.update",
+						"stockledger.view", "stockledger.adjust",
+						"stocktransfers.view", "stocktransfers.create", "stocktransfers.update",
+						"stocktransfers.approve", "stocktransfers.receive", "stocktransfers.reject",
+						"stockwastes.view", "stockwastes.create",
+						"stockquality.view", "stockquality.central.report", "stockquality.central.receive",
+						"procurement.dashboard.view", "procurement.rawmaterials.view", "procurement.rawmaterials.submit",
+						"vendors.view",
+					},
+				},
+			}
+
+			for _, sr := range standardRoles {
+				DB.Exec(`INSERT INTO roles (name, description, is_system, scope_type, redirect_to)
+					VALUES ($1, $2, false, 'all', $3) ON CONFLICT (name) DO NOTHING`,
+					sr.name, sr.description, sr.redirectTo)
+				for _, p := range sr.perms {
+					DB.Exec(`INSERT INTO role_permissions (role, permission)
+						VALUES ($1, $2) ON CONFLICT (role, permission) DO NOTHING`,
+						sr.name, p)
+				}
+			}
+
+			// Direktur: lengkapi dengan procurement.projects.manage sebagai penyetuju barang, jasa & proyek
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT 'Direktur', 'procurement.projects.manage'
+				WHERE EXISTS (SELECT 1 FROM roles WHERE name = 'Direktur')
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`DELETE FROM role_permissions WHERE role = 'Direktur' AND permission = 'procurement.rawmaterials.approve'`)
+			DB.Exec(`UPDATE roles SET description = 'Direktur: pemantauan laporan & penyetuju pengadaan barang, jasa, dan proyek'
+				WHERE name = 'Direktur' AND (description = '' OR description = 'Hanya dashboard dan laporan')`)
+
+			// Cabut procurement.projects.manage dari role manager outlet, perlengkapan & purchasing
+			// (mereka tetap memegang procurement.projects.view untuk melihat projek & memilih item RAB).
+			DB.Exec(`DELETE FROM role_permissions
+				WHERE permission = 'procurement.projects.manage'
+				  AND role IN (
+					'berryboo', 'manager atv', 'manager fusion', 'manager gadis desa',
+					'manager healing', 'manager kala', 'manager sekar ayu',
+					'manager semesta', 'manager teman setia', 'perlengkapan', 'puchshing alat'
+				  )`)
+
+			// Lengkapi 'puchshing alat' dengan izin vendor & dokumen
+			for _, p := range []string{"vendors.view", "vendors.create", "vendors.update", "documents.view", "documents.download"} {
+				DB.Exec(`INSERT INTO role_permissions (role, permission)
+					SELECT 'puchshing alat', $1
+					WHERE EXISTS (SELECT 1 FROM roles WHERE name = 'puchshing alat')
+					ON CONFLICT (role, permission) DO NOTHING`, p)
+			}
+			DB.Exec(`UPDATE roles SET description = 'Tim pembelian pengadaan barang, perlengkapan & jasa'
+				WHERE name = 'puchshing alat' AND COALESCE(description, '') = ''`)
+
+			// Bersihkan 'purchasing baku' agar fokus khusus bahan baku & arahkan ke /purchase-materials
+			DB.Exec(`DELETE FROM role_permissions
+				WHERE role = 'purchasing baku'
+				  AND permission IN ('procurement.requests.purchasing', 'procurement.requests.pickup')`)
+			for _, p := range []string{"procurement.dashboard.view", "documents.view", "documents.download"} {
+				DB.Exec(`INSERT INTO role_permissions (role, permission)
+					SELECT 'purchasing baku', $1
+					WHERE EXISTS (SELECT 1 FROM roles WHERE name = 'purchasing baku')
+					ON CONFLICT (role, permission) DO NOTHING`, p)
+			}
+			DB.Exec(`UPDATE roles SET redirect_to = '/purchase-materials',
+				description = CASE WHEN COALESCE(description, '') = '' THEN 'Tim pembelian khusus pengadaan bahan baku' ELSE description END
+				WHERE name = 'purchasing baku'`)
+
+			// Bersihkan 'gudang_induk_qc' dari izin approval & purchasing bahan baku yang tumpang tindih
+			DB.Exec(`DELETE FROM role_permissions
+				WHERE role = 'gudang_induk_qc'
+				  AND permission IN ('procurement.rawmaterials.approve', 'procurement.rawmaterials.purchasing')`)
+
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_procurement_split_approver_roles_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Migrasi pemisahan role Penyetuju (Barang/Jasa/Proyek vs Bahan Baku) & perapian role selesai")
+		}
+	}
+
+	// ── Pembayaran Manual & Pengajuan / Persetujuan Pembayaran (Mgr Keuangan / GM) ──
+	for _, ddl := range []string{
+		`ALTER TABLE purchase_request_counters ALTER COLUMN prefix TYPE VARCHAR(30)`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS is_manual_payment BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_approval_status VARCHAR(20) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_batch_number VARCHAR(40) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_submitted_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_submitted_at TIMESTAMP`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_submission_notes TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_approved_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_approved_at TIMESTAMP`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_rejected_by VARCHAR(100) NOT NULL DEFAULT ''`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_rejected_at TIMESTAMP`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_rejection_reason TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := DB.Exec(ddl); err != nil {
+			log.Printf("Manual payment & approval migration warning: %v", err)
+		}
+	}
+	{
+		var seeded bool
+		DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM app_settings WHERE key='mig_finance_payments_approve_v1')`).Scan(&seeded)
+		if !seeded {
+			for _, roleName := range []string{"manager keuangan", "General Manager", "Direktur", "admin", "superadmin"} {
+				DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES ($1, 'finance.payments.approve') ON CONFLICT (role, permission) DO NOTHING`, roleName)
+				DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES ($1, 'finance.payments.view') ON CONFLICT (role, permission) DO NOTHING`, roleName)
+			}
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_finance_payments_approve_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Seeded finance.payments.approve untuk manager keuangan, General Manager, Direktur, admin, superadmin")
 		}
 	}
 

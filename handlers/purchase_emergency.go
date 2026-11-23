@@ -184,3 +184,33 @@ func UpdateEmergencySettings(c *fiber.Ctx) error {
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: s})
 }
+
+// GetEmergencyRecap: rekap bulanan Pembelian Darurat untuk audit Keuangan
+// (?month=YYYY-MM, ?outlet_id opsional). Cakupan outlet/unit kerja role
+// dipaksakan di service.
+func GetEmergencyRecap(c *fiber.Ctx) error {
+	outletID := strings.TrimSpace(c.Query("outlet_id", ""))
+	if outletID != "" && !validateOutletAccess(c, outletID) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses outlet tidak diizinkan"})
+	}
+	recap, err := services.GetEmergencyRecap(c.Query("month", ""), outletID, getOutletScope(c), getWorkUnitScope(c))
+	if err != nil {
+		return emergencyServiceError(c, err, "GetEmergencyRecap")
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: recap})
+}
+
+// ExportEmergencyRecap: rekap yang sama sebagai Excel.
+func ExportEmergencyRecap(c *fiber.Ctx) error {
+	outletID := strings.TrimSpace(c.Query("outlet_id", ""))
+	if outletID != "" && !validateOutletAccess(c, outletID) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses outlet tidak diizinkan"})
+	}
+	data, filename, err := services.BuildEmergencyRecapExcel(c.Query("month", ""), outletID, getOutletScope(c), getWorkUnitScope(c))
+	if err != nil {
+		return emergencyServiceError(c, err, "ExportEmergencyRecap")
+	}
+	c.Set(fiber.HeaderContentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set(fiber.HeaderContentDisposition, `attachment; filename="`+filename+`"`)
+	return c.Send(data)
+}

@@ -298,7 +298,7 @@ func purchaseSelectCols(totalAmount, totalHps, totalFinal string) string {
 	return fmt.Sprintf(`
 		pr.id, pr.request_number, pr.outlet_id, o.name, pr.work_unit_id, COALESCE(wu.name,''),
 		pr.request_type, pr.requested_by, pr.requested_by_id, pr.vendor_id, pr.vendor_name, pr.status,
-		pr.items, %s, %s, %s, pr.notes, pr.invoice_number,
+		pr.items, %s, %s, %s, pr.notes, pr.invoice_number, COALESCE(pr.invoice_url, ''),
 		COALESCE(pr.verified_by,''), pr.verified_by_id, pr.verified_at, COALESCE(pr.verification_notes,''),
 		pr.approved_by, pr.approved_by_id, pr.approved_at,
 		pr.rejected_reason, COALESCE(pr.rejected_by,''), pr.rejected_at, COALESCE(pr.rejected_items, '[]'::jsonb),
@@ -315,7 +315,11 @@ func purchaseSelectCols(totalAmount, totalHps, totalFinal string) string {
 		COALESCE(pvd.bank_name,''), COALESCE(pvd.account_number,''), COALESCE(pvd.account_holder,''),
 		pr.urgency, pr.need_by_date, pr.emergency, pr.emergency_category, pr.emergency_reason, pr.emergency_recipient,
 		pr.emergency_proof_url, pr.emergency_proof_total, pr.emergency_proof_notes, pr.emergency_proof_by, pr.emergency_proof_at,
-		pr.ratification_status, pr.ratified_by, pr.ratified_at, pr.ratification_notes`,
+		pr.ratification_status, pr.ratified_by, pr.ratified_at, pr.ratification_notes,
+		COALESCE(pr.is_manual_payment, false), COALESCE(pr.payment_approval_status, ''), COALESCE(pr.payment_batch_number, ''),
+		COALESCE(pr.payment_submitted_by, ''), pr.payment_submitted_at, COALESCE(pr.payment_submission_notes, ''),
+		COALESCE(pr.payment_approved_by, ''), pr.payment_approved_at,
+		COALESCE(pr.payment_rejected_by, ''), pr.payment_rejected_at, COALESCE(pr.payment_rejection_reason, '')`,
 		totalAmount, totalHps, totalFinal)
 }
 
@@ -344,6 +348,7 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 	var st payToStored
 	var vendorAcct vendorAccount
 	var needBy, proofAt, ratifiedAt *time.Time
+	var paySubAt, payAppAt, payRejAt *time.Time
 	var emergency bool
 	var em models.PurchaseEmergency
 	var proofTotal sql.NullFloat64
@@ -351,7 +356,7 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 	if err := sc.Scan(
 		&r.ID, &r.RequestNumber, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
 		&r.RequestType, &r.RequestedBy, &r.RequestedByID, &r.VendorID, &r.VendorName, &r.Status,
-		&itemsJSON, &r.TotalAmount, &r.TotalHps, &r.TotalFinal, &r.Notes, &r.InvoiceNumber,
+		&itemsJSON, &r.TotalAmount, &r.TotalHps, &r.TotalFinal, &r.Notes, &r.InvoiceNumber, &r.InvoiceURL,
 		&r.VerifiedBy, &r.VerifiedByID, &verifiedAt, &r.VerificationNotes,
 		&r.ApprovedBy, &r.ApprovedByID, &approvedAt,
 		&r.RejectedReason, &r.RejectedBy, &rejectedAt, &rejectedJSON,
@@ -369,9 +374,16 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 		&r.Urgency, &needBy, &emergency, &em.Category, &em.Reason, &em.Recipient,
 		&em.ProofURL, &proofTotal, &em.ProofNotes, &em.ProofBy, &proofAt,
 		&em.Ratification, &em.RatifiedBy, &ratifiedAt, &em.RatificationNotes,
+		&r.IsManualPayment, &r.PaymentApprovalStatus, &r.PaymentBatchNumber,
+		&r.PaymentSubmittedBy, &paySubAt, &r.PaymentSubmissionNotes,
+		&r.PaymentApprovedBy, &payAppAt,
+		&r.PaymentRejectedBy, &payRejAt, &r.PaymentRejectionReason,
 	); err != nil {
 		return r, err
 	}
+	r.PaymentSubmittedAt = fmtTimePtr(paySubAt)
+	r.PaymentApprovedAt = fmtTimePtr(payAppAt)
+	r.PaymentRejectedAt = fmtTimePtr(payRejAt)
 	if needBy != nil {
 		s := needBy.Format("2006-01-02")
 		r.NeedByDate = &s
@@ -599,9 +611,11 @@ func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, 
 
 // PurchaseListExtra: saringan & urutan tambahan daftar pengajuan (layar).
 type PurchaseListExtra struct {
-	Urgency      string // rutin | prioritas | urgent; "" = semua
-	Ratification string // pending | ratified | rejected; "" = semua
-	Emergency    bool   // hanya Pembelian Darurat
+	Urgency         string // rutin | prioritas | urgent; "" = semua
+	Ratification    string // pending | ratified | rejected; "" = semua
+	Emergency       bool   // hanya Pembelian Darurat
+	PaymentApproval string // unsubmitted | pending | approved | rejected; "" = semua
+	ManualOnly      bool   // hanya Pembayaran Manual (di luar pengajuan)
 	// UrgentFirst: pengajuan URGENT lalu PRIORITAS yang masih berjalan
 	// (belum dibayar) tampil paling atas; sisanya terbaru dulu. Ekspor
 	// tetap kronologis.
@@ -688,6 +702,17 @@ func ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectI
 	if extra.Emergency {
 		where += " AND pr.emergency"
 	}
+	if extra.ManualOnly {
+		where += " AND COALESCE(pr.is_manual_payment, false)"
+	}
+	switch extra.PaymentApproval {
+	case "unsubmitted":
+		where += " AND COALESCE(pr.payment_approval_status, '') = ''"
+	case "pending", "approved", "rejected":
+		where += fmt.Sprintf(" AND COALESCE(pr.payment_approval_status, '') = $%d", idx)
+		args = append(args, extra.PaymentApproval)
+		idx++
+	}
 
 	// Default: only show main requests (not children) unless explicitly filtering for children or parents
 	if parentID == "" {
@@ -704,17 +729,21 @@ func ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectI
 		// masih memegang sisa item tetap ditampilkan — sisa itu tagihan nyata
 		// yang kalau disembunyikan tak akan pernah bisa dibayar.
 		where += " AND NOT " + fullySplitMasterCond("pr")
+	} else {
+		// Halaman pengajuan pengadaan (/purchase-goods, /purchase-materials, /purchase-services)
+		// tidak menampilkan Pembayaran Manual yang dibuat langsung oleh Keuangan.
+		where += " AND NOT COALESCE(pr.is_manual_payment, false)"
 	}
 
 	if search != "" {
 		// Kata kunci dicocokkan sampai ke nama sub-item; sebelumnya hanya nama
 		// grup pengadaan yang dicari sehingga mencari nama barang tidak ketemu.
-		where += fmt.Sprintf(` AND (pr.request_number ILIKE $%d OR pr.vendor_name ILIKE $%d
+		where += fmt.Sprintf(` AND (pr.request_number ILIKE $%d OR pr.vendor_name ILIKE $%d OR COALESCE(pr.payment_batch_number, '') ILIKE $%d
 			OR EXISTS (
 				SELECT 1 FROM jsonb_array_elements(pr.items) AS grp
 				LEFT JOIN LATERAL jsonb_array_elements(COALESCE(grp->'items', '[]'::jsonb)) AS sub ON TRUE
 				WHERE grp->>'name' ILIKE $%d OR sub->>'name' ILIKE $%d
-			))`, idx, idx, idx, idx)
+			))`, idx, idx, idx, idx, idx)
 		args = append(args, "%"+search+"%")
 		idx++
 	}
@@ -1265,13 +1294,22 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 	if input.Action == "verify" && cur.RequestType == RequestTypeBahan {
 		return nil, Invalid("pengadaan bahan baku tidak melalui verifikasi — pengajuannya langsung menunggu persetujuan")
 	}
+	if input.Action == "receive" && cur.RequestType == RequestTypeJasa && cur.Status == "received" {
+		return GetPurchaseRequest(id)
+	}
 
 	newStatus, ok := transitions[cur.Status]
+	if !ok && input.Action == "approve" && cur.Status == "pending" && cur.Urgency == UrgencyUrgent {
+		newStatus, ok = "approved", true
+	}
 	if !ok {
 		return nil, fmt.Errorf("tidak bisa %s dari status '%s'", input.Action, cur.Status)
 	}
 
 	isMaster := cur.SplitStatus == "master"
+	if input.Action == "approve" && input.DirectCashPayout && isMaster {
+		return nil, Invalid("pengajuan yang sudah dipecah per vendor tidak bisa langsung diarahkan ke Kas Kasir Outlet")
+	}
 	// Barang & bahan baku diterima lewat Serah Terima (foto + pencatatan
 	// aset/stok per baris). Tombol status "receive" hanya untuk jasa — dulu
 	// pengajuan barang bisa ditutup 'received' tanpa foto, aset, maupun GRN
@@ -1402,9 +1440,9 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 
 // lockedPurchase: potret satu pengajuan yang sudah dikunci (FOR UPDATE).
 type lockedPurchase struct {
-	ID, Status, SplitStatus, ParentID, RequestType, ProjectID string
-	UpdatedAt                                                 time.Time
-	ItemsJSON, RejectedJSON                                   []byte
+	ID, Status, SplitStatus, ParentID, RequestType, ProjectID, Urgency string
+	UpdatedAt                                                          time.Time
+	ItemsJSON, RejectedJSON                                            []byte
 }
 
 func lockPurchaseTx(tx *sql.Tx, id string) (*lockedPurchase, error) {
@@ -1412,9 +1450,9 @@ func lockPurchaseTx(tx *sql.Tx, id string) (*lockedPurchase, error) {
 	var updatedAt sql.NullTime
 	err := tx.QueryRow(`
 		SELECT status, COALESCE(split_status, ''), COALESCE(parent_id, ''), request_type, COALESCE(project_id, ''),
-		       updated_at, items, COALESCE(rejected_items, '[]'::jsonb)
+		       COALESCE(urgency, 'rutin'), updated_at, items, COALESCE(rejected_items, '[]'::jsonb)
 		FROM purchase_requests WHERE id = $1 FOR UPDATE`, id).
-		Scan(&p.Status, &p.SplitStatus, &p.ParentID, &p.RequestType, &p.ProjectID, &updatedAt, &p.ItemsJSON, &p.RejectedJSON)
+		Scan(&p.Status, &p.SplitStatus, &p.ParentID, &p.RequestType, &p.ProjectID, &p.Urgency, &updatedAt, &p.ItemsJSON, &p.RejectedJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -1613,10 +1651,76 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 
 	switch input.Action {
 	case "approve":
-		res, err = tx.Exec(`
-			UPDATE purchase_requests SET status=$1, approved_by=$2, approved_by_id=$3, approved_at=$4, updated_at=$4
-			WHERE id=$5 AND status=$6`,
-			newStatus, input.ActorName, actorID, now, id, fromStatus)
+		if input.DirectCashPayout {
+			var outletID, requestedBy, rawItems string
+			if scanErr := tx.QueryRow(`SELECT COALESCE(outlet_id,''), COALESCE(requested_by,''), COALESCE(items::text,'[]') FROM purchase_requests WHERE id=$1`, id).
+				Scan(&outletID, &requestedBy, &rawItems); scanErr != nil {
+				return notice, fmt.Errorf("gagal memeriksa pengajuan: %w", scanErr)
+			}
+			outletID = strings.TrimSpace(outletID)
+			if outletID == "" {
+				return notice, Invalid("pengajuan tanpa outlet hanya bisa diproses melalui umum (Purchasing & Kantor Pusat)")
+			}
+			var outletName string
+			var active bool
+			if scanErr := tx.QueryRow(`SELECT COALESCE(name,''), is_active FROM outlets WHERE id=$1`, outletID).Scan(&outletName, &active); scanErr != nil || !active {
+				return notice, Invalid("outlet pengajuan ini tidak aktif — proses melalui umum")
+			}
+			var items []models.PurchaseRequestItem
+			if uerr := json.Unmarshal([]byte(rawItems), &items); uerr != nil || len(items) == 0 {
+				return notice, Invalid("item pengajuan tidak valid")
+			}
+			for gi := range items {
+				for si := range items[gi].Items {
+					if items[gi].Items[si].FinalPrice <= 0 {
+						items[gi].Items[si].FinalPrice = items[gi].Items[si].HpsPrice
+					}
+				}
+			}
+			totalHps, totalFinal := recalcItems(items)
+			if cents(totalFinal) <= 0 {
+				return notice, Invalid("total HPS harus lebih dari 0 untuk diarahkan ke Kas Kasir Outlet")
+			}
+			recipient, rerr := limitText(input.PayoutRecipient, 200, "nama penerima kas")
+			if rerr != nil {
+				return notice, rerr
+			}
+			if recipient == "" {
+				recipient = strings.TrimSpace(requestedBy)
+			}
+			if recipient == "" {
+				return notice, Invalid("nama penerima kas wajib diisi")
+			}
+			payoutNotes, nerr := limitText(input.PayoutNotes, 1000, "catatan kasir")
+			if nerr != nil {
+				return notice, nerr
+			}
+			itemsJSON, merr := json.Marshal(items)
+			if merr != nil {
+				return notice, merr
+			}
+			payToText := truncateRunes("Tunai dari Kas Kasir "+outletName+" — diserahkan kepada "+recipient, 300)
+			res, err = tx.Exec(`
+				UPDATE purchase_requests SET status='payment_requested', items=$1, total_hps=$2, total_final=$3, total_amount=$3,
+				       approved_by=$4, approved_by_id=$5, approved_at=$6,
+				       pay_to_method='manual', pay_to_text=$7, pay_to_note=$8, pay_to_set_by=$4, pay_to_set_by_id=$5, pay_to_set_at=$6,
+				       updated_at=$6
+				WHERE id=$9 AND status=$10`,
+				itemsJSON, totalHps, totalFinal, input.ActorName, actorID, now, payToText, payoutNotes, id, fromStatus)
+			if err == nil {
+				if n, _ := res.RowsAffected(); n == 1 {
+					_, err = tx.Exec(`INSERT INTO procurement_cash_payouts
+						(id, purchase_request_id, outlet_id, amount, recipient_name, notes, status, assigned_by, assigned_by_id, assigned_at, updated_at)
+						VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9, $9)`,
+						NewULID(), id, outletID, totalFinal, recipient, payoutNotes, input.ActorName, actorID, now)
+				}
+			}
+		} else {
+			res, err = tx.Exec(`
+				UPDATE purchase_requests SET status=$1, approved_by=$2, approved_by_id=$3, approved_at=$4, updated_at=$4
+				WHERE id=$5 AND status=$6`,
+				newStatus, input.ActorName, actorID, now, id, fromStatus)
+		}
 	case "reject":
 		// Penolak dicatat di kolomnya sendiri — dulu ditulis ke
 		// approved_by/approved_at sehingga penolak terbaca sebagai penyetuju
@@ -1666,13 +1770,25 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 		// click / retry) tidak boleh sama-sama membaca paid_amount lama — tanpa
 		// lock ini histori pembayaran bisa dobel dan status jadi tidak konsisten.
 		var totalFinal, currentPaid float64
-		var receipt, splitStatus, vendorID, vendorName string
-		var emergency bool
+		var receipt, splitStatus, vendorID, vendorName, payApprovalStatus string
+		var emergency, isManualPayment bool
 		if scanErr := tx.QueryRow(`
 			SELECT COALESCE(total_final,0), COALESCE(paid_amount,0), COALESCE(receipt_status,''), COALESCE(split_status,''),
-			       COALESCE(vendor_id, ''), COALESCE(vendor_name, ''), emergency
-			FROM purchase_requests WHERE id=$1 FOR UPDATE`, id).Scan(&totalFinal, &currentPaid, &receipt, &splitStatus, &vendorID, &vendorName, &emergency); scanErr != nil {
+			       COALESCE(vendor_id, ''), COALESCE(vendor_name, ''), emergency,
+			       COALESCE(is_manual_payment, false), COALESCE(payment_approval_status, '')
+			FROM purchase_requests WHERE id=$1 FOR UPDATE`, id).Scan(
+			&totalFinal, &currentPaid, &receipt, &splitStatus, &vendorID, &vendorName, &emergency,
+			&isManualPayment, &payApprovalStatus); scanErr != nil {
 			return notice, fmt.Errorf("gagal memeriksa tagihan: %w", scanErr)
+		}
+		if payApprovalStatus == "pending" {
+			return notice, Invalid("pengajuan pembayaran ini masih menunggu persetujuan Manager Keuangan atau General Manager")
+		}
+		if payApprovalStatus == "rejected" {
+			return notice, Invalid("pengajuan pembayaran ini ditolak oleh Manager Keuangan / General Manager — ajukan ulang terlebih dahulu")
+		}
+		if isManualPayment && payApprovalStatus != "approved" {
+			return notice, Invalid("pembayaran manual wajib disetujui Manager Keuangan atau General Manager sebelum dicairkan")
 		}
 		// Sumber dana tunggal: selama tugas Kas Kasir Outlet masih terbuka,
 		// Kantor Pusat tidak boleh membayar pengajuan yang sama — uang yang
@@ -1744,9 +1860,9 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 		var dest paymentDest
 		var destErr error
 		switch {
-		case input.CashPayoutID != "" && emergency && strings.TrimSpace(vendorID) == "":
-			// Pembelian Darurat: tunai diserahkan ke staf yang berbelanja di
-			// toko mana pun — tidak ada vendor terdaftar maupun rekening.
+		case input.CashPayoutID != "" && strings.TrimSpace(vendorID) == "":
+			// Kas Kasir Outlet tanpa vendor terdaftar (mis. diarahkan langsung
+			// oleh penyetuju): tunai diserahkan ke staf penerima kas.
 			dest, destErr = resolvePaymentDestination(paymentDest{vendorName: vendorName}, input)
 		case input.CashPayoutID != "":
 			dest, destErr = vendorPaymentDestTx(tx, vendorID, input)
@@ -1764,19 +1880,32 @@ func applyStatusUpdateTx(tx *sql.Tx, id, fromStatus, newStatus string, input mod
 			return notice, allocErr
 		}
 
+		bankFee := math.Round(input.BankFee*100) / 100
+		if bankFee < 0 {
+			return notice, Invalid("biaya bank tidak boleh negatif")
+		}
+		if input.CashPayoutID != "" {
+			bankFee = 0
+		}
+
 		// Insert payment history — pembayar dari sesi login, bukan body (T-7).
-		// Satu baris per struk yang dilunasi pembayaran ini.
-		for _, a := range allocs {
+		// Satu baris per struk yang dilunasi pembayaran ini; biaya admin bank
+		// (bila ada) ditempelkan sekali pada baris pertama transfer ini.
+		for i, a := range allocs {
+			rowBankFee := 0.0
+			if i == 0 {
+				rowBankFee = bankFee
+			}
 			if _, insErr := tx.Exec(
 				`INSERT INTO payment_histories (id, purchase_request_id, amount, payment_proof, payment_account_dest, payment_account_source, payment_notes, paid_by, created_at,
 					vendor_id, vendor_name, dest_bank_name, dest_account_number, dest_account_holder, dest_manual, struk_id,
-					payment_method, payment_marketplace, payment_order_number, cash_payout_id)
-				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+					payment_method, payment_marketplace, payment_order_number, cash_payout_id, bank_fee)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
 				NewULID(), id, a.cents/100, input.PaymentProof,
 				dest.text, input.PaymentAccountSource, input.PaymentNotes,
 				input.ActorName, now,
 				nilIfEmpty(dest.vendorID), dest.vendorName, dest.bank, dest.number, dest.holder, dest.manual, nilIfEmpty(a.strukID),
-				dest.method, dest.marketplace, dest.orderNumber, nilIfEmpty(input.CashPayoutID),
+				dest.method, dest.marketplace, dest.orderNumber, nilIfEmpty(input.CashPayoutID), rowBankFee,
 			); insErr != nil {
 				return notice, fmt.Errorf("gagal menyimpan histori pembayaran: %w", insErr)
 			}
@@ -2342,7 +2471,7 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	// COALESCE dengan nilai lama: kolom yang tidak dikirim pemanggil tidak
 	// tersentuh. Vendor id dan nama diperlakukan satu paket supaya tidak pernah
 	// tersisa id tanpa nama atau sebaliknya.
-	var vendorID, vendorName, invoice interface{}
+	var vendorID, vendorName, invoice, invoiceURL interface{}
 	if input.VendorID != nil || input.VendorName != nil {
 		if input.VendorID != nil {
 			vendorID = nilIfEmpty(strings.TrimSpace(*input.VendorID))
@@ -2362,10 +2491,17 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 			vendorName = name
 		}
 	}
-	// Nomor invoice hanya diisi pembelian pada dokumen yang sudah disetujui;
+	// Nomor & berkas invoice hanya diisi pembelian pada dokumen yang sudah disetujui;
 	// kiriman pengaju saat pending diabaikan (T-39).
 	if input.InvoiceNumber != nil && cur.Status == "approved" {
 		invoice = *input.InvoiceNumber
+	}
+	if input.InvoiceURL != nil && cur.Status == "approved" {
+		u := strings.TrimSpace(*input.InvoiceURL)
+		if u != "" && ValidateUploadURL(u) != nil {
+			return nil, Invalid("tautan berkas invoice tidak valid")
+		}
+		invoiceURL = u
 	}
 
 	res, err := tx.Exec(`
@@ -2374,13 +2510,14 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 			vendor_id   = CASE WHEN $9::bool THEN $5::char(26) ELSE vendor_id END,
 			vendor_name = CASE WHEN $9::bool THEN COALESCE($6::varchar, '') ELSE vendor_name END,
 			invoice_number = COALESCE($7::text, invoice_number),
+			invoice_url    = COALESCE($13::text, invoice_url),
 			goods_kind  = CASE WHEN $10::text <> '' THEN $10::text ELSE goods_kind END,
 			updated_at=$11
 		WHERE id=$8 AND status=$12
 	`, itemsJSON, amountOf(totalHps, totalFinal), totalHps, totalFinal,
 		vendorID, vendorName, invoice, id,
 		input.VendorID != nil || input.VendorName != nil,
-		goodsKind, time.Now().UTC(), cur.Status)
+		goodsKind, time.Now().UTC(), cur.Status, invoiceURL)
 	if err != nil {
 		return nil, err
 	}
@@ -2605,7 +2742,7 @@ func returnItemsToParent(tx *sql.Tx, parentID string, childItemsJSON []byte) err
 // GetPaymentHistories returns all payment history entries for a purchase request.
 func GetPaymentHistories(purchaseRequestID string) ([]models.PaymentHistory, error) {
 	rows, err := database.DB.Query(`
-		SELECT ph.id, ph.purchase_request_id, ph.amount, ph.payment_proof,
+		SELECT ph.id, ph.purchase_request_id, ph.amount, COALESCE(ph.bank_fee, 0), ph.payment_proof,
 		       ph.payment_account_dest, ph.payment_account_source, ph.payment_notes,
 		       ph.paid_by, ph.created_at,
 		       COALESCE(ph.vendor_id, ''), ph.vendor_name, ph.dest_bank_name, ph.dest_account_number, ph.dest_account_holder, ph.dest_manual,
@@ -2625,7 +2762,7 @@ func GetPaymentHistories(purchaseRequestID string) ([]models.PaymentHistory, err
 	for rows.Next() {
 		var h models.PaymentHistory
 		var createdAt time.Time
-		if err := rows.Scan(&h.ID, &h.PurchaseRequestID, &h.Amount, &h.PaymentProof,
+		if err := rows.Scan(&h.ID, &h.PurchaseRequestID, &h.Amount, &h.BankFee, &h.PaymentProof,
 			&h.PaymentAccountDest, &h.PaymentAccountSource, &h.PaymentNotes,
 			&h.PaidBy, &createdAt,
 			&h.VendorID, &h.VendorName, &h.DestBankName, &h.DestAccountNumber, &h.DestAccountHolder, &h.DestManual,
@@ -2638,4 +2775,413 @@ func GetPaymentHistories(purchaseRequestID string) ([]models.PaymentHistory, err
 		histories = append(histories, h)
 	}
 	return histories, nil
+}
+
+// ── Pembayaran Manual (Di Luar Pengajuan) & Pengajuan / Persetujuan Pembayaran ──
+
+func generatePrefixedNumber(prefix string) (string, error) {
+	var seq int
+	err := database.DB.QueryRow(`
+		INSERT INTO purchase_request_counters AS c (prefix, last_seq)
+		VALUES ($1, 1)
+		ON CONFLICT (prefix) DO UPDATE
+			SET last_seq = c.last_seq + 1
+		RETURNING last_seq`, prefix).Scan(&seq)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s%03d", prefix, seq), nil
+}
+
+// CreateManualPayment membuat tagihan pembayaran manual langsung dari Keuangan
+// (di luar pengajuan pengadaan normal) yang wajib disetujui Manager Keuangan
+// atau General Manager sebelum bisa dicairkan.
+func CreateManualPayment(input models.CreateManualPaymentInput) (*models.PurchaseRequest, error) {
+	reqType := strings.ToLower(strings.TrimSpace(input.RequestType))
+	if reqType == "" {
+		reqType = RequestTypeJasa
+	}
+	if !IsValidRequestType(reqType) {
+		return nil, Invalid("jenis pembayaran harus 'barang', 'jasa', atau 'bahan'")
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return nil, Invalid("judul / nama pembayaran wajib diisi")
+	}
+	if utf8.RuneCountInString(title) > 200 {
+		return nil, Invalid("judul pembayaran maksimal 200 karakter")
+	}
+	if len(input.Items) == 0 {
+		return nil, Invalid("minimal 1 rincian item pembayaran wajib diisi")
+	}
+
+	goodsKind := strings.ToLower(strings.TrimSpace(input.GoodsKind))
+	switch reqType {
+	case RequestTypeBarang:
+		if goodsKind != "dapur" && goodsKind != "perlengkapan" {
+			goodsKind = "perlengkapan"
+		}
+	case RequestTypeBahan:
+		goodsKind = "dapur"
+	default:
+		goodsKind = ""
+	}
+
+	subItems := make([]models.PurchaseSubItem, 0, len(input.Items))
+	for _, it := range input.Items {
+		name := strings.TrimSpace(it.Name)
+		if name == "" {
+			return nil, Invalid("nama rincian item tidak boleh kosong")
+		}
+		qty := it.Qty
+		if qty <= 0 {
+			qty = 1
+		}
+		unit := strings.TrimSpace(it.Unit)
+		if unit == "" {
+			unit = "paket"
+		}
+		if it.Price <= 0 {
+			return nil, Invalid("nominal / harga satuan item %q harus lebih dari 0", name)
+		}
+		pQty := qty
+		subItems = append(subItems, models.PurchaseSubItem{
+			Name:          name,
+			Qty:           qty,
+			PurchasedQty:  &pQty,
+			Unit:          unit,
+			HpsPrice:      it.Price,
+			HpsSource:     "Pembayaran Manual Keuangan",
+			FinalPrice:    it.Price,
+			GoodsKind:     goodsKind,
+		})
+	}
+	groups := []models.PurchaseRequestItem{{
+		Name:  title,
+		Items: subItems,
+	}}
+	totalHps, totalFinal := recalcItems(groups)
+	if cents(totalFinal) <= 0 {
+		return nil, Invalid("total nominal pembayaran harus lebih dari 0")
+	}
+	itemsJSON, err := json.Marshal(groups)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve work unit & outlet (optional for manual payment)
+	var outletID, workUnitID interface{}
+	if wuID := strings.TrimSpace(input.WorkUnitID); wuID != "" {
+		var oID sql.NullString
+		if err := database.DB.QueryRow(`SELECT outlet_id FROM work_units WHERE id = $1`, wuID).Scan(&oID); err != nil {
+			return nil, Invalid("unit kerja tidak ditemukan")
+		}
+		workUnitID = wuID
+		if oID.Valid && strings.TrimSpace(oID.String) != "" {
+			outletID = strings.TrimSpace(oID.String)
+		}
+	}
+	var projectID interface{}
+	if pID := strings.TrimSpace(input.ProjectID); pID != "" && reqType != RequestTypeBahan {
+		var exists bool
+		if err := database.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM projects WHERE id = $1)`, pID).Scan(&exists); err != nil || !exists {
+			return nil, Invalid("projek tidak ditemukan")
+		}
+		projectID = pID
+	}
+
+	// Resolve vendor & payment destination
+	vID := strings.TrimSpace(input.VendorID)
+	vName := strings.TrimSpace(input.VendorName)
+	var vAcct vendorAccount
+	if vID != "" {
+		resolvedID, resolvedName, verr := resolvePurchaseVendor(database.DB, vID, vName)
+		if verr != nil {
+			return nil, verr
+		}
+		vID, vName = resolvedID, resolvedName
+		_ = database.DB.QueryRow(`SELECT COALESCE(bank_name,''), COALESCE(account_number,''), COALESCE(account_holder,'') FROM vendors WHERE id = $1`, vID).
+			Scan(&vAcct.bank, &vAcct.number, &vAcct.holder)
+	}
+	if vName == "" {
+		return nil, Invalid("pilih vendor terdaftar atau isi nama penerima pembayaran")
+	}
+
+	payMethod := strings.TrimSpace(input.PayToMethod)
+	if payMethod == "" {
+		payMethod = PayToVendorAccount
+	}
+	var st payToStored
+	st.note = strings.TrimSpace(input.PayToNote)
+	switch payMethod {
+	case PayToVendorAccount:
+		st.method = PayToVendorAccount
+		if vID != "" && vAcct.registered() && strings.TrimSpace(input.PayToAccountNumber) == "" {
+			st.bank, st.number, st.holder = vAcct.bank, vAcct.number, vAcct.holder
+		} else {
+			st.bank = strings.TrimSpace(input.PayToBankName)
+			st.number = strings.TrimSpace(input.PayToAccountNumber)
+			st.holder = strings.TrimSpace(input.PayToAccountHolder)
+			if st.holder == "" {
+				st.holder = vName
+			}
+			if st.bank == "" || st.number == "" {
+				return nil, Invalid("nama bank dan nomor rekening tujuan wajib diisi untuk metode transfer rekening")
+			}
+		}
+	case PayToMarketplaceVA:
+		st.method = PayToMarketplaceVA
+		st.marketplace = strings.TrimSpace(input.PayToMarketplace)
+		st.orderNumber = strings.TrimSpace(input.PayToOrderNumber)
+		st.bank = strings.TrimSpace(input.PayToBankName)
+		st.number = strings.TrimSpace(input.PayToAccountNumber)
+		st.holder = strings.TrimSpace(input.PayToAccountHolder)
+		if st.holder == "" {
+			st.holder = st.marketplace
+		}
+		if st.marketplace == "" || st.bank == "" || st.number == "" {
+			return nil, Invalid("marketplace, bank VA, dan nomor VA wajib diisi")
+		}
+	case PayToManual:
+		st.method = PayToManual
+		st.text = strings.TrimSpace(input.PayToText)
+		if st.text == "" {
+			st.text = "Tunai / Pembayaran Langsung kepada " + vName
+		}
+	default:
+		return nil, Invalid("metode tujuan pembayaran tidak valid")
+	}
+
+	invoiceURL := strings.TrimSpace(input.InvoiceURL)
+	if invoiceURL != "" && ValidateUploadURL(invoiceURL) != nil {
+		return nil, Invalid("tautan berkas invoice tidak valid")
+	}
+
+	now := time.Now().UTC()
+	dateCode := now.Format("020106")
+	reqNumber, err := generatePrefixedNumber("MPY-" + dateCode + "-")
+	if err != nil {
+		return nil, fmt.Errorf("gagal membuat nomor pembayaran manual: %w", err)
+	}
+	batchNumber, err := generatePrefixedNumber("AJU-" + dateCode + "-")
+	if err != nil {
+		return nil, fmt.Errorf("gagal membuat nomor pengajuan bayar: %w", err)
+	}
+
+	id := NewULID()
+	actorID := nilIfEmpty(validActorID(input.ActorID))
+	notes := strings.TrimSpace(input.Notes)
+	_, err = database.DB.Exec(`
+		INSERT INTO purchase_requests (
+			id, request_number, outlet_id, work_unit_id, project_id,
+			request_type, goods_kind, requested_by, requested_by_id,
+			vendor_id, vendor_name, status, items,
+			total_amount, total_hps, total_final, notes,
+			invoice_number, invoice_url,
+			pay_to_method, pay_to_marketplace, pay_to_order_number,
+			pay_to_bank_name, pay_to_account_number, pay_to_account_holder,
+			pay_to_text, pay_to_note, pay_to_set_by, pay_to_set_by_id, pay_to_set_at,
+			is_manual_payment, payment_approval_status, payment_batch_number,
+			payment_submitted_by, payment_submitted_at, payment_submission_notes,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5,
+			$6, $7, $8, $9,
+			$10, $11, 'payment_requested', $12,
+			$13, $14, $15, $16,
+			$17, $18,
+			$19, $20, $21,
+			$22, $23, $24,
+			$25, $26, $8, $9, $27,
+			TRUE, 'pending', $28,
+			$8, $27, $16,
+			$27, $27
+		)`,
+		id, reqNumber, outletID, workUnitID, projectID,
+		reqType, goodsKind, input.ActorName, actorID,
+		nilIfEmpty(vID), vName, itemsJSON,
+		totalFinal, totalHps, totalFinal, notes,
+		strings.TrimSpace(input.InvoiceNumber), invoiceURL,
+		st.method, st.marketplace, st.orderNumber,
+		st.bank, st.number, st.holder,
+		st.text, st.note, now,
+		batchNumber,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gagal menyimpan pembayaran manual: %w", err)
+	}
+	return GetPurchaseRequest(id)
+}
+
+// SubmitPaymentApprovalBatch mengumpulkan item menunggu pembayaran yang diceklis
+// ke dalam satu nomor pengajuan pembayaran (AJU-ddmmYY-nnn) untuk disetujui
+// Manager Keuangan atau General Manager.
+func SubmitPaymentApprovalBatch(input models.SubmitPaymentApprovalInput) (string, int, error) {
+	if len(input.IDs) == 0 {
+		return "", 0, Invalid("pilih minimal 1 tagihan untuk diajukan pembayarannya")
+	}
+	cleanIDs := make([]string, 0, len(input.IDs))
+	seen := map[string]bool{}
+	for _, raw := range input.IDs {
+		id := strings.TrimSpace(raw)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			cleanIDs = append(cleanIDs, id)
+		}
+	}
+	if len(cleanIDs) == 0 {
+		return "", 0, Invalid("pilih minimal 1 tagihan untuk diajukan pembayarannya")
+	}
+	notes := strings.TrimSpace(input.Notes)
+	if utf8.RuneCountInString(notes) > 1000 {
+		return "", 0, Invalid("catatan pengajuan pembayaran maksimal 1000 karakter")
+	}
+
+	now := time.Now().UTC()
+	batchNumber, err := generatePrefixedNumber("AJU-" + now.Format("020106") + "-")
+	if err != nil {
+		return "", 0, fmt.Errorf("gagal membuat nomor pengajuan pembayaran: %w", err)
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return "", 0, err
+	}
+	defer tx.Rollback()
+
+	for _, id := range cleanIDs {
+		var reqNum, status, approvalStatus string
+		var totalFinal, paidAmount float64
+		err := tx.QueryRow(`
+			SELECT request_number, status, COALESCE(payment_approval_status, ''), COALESCE(total_final, 0), COALESCE(paid_amount, 0)
+			FROM purchase_requests WHERE id = $1 FOR UPDATE`, id).
+			Scan(&reqNum, &status, &approvalStatus, &totalFinal, &paidAmount)
+		if err == sql.ErrNoRows {
+			return "", 0, Invalid("tagihan tidak ditemukan")
+		}
+		if err != nil {
+			return "", 0, err
+		}
+		if status != "payment_requested" && status != "partial" && status != "approved" {
+			return "", 0, Invalid("tagihan #%s berstatus %s — hanya tagihan yang menunggu pembayaran yang bisa diajukan", reqNum, status)
+		}
+		if math.Round((totalFinal-paidAmount)*100) <= 0 {
+			return "", 0, Invalid("tagihan #%s sudah lunas", reqNum)
+		}
+		if approvalStatus == "approved" {
+			return "", 0, Invalid("tagihan #%s sudah disetujui pembayarannya", reqNum)
+		}
+	}
+
+	res, err := tx.Exec(`
+		UPDATE purchase_requests
+		SET payment_approval_status = 'pending',
+		    payment_batch_number = $1,
+		    payment_submitted_by = $2,
+		    payment_submitted_at = $3,
+		    payment_submission_notes = $4,
+		    payment_rejected_by = '',
+		    payment_rejected_at = NULL,
+		    payment_rejection_reason = '',
+		    updated_at = $3
+		WHERE id = ANY($5::text[])`,
+		batchNumber, input.ActorName, now, notes, pq.Array(cleanIDs))
+	if err != nil {
+		return "", 0, err
+	}
+	affected, _ := res.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return "", 0, err
+	}
+	return batchNumber, int(affected), nil
+}
+
+// DecidePaymentApprovalBatch menyetujui atau menolak pengajuan pembayaran
+// (baik hasil ceklis tagihan maupun Pembayaran Manual) oleh Manager Keuangan
+// atau General Manager.
+func DecidePaymentApprovalBatch(input models.DecidePaymentApprovalInput) (int, error) {
+	if len(input.IDs) == 0 {
+		return 0, Invalid("pilih minimal 1 pengajuan pembayaran")
+	}
+	decision := strings.ToLower(strings.TrimSpace(input.Decision))
+	if decision != "approve" && decision != "reject" {
+		return 0, Invalid("keputusan harus 'approve' atau 'reject'")
+	}
+	reason := strings.TrimSpace(input.Reason)
+	if decision == "reject" && utf8.RuneCountInString(reason) < 3 {
+		return 0, Invalid("alasan penolakan pengajuan pembayaran wajib diisi (minimal 3 karakter)")
+	}
+
+	cleanIDs := make([]string, 0, len(input.IDs))
+	seen := map[string]bool{}
+	for _, raw := range input.IDs {
+		id := strings.TrimSpace(raw)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			cleanIDs = append(cleanIDs, id)
+		}
+	}
+	if len(cleanIDs) == 0 {
+		return 0, Invalid("pilih minimal 1 pengajuan pembayaran")
+	}
+
+	now := time.Now().UTC()
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	for _, id := range cleanIDs {
+		var reqNum, status string
+		err := tx.QueryRow(`SELECT request_number, status FROM purchase_requests WHERE id = $1 FOR UPDATE`, id).
+			Scan(&reqNum, &status)
+		if err == sql.ErrNoRows {
+			return 0, Invalid("tagihan tidak ditemukan")
+		}
+		if err != nil {
+			return 0, err
+		}
+		if status == "paid" || status == "cancelled" || status == "rejected" {
+			return 0, Invalid("tagihan #%s sudah berstatus %s", reqNum, status)
+		}
+	}
+
+	var res sql.Result
+	if decision == "approve" {
+		actorID := nilIfEmpty(validActorID(input.ActorID))
+		res, err = tx.Exec(`
+			UPDATE purchase_requests
+			SET payment_approval_status = 'approved',
+			    payment_approved_by = $1,
+			    payment_approved_at = $2,
+			    payment_rejected_by = '',
+			    payment_rejected_at = NULL,
+			    payment_rejection_reason = '',
+			    approved_by = CASE WHEN is_manual_payment AND COALESCE(approved_by, '') = '' THEN $1 ELSE approved_by END,
+			    approved_by_id = CASE WHEN is_manual_payment AND approved_by_id IS NULL THEN $3::char(26) ELSE approved_by_id END,
+			    approved_at = CASE WHEN is_manual_payment AND approved_at IS NULL THEN $2 ELSE approved_at END,
+			    updated_at = $2
+			WHERE id = ANY($4::text[])`,
+			input.ActorName, now, actorID, pq.Array(cleanIDs))
+	} else {
+		res, err = tx.Exec(`
+			UPDATE purchase_requests
+			SET payment_approval_status = 'rejected',
+			    payment_rejected_by = $1,
+			    payment_rejected_at = $2,
+			    payment_rejection_reason = $3,
+			    updated_at = $2
+			WHERE id = ANY($4::text[])`,
+			input.ActorName, now, reason, pq.Array(cleanIDs))
+	}
+	if err != nil {
+		return 0, err
+	}
+	affected, _ := res.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(affected), nil
 }

@@ -1132,6 +1132,32 @@ func splitPaymentProof(proof string) string {
 // tipe (barang|jasa), dan kata kunci pencarian. Scope outlet/unit kerja dari
 // role admin ikut dipaksakan lewat ListPurchaseRequests.
 func BuildProcurementPaymentsExcel(status, requestType, projectID, search string, scopeIDs, wuScopeIDs []string) ([]byte, string, error) {
+	return BuildProcurementPaymentsExcelExt(status, requestType, projectID, search, scopeIDs, wuScopeIDs, PurchaseListExtra{})
+}
+
+// purchaseListExtraLabel: keterangan saringan tingkat kebutuhan di ringkasan.
+func purchaseListExtraLabel(extra PurchaseListExtra) string {
+	parts := []string{}
+	if extra.Emergency {
+		parts = append(parts, "Pembelian Darurat")
+	}
+	switch extra.Ratification {
+	case "pending":
+		parts = append(parts, "Darurat — menunggu pengesahan")
+	case "ratified":
+		parts = append(parts, "Darurat — disahkan")
+	case "rejected":
+		parts = append(parts, "Darurat — pengesahan ditolak")
+	}
+	if extra.Urgency != "" {
+		parts = append(parts, UrgencyLabel(extra.Urgency))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// BuildProcurementPaymentsExcelExt = BuildProcurementPaymentsExcel dengan
+// saringan tingkat kebutuhan / Pembelian Darurat yang sama dengan layar.
+func BuildProcurementPaymentsExcelExt(status, requestType, projectID, search string, scopeIDs, wuScopeIDs []string, extra PurchaseListExtra) ([]byte, string, error) {
 	// parent_id="all" + excludeMasters=true meniru halaman Pembayaran: baris
 	// split ditampilkan satu-satu, baris master disembunyikan. Tanpa filter
 	// status = semua status berkomitmen, sama dengan pilihan "Semua" di sana.
@@ -1139,7 +1165,8 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 	if listStatus == "" {
 		listStatus = PurchaseStatusCommittedFilter
 	}
-	result, err := ListPurchaseRequests("", "", listStatus, requestType, projectID, "all", true, search, scopeIDs, wuScopeIDs, nil, 1, exportTxLimit)
+	extra.UrgentFirst = false // ekspor tetap kronologis
+	result, err := ListPurchaseRequestsExt("", "", listStatus, requestType, projectID, "all", true, search, scopeIDs, wuScopeIDs, nil, 1, exportTxLimit, extra)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1228,6 +1255,9 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 
 	setKV("Status", statusLabel, 0)
 	setKV("Tipe", typeLabel, 0)
+	if lbl := purchaseListExtraLabel(extra); lbl != "" {
+		setKV("Jenis", lbl, 0)
+	}
 	if strings.TrimSpace(search) != "" {
 		setKV("Kata Kunci", search, 0)
 	}
@@ -1271,12 +1301,47 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 		}
 	}
 
+	// Pembelian Darurat: tahap pengesahan & selisih struk (audit Keuangan).
+	stageOrder := []string{"Menunggu kas diserahkan", "Menunggu struk", "Menunggu pengesahan", "Disahkan", "Pengesahan ditolak (temuan)"}
+	stageAgg := map[string]*statusAgg{}
+	var emergencyCount int
+	var proofDiff float64
+	for _, r := range result.Requests {
+		stage := emergencyStageLabel(r)
+		if stage == "" {
+			continue
+		}
+		emergencyCount++
+		a, ok := stageAgg[stage]
+		if !ok {
+			a = &statusAgg{}
+			stageAgg[stage] = a
+		}
+		a.count++
+		a.nominal += r.TotalFinal
+		if e := r.Emergency; e.ProofTotal != nil && cents(r.PaidAmount) > 0 {
+			proofDiff += r.PaidAmount - *e.ProofTotal
+		}
+	}
+	if emergencyCount > 0 {
+		row++
+		setSection("PEMBELIAN DARURAT")
+		for _, s := range stageOrder {
+			if a, ok := stageAgg[s]; ok {
+				setKV(fmt.Sprintf("%s — %d pengajuan", s, a.count), a.nominal, st.money)
+			}
+		}
+		setKV("Selisih kas − total struk (kembalian ke laci)", proofDiff, st.money)
+	}
+
 	// ── Sheet Daftar Pembayaran ──────────────────────────────────────────
 	setHeaderRow(f, shList, []string{
 		"No", "Nomor", "No. Induk", "Tipe", "Pengadaan", "Vendor", "Unit Kerja",
 		"Status", "Diajukan", "Nominal", "Terbayar", "Sisa Tagihan",
 		"Dibayar Oleh", "Dibayar Pada", "Rek Tujuan", "Rek Asal", "No. Referensi",
 		"No. Invoice", "Catatan Pembayaran",
+		// Kolom tambahan (Nov 2026) di belakang supaya kolom lama tetap.
+		"Tingkat", "Tahap Darurat", "Alasan Darurat", "Total Struk", "Selisih Kas−Struk", "Disahkan/Ditolak Oleh", "Catatan Pengesahan",
 	}, st.header)
 	f.SetColWidth(shList, "A", "A", 5)
 	f.SetColWidth(shList, "B", "C", 12)
@@ -1291,6 +1356,12 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 	f.SetColWidth(shList, "O", "P", 28)
 	f.SetColWidth(shList, "Q", "R", 16)
 	f.SetColWidth(shList, "S", "S", 30)
+	f.SetColWidth(shList, "T", "T", 10)
+	f.SetColWidth(shList, "U", "U", 24)
+	f.SetColWidth(shList, "V", "V", 34)
+	f.SetColWidth(shList, "W", "X", 14)
+	f.SetColWidth(shList, "Y", "Y", 24)
+	f.SetColWidth(shList, "Z", "Z", 30)
 
 	fmtStamp := func(iso string) string {
 		if iso == "" {
@@ -1334,6 +1405,31 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 		f.SetCellStyle(shList, fmt.Sprintf("J%d", rw), fmt.Sprintf("L%d", rw), st.money)
 		f.SetCellStyle(shList, fmt.Sprintf("M%d", rw), fmt.Sprintf("R%d", rw), st.num)
 		f.SetCellStyle(shList, fmt.Sprintf("S%d", rw), fmt.Sprintf("S%d", rw), st.text)
+
+		tingkat := UrgencyLabel(r.Urgency)
+		if r.Emergency != nil {
+			tingkat = "Darurat"
+		}
+		f.SetCellValue(shList, fmt.Sprintf("T%d", rw), tingkat)
+		f.SetCellStyle(shList, fmt.Sprintf("T%d", rw), fmt.Sprintf("U%d", rw), st.num)
+		f.SetCellStyle(shList, fmt.Sprintf("V%d", rw), fmt.Sprintf("V%d", rw), st.text)
+		f.SetCellStyle(shList, fmt.Sprintf("W%d", rw), fmt.Sprintf("X%d", rw), st.money)
+		f.SetCellStyle(shList, fmt.Sprintf("Y%d", rw), fmt.Sprintf("Y%d", rw), st.num)
+		f.SetCellStyle(shList, fmt.Sprintf("Z%d", rw), fmt.Sprintf("Z%d", rw), st.text)
+		if e := r.Emergency; e != nil {
+			f.SetCellValue(shList, fmt.Sprintf("U%d", rw), emergencyStageLabel(r))
+			f.SetCellValue(shList, fmt.Sprintf("V%d", rw), e.CategoryLabel+": "+e.Reason)
+			if e.ProofTotal != nil {
+				f.SetCellValue(shList, fmt.Sprintf("W%d", rw), *e.ProofTotal)
+				if cents(r.PaidAmount) > 0 {
+					f.SetCellValue(shList, fmt.Sprintf("X%d", rw), r.PaidAmount-*e.ProofTotal)
+				}
+			}
+			if e.RatifiedBy != "" {
+				f.SetCellValue(shList, fmt.Sprintf("Y%d", rw), e.RatifiedBy+" · "+fmtStamp(strOf(e.RatifiedAt)))
+			}
+			f.SetCellValue(shList, fmt.Sprintf("Z%d", rw), e.RatificationNotes)
+		}
 	}
 	if len(result.Requests) > 0 {
 		rw := len(result.Requests) + 2
@@ -1570,19 +1666,24 @@ func BuildGeneralLedgerExcel(dateFrom, dateTo, outletID, accountFilter string, s
 	// ── Sheet Buku Besar ─────────────────────────────────────────────────
 	// Meniru tampilan halaman: tiap akun jadi satu blok — baris judul akun,
 	// entri kronologis dengan saldo berjalan, lalu subtotal akun.
-	setHeaderRow(f, shLedger, []string{"Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"}, st.header)
+	// Kolom Referensi (ID mentah) di belakang untuk audit; Keterangan memuat
+	// rincian yang terbaca manusia (nomor struk, meja, kasir, metode).
+	setHeaderRow(f, shLedger, []string{"Tanggal", "Keterangan", "Debit", "Kredit", "Saldo", "Referensi"}, st.header)
 	f.SetColWidth(shLedger, "A", "A", 14)
-	f.SetColWidth(shLedger, "B", "B", 52)
+	f.SetColWidth(shLedger, "B", "B", 56)
 	f.SetColWidth(shLedger, "C", "E", 16)
+	f.SetColWidth(shLedger, "F", "F", 30)
 	r := 2
 	for _, a := range report.Accounts {
 		f.SetCellValue(shLedger, fmt.Sprintf("A%d", r), fmt.Sprintf("%s — %s (%s)", a.Code, a.Name, ledgerGroupLabel(a.Group)))
-		f.MergeCell(shLedger, fmt.Sprintf("A%d", r), fmt.Sprintf("E%d", r))
-		f.SetCellStyle(shLedger, fmt.Sprintf("A%d", r), fmt.Sprintf("E%d", r), st.section)
+		f.MergeCell(shLedger, fmt.Sprintf("A%d", r), fmt.Sprintf("F%d", r))
+		f.SetCellStyle(shLedger, fmt.Sprintf("A%d", r), fmt.Sprintf("F%d", r), st.section)
 		r++
 		for _, e := range a.Entries {
 			f.SetCellValue(shLedger, fmt.Sprintf("A%d", r), fmtDateID(e.Date))
-			f.SetCellValue(shLedger, fmt.Sprintf("B%d", r), e.Description+"\n"+e.Reference+" · "+e.OutletName+"\n"+e.Notes)
+			f.SetCellValue(shLedger, fmt.Sprintf("B%d", r), ledgerEntryText(e))
+			f.SetCellValue(shLedger, fmt.Sprintf("F%d", r), e.Reference)
+			f.SetCellStyle(shLedger, fmt.Sprintf("F%d", r), fmt.Sprintf("F%d", r), st.num)
 			if e.Debit > 0 {
 				f.SetCellValue(shLedger, fmt.Sprintf("C%d", r), e.Debit)
 			}

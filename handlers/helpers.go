@@ -219,11 +219,15 @@ func validatePurchaseRequestScope(c *fiber.Ctx, prID string) bool {
 	}
 
 	var outletID, workUnitID *string
+	var isManual bool
 	err := database.DB.QueryRow(
-		"SELECT outlet_id, work_unit_id FROM purchase_requests WHERE id = $1", prID,
-	).Scan(&outletID, &workUnitID)
+		"SELECT outlet_id, work_unit_id, COALESCE(is_manual_payment, false) FROM purchase_requests WHERE id = $1", prID,
+	).Scan(&outletID, &workUnitID, &isManual)
 	if err != nil {
 		return false
+	}
+	if isManual && outletID == nil && workUnitID == nil {
+		return true
 	}
 
 	// Check outlet scope

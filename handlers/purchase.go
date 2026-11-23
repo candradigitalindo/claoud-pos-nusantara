@@ -165,22 +165,11 @@ func ListPurchaseRequests(c *fiber.Ctx) error {
 
 	// Tingkat kebutuhan & Pembelian Darurat: saringan opsional; antrean layar
 	// selalu menaruh URGENT lalu PRIORITAS yang masih berjalan paling atas.
-	extra := services.PurchaseListExtra{
-		Urgency:      strings.TrimSpace(c.Query("urgency", "")),
-		Ratification: strings.TrimSpace(c.Query("ratification", "")),
-		Emergency:    c.Query("emergency", "") == "true",
-		UrgentFirst:  true,
+	extra, msg := purchaseListExtraFromQuery(c)
+	if msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: msg})
 	}
-	switch extra.Urgency {
-	case "", services.UrgencyRutin, services.UrgencyPrioritas, services.UrgencyUrgent:
-	default:
-		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "urgency harus 'rutin', 'prioritas', atau 'urgent'."})
-	}
-	switch extra.Ratification {
-	case "", "pending", "ratified", "rejected":
-	default:
-		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "ratification harus 'pending', 'ratified', atau 'rejected'."})
-	}
+	extra.UrgentFirst = true
 
 	result, err := services.ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectID, parentID, excludeMasters, search, scopeIDs, wuScopeIDs, allowedTypes, page, limit, extra)
 	if err != nil {
@@ -191,6 +180,35 @@ func ListPurchaseRequests(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: result})
+}
+
+// purchaseListExtraFromQuery membaca saringan tingkat kebutuhan & Pembelian
+// Darurat (?urgency, ?ratification, ?emergency=true) — dipakai daftar dan
+// ekspor Pembayaran supaya isi Excel sama dengan layar. msg ≠ "" = 400.
+func purchaseListExtraFromQuery(c *fiber.Ctx) (services.PurchaseListExtra, string) {
+	extra := services.PurchaseListExtra{
+		Urgency:         strings.TrimSpace(c.Query("urgency", "")),
+		Ratification:    strings.TrimSpace(c.Query("ratification", "")),
+		Emergency:       c.Query("emergency", "") == "true",
+		PaymentApproval: strings.TrimSpace(c.Query("payment_approval", "")),
+		ManualOnly:      c.Query("manual_only", "") == "true",
+	}
+	switch extra.Urgency {
+	case "", services.UrgencyRutin, services.UrgencyPrioritas, services.UrgencyUrgent:
+	default:
+		return extra, "urgency harus 'rutin', 'prioritas', atau 'urgent'."
+	}
+	switch extra.Ratification {
+	case "", "pending", "ratified", "rejected":
+	default:
+		return extra, "ratification harus 'pending', 'ratified', atau 'rejected'."
+	}
+	switch extra.PaymentApproval {
+	case "", "unsubmitted", "pending", "approved", "rejected":
+	default:
+		return extra, "payment_approval harus 'unsubmitted', 'pending', 'approved', atau 'rejected'."
+	}
+	return extra, ""
 }
 
 func CreatePurchaseRequest(c *fiber.Ctx) error {
@@ -400,6 +418,14 @@ func UpdatePurchaseStatus(c *fiber.Ctx) error {
 	allowed := false
 	if procAction != "" {
 		allowed = acc.can(reqType, procAction)
+		// Penyetuju (approve) juga boleh langsung menyetujui/menolak pengajuan
+		// urgent yang masih pending, serta menandai selesai pengajuan jasa.
+		if !allowed && status == "pending" && (input.Action == "approve" || input.Action == "reject") {
+			allowed = acc.can(reqType, "approve")
+		}
+		if !allowed && input.Action == "receive" && reqType == services.RequestTypeJasa {
+			allowed = acc.can(reqType, "approve") || acc.can(reqType, "purchasing") || acc.has("finance.payments.pay")
+		}
 	} else {
 		// Mencairkan uang butuh izin sendiri. Sebelumnya cukup
 		// finance.payments.view — izin membaca halaman Pembayaran — sehingga
@@ -588,4 +614,103 @@ func GetPaymentHistories(c *fiber.Ctx) error {
 		})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: histories})
+}
+
+func canApproveFinancePayment(c *fiber.Ctx) bool {
+	role, _ := c.Locals("admin_role").(string)
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "superadmin", "admin", "manager keuangan", "general manager", "direktur":
+		return true
+	}
+	acc, err := loadPurchaseAccess(c)
+	if err != nil {
+		return false
+	}
+	return acc.has("finance.payments.approve")
+}
+
+func CreateManualPayment(c *fiber.Ctx) error {
+	var input models.CreateManualPaymentInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false, Error: "Format data tidak valid.",
+		})
+	}
+	if wuID := strings.TrimSpace(input.WorkUnitID); wuID != "" && !validateWorkUnitAccess(c, wuID) {
+		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
+			Success: false, Error: "Unit kerja tidak dalam scope Anda.",
+		})
+	}
+	actor := purchaseActor(c)
+	input.ActorName, input.ActorID = actor.Name, actor.ID
+
+	result, err := services.CreateManualPayment(input)
+	if err != nil {
+		return purchaseServiceError(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(models.APIResponse{Success: true, Data: result})
+}
+
+func SubmitPaymentApprovalBatch(c *fiber.Ctx) error {
+	var input models.SubmitPaymentApprovalInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false, Error: "Format data tidak valid.",
+		})
+	}
+	for _, id := range input.IDs {
+		id = strings.TrimSpace(id)
+		if id != "" && !validatePurchaseRequestScope(c, id) {
+			return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
+				Success: false, Error: "Akses pengajuan tidak diizinkan.",
+			})
+		}
+	}
+	actor := purchaseActor(c)
+	input.ActorName, input.ActorID = actor.Name, actor.ID
+
+	batchNo, count, err := services.SubmitPaymentApprovalBatch(input)
+	if err != nil {
+		return purchaseServiceError(c, err)
+	}
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"batch_number": batchNo,
+			"count":        count,
+		},
+	})
+}
+
+func DecidePaymentApprovalBatch(c *fiber.Ctx) error {
+	if !canApproveFinancePayment(c) {
+		return purchaseForbidden(c, "Hanya Manager Keuangan atau General Manager yang dapat menyetujui/menolak pengajuan pembayaran.")
+	}
+	var input models.DecidePaymentApprovalInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+			Success: false, Error: "Format data tidak valid.",
+		})
+	}
+	for _, id := range input.IDs {
+		id = strings.TrimSpace(id)
+		if id != "" && !validatePurchaseRequestScope(c, id) {
+			return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
+				Success: false, Error: "Akses pengajuan tidak diizinkan.",
+			})
+		}
+	}
+	actor := purchaseActor(c)
+	input.ActorName, input.ActorID = actor.Name, actor.ID
+
+	count, err := services.DecidePaymentApprovalBatch(input)
+	if err != nil {
+		return purchaseServiceError(c, err)
+	}
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"count": count,
+		},
+	})
 }

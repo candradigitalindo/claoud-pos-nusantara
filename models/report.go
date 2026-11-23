@@ -323,9 +323,13 @@ type GeneralLedgerAccount struct {
 }
 
 type GeneralLedgerEntry struct {
-	Source      string  `json:"source"`
-	SourceID    string  `json:"source_id"`
-	Reference   string  `json:"reference"`
+	Source    string `json:"source"`
+	SourceID  string `json:"source_id"`
+	Reference string `json:"reference"`
+	// Detail: rincian ringkas yang terbaca manusia, mis. "TRX-01M7SSP8 ·
+	// Meja 9 · Araaa · Kasir Zia · QRIS" (POS) atau "Vendor X · dibayar Y".
+	// Reference tetap ID mentah untuk audit.
+	Detail      string  `json:"detail"`
 	OutletName  string  `json:"outlet_name"`
 	Notes       string  `json:"notes"`
 	ProofURL    string  `json:"proof_url"`

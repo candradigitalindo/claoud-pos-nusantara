@@ -70,6 +70,7 @@ const PurchaseGoods       = () => import('@/pages/PurchaseGoods.vue')
 const PurchaseServices    = () => import('@/pages/PurchaseServices.vue')
 const ProcurementDashboardPage = () => import('@/pages/ProcurementDashboard.vue')
 const ProcurementPayments     = () => import('@/pages/ProcurementPayments.vue')
+const EmergencyPurchaseRecap  = () => import('@/pages/EmergencyPurchaseRecap.vue')
 const WorkUnits           = () => import('@/pages/WorkUnits.vue')
 const Vendors             = () => import('@/pages/Vendors.vue')
 const VendorDetail        = () => import('@/pages/VendorDetail.vue')
@@ -340,6 +341,13 @@ const routes = [
         name: 'ProcurementPayments',
         component: ProcurementPayments,
         meta: { title: 'Pembayaran — Cloud POS', requiresAuth: true, permission: 'finance.payments.view' },
+      },
+      {
+        // Audit Pembelian Darurat: Keuangan dan penyetuju barang/jasa.
+        path: 'emergency-purchase-recap',
+        name: 'EmergencyPurchaseRecap',
+        component: EmergencyPurchaseRecap,
+        meta: { title: 'Rekap Pembelian Darurat — Cloud POS', requiresAuth: true, permission: ['finance.payments.view', 'procurement.requests.approve'] },
       },
       {
         path: 'bank-accounts',

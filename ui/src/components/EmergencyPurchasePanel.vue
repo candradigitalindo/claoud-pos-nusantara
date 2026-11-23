@@ -108,13 +108,16 @@
             </div>
             <p v-if="!em.proof_url" class="mt-1 text-right text-[11px] text-gray-400">Sahkan aktif setelah pengaju mengunggah struk.</p>
           </template>
-          <p v-else class="mt-1 text-gray-500">Menunggu penyetuju mengesahkan<template v-if="!em.proof_url"> — unggah struk dulu</template>.</p>
+          <p v-else class="mt-1 text-gray-500">Menunggu penyetuju mengesahkan<template v-if="!em.proof_url"> — struk belum diunggah pengaju</template>.</p>
         </template>
         <template v-else>
           <p class="mt-1" :class="em.ratification === 'ratified' ? 'text-emerald-700' : 'text-red-700'">
             {{ em.ratification === 'ratified' ? 'Disahkan' : 'Pengesahan ditolak' }} oleh <b>{{ em.ratified_by || '-' }}</b><template v-if="em.ratified_at"> · {{ formatDateTime(em.ratified_at) }}</template>
           </p>
           <p v-if="em.ratification_notes" class="mt-0.5 break-words text-gray-600">Catatan: {{ em.ratification_notes }}</p>
+          <p v-if="em.ratification === 'rejected'" class="mt-1 rounded bg-red-50 px-2 py-1 text-red-800">
+            Temuan: pembayaran tidak dibatalkan karena uangnya sudah keluar — tindak lanjuti, mis. menjadi tanggungan manajer outlet.
+          </p>
         </template>
       </div>
     </div>

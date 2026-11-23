@@ -135,7 +135,7 @@
                       {{ entry.debit > 0 ? 'D' : 'K' }} {{ formatRupiah(entry.debit > 0 ? entry.debit : entry.credit) }}
                     </span>
                   </div>
-                  <p class="mt-0.5 text-sm text-gray-800 break-words">{{ entry.description }}</p><p class="text-xs text-gray-500">{{ entry.outlet_name }} · {{ entry.reference }}</p><p v-if="entry.notes" class="mt-1 whitespace-pre-wrap text-xs text-gray-600">{{ entry.notes }}</p><AppActionButton v-if="safeUrl(entry.proof_url)" icon="photo" label="Lihat bukti transaksi" :href="safeUrl(entry.proof_url)" target="_blank" rel="noopener" />
+                  <p class="mt-0.5 text-sm text-gray-800 break-words">{{ entry.description }}</p><p class="text-xs text-gray-500" :title="entry.reference || undefined">{{ metaLine(entry) }}</p><p v-if="showNotes(entry)" class="mt-1 whitespace-pre-wrap text-xs text-gray-600">{{ entry.notes }}</p><AppActionButton v-if="safeUrl(entry.proof_url)" icon="photo" label="Lihat bukti transaksi" :href="safeUrl(entry.proof_url)" target="_blank" rel="noopener" />
                   <div class="mt-1 flex items-baseline justify-between gap-2 text-xs">
                     <span class="text-gray-400">Saldo</span>
                     <span class="font-semibold" :class="balanceClass(entry.balance)">{{ formatRupiah(entry.balance) }}</span>
@@ -173,7 +173,7 @@
                   <tbody>
                     <tr v-for="(entry, i) in paginatedEntries(account)" :key="pageStart(account) + i" class="border-b border-gray-50 hover:bg-gray-50/50">
                       <td class="py-2 px-4 text-gray-600 whitespace-nowrap">{{ formatDateStr(entry.date) }}</td>
-                      <td class="py-2 px-4 text-gray-800 min-w-[14rem]">{{ entry.description }}<p class="text-xs text-gray-500">{{ entry.outlet_name }} · {{ entry.reference }}</p><p v-if="entry.notes" class="mt-1 whitespace-pre-wrap text-xs text-gray-600">{{ entry.notes }}</p><AppActionButton v-if="safeUrl(entry.proof_url)" icon="photo" label="Lihat bukti transaksi" :href="safeUrl(entry.proof_url)" target="_blank" rel="noopener" /></td>
+                      <td class="py-2 px-4 text-gray-800 min-w-[14rem]">{{ entry.description }}<p class="text-xs text-gray-500" :title="entry.reference || undefined">{{ metaLine(entry) }}</p><p v-if="showNotes(entry)" class="mt-1 whitespace-pre-wrap text-xs text-gray-600">{{ entry.notes }}</p><AppActionButton v-if="safeUrl(entry.proof_url)" icon="photo" label="Lihat bukti transaksi" :href="safeUrl(entry.proof_url)" target="_blank" rel="noopener" /></td>
                       <td class="py-2 px-4 text-right font-medium whitespace-nowrap" :class="entry.debit > 0 ? 'text-blue-700' : 'text-gray-300'">{{ entry.debit > 0 ? formatRupiah(entry.debit) : '-' }}</td>
                       <td class="py-2 px-4 text-right font-medium whitespace-nowrap" :class="entry.credit > 0 ? 'text-rose-600' : 'text-gray-300'">{{ entry.credit > 0 ? formatRupiah(entry.credit) : '-' }}</td>
                       <td class="py-2 px-4 text-right font-semibold whitespace-nowrap" :class="balanceClass(entry.balance)">{{ formatRupiah(entry.balance) }}</td>
@@ -275,6 +275,21 @@ const GROUP_MAP = {
 }
 
 const BADGE_BASE = 'items-center px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap'
+
+// Rincian entri: "outlet · TRX-01M7SSP8 · Meja 9 · Araaa · Kasir Zia · QRIS".
+// ID mentah (ULID/UUID) tidak ditampilkan — tetap ada di tooltip & Excel.
+const OPAQUE_ID = /^([0-9A-HJKMNP-TV-Z]{26}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+function metaLine(e) {
+  let detail = e.detail || ''
+  const ref = String(e.reference || '').trim()
+  if (!detail && ref && !OPAQUE_ID.test(ref) && !String(e.description || '').includes(ref)) detail = ref
+  return [e.outlet_name, detail].filter(Boolean).join(' · ')
+}
+// Catatan yang hanya mengulang keterangan tidak ditampilkan dua kali.
+function showNotes(e) {
+  const n = String(e.notes || '').trim()
+  return !!n && !String(e.description || '').includes(n)
+}
 
 function groupLabel(g) { return GROUP_MAP[g]?.label ?? g }
 function groupCls(g) { return GROUP_MAP[g]?.cls ?? 'bg-gray-100 text-gray-700' }

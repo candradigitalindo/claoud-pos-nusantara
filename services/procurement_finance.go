@@ -133,7 +133,9 @@ func payableExpr(alias string) string {
 // sisa item dan punya pembayaran sendiri — uangnya lenyap dari Arus Kas,
 // Laba/Rugi, Neraca dan Buku Besar sekaligus.
 func countableCond(alias string) string {
-	return "NOT " + fullySplitMasterCond(alias)
+	p := prefixOf(alias)
+	return fmt.Sprintf("(NOT %s AND NOT (COALESCE(%sis_manual_payment, false) AND COALESCE(%spayment_approval_status, '') <> 'approved'))",
+		fullySplitMasterCond(alias), p, p)
 }
 
 // procurementClassExpr: kelas belanja sebuah pengajuan untuk laporan keuangan.

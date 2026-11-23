@@ -164,9 +164,9 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	documents.Post("/:id/download", middleware.RequirePermission("documents.download"), handlers.DownloadDocument)
 
 	// Work Units (Move to top to avoid 404/conflicts)
-	admin.Get("/work-units/me", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.GetMyWorkUnit)
-	admin.Get("/my-work-units", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.GetMyWorkUnits)
-	admin.Get("/work-units", middleware.RequirePermission("workunits.view"), handlers.ListWorkUnits)
+	admin.Get("/work-units/me", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetMyWorkUnit)
+	admin.Get("/my-work-units", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetMyWorkUnits)
+	admin.Get("/work-units", middleware.RequireAnyPermission("workunits.view", "finance.payments.view"), handlers.ListWorkUnits)
 	admin.Get("/work-units/:id", middleware.RequirePermission("workunits.view"), handlers.GetWorkUnit)
 	admin.Post("/work-units", middleware.RequirePermission("workunits.create"), handlers.CreateWorkUnit)
 	admin.Put("/work-units/:id", middleware.RequirePermission("workunits.update"), handlers.UpdateWorkUnit)
@@ -399,6 +399,13 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/purchase-requests/:id/emergency/resend", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit"), handlers.ResendEmergencyPayout)
 	admin.Get("/procurement/emergency-settings", middleware.RequirePermission("procurement.requests.view"), handlers.GetEmergencySettings)
 	admin.Put("/procurement/emergency-settings", middleware.RequirePermission("procurement.requests.approve"), handlers.UpdateEmergencySettings)
+	// Rekap bulanan Pembelian Darurat untuk audit Keuangan (dan penyetuju).
+	admin.Get("/procurement/emergency-recap", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.approve"), handlers.GetEmergencyRecap)
+	admin.Get("/procurement/emergency-recap/export", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.approve"), handlers.ExportEmergencyRecap)
+	// Pembayaran Manual & Pengajuan / Persetujuan Pembayaran (Mgr Keuangan / GM)
+	admin.Post("/purchase-requests/manual-payment", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), handlers.CreateManualPayment)
+	admin.Post("/purchase-requests/payment-submissions", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), handlers.SubmitPaymentApprovalBatch)
+	admin.Post("/purchase-requests/payment-approvals", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), handlers.DecidePaymentApprovalBatch)
 	admin.Get("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.ListPurchaseRequests)
 	admin.Get("/purchasing/export", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.ExportPurchasing)
 	admin.Get("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetPurchaseRequest)
@@ -446,8 +453,8 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Delete("/bank-accounts/:id", middleware.RequirePermission("finance.bank.delete"), handlers.DeleteBankAccount)
 
 	// Vendors
-	// Vendor list/lookup is also needed by procurement requesters (to pick a vendor).
-	admin.Get("/vendors", middleware.RequireAnyPermission("vendors.view", "procurement.requests.view", "procurement.requests.submit", "procurement.requests.purchasing", "procurement.rawmaterials.view", "procurement.rawmaterials.submit", "procurement.rawmaterials.purchasing"), handlers.ListVendors)
+	// Vendor list/lookup is also needed by procurement requesters and finance (to pick a vendor).
+	admin.Get("/vendors", middleware.RequireAnyPermission("vendors.view", "procurement.requests.view", "procurement.requests.submit", "procurement.requests.purchasing", "procurement.rawmaterials.view", "procurement.rawmaterials.submit", "procurement.rawmaterials.purchasing", "finance.payments.view"), handlers.ListVendors)
 	// finance.payments.view: modal Bayar memuat rekening vendor tujuan dari sini.
 	admin.Get("/vendors/:id", middleware.RequireAnyPermission("vendors.view", "procurement.requests.view", "procurement.requests.submit", "procurement.requests.purchasing", "procurement.rawmaterials.view", "procurement.rawmaterials.submit", "procurement.rawmaterials.purchasing", "finance.payments.view"), handlers.GetVendor)
 	admin.Get("/vendors/:id/detail", middleware.RequirePermission("vendors.view"), handlers.GetVendorDetail)
@@ -465,6 +472,9 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Delete("/asset-categories/:id", middleware.RequirePermission("assets.delete"), handlers.DeleteAssetCategory)
 
 	admin.Get("/assets", middleware.RequirePermission("assets.view"), handlers.ListAssets)
+	// Ekspor Excel daftar Perlengkapan: saringan sama dengan layar, tanpa
+	// paginasi. Path terpisah supaya tidak pernah bentrok dengan "/assets/:id".
+	admin.Get("/asset-export", middleware.RequirePermission("assets.view"), handlers.ExportAssets)
 	admin.Get("/assets/:id", middleware.RequirePermission("assets.view"), handlers.GetAsset)
 	admin.Post("/assets", middleware.RequirePermission("assets.create"), handlers.CreateAsset)
 	admin.Put("/assets/:id", middleware.RequirePermission("assets.update"), handlers.UpdateAsset)

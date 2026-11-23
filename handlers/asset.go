@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"fmt"
+
 	"cloud-pos/models"
 	"cloud-pos/services"
 
@@ -13,15 +15,79 @@ func assetActor(c *fiber.Ctx) string {
 	return actor
 }
 
+// assetPageSize — layar Perlengkapan menampilkan 100 aset per halaman.
+const assetPageSize = 100
+
+// assetListFilter membaca saringan daftar Perlengkapan dari query string.
+// Cakupan outlet selalu dari role pengguna, tidak pernah dari parameter.
+func assetListFilter(c *fiber.Ctx) services.AssetListFilter {
+	return services.AssetListFilter{
+		OutletID:    c.Query("outlet_id"),
+		Search:      c.Query("search"),
+		Condition:   c.Query("condition"),
+		Status:      c.Query("status"),
+		OutletScope: getOutletScope(c),
+	}
+}
+
+// assetListPage = PaginatedResponse + ringkasan seluruh hasil saringan.
+type assetListPage struct {
+	models.PaginatedResponse
+	Summary services.AssetListSummary `json:"summary"`
+}
+
+// ListAssets: dengan ?page= mengembalikan satu halaman (bawaan 100 baris) plus
+// ringkasan seluruh hasil saringan untuk kartu di atas daftar. Tanpa ?page=
+// tetap mengembalikan daftar utuh seperti semula — pemilih aset di halaman
+// Penghapusan Aset dan Detail Projek membutuhkan semua baris.
 func ListAssets(c *fiber.Ctx) error {
-	assets, err := services.ListAssets(
-		c.Query("outlet_id"), c.Query("search"), c.Query("condition"), c.Query("status"), getOutletScope(c))
+	f := assetListFilter(c)
+	if c.Query("page") == "" {
+		assets, err := services.ListAssets(f)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+				Success: false, Error: "Gagal memuat aset: " + err.Error(),
+			})
+		}
+		return c.JSON(models.APIResponse{Success: true, Data: assets})
+	}
+
+	limit := c.QueryInt("limit", assetPageSize)
+	if limit < 1 || limit > 1000 {
+		limit = assetPageSize
+	}
+	assets, summary, page, err := services.ListAssetsPage(f, c.QueryInt("page", 1), limit)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
 			Success: false, Error: "Gagal memuat aset: " + err.Error(),
 		})
 	}
-	return c.JSON(models.APIResponse{Success: true, Data: assets})
+	totalPages := (summary.Count + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	return c.JSON(assetListPage{
+		PaginatedResponse: models.PaginatedResponse{
+			Success: true, Data: assets, Page: page, Limit: limit,
+			Total: summary.Count, TotalPages: totalPages,
+		},
+		Summary: summary,
+	})
+}
+
+// ExportAssets mengunduh daftar Perlengkapan sebagai Excel. Saringannya sama
+// dengan layar, tapi TANPA paginasi: berkas selalu memuat semua aset yang
+// lolos saringan, bukan hanya 100 baris di halaman yang sedang dibuka.
+func ExportAssets(c *fiber.Ctx) error {
+	buf, filename, err := services.ExportAssetList(assetListFilter(c), assetActor(c))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
+			Success: false, Error: "Gagal menyiapkan Excel: " + err.Error(),
+		})
+	}
+	c.Set(fiber.HeaderContentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s"`, filename))
+	return c.Send(buf.Bytes())
 }
 
 func GetAsset(c *fiber.Ctx) error {

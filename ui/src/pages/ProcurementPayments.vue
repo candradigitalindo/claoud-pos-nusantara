@@ -3,10 +3,22 @@
     <!-- Hero Header -->
     <div class="hero-header">
       <div class="hero-bg" />
-      <div class="hero-content">
+      <div class="hero-content flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 class="hero-title">Pembayaran</h1>
-          <p class="hero-sub">Kelola pembayaran pengadaan per vendor</p>
+          <p class="hero-sub">Kelola pembayaran pengadaan, pengajuan bayar ke Manager Keuangan / GM, & pembayaran manual</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            @click="openManualModal"
+            class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 transition-colors cursor-pointer"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Buat Pembayaran Manual
+          </button>
         </div>
       </div>
     </div>
@@ -70,7 +82,7 @@
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Nomor, nama pengadaan, atau vendor…"
+            placeholder="Nomor, batch (AJU-…), nama pengadaan, atau vendor…"
             class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white/85 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all"
             @keydown.enter="page = 1; clearSelection(); fetchList()"
           />
@@ -101,6 +113,19 @@
             <option v-for="opt in typeFilterOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </SearchableSelect>
         </div>
+        <!-- Pembelian Darurat & tingkat kebutuhan (ikut ke Download Excel). -->
+        <div class="flex flex-col gap-1 min-w-[160px]">
+          <label class="text-sm font-medium text-gray-700">Jenis</label>
+          <SearchableSelect v-model="filterKind" aria-label="Filter jenis pembelian" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white/85 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all">
+            <option v-for="opt in KIND_FILTERS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </SearchableSelect>
+        </div>
+        <div class="flex flex-col gap-1 min-w-[210px]">
+          <label class="text-sm font-medium text-gray-700">Persetujuan Bayar</label>
+          <SearchableSelect v-model="filterApproval" aria-label="Filter persetujuan pembayaran" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white/85 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all">
+            <option v-for="opt in APPROVAL_FILTERS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </SearchableSelect>
+        </div>
         <button @click="page = 1; clearSelection(); fetchList()"
           class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
           Tampilkan
@@ -119,14 +144,43 @@
     <!-- Floating Selection Bar -->
     <Transition name="slide-bar">
       <div v-if="selectedIds.size > 0" class="selection-bar">
-        <div class="flex items-center gap-3">
-          <span class="text-sm font-semibold text-white">{{ selectedIds.size }} pengajuan dipilih</span>
-          <span class="text-xs text-emerald-200">Vendor: {{ selectedVendorName || '-' }}</span>
-          <span class="text-xs text-emerald-200">Total: {{ formatRupiah(selectedTotal) }}</span>
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="text-sm font-semibold text-white">{{ selectedIds.size }} tagihan dipilih</span>
+          <span class="text-xs text-emerald-200">Vendor: {{ selectedVendorSummary }}</span>
+          <span class="text-xs font-semibold text-emerald-100">Total: {{ formatRupiah(selectedTotal) }}</span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <button class="bar-btn bar-cancel" @click="clearSelection">Batal</button>
-          <button v-if="canPay" class="bar-btn bar-pay" @click="openBatchPay">Bayar {{ selectedIds.size }} Pengajuan</button>
+          <button
+            v-if="selectedSubmittableRows.length > 0"
+            class="bar-btn bg-amber-400 text-amber-950 hover:bg-amber-300"
+            @click="openSubmitApprovalModal(selectedSubmittableRows)"
+          >
+            📝 Buat Pengajuan Pembayaran ({{ selectedSubmittableRows.length }})
+          </button>
+          <button
+            v-if="canApprovePayment && selectedApprovableRows.length > 0"
+            class="bar-btn bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
+            :disabled="approvalDecisionLoading"
+            @click="approvePaymentRows(selectedApprovableRows)"
+          >
+            ✅ Setujui Pembayaran ({{ selectedApprovableRows.length }})
+          </button>
+          <button
+            v-if="canApprovePayment && selectedApprovableRows.length > 0"
+            class="bar-btn bg-red-500 text-white hover:bg-red-600"
+            :disabled="approvalDecisionLoading"
+            @click="openRejectApprovalModal(selectedApprovableRows)"
+          >
+            ✕ Tolak ({{ selectedApprovableRows.length }})
+          </button>
+          <button
+            v-if="canPay && selectedPayableRows.length > 0 && selectedPayableRows.length === selectedRows.length"
+            class="bar-btn bar-pay"
+            @click="openBatchPay"
+          >
+            💳 Bayar {{ selectedPayableRows.length }} Tagihan
+          </button>
         </div>
       </div>
     </Transition>
@@ -160,10 +214,18 @@
             <template v-else>
               <tr v-for="row in requests" :key="row.id" class="hover:bg-gray-50 transition-colors" :class="{ 'bg-emerald-50/40': selectedIds.has(row.id) }">
                 <td v-if="showSelect" class="px-3 py-3">
-                  <input v-if="isPayable(row)" type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row)" class="tbl-check" />
+                  <input v-if="isCheckable(row)" type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row)" class="tbl-check" />
                 </td>
                 <td class="px-4 py-3 align-middle">
                   <span class="font-mono text-xs text-gray-700">{{ row.request_number || '-' }}</span>
+                  <div v-if="row.is_manual_payment" class="mt-0.5">
+                    <span class="inline-flex items-center rounded-full bg-purple-100 border border-purple-200 px-2 py-0.5 text-[10px] font-semibold text-purple-800">
+                      Pembayaran Manual
+                    </span>
+                  </div>
+                  <div v-if="row.payment_batch_number" class="text-[10px] font-mono text-emerald-700 mt-0.5">
+                    Batch: {{ row.payment_batch_number }}
+                  </div>
                   <div v-if="row.parent_number" class="text-[10px] text-gray-400 mt-0.5">Induk: {{ row.parent_number }}</div>
                 </td>
                 <td class="px-4 py-3 align-middle">
@@ -179,8 +241,22 @@
                 </td>
                 <td class="px-4 py-3 align-middle">
                   <div class="font-medium text-gray-900">{{ row.vendor_name || '-' }}</div>
-                  <div v-if="row.parent_id" class="mt-0.5">
-                    <span class="split-badge">Split</span>
+                  <div v-if="row.invoice_number" class="mt-0.5 font-mono text-[11px] text-gray-500">
+                    Inv: {{ row.invoice_number }}
+                  </div>
+                  <div class="mt-0.5 flex flex-wrap items-center gap-1">
+                    <span v-if="row.parent_id" class="split-badge">Split</span>
+                    <a
+                      v-if="safeUrl(row.invoice_url)"
+                      :href="safeUrl(row.invoice_url)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      @click.stop
+                      class="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                      title="Buka berkas invoice yang diunggah Purchasing"
+                    >
+                      📄 Lihat Invoice
+                    </a>
                   </div>
                 </td>
                 <td class="px-4 py-3 align-middle">{{ row.work_unit_name || '-' }}</td>
@@ -193,8 +269,14 @@
                 <td class="px-4 py-3 align-middle">
                   <div class="flex flex-col items-start gap-1">
                     <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+                    <span v-if="showApprovalBadge(row)" :class="paymentApprovalBadgeCls(row)" :title="paymentApprovalHint(row)">
+                      {{ paymentApprovalLabel(row) }}
+                    </span>
+                    <span v-if="row.payment_approval_status === 'rejected' && row.payment_rejection_reason" class="max-w-[220px] text-[10px] leading-snug text-red-600">
+                      Alasan tolak: {{ row.payment_rejection_reason }}
+                    </span>
                     <PurchaseUrgencyBadges :doc="row" />
-                    <span v-if="isPhysicalPurchaseType(row.request_type)" :class="receiptBadgeCls(row)" :title="receiptHint(row)">
+                    <span v-if="!row.is_manual_payment && isPhysicalPurchaseType(row.request_type)" :class="receiptBadgeCls(row)" :title="receiptHint(row)">
                       {{ receiptLabel(row) }}
                     </span>
                     <span v-if="row.cash_payout" :class="payoutBadgeCls(row.cash_payout)" :title="payoutHint(row.cash_payout)">
@@ -211,9 +293,13 @@
                 </td>
                 <td class="px-4 py-3 align-middle text-gray-700">{{ formatDateTime(row.created_at) }}</td>
                 <td class="px-4 py-3 align-middle text-right">
-                  <div class="action-btns">
+                  <div class="action-btns justify-end">
                     <AppActionButton icon="view" label="Lihat Detail" @click="viewDetail(row)" />
+                    <AppActionButton icon="send" tone="warning" label="Ajukan Pembayaran ke Mgr Keuangan / GM" v-if="canSubmitRowForApproval(row)" @click="openSubmitApprovalModal([row])" />
+                    <AppActionButton icon="approve" label="Setujui Pembayaran (Mgr Keuangan / GM)" v-if="canApprovePayment && canApproveRowPayment(row)" :disabled="approvalDecisionLoading" @click="approvePaymentRows([row])" />
+                    <AppActionButton icon="reject" label="Tolak Pengajuan Pembayaran" v-if="canApprovePayment && canApproveRowPayment(row)" :disabled="approvalDecisionLoading" @click="openRejectApprovalModal([row])" />
                     <AppActionButton icon="pay" label="Bayar" v-if="canPay && isPayable(row)" @click="openPayModal(row)" />
+                    <AppActionButton icon="receive" label="Selesaikan Jasa" v-if="canPay && canFinishJasa(row)" @click="finishJasa(row)" />
                     <AppActionButton icon="cancel" label="Tarik tugas Kas Kasir Outlet" v-if="canPay && row.cash_payout?.status === 'pending'" @click="cancelPayout(row)" />
                     <AppActionButton icon="return" label="Kembalikan detail pembayaran ke Pembelian" v-if="canPay && canReturnPayTo(row)" @click="openReturnPayTo(row)" />
                   </div>
@@ -233,7 +319,13 @@
       <div v-if="detail" class="space-y-4">
         <div class="flex flex-wrap items-center gap-2 text-xs">
           <span :class="statusBadge(detail.status)" class="text-sm">{{ statusLabel(detail.status) }}</span>
-          <span v-if="isPhysicalPurchaseType(detail.request_type)" :class="receiptBadgeCls(detail)" class="text-sm">
+          <span v-if="detail.is_manual_payment" class="inline-flex items-center rounded-full bg-purple-100 border border-purple-200 px-2.5 py-0.5 text-xs font-semibold text-purple-800">
+            Pembayaran Manual (Di Luar Pengajuan)
+          </span>
+          <span v-if="showApprovalBadge(detail)" :class="paymentApprovalBadgeCls(detail)">
+            {{ paymentApprovalLabel(detail) }}
+          </span>
+          <span v-if="!detail.is_manual_payment && isPhysicalPurchaseType(detail.request_type)" :class="receiptBadgeCls(detail)" class="text-sm">
             {{ receiptLabel(detail) }}
           </span>
           <span v-if="detail.request_number" class="font-mono text-sm text-gray-600">No. {{ detail.request_number }}</span>
@@ -311,15 +403,46 @@
             </div>
           </div>
 
-          <!-- Tujuan pembayaran: diisi Pembelian, Keuangan hanya membaca. -->
-          <div v-if="PAYABLE_STATUSES.includes(detail.status) && remainingOf(detail) > 0 && !detail.emergency" class="sm:col-span-2">
-            <PurchasePayToCard :pay-to="detail.pay_to" :amount="remainingOf(detail)" />
+          <!-- Persetujuan Pengajuan Pembayaran (Manager Keuangan / General Manager) -->
+          <div v-if="detail.payment_approval_status || detail.is_manual_payment || detail.payment_batch_number" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden sm:col-span-2">
+            <div class="border-l-4 px-3 py-2.5" :class="detail.payment_approval_status === 'approved' ? 'border-emerald-500' : detail.payment_approval_status === 'rejected' ? 'border-red-500' : 'border-amber-500'">
+              <p class="text-[11px] font-semibold uppercase tracking-wider mb-1.5" :class="detail.payment_approval_status === 'approved' ? 'text-emerald-700' : detail.payment_approval_status === 'rejected' ? 'text-red-700' : 'text-amber-700'">
+                Persetujuan Pembayaran (Manager Keuangan / General Manager)
+              </p>
+              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                <dt class="text-gray-400">Status</dt>
+                <dd class="font-semibold text-gray-900">{{ paymentApprovalLabel(detail) }}</dd>
+                <template v-if="detail.payment_batch_number">
+                  <dt class="text-gray-400">No. Pengajuan Bayar</dt>
+                  <dd class="font-mono font-medium text-emerald-700">{{ detail.payment_batch_number }}</dd>
+                </template>
+                <template v-if="detail.payment_submitted_by">
+                  <dt class="text-gray-400">Diajukan Oleh</dt>
+                  <dd class="font-medium text-gray-900">{{ detail.payment_submitted_by }}<span v-if="detail.payment_submitted_at" class="font-normal text-gray-500"> · {{ formatDateTime(detail.payment_submitted_at) }}</span></dd>
+                </template>
+                <template v-if="detail.payment_submission_notes">
+                  <dt class="text-gray-400">Catatan Pengajuan</dt>
+                  <dd class="text-gray-700">{{ detail.payment_submission_notes }}</dd>
+                </template>
+                <template v-if="detail.payment_approved_by">
+                  <dt class="text-gray-400">Disetujui Oleh</dt>
+                  <dd class="font-semibold text-emerald-700">{{ detail.payment_approved_by }}<span v-if="detail.payment_approved_at" class="font-normal text-gray-500"> · {{ formatDateTime(detail.payment_approved_at) }}</span></dd>
+                </template>
+                <template v-if="detail.payment_rejected_by">
+                  <dt class="text-gray-400">Ditolak Oleh</dt>
+                  <dd class="font-semibold text-red-700">{{ detail.payment_rejected_by }}<span v-if="detail.payment_rejected_at" class="font-normal text-gray-500"> · {{ formatDateTime(detail.payment_rejected_at) }}</span></dd>
+                </template>
+                <template v-if="detail.payment_rejection_reason">
+                  <dt class="text-gray-400">Alasan Tolak</dt>
+                  <dd class="text-red-700">{{ detail.payment_rejection_reason }}</dd>
+                </template>
+              </dl>
+            </div>
           </div>
-          <!-- Pembelian Darurat: tunai dari laci outlet lewat tablet kasir. -->
-          <div v-else-if="detail.emergency" class="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900">
-            <p class="font-semibold">Pembelian Darurat — {{ detail.emergency.category_label || '-' }}</p>
-            <p class="mt-0.5">{{ detail.emergency.reason }}</p>
-            <p class="mt-1 text-rose-800">Dibayar tunai dari Kas Kasir Outlet lewat tablet (PIN Manager/SVP) kepada {{ detail.emergency.recipient || '-' }}; tidak ditransfer Kantor Pusat. Struk &amp; pengesahan ada di halaman Pengadaan.</p>
+
+          <!-- Tujuan pembayaran: diisi Pembelian, Keuangan hanya membaca. -->
+          <div v-if="PAYABLE_STATUSES.includes(detail.status) && remainingOf(detail) > 0" class="sm:col-span-2">
+            <PurchasePayToCard :pay-to="detail.pay_to" :amount="remainingOf(detail)" />
           </div>
 
           <!-- Pembayaran -->
@@ -359,8 +482,8 @@
           </div>
 
           <!-- No. Invoice & Catatan -->
-          <div v-if="detail.invoice_number || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
-            <div class="border-l-4 border-gray-400 px-3 py-2.5">
+          <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
+            <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-3">
               <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
                   <dt class="text-gray-400">No. Invoice</dt>
@@ -371,6 +494,36 @@
                   <dd class="text-gray-700">{{ detail.notes }}</dd>
                 </template>
               </dl>
+              <div v-if="safeUrl(detail.invoice_url)" class="flex items-center gap-2">
+                <a v-if="isImageUrl(safeUrl(detail.invoice_url))" :href="safeUrl(detail.invoice_url)" target="_blank" rel="noopener noreferrer" class="shrink-0">
+                  <img :src="safeUrl(detail.invoice_url)" alt="Invoice Vendor" class="h-10 w-10 rounded border border-gray-200 object-cover" />
+                </a>
+                <AppActionButton icon="photo" label="Lihat Invoice Vendor" :href="safeUrl(detail.invoice_url)" target="_blank" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Struk / Nota Pembelian dari Purchasing -->
+          <div v-if="detail.struks?.length" class="rounded-lg border border-blue-200 bg-blue-50/40 shadow-sm overflow-hidden col-span-1 sm:col-span-2">
+            <div class="border-l-4 border-blue-500 px-3 py-2.5">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-blue-700 mb-2">
+                Struk / Invoice Pembelian dari Purchasing ({{ detail.struks.length }})
+              </p>
+              <ul class="divide-y divide-blue-100">
+                <li v-for="s in detail.struks" :key="s.id" class="flex flex-wrap items-center justify-between gap-2 py-1.5 text-xs">
+                  <div class="min-w-0">
+                    <span class="font-mono font-semibold text-gray-900">{{ s.struk_number }}</span>
+                    <span class="text-gray-500 ml-1.5">· {{ formatDate(s.struk_date) }} · {{ formatRupiah(s.total) }}</span>
+                    <span v-if="s.created_by" class="text-gray-400 ml-1">({{ s.created_by }})</span>
+                    <p v-if="s.notes" class="text-[11px] text-gray-500 mt-0.5">{{ s.notes }}</p>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <span v-if="s.remaining <= 0" class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lunas</span>
+                    <span v-else class="text-[11px] font-medium text-amber-700">Sisa {{ formatRupiah(s.remaining) }}</span>
+                    <AppActionButton v-if="safeUrl(s.photo_url)" icon="photo" label="Lihat Foto Invoice/Struk" :href="safeUrl(s.photo_url)" target="_blank" />
+                  </div>
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -405,6 +558,11 @@
                 <div>
                   <span class="text-gray-400">Jumlah:</span>
                   <span class="font-semibold text-emerald-700 ml-1">{{ formatRupiah(ph.amount) }}</span>
+                </div>
+                <div v-if="ph.bank_fee > 0">
+                  <span class="text-gray-400">Biaya Bank:</span>
+                  <span class="font-semibold text-amber-700 ml-1">+{{ formatRupiah(ph.bank_fee) }}</span>
+                  <span class="text-gray-500 ml-1">(Total: {{ formatRupiah((Number(ph.amount) || 0) + (Number(ph.bank_fee) || 0)) }})</span>
                 </div>
                 <div v-if="ph.paid_by">
                   <span class="text-gray-400">Oleh:</span>
@@ -488,6 +646,10 @@
       </div>
       <template #footer>
         <AppActionButton icon="return" label="Kembalikan detail pembayaran ke Pembelian" v-if="canPay && detail && canReturnPayTo(detail)" @click="openReturnPayTo(detail)" />
+        <AppButton size="sm" variant="secondary" v-if="detail && canSubmitRowForApproval(detail)" @click="showDetail = false; openSubmitApprovalModal([detail])">Ajukan Pembayaran</AppButton>
+        <AppButton size="sm" variant="danger" v-if="canApprovePayment && detail && canApproveRowPayment(detail)" :disabled="approvalDecisionLoading" @click="showDetail = false; openRejectApprovalModal([detail])">Tolak Pembayaran</AppButton>
+        <AppButton size="sm" v-if="canApprovePayment && detail && canApproveRowPayment(detail)" :loading="approvalDecisionLoading" @click="approvePaymentRows([detail])">Setujui Pembayaran</AppButton>
+        <AppActionButton icon="receive" label="Selesaikan Jasa" v-if="canPay && detail && canFinishJasa(detail)" @click="finishJasa(detail)" />
         <AppActionButton icon="pay" label="Bayar" v-if="canPay && detail && isPayable(detail)" @click="showDetail = false; openPayModal(detail)" />
         <AppButton variant="secondary" @click="showDetail = false">Tutup</AppButton>
       </template>
@@ -522,9 +684,35 @@
                     <dt class="text-gray-400">Unit Kerja</dt>
                     <dd class="font-medium text-gray-800 truncate">{{ payTargets[0]?.work_unit_name || '-' }}</dd>
                   </template>
-                  <template v-if="payTargets.length === 1 && payTargets[0]?.invoice_number">
+                  <template v-if="payTargets.length === 1 && (payTargets[0]?.invoice_number || safeUrl(payTargets[0]?.invoice_url))">
                     <dt class="text-gray-400">Invoice</dt>
-                    <dd class="font-medium font-mono text-gray-800">{{ payTargets[0].invoice_number }}</dd>
+                    <dd class="flex flex-wrap items-center gap-2">
+                      <span v-if="payTargets[0]?.invoice_number" class="font-medium font-mono text-gray-800">{{ payTargets[0].invoice_number }}</span>
+                      <a
+                        v-if="safeUrl(payTargets[0]?.invoice_url)"
+                        :href="safeUrl(payTargets[0].invoice_url)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        📄 Lihat Invoice Vendor ↗
+                      </a>
+                    </dd>
+                  </template>
+                  <template v-if="payTargets.length === 1 && payStruks.some(s => safeUrl(s.photo_url))">
+                    <dt class="text-gray-400">Foto Struk</dt>
+                    <dd class="flex flex-wrap items-center gap-1.5">
+                      <a
+                        v-for="s in payStruks.filter(st => safeUrl(st.photo_url))"
+                        :key="s.id"
+                        :href="safeUrl(s.photo_url)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        🧾 Struk {{ s.struk_number }} ↗
+                      </a>
+                    </dd>
                   </template>
                   <template v-if="payTargets.length > 1">
                     <dt class="text-gray-400">Pengajuan</dt>
@@ -552,8 +740,20 @@
           <!-- Batch detail (only for multi) -->
           <div v-if="payTargets.length > 1" class="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2.5 space-y-1">
             <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Rincian {{ payTargets.length }} pengajuan</p>
-            <div v-for="t in payTargets" :key="t.id" class="flex justify-between text-xs">
-              <span class="text-gray-500 truncate mr-3">{{ t.request_number }} — {{ (t.items || []).map(i => i.name).join(', ') || t.work_unit_name || '-' }}</span>
+            <div v-for="t in payTargets" :key="t.id" class="flex items-center justify-between gap-2 text-xs">
+              <div class="min-w-0 truncate mr-2">
+                <span class="text-gray-500">{{ t.request_number }} — {{ (t.items || []).map(i => i.name).join(', ') || t.work_unit_name || '-' }}</span>
+                <span v-if="t.invoice_number" class="ml-1.5 font-mono text-[11px] text-gray-400">(Inv: {{ t.invoice_number }})</span>
+                <a
+                  v-if="safeUrl(t.invoice_url)"
+                  :href="safeUrl(t.invoice_url)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="ml-1.5 inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  📄 Invoice ↗
+                </a>
+              </div>
               <span class="font-medium text-emerald-700 whitespace-nowrap">{{ formatRupiah(remainingOf(t)) }}<template v-if="t.paid_amount > 0"> <span class="font-normal text-gray-400">(sisa)</span></template></span>
             </div>
           </div>
@@ -621,6 +821,38 @@
               <p v-if="bankAccountsError" class="mt-1 text-[11px] leading-snug text-red-600">{{ bankAccountsError }}</p>
               <p v-else-if="!bankAccountOptions.length" class="mt-1 text-[11px] leading-snug text-amber-700">
                 Belum ada rekening perusahaan yang aktif — tambahkan di menu Data Rekening dulu.
+              </p>
+              <p v-else-if="isSameBank" class="mt-1 text-[11px] font-medium text-emerald-700">
+                ✓ Sesama rekening {{ sourceBankName }} (bebas biaya admin antarbank)
+              </p>
+            </div>
+            <!-- Biaya Admin Bank: muncul otomatis saat rekening sumber pembayaran berbeda dengan bank supplier/tujuan -->
+            <div v-if="isDifferentBank" class="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-1">
+                <label class="text-xs font-semibold text-amber-900">
+                  Biaya Admin Bank <span class="font-normal text-amber-700">(jika ada)</span>
+                </label>
+                <span class="inline-flex items-center rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                  Beda Bank: {{ sourceBankName }} → {{ destBankName || 'Rekening Tujuan' }}
+                </span>
+              </div>
+              <RupiahInput v-model="payForm.bank_fee" placeholder="0 (Kosongkan jika bebas biaya admin)" />
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-[10px] text-amber-700 mr-0.5">Pilih cepat:</span>
+                <button
+                  v-for="preset in BANK_FEE_PRESETS"
+                  :key="preset.value"
+                  type="button"
+                  class="rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors cursor-pointer"
+                  :class="(payForm.bank_fee || 0) === preset.value ? 'border-amber-600 bg-amber-600 text-white' : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'"
+                  @click="payForm.bank_fee = preset.value"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+              <p v-if="payForm.bank_fee > 0" class="text-[11px] font-medium text-amber-900 border-t border-amber-200/80 pt-1.5">
+                Total keluar dari rekening: <strong>{{ formatRupiah(effectiveTransferAmount + payForm.bank_fee) }}</strong>
+                <span class="text-amber-700 font-normal"> (Tagihan {{ formatRupiah(effectiveTransferAmount) }} + Biaya Bank {{ formatRupiah(payForm.bank_fee) }} · dicatat ke Beban Administrasi Bank)</span>
               </p>
             </div>
             <!-- Bayar per struk: pengajuan yang punya struk pembelian dibayar per
@@ -702,13 +934,254 @@
         <AppButton variant="danger" :loading="returnLoading" :disabled="returnReason.trim().length < 5" @click="submitReturnPayTo">Kembalikan</AppButton>
       </template>
     </AppModal>
+
+    <!-- Modal 1: Buat Pembayaran Manual (Di Luar Pengajuan) -->
+    <AppModal v-model="showManualModal" title="Buat Pembayaran Manual (Di Luar Pengajuan)" size="2xl">
+      <div class="space-y-4">
+        <div class="rounded-lg border border-purple-200 bg-purple-50 px-3.5 py-2.5 text-xs text-purple-900">
+          Pembayaran manual digunakan untuk tagihan atau pengeluaran <strong>di luar alur pengajuan pengadaan</strong> (mis. listrik, sewa, jasa konsultan, reimburse, dsb.). Setiap pembayaran manual wajib mendapat <strong>approve dari Manager Keuangan atau General Manager</strong> sebelum dapat dicairkan.
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="sm:col-span-2">
+            <AppInput v-model="manualForm.title" label="Judul / Keperluan Pembayaran *" placeholder="Contoh: Tagihan Listrik & Internet Kantor Bulan November" maxlength="200" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Kategori / Jenis *</label>
+            <SearchableSelect v-model="manualForm.request_type" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+              <option value="jasa">Jasa / Biaya Operasional</option>
+              <option value="barang">Barang / Perlengkapan</option>
+              <option value="bahan">Bahan Baku</option>
+            </SearchableSelect>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Unit Kerja / Outlet <span class="text-xs text-gray-400">(opsional)</span></label>
+            <SearchSelect
+              v-model="manualForm.work_unit_id"
+              :options="workUnitOptions"
+              placeholder="Umum / Kantor Pusat"
+              searchPlaceholder="Cari unit kerja…"
+              valueKey="id"
+              labelKey="name"
+            />
+          </div>
+          <div v-if="manualForm.request_type !== 'bahan'">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Projek <span class="text-xs text-gray-400">(opsional)</span></label>
+            <SearchSelect
+              v-model="manualForm.project_id"
+              :options="projectFilterOptions"
+              placeholder="Tanpa Projek"
+              searchPlaceholder="Cari projek…"
+            />
+          </div>
+          <div>
+            <AppInput v-model="manualForm.invoice_number" label="No. Invoice / Tagihan" placeholder="Opsional, mis. INV/2026/11/001" />
+          </div>
+        </div>
+
+        <!-- Penerima / Vendor -->
+        <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-3.5 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Penerima & Tujuan Pembayaran</p>
+            <div class="flex items-center gap-3 text-xs">
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" v-model="manualVendorMode" value="registered" class="accent-emerald-600" />
+                <span>Vendor Terdaftar</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" v-model="manualVendorMode" value="manual" class="accent-emerald-600" />
+                <span>Ketik Penerima Manual</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div v-if="manualVendorMode === 'registered'" class="sm:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Vendor *</label>
+              <SearchSelect
+                v-model="manualForm.vendor_id"
+                :options="vendorOptions"
+                placeholder="Pilih vendor…"
+                searchPlaceholder="Cari vendor…"
+                valueKey="id"
+                labelKey="name"
+                @update:modelValue="onManualVendorSelect"
+              />
+            </div>
+            <div v-else class="sm:col-span-2">
+              <AppInput v-model="manualForm.vendor_name" label="Nama Penerima / Supplier *" placeholder="Nama perusahaan / perorangan penerima dana" maxlength="200" />
+            </div>
+
+            <div class="sm:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Metode Tujuan Pembayaran *</label>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <label class="source-opt" :class="{ 'source-opt--on': manualForm.pay_to_method === 'vendor_account' }">
+                  <input v-model="manualForm.pay_to_method" type="radio" value="vendor_account" class="sr-only" />
+                  <span class="text-xs font-semibold text-gray-800">Transfer Bank</span>
+                  <span class="text-[10px] text-gray-500">Rekening bank penerima</span>
+                </label>
+                <label class="source-opt" :class="{ 'source-opt--on': manualForm.pay_to_method === 'marketplace_va' }">
+                  <input v-model="manualForm.pay_to_method" type="radio" value="marketplace_va" class="sr-only" />
+                  <span class="text-xs font-semibold text-gray-800">Virtual Account (VA)</span>
+                  <span class="text-[10px] text-gray-500">VA tagihan / marketplace</span>
+                </label>
+                <label class="source-opt" :class="{ 'source-opt--on': manualForm.pay_to_method === 'manual' }">
+                  <input v-model="manualForm.pay_to_method" type="radio" value="manual" class="sr-only" />
+                  <span class="text-xs font-semibold text-gray-800">Tunai / Lainnya</span>
+                  <span class="text-[10px] text-gray-500">Pembayaran langsung</span>
+                </label>
+              </div>
+            </div>
+
+            <template v-if="manualForm.pay_to_method === 'vendor_account'">
+              <AppInput v-model="manualForm.pay_to_bank_name" label="Nama Bank *" placeholder="Contoh: BCA, Mandiri, BRI" />
+              <AppInput v-model="manualForm.pay_to_account_number" label="Nomor Rekening *" placeholder="Nomor rekening tujuan" />
+              <div class="sm:col-span-2">
+                <AppInput v-model="manualForm.pay_to_account_holder" label="Atas Nama Rekening" placeholder="Nama pemilik rekening (otomatis mengikuti penerima bila kosong)" />
+              </div>
+            </template>
+            <template v-else-if="manualForm.pay_to_method === 'marketplace_va'">
+              <AppInput v-model="manualForm.pay_to_marketplace" label="Penyedia / Marketplace *" placeholder="Contoh: PLN, Tokopedia, Shopee" />
+              <AppInput v-model="manualForm.pay_to_order_number" label="No. Pesanan / ID Pelanggan" placeholder="Opsional" />
+              <AppInput v-model="manualForm.pay_to_bank_name" label="Bank VA *" placeholder="Contoh: BCA, Mandiri" />
+              <AppInput v-model="manualForm.pay_to_account_number" label="Nomor Virtual Account *" placeholder="Nomor VA" />
+            </template>
+            <template v-else>
+              <div class="sm:col-span-2">
+                <AppInput v-model="manualForm.pay_to_text" label="Keterangan Cara Bayar *" placeholder="Contoh: Tunai diserahkan langsung kepada penerima" />
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Rincian Item & Nominal -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-semibold text-gray-700">Rincian Item & Nominal *</label>
+            <button type="button" @click="addManualItem" class="text-xs font-semibold text-emerald-700 hover:text-emerald-800 cursor-pointer">+ Tambah Baris</button>
+          </div>
+          <div class="space-y-2">
+            <div v-for="(item, idx) in manualForm.items" :key="idx" class="grid grid-cols-12 gap-2 items-end rounded-lg border border-gray-200 bg-white p-2.5">
+              <div class="col-span-12 sm:col-span-5">
+                <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Uraian / Nama Item *</label>
+                <input v-model="item.name" type="text" placeholder="Uraian biaya / barang" class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-emerald-500 focus:outline-none" />
+              </div>
+              <div class="col-span-4 sm:col-span-2">
+                <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Qty</label>
+                <input v-model.number="item.qty" type="number" min="1" class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-emerald-500 focus:outline-none" />
+              </div>
+              <div class="col-span-4 sm:col-span-2">
+                <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Satuan</label>
+                <input v-model="item.unit" type="text" placeholder="paket" class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-emerald-500 focus:outline-none" />
+              </div>
+              <div class="col-span-4 sm:col-span-3 flex items-end gap-1.5">
+                <div class="flex-1 min-w-0">
+                  <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Harga Satuan *</label>
+                  <RupiahInput v-model="item.price" placeholder="0" />
+                </div>
+                <button v-if="manualForm.items.length > 1" type="button" @click="removeManualItem(idx)" class="mb-1 rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 cursor-pointer" title="Hapus baris">
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-end rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2 text-sm">
+            <span class="text-emerald-900 font-semibold">Total Pembayaran Manual: {{ formatRupiah(manualTotalAmount) }}</span>
+          </div>
+        </div>
+
+        <!-- Upload Invoice & Catatan -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">File / Foto Invoice <span class="text-xs text-gray-400">(opsional)</span></label>
+            <div v-if="manualInvoiceUploading" class="text-xs text-gray-500 py-2">Mengunggah berkas invoice…</div>
+            <div v-else-if="!manualForm.invoice_url" class="relative">
+              <label class="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600 hover:border-emerald-400 cursor-pointer">
+                <span>📄 Pilih file / foto invoice (JPG, PNG, WEBP, PDF · maks 5MB)</span>
+                <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.pdf" @change="handleManualInvoiceUpload" />
+              </label>
+            </div>
+            <div v-else class="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
+              <a :href="safeUrl(manualForm.invoice_url)" target="_blank" rel="noopener noreferrer" class="font-medium text-emerald-800 underline truncate">📄 {{ manualInvoiceName || 'Berkas Invoice' }}</a>
+              <button type="button" @click="manualForm.invoice_url = ''; manualInvoiceName = ''" class="text-red-600 hover:underline shrink-0 cursor-pointer">Hapus</button>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Catatan Pengajuan</label>
+            <textarea v-model="manualForm.notes" rows="2" maxlength="1000" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Keterangan tambahan untuk Manager Keuangan / GM"></textarea>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showManualModal = false">Batal</AppButton>
+        <AppButton :loading="manualSubmitting" :disabled="manualInvoiceUploading" @click="submitManualPayment">Kirim untuk Approve Mgr Keuangan / GM</AppButton>
+      </template>
+    </AppModal>
+
+    <!-- Modal 2: Buat Pengajuan Pembayaran (dari Ceklis Menunggu Pembayaran) -->
+    <AppModal v-model="showSubmitApprovalModal" title="Buat Pengajuan Pembayaran" size="lg">
+      <div class="space-y-4">
+        <div class="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+          Daftar tagihan di bawah ini akan dikelompokkan dalam satu <strong>Nomor Pengajuan Pembayaran</strong> dan dikirim untuk persetujuan <strong>Manager Keuangan atau General Manager</strong>. Pembayaran baru dapat dicairkan setelah disetujui.
+        </div>
+
+        <div class="max-h-64 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+          <div v-for="t in submitApprovalTargets" :key="t.id" class="flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs bg-white">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="font-mono font-semibold text-gray-800">{{ t.request_number }}</span>
+                <span v-if="t.is_manual_payment" class="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800">Manual</span>
+              </div>
+              <p class="text-gray-700 truncate">{{ (t.items || []).map(i => i.name).join(', ') || '-' }}</p>
+              <p class="text-[11px] text-gray-500">Vendor: {{ t.vendor_name || '-' }} <span v-if="t.work_unit_name">· {{ t.work_unit_name }}</span></p>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="font-semibold text-emerald-700">{{ formatRupiah(remainingOf(t)) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-sm">
+          <span class="text-emerald-900 font-medium">Total {{ submitApprovalTargets.length }} Tagihan Diajukan</span>
+          <span class="text-emerald-800 font-bold">{{ formatRupiah(submitApprovalTotal) }}</span>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Catatan Pengajuan Pembayaran <span class="text-xs text-gray-400">(opsional)</span></label>
+          <textarea v-model="submitApprovalNotes" rows="2" maxlength="1000" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Mis. Pengajuan pembayaran batch minggu ke-4 November"></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showSubmitApprovalModal = false">Batal</AppButton>
+        <AppButton :loading="submitApprovalLoading" @click="confirmSubmitApproval">Kirim Pengajuan Pembayaran</AppButton>
+      </template>
+    </AppModal>
+
+    <!-- Modal 3: Tolak Pengajuan Pembayaran (Manager Keuangan / General Manager) -->
+    <AppModal v-model="showRejectApprovalModal" title="Tolak Pengajuan Pembayaran" size="md">
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600">
+          Anda akan menolak <strong>{{ rejectApprovalTargets.length }} pengajuan pembayaran</strong> senilai <strong>{{ formatRupiah(rejectApprovalTotal) }}</strong>. Tagihan yang ditolak tidak dapat dicairkan sebelum diajukan ulang.
+        </p>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-gray-700">Alasan Penolakan *</label>
+          <textarea v-model="rejectApprovalReason" rows="3" maxlength="1000"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            placeholder="Jelaskan alasan penolakan (minimal 3 karakter)…"></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <AppButton variant="secondary" @click="showRejectApprovalModal = false">Batal</AppButton>
+        <AppButton variant="danger" :loading="approvalDecisionLoading" :disabled="rejectApprovalReason.trim().length < 3" @click="confirmRejectApproval">Tolak Pengajuan</AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { purchaseApi } from '@/api/purchase.js'
 import { vendorsApi } from '@/api/vendors.js'
 import { apiClient } from '@/api/client.js'
@@ -726,15 +1199,22 @@ import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import { bankAccountsApi } from '@/api/bankAccounts.js'
 import { projectsApi } from '@/api/projects.js'
+import { workUnitsApi } from '@/api/workUnits.js'
 import { purchaseTypeLabel, normalizePurchaseType, isPhysicalPurchaseType, purchaseStatusLabel, purchaseStatusBadge, isConflictError } from '@/utils/procurement.js'
 import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
 import PurchaseUrgencyBadges from '@/components/PurchaseUrgencyBadges.vue'
+import EmergencyPurchasePanel from '@/components/EmergencyPurchasePanel.vue'
 import { safeUrl, isImageUrl } from '@/utils/safeUrl.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
-// Melihat daftar tagihan dan mencairkannya kini izin terpisah.
+// Melihat daftar tagihan, menyetujui pengajuan bayar (Mgr Keuangan / GM), dan mencairkannya izin terpisah.
 const canPay = computed(() => authStore.hasPermission('finance.payments.pay'))
+const canApprovePayment = computed(() => {
+  if (authStore.hasPermission('finance.payments.approve')) return true
+  const role = String(authStore.admin?.role || '').trim().toLowerCase()
+  return ['superadmin', 'admin', 'manager keuangan', 'general manager', 'direktur'].includes(role)
+})
 
 const loading = ref(false)
 const errorMsg = ref('')
@@ -743,6 +1223,36 @@ const page = ref(1)
 const totalPages = ref(1)
 const filterStatus = ref('')
 const filterType = ref('')
+// Jenis: tingkat kebutuhan.
+const filterKind = ref('')
+const KIND_FILTERS = [
+  { value: '', label: 'Semua Tingkat' },
+  { value: 'urgent', label: 'Urgent' },
+  { value: 'prioritas', label: 'Prioritas' },
+  { value: 'rutin', label: 'Rutin' },
+]
+const filterApproval = ref('')
+const APPROVAL_FILTERS = [
+  { value: '', label: 'Semua Tahap Persetujuan' },
+  { value: 'unsubmitted', label: 'Belum Diajukan Bayar' },
+  { value: 'pending', label: 'Menunggu Approve Mgr Keuangan / GM' },
+  { value: 'approved', label: 'Disetujui — Siap Dibayar' },
+  { value: 'rejected', label: 'Ditolak Mgr Keuangan / GM' },
+  { value: 'manual', label: 'Hanya Pembayaran Manual' },
+]
+// Parameter saringan jenis & persetujuan untuk daftar & ekspor (cermin PurchaseListExtra).
+function kindParams() {
+  const out = {}
+  const k = filterKind.value
+  if (k === 'urgent' || k === 'prioritas' || k === 'rutin') out.urgency = k
+  const a = filterApproval.value
+  if (a === 'manual') {
+    out.manual_only = 'true'
+  } else if (a) {
+    out.payment_approval = a
+  }
+  return out
+}
 const filterProject = ref('')
 const projects = ref([])
 
@@ -820,12 +1330,85 @@ const payVendorLoading = ref(false)
 // menunjuk vendor terdaftar, jadi pesan tidak boleh menyuruh bagian pembelian
 // memilih vendor lewat Isi Harga.
 const payVendorError = ref('')
-// Isian Keuangan saat membayar: rekening asal, nominal, referensi, bukti.
+// Isian Keuangan saat membayar: rekening asal, nominal, biaya bank (bila beda bank), referensi, bukti.
 // Tujuan pembayaran TIDAK diisi di sini — milik Pembelian (pay_to).
 function newPayForm() {
-  return { payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0 }
+  return { payment_account_source: '', payment_proof: '', payment_notes: '', payment_amount: 0, bank_fee: 0 }
 }
 const payForm = ref(newPayForm())
+
+const BANK_FEE_PRESETS = [
+  { value: 0,    label: 'Rp 0 (Gratis)' },
+  { value: 2500, label: 'Rp 2.500 (BI-FAST)' },
+  { value: 2900, label: 'Rp 2.900' },
+  { value: 6500, label: 'Rp 6.500 (Online)' },
+]
+
+// Normalisasi nama bank agar "Bank BCA", "PT Bank Central Asia", dan "BCA"
+// dikenali sebagai bank yang sama, sedangkan bank berbeda memunculkan input biaya bank.
+function normalizeBankKey(raw) {
+  if (!raw) return ''
+  let s = String(raw).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  s = s.replace(/\b(pt|tbk|persero|bank)\b/g, ' ').replace(/\s+/g, ' ').trim()
+  const aliases = {
+    'central asia': 'bca',
+    'bca': 'bca',
+    'rakyat indonesia': 'bri',
+    'bri': 'bri',
+    'mandiri': 'mandiri',
+    'negara indonesia': 'bni',
+    'bni': 'bni',
+    'syariah indonesia': 'bsi',
+    'bsi': 'bsi',
+    'cimb niaga': 'cimb',
+    'cimb': 'cimb',
+    'danamon indonesia': 'danamon',
+    'danamon': 'danamon',
+    'permata': 'permata',
+    'tabungan negara': 'btn',
+    'btn': 'btn',
+    'ocbc nisp': 'ocbc',
+    'ocbc': 'ocbc',
+    'panin': 'panin',
+    'mega': 'mega',
+    'btpn': 'btpn',
+    'jago': 'jago',
+    'seabank': 'seabank',
+    'Maybank': 'maybank',
+    'maybank indonesia': 'maybank',
+  }
+  return aliases[s] || s
+}
+
+const selectedSourceAccount = computed(() =>
+  bankAccounts.value.find(a => a.id === payForm.value.payment_account_source) || null
+)
+const sourceBankName = computed(() => (selectedSourceAccount.value?.bank_name || '').trim())
+const destBankName = computed(() => {
+  const pt = payTargets.value[0]?.pay_to
+  if (!pt) return (payVendor.value?.bank_name || '').trim()
+  if (pt.effective === 'vendor_account') {
+    return (pt.bank_name || pt.vendor_bank_name || payVendor.value?.bank_name || '').trim()
+  }
+  return (pt.bank_name || '').trim()
+})
+const isSameBank = computed(() => {
+  const src = normalizeBankKey(sourceBankName.value)
+  const dst = normalizeBankKey(destBankName.value)
+  return !!src && !!dst && src === dst
+})
+const isDifferentBank = computed(() => {
+  const src = normalizeBankKey(sourceBankName.value)
+  if (!src) return false
+  const dst = normalizeBankKey(destBankName.value)
+  return !dst || src !== dst
+})
+
+watch(isSameBank, (same) => {
+  if (same && payForm.value.bank_fee > 0) {
+    payForm.value.bank_fee = 0
+  }
+})
 
 const paymentHistories = ref([])
 const paymentHistoriesLoading = ref(false)
@@ -867,14 +1450,70 @@ function remainingOf(r) {
   const cents = Math.round(((Number(r?.total_final) || 0) - (Number(r?.paid_amount) || 0)) * 100)
   return cents > 0 ? cents / 100 : 0
 }
-// Bisa dibayar: menunggu pembayaran, dibayar sebagian, atau sudah diterima
-// tetapi masih berutang (barang datang sebelum lunas) — dan untuk SEMUA status
-// itu sisa tagihannya harus > 0. Induk hasil pecah vendor berstatus 'partial'
-// mengikuti keluarganya; bila bagiannya sendiri sudah lunas, tidak ada yang
-// bisa dibayar di baris induk (pecahan dibayar di barisnya masing-masing).
+// Bisa dibayar: status masih memiliki sisa tagihan, tujuan pembayaran siap,
+// DAN sudah disetujui oleh Manager Keuangan atau General Manager.
 const PAYABLE_STATUSES = ['payment_requested', 'partial', 'received']
+function isCheckable(r) {
+  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r)
+}
+function canSubmitRowForApproval(r) {
+  return isCheckable(r) && !payToBlocked(r) && (!r.payment_approval_status || r.payment_approval_status === 'rejected')
+}
+function canApproveRowPayment(r) {
+  return isCheckable(r) && r.payment_approval_status === 'pending'
+}
 function isPayable(r) {
-  return !!r && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r) && !!r.pay_to?.ready
+  return isCheckable(r) && !!r.pay_to?.ready && r.payment_approval_status === 'approved'
+}
+function showApprovalBadge(r) {
+  if (!r) return false
+  return !!r.payment_approval_status || (PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0)
+}
+function paymentApprovalLabel(r) {
+  switch (r?.payment_approval_status) {
+    case 'pending':
+      return '⏳ Menunggu Approve Mgr Keuangan / GM'
+    case 'approved':
+      return r.payment_approved_by ? `✓ Disetujui Bayar (${r.payment_approved_by})` : '✓ Disetujui Bayar'
+    case 'rejected':
+      return r.payment_rejected_by ? `✕ Ditolak (${r.payment_rejected_by})` : '✕ Pengajuan Bayar Ditolak'
+    default:
+      return 'Belum Diajukan Bayar'
+  }
+}
+function paymentApprovalBadgeCls(r) {
+  const tone = {
+    pending:  'bg-amber-50 text-amber-800 border-amber-300',
+    approved: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+    rejected: 'bg-red-50 text-red-700 border-red-300',
+  }[r?.payment_approval_status] || 'bg-slate-100 text-slate-600 border-slate-200'
+  return `inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`
+}
+function paymentApprovalHint(r) {
+  if (!r) return ''
+  if (r.payment_approval_status === 'pending') {
+    return `Diajukan oleh ${r.payment_submitted_by || '-'}${r.payment_batch_number ? ` (${r.payment_batch_number})` : ''}`
+  }
+  if (r.payment_approval_status === 'approved') {
+    return `Disetujui oleh ${r.payment_approved_by || '-'}`
+  }
+  if (r.payment_approval_status === 'rejected') {
+    return `Ditolak oleh ${r.payment_rejected_by || '-'}: ${r.payment_rejection_reason || '-'}`
+  }
+  return 'Ceklis tagihan ini lalu klik Buat Pengajuan Pembayaran untuk meminta persetujuan Mgr Keuangan / GM'
+}
+function canFinishJasa(r) {
+  return !!r && normalizePurchaseType(r.request_type) === 'jasa' && r.status === 'paid'
+}
+async function finishJasa(r) {
+  if (!r) return
+  try {
+    await purchaseApi.updateStatus(r.id, { action: 'receive', actor_name: adminName() })
+    toast.success(`Pengajuan jasa ${r.request_number || ''} ditandai selesai.`)
+    if (detail.value?.id === r.id) showDetail.value = false
+    fetchList()
+    fetchStats()
+  } catch (err) { toast.error(err?.message || 'Gagal menyelesaikan pengajuan jasa.') }
 }
 // Tujuan pembayaran milik Pembelian: tagihan yang detailnya dikembalikan atau
 // belum diisi tidak bisa dibayar sampai Pembelian melengkapinya.
@@ -890,7 +1529,7 @@ function payToBlockCls(r) {
 // Kembalikan ke Pembelian: selama masih ditagih, tidak sedang dibayar dari
 // Kas Kasir Outlet, dan belum dikembalikan (cermin payToEditableTx).
 function canReturnPayTo(r) {
-  return !!r && !r.emergency && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r) && !r.pay_to?.returned_at
+  return !!r && !r.emergency && !r.is_manual_payment && PAYABLE_STATUSES.includes(r.status) && remainingOf(r) > 0 && !payoutOpen(r) && !r.pay_to?.returned_at
 }
 const showReturnPayTo = ref(false)
 const returnTarget = ref(null)
@@ -967,17 +1606,24 @@ function ownBilling(d) {
     family_total_final: Number(d.total_final) || 0,
   }
 }
-// Kolom centang (bayar sekaligus) tampil saat menyaring status yang bisa dibayar.
-const showSelect = computed(() => ['payment_requested', 'partial', 'received'].includes(filterStatus.value))
-const selectableRows = computed(() => requests.value.filter(isPayable))
+// Kolom centang selalu tampil agar Keuangan bisa menceklis tagihan menunggu pembayaran
+// untuk dibuatkan pengajuan pembayaran, dan Mgr Keuangan / GM bisa menyetujui sekaligus.
+const showSelect = computed(() => true)
+const selectableRows = computed(() => requests.value.filter(isCheckable))
 const allSelectableChecked = computed(() => selectableRows.value.length > 0 && selectableRows.value.every(r => selectedIds.value.has(r.id)))
-const selectedVendorName = computed(() => {
-  const first = requests.value.find(r => selectedIds.value.has(r.id))
-  return first?.vendor_name || ''
+const selectedRows = computed(() => requests.value.filter(r => selectedIds.value.has(r.id)))
+const selectedSubmittableRows = computed(() => selectedRows.value.filter(canSubmitRowForApproval))
+const selectedApprovableRows = computed(() => selectedRows.value.filter(canApproveRowPayment))
+const selectedPayableRows = computed(() => selectedRows.value.filter(isPayable))
+const selectedVendorSummary = computed(() => {
+  const names = [...new Set(selectedRows.value.map(r => r.vendor_name || '-'))]
+  if (names.length === 0) return '-'
+  if (names.length === 1) return names[0]
+  return `${names.length} vendor`
 })
 // Yang dibayar server adalah SISA tiap tagihan, bukan harga penuh — total
 // pilihan & batch mengikuti sisa supaya nominal transfer tidak kelebihan.
-const selectedTotal = computed(() => requests.value.filter(r => selectedIds.value.has(r.id)).reduce((s, r) => s + remainingOf(r), 0))
+const selectedTotal = computed(() => selectedRows.value.reduce((s, r) => s + remainingOf(r), 0))
 const payTotalAmount = computed(() => payTargets.value.reduce((s, r) => s + (r.total_final || 0), 0))
 const payRemainingAmount = computed(() => payTargets.value.reduce((s, r) => s + remainingOf(r), 0))
 // Nominal yang disalin dari kartu tujuan = yang akan dicatat server: isian
@@ -988,30 +1634,13 @@ const payCopyAmount = computed(() => {
   if (selectedPayStruk.value) return Math.min(selectedPayStruk.value.remaining, payRemainingAmount.value)
   return payRemainingAmount.value
 })
+const effectiveTransferAmount = computed(() => Number(payCopyAmount.value) || 0)
 
 function toggleSelect(row) {
   const next = new Set(selectedIds.value)
   if (next.has(row.id)) {
     next.delete(row.id)
   } else {
-    // Bayar sekaligus hanya untuk satu vendor yang sama (per vendor_id —
-    // dua vendor bisa bernama sama, rekeningnya diambil dari vendor pertama).
-    if (!row.vendor_id) {
-      toast.error('Pengajuan ini belum punya vendor — bayar satu per satu lewat tombol Bayar.')
-      return
-    }
-    if (next.size > 0) {
-      const existingRow = requests.value.find(r => next.has(r.id))
-      if (existingRow && existingRow.vendor_id !== row.vendor_id) {
-        toast.error('Pembayaran harus diproses per vendor. Pilih pengajuan dari vendor yang sama.')
-        return
-      }
-      // Satu transfer = satu tujuan: hanya rekening terdaftar vendor yang sama.
-      if (row.pay_to?.effective !== 'vendor_account' || existingRow?.pay_to?.effective !== 'vendor_account') {
-        toast.error('VA marketplace / tunai dibayar satu per satu — tujuannya berbeda per pengajuan.')
-        return
-      }
-    }
     next.add(row.id)
   }
   selectedIds.value = next
@@ -1019,23 +1648,6 @@ function toggleSelect(row) {
 
 function toggleSelectAll(e) {
   if (e.target.checked) {
-    // Only select if all selectable are same vendor
-    const vendors = [...new Set(selectableRows.value.map(r => r.vendor_id || ''))]
-    if (vendors.includes('')) {
-      toast.error('Ada pengajuan tanpa vendor — bayar satu per satu lewat tombol Bayar.')
-      e.target.checked = false
-      return
-    }
-    if (vendors.length > 1) {
-      toast.error('Tidak bisa memilih semua — terdapat lebih dari 1 vendor. Pilih per vendor.')
-      e.target.checked = false
-      return
-    }
-    if (selectableRows.value.length > 1 && selectableRows.value.some(r => r.pay_to?.effective !== 'vendor_account')) {
-      toast.error('Ada tagihan VA marketplace / tunai — dibayar satu per satu. Pilih per pengajuan.')
-      e.target.checked = false
-      return
-    }
     selectedIds.value = new Set(selectableRows.value.map(r => r.id))
   } else {
     selectedIds.value = new Set()
@@ -1043,6 +1655,273 @@ function toggleSelectAll(e) {
 }
 
 function clearSelection() { selectedIds.value = new Set() }
+
+// ── Pembayaran Manual (Di Luar Pengajuan) ─────────────────────────────────
+const workUnits = ref([])
+const vendorsList = ref([])
+const workUnitOptions = computed(() => [
+  { id: '', name: 'Umum / Kantor Pusat' },
+  ...workUnits.value.map(w => ({ id: w.id, name: w.name })),
+])
+const vendorOptions = computed(() =>
+  vendorsList.value.filter(v => v.is_active !== false).map(v => ({
+    id: v.id,
+    name: v.bank_name && v.account_number ? `${v.name} — ${v.bank_name} ${v.account_number}` : v.name,
+  }))
+)
+
+async function fetchWorkUnits() {
+  try {
+    const data = await workUnitsApi.myWorkUnits()
+    workUnits.value = Array.isArray(data) ? data : (data?.data || [])
+  } catch {
+    try {
+      const data = await workUnitsApi.list()
+      workUnits.value = Array.isArray(data) ? data : (data?.data || [])
+    } catch { workUnits.value = [] }
+  }
+}
+
+async function fetchVendors() {
+  try {
+    const data = await vendorsApi.list({ active_only: 'true', limit: 500 })
+    vendorsList.value = Array.isArray(data) ? data : (data?.vendors || data?.data || [])
+  } catch { vendorsList.value = [] }
+}
+
+const showManualModal = ref(false)
+const manualVendorMode = ref('registered')
+const manualSubmitting = ref(false)
+const manualInvoiceUploading = ref(false)
+const manualInvoiceName = ref('')
+function newManualForm() {
+  return {
+    title: '',
+    request_type: 'jasa',
+    work_unit_id: '',
+    project_id: '',
+    vendor_id: '',
+    vendor_name: '',
+    pay_to_method: 'vendor_account',
+    pay_to_bank_name: '',
+    pay_to_account_number: '',
+    pay_to_account_holder: '',
+    pay_to_marketplace: '',
+    pay_to_order_number: '',
+    pay_to_text: '',
+    invoice_number: '',
+    invoice_url: '',
+    notes: '',
+    items: [{ name: '', qty: 1, unit: 'paket', price: 0 }],
+  }
+}
+const manualForm = ref(newManualForm())
+const manualTotalAmount = computed(() =>
+  (manualForm.value.items || []).reduce((sum, it) => sum + ((Number(it.qty) || 0) * (Number(it.price) || 0)), 0)
+)
+
+function openManualModal() {
+  manualForm.value = newManualForm()
+  manualVendorMode.value = vendorsList.value.length > 0 ? 'registered' : 'manual'
+  manualInvoiceName.value = ''
+  showManualModal.value = true
+}
+
+function onManualVendorSelect(vId) {
+  const v = vendorsList.value.find(item => item.id === vId)
+  if (!v) return
+  manualForm.value.vendor_name = v.name || ''
+  if (v.bank_name || v.account_number) {
+    manualForm.value.pay_to_method = 'vendor_account'
+    manualForm.value.pay_to_bank_name = v.bank_name || ''
+    manualForm.value.pay_to_account_number = v.account_number || ''
+    manualForm.value.pay_to_account_holder = v.account_holder || v.name || ''
+  }
+}
+
+function addManualItem() {
+  manualForm.value.items.push({ name: '', qty: 1, unit: 'paket', price: 0 })
+}
+function removeManualItem(idx) {
+  if (manualForm.value.items.length > 1) manualForm.value.items.splice(idx, 1)
+}
+
+async function handleManualInvoiceUpload(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (file.size > 5 * 1024 * 1024) { toast.error('Ukuran file maksimal 5MB.'); e.target.value = ''; return }
+  manualInvoiceUploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await apiClient.post('/admin/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const url = safeUrl(res?.url ?? res?.data?.url)
+    if (!url) throw new Error('Server tidak mengembalikan alamat berkas yang sah.')
+    manualForm.value.invoice_url = url
+    manualInvoiceName.value = res?.filename ?? res?.data?.filename ?? file.name
+  } catch (err) {
+    toast.error(err?.message ?? 'Gagal mengunggah file invoice.')
+  } finally {
+    manualInvoiceUploading.value = false
+    e.target.value = ''
+  }
+}
+
+async function submitManualPayment() {
+  const f = manualForm.value
+  if (!f.title.trim()) { toast.error('Judul / keperluan pembayaran wajib diisi.'); return }
+  const useRegistered = manualVendorMode.value === 'registered'
+  if (useRegistered && !f.vendor_id) { toast.error('Pilih vendor terdaftar atau beralih ke Penerima Manual.'); return }
+  if (!useRegistered && !f.vendor_name.trim()) { toast.error('Nama penerima / supplier wajib diisi.'); return }
+  if (f.pay_to_method === 'vendor_account' && (!f.pay_to_bank_name.trim() || !f.pay_to_account_number.trim())) {
+    toast.error('Nama bank dan nomor rekening tujuan wajib diisi.'); return
+  }
+  if (f.pay_to_method === 'marketplace_va' && (!f.pay_to_marketplace.trim() || !f.pay_to_bank_name.trim() || !f.pay_to_account_number.trim())) {
+    toast.error('Penyedia/marketplace, bank VA, dan nomor VA wajib diisi.'); return
+  }
+  const validItems = f.items.filter(it => it.name.trim() && Number(it.price) > 0)
+  if (!validItems.length) { toast.error('Isi minimal 1 rincian item dengan nominal lebih dari 0.'); return }
+
+  manualSubmitting.value = true
+  try {
+    const payload = {
+      title: f.title.trim(),
+      request_type: f.request_type,
+      work_unit_id: f.work_unit_id || '',
+      project_id: f.request_type === 'bahan' ? '' : (f.project_id || ''),
+      vendor_id: useRegistered ? f.vendor_id : '',
+      vendor_name: f.vendor_name.trim(),
+      pay_to_method: f.pay_to_method,
+      pay_to_bank_name: f.pay_to_bank_name.trim(),
+      pay_to_account_number: f.pay_to_account_number.trim(),
+      pay_to_account_holder: f.pay_to_account_holder.trim(),
+      pay_to_marketplace: f.pay_to_marketplace.trim(),
+      pay_to_order_number: f.pay_to_order_number.trim(),
+      pay_to_text: f.pay_to_text.trim(),
+      invoice_number: f.invoice_number.trim(),
+      invoice_url: f.invoice_url || '',
+      notes: f.notes.trim(),
+      items: validItems.map(it => ({
+        name: it.name.trim(),
+        qty: Math.max(1, Number(it.qty) || 1),
+        unit: (it.unit || 'paket').trim(),
+        price: Number(it.price) || 0,
+      })),
+    }
+    const created = await purchaseApi.createManualPayment(payload)
+    toast.success(`Pembayaran manual ${created?.request_number || ''} berhasil dibuat & menunggu approve Mgr Keuangan / GM.`)
+    showManualModal.value = false
+    fetchList()
+    fetchStats()
+  } catch (err) {
+    toast.error(err?.message || 'Gagal membuat pembayaran manual.')
+  } finally {
+    manualSubmitting.value = false
+  }
+}
+
+// ── Pengajuan & Persetujuan Pembayaran (Ceklis → Mgr Keuangan / GM) ────────
+const showSubmitApprovalModal = ref(false)
+const submitApprovalTargets = ref([])
+const submitApprovalNotes = ref('')
+const submitApprovalLoading = ref(false)
+const submitApprovalTotal = computed(() => submitApprovalTargets.value.reduce((s, r) => s + remainingOf(r), 0))
+
+function openSubmitApprovalModal(rows) {
+  const targets = (rows || []).filter(canSubmitRowForApproval)
+  if (!targets.length) {
+    toast.error('Tidak ada tagihan yang bisa diajukan pembayarannya.')
+    return
+  }
+  submitApprovalTargets.value = targets
+  submitApprovalNotes.value = ''
+  showSubmitApprovalModal.value = true
+}
+
+async function confirmSubmitApproval() {
+  if (!submitApprovalTargets.value.length || submitApprovalLoading.value) return
+  submitApprovalLoading.value = true
+  try {
+    const res = await purchaseApi.submitPaymentApprovals({
+      ids: submitApprovalTargets.value.map(r => r.id),
+      notes: submitApprovalNotes.value.trim(),
+    })
+    const batchNo = res?.batch_number || ''
+    toast.success(`Pengajuan pembayaran ${batchNo ? `(${batchNo}) ` : ''}untuk ${submitApprovalTargets.value.length} tagihan berhasil dikirim ke Manager Keuangan / GM.`)
+    showSubmitApprovalModal.value = false
+    clearSelection()
+    fetchList()
+    fetchStats()
+  } catch (err) {
+    toast.error(err?.message || 'Gagal mengajukan pembayaran.')
+  } finally {
+    submitApprovalLoading.value = false
+  }
+}
+
+const approvalDecisionLoading = ref(false)
+const showRejectApprovalModal = ref(false)
+const rejectApprovalTargets = ref([])
+const rejectApprovalReason = ref('')
+const rejectApprovalTotal = computed(() => rejectApprovalTargets.value.reduce((s, r) => s + remainingOf(r), 0))
+
+async function approvePaymentRows(rows) {
+  const targets = (rows || []).filter(canApproveRowPayment)
+  if (!targets.length || approvalDecisionLoading.value) return
+  const total = targets.reduce((s, r) => s + remainingOf(r), 0)
+  const label = targets.length === 1
+    ? `Setujui pembayaran untuk ${targets[0].request_number} (${targets[0].vendor_name || '-'}) senilai ${formatRupiah(total)}?`
+    : `Setujui ${targets.length} pengajuan pembayaran senilai total ${formatRupiah(total)}?`
+  if (!window.confirm(label)) return
+  approvalDecisionLoading.value = true
+  try {
+    await purchaseApi.decidePaymentApprovals({
+      ids: targets.map(r => r.id),
+      decision: 'approve',
+    })
+    toast.success(`${targets.length} pengajuan pembayaran berhasil disetujui dan kini siap dibayar.`)
+    if (detail.value && targets.some(t => t.id === detail.value.id)) {
+      showDetail.value = false
+    }
+    clearSelection()
+    fetchList()
+    fetchStats()
+  } catch (err) {
+    toast.error(err?.message || 'Gagal menyetujui pengajuan pembayaran.')
+  } finally {
+    approvalDecisionLoading.value = false
+  }
+}
+
+function openRejectApprovalModal(rows) {
+  const targets = (rows || []).filter(canApproveRowPayment)
+  if (!targets.length) return
+  rejectApprovalTargets.value = targets
+  rejectApprovalReason.value = ''
+  showRejectApprovalModal.value = true
+}
+
+async function confirmRejectApproval() {
+  const reason = rejectApprovalReason.value.trim()
+  if (reason.length < 3 || !rejectApprovalTargets.value.length || approvalDecisionLoading.value) return
+  approvalDecisionLoading.value = true
+  try {
+    await purchaseApi.decidePaymentApprovals({
+      ids: rejectApprovalTargets.value.map(r => r.id),
+      decision: 'reject',
+      reason,
+    })
+    toast.success(`${rejectApprovalTargets.value.length} pengajuan pembayaran ditolak.`)
+    showRejectApprovalModal.value = false
+    clearSelection()
+    fetchList()
+    fetchStats()
+  } catch (err) {
+    toast.error(err?.message || 'Gagal menolak pengajuan pembayaran.')
+  } finally {
+    approvalDecisionLoading.value = false
+  }
+}
 
 // Label & warna status dari satu sumber (pending = Menunggu Verifikasi,
 // verified = Menunggu Persetujuan, …); status tak dikenal tampil netral.
@@ -1073,7 +1952,7 @@ function receiptHint(row) {
 }
 function adminName() { return authStore.admin?.name || 'Admin' }
 
-onMounted(() => { fetchList(); fetchStats(); fetchBankAccounts(); fetchProjects() })
+onMounted(() => { fetchList(); fetchStats(); fetchBankAccounts(); fetchProjects(); fetchWorkUnits(); fetchVendors() })
 
 async function fetchBankAccounts() {
   try {
@@ -1106,7 +1985,7 @@ async function fetchStats() {
 async function fetchList() {
   loading.value = true; errorMsg.value = ''
   try {
-    const params = { page: page.value, limit: 20, parent_id: 'all', exclude_masters: 'true' }
+    const params = { page: page.value, limit: 20, parent_id: 'all', exclude_masters: 'true', ...kindParams() }
     if (filterStatus.value) params.status = filterStatus.value
     if (filterType.value) params.type = filterType.value
     if (filterProject.value) params.project_id = filterProject.value
@@ -1128,7 +2007,7 @@ async function downloadExcel() {
   exporting.value = true
   errorMsg.value = ''
   try {
-    const params = {}
+    const params = { ...kindParams() }
     if (filterStatus.value) params.status = filterStatus.value
     if (filterType.value) params.type = filterType.value
     if (filterProject.value) params.project_id = filterProject.value
@@ -1224,13 +2103,21 @@ function openPayModal(row) {
 function openBatchPay() {
   const selected = requests.value.filter(r => selectedIds.value.has(r.id))
   if (selected.length === 0) return
+  if (selected.some(r => !isPayable(r))) {
+    toast.error('Semua tagihan yang akan dibayar harus sudah disetujui Manager Keuangan / GM.')
+    return
+  }
+  if (selected.length === 1) {
+    openPayModal(selected[0])
+    return
+  }
   // Final vendor consistency check
   const vendors = [...new Set(selected.map(r => r.vendor_id || ''))]
   if (vendors.length > 1 || vendors.includes('')) {
-    toast.error('Pembayaran harus diproses per vendor. Pilih pengajuan dari vendor yang sama.')
+    toast.error('Pembayaran sekaligus hanya untuk 1 vendor terdaftar yang sama. Untuk vendor berbeda, bayar per baris.')
     return
   }
-  if (selected.length > 1 && selected.some(r => r.pay_to?.effective !== 'vendor_account')) {
+  if (selected.some(r => r.pay_to?.effective !== 'vendor_account')) {
     toast.error('VA marketplace / tunai dibayar satu per satu — tujuannya berbeda per pengajuan.')
     return
   }
@@ -1364,9 +2251,11 @@ async function submitPay() {
   let conflict = false
   let failureMessage = ''
   try {
-    for (const target of payTargets.value) {
+    const bankFeeAmount = isDifferentBank.value ? (Number(payForm.value.bank_fee) || 0) : 0
+    for (let idx = 0; idx < payTargets.value.length; idx++) {
+      const target = payTargets.value[idx]
       try {
-        await purchaseApi.updateStatus(target.id, {
+        const payload = {
           action: 'pay',
           actor_name: adminName(),
           payment_proof: [payForm.value.payment_proof.trim(), uploadedFileUrl.value].filter(Boolean).join(' | '),
@@ -1375,7 +2264,19 @@ async function submitPay() {
           payment_notes: payForm.value.payment_notes.trim(),
           payment_amount: payTargets.value.length === 1 ? paymentAmount : 0,
           struk_id: payTargets.value.length === 1 && payStrukId.value ? payStrukId.value : undefined,
-        })
+        }
+        // Biaya admin bank hanya dikirim sekali pada pengajuan pertama dalam 1 transfer
+        if (idx === 0 && bankFeeAmount > 0) {
+          payload.bank_fee = bankFeeAmount
+        }
+        const paidRes = await purchaseApi.updateStatus(target.id, payload)
+        // Pengajuan Jasa yang sudah lunas otomatis ditandai Selesai (received)
+        // agar tidak menggantung di status Dibayar menunggu pengaju.
+        if (normalizePurchaseType(target.request_type) === 'jasa' && paidRes?.status === 'paid') {
+          try {
+            await purchaseApi.updateStatus(target.id, { action: 'receive', actor_name: adminName() })
+          } catch { /* abaikan bila gagal; pembayaran sudah tercatat */ }
+        }
         successCount++
       } catch (err) {
         failCount++

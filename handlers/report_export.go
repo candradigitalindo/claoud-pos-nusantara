@@ -233,9 +233,14 @@ func ExportProcurementPayments(c *fiber.Ctx) error {
 			Success: false, Error: "Ekspor Pembayaran hanya memuat pengajuan yang sudah disetujui.",
 		})
 	}
-	data, filename, err := services.BuildProcurementPaymentsExcel(
+	// Saringan tingkat kebutuhan / Pembelian Darurat sama dengan daftar.
+	extra, msg := purchaseListExtraFromQuery(c)
+	if msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: msg})
+	}
+	data, filename, err := services.BuildProcurementPaymentsExcelExt(
 		c.Query("status"), c.Query("type"), c.Query("project_id"), strings.TrimSpace(c.Query("search")),
-		getOutletScope(c), getWorkUnitScope(c))
+		getOutletScope(c), getWorkUnitScope(c), extra)
 	if err != nil {
 		log.Printf("ExportProcurementPayments error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{

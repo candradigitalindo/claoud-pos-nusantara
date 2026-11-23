@@ -177,49 +177,63 @@ func ListAssetMovements(assetID string) ([]models.AssetMovement, error) {
 
 // ── Daftar & detail ─────────────────────────────────────────────────────────
 
-// ListAssets returns assets (optionally filtered by outlet/search/condition/status)
-// with maintenance aggregates and straight-line depreciation per asset.
-func ListAssets(outletID, search, condition, status string, outletScope []string) ([]models.Asset, error) {
+// AssetListFilter adalah saringan daftar Perlengkapan. Daftar per halaman,
+// kartu ringkasannya, dan ekspor Excel memakai saringan yang SAMA, supaya isi
+// halaman, angka di kartu, dan isi berkas tidak pernah berbeda.
+type AssetListFilter struct {
+	OutletID    string
+	Search      string
+	Condition   string
+	Status      string
+	OutletScope []string // nil = semua outlet
+}
+
+// where menyusun klausa WHERE (tanpa kata WHERE) beserta argumennya, mulai $1.
+func (f AssetListFilter) where() (string, []interface{}) {
 	conds := []string{"a.is_deleted = false"}
 	args := []interface{}{}
 	idx := 1
 
-	if outletID != "" {
+	if f.OutletID != "" {
 		conds = append(conds, fmt.Sprintf("a.outlet_id = $%d", idx))
-		args = append(args, outletID)
+		args = append(args, f.OutletID)
 		idx++
 	}
-	if search != "" {
+	if f.Search != "" {
 		conds = append(conds, fmt.Sprintf(
 			"(a.name ILIKE $%d OR a.code ILIKE $%d OR a.category ILIKE $%d OR a.asset_no ILIKE $%d OR a.serial_number ILIKE $%d)",
 			idx, idx, idx, idx, idx))
-		args = append(args, "%"+search+"%")
+		args = append(args, "%"+f.Search+"%")
 		idx++
 	}
-	if condition != "" {
+	if f.Condition != "" {
 		conds = append(conds, fmt.Sprintf("a.condition = $%d", idx))
-		args = append(args, condition)
+		args = append(args, f.Condition)
 		idx++
 	}
-	if status != "" {
+	if f.Status != "" {
 		conds = append(conds, fmt.Sprintf("COALESCE(a.status, 'aktif') = $%d", idx))
-		args = append(args, status)
+		args = append(args, f.Status)
 		idx++
 	} else {
 		// Aset yang sudah dihapus lewat berita acara tidak ikut daftar harian,
 		// tapi barisnya tetap ada supaya riwayat dan nilai bukunya bisa dibuka.
 		conds = append(conds, "COALESCE(a.status, 'aktif') <> 'dihapus'")
 	}
-	scopeCond, scopeArgs := assetScopeCond("a", outletScope, idx)
+	scopeCond, scopeArgs := assetScopeCond("a", f.OutletScope, idx)
 	if scopeCond != "" {
 		conds = append(conds, strings.TrimPrefix(scopeCond, " AND "))
 		args = append(args, scopeArgs...)
-		idx++
 	}
+	return strings.Join(conds, " AND "), args
+}
 
-	q := fmt.Sprintf(`SELECT %s FROM assets a %s WHERE %s ORDER BY a.created_at DESC`,
-		assetSelectCols, assetJoins, strings.Join(conds, " AND "))
+// Terbaru dulu. id (ULID) memutus seri created_at yang kembar — mis. baris
+// hasil impor Excel dalam satu transaksi — supaya urutannya tetap dan tidak
+// ada baris yang muncul dua kali atau terlewat saat berpindah halaman.
+const assetListOrder = `ORDER BY a.created_at DESC, a.id DESC`
 
+func queryAssets(q string, args ...interface{}) ([]models.Asset, error) {
 	rows, err := database.DB.Query(q, args...)
 	if err != nil {
 		return nil, err
@@ -235,6 +249,73 @@ func ListAssets(outletID, search, condition, status string, outletScope []string
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// ListAssets mengembalikan SEMUA aset yang lolos saringan, lengkap dengan
+// agregat perawatan dan penyusutan garis lurus per aset. Dipakai pemilih aset
+// di halaman lain dan ekspor Excel; layar daftar memakai ListAssetsPage.
+func ListAssets(f AssetListFilter) ([]models.Asset, error) {
+	where, args := f.where()
+	return queryAssets(fmt.Sprintf(`SELECT %s FROM assets a %s WHERE %s %s`,
+		assetSelectCols, assetJoins, where, assetListOrder), args...)
+}
+
+// AssetListSummary berisi angka kartu ringkasan di atas daftar Perlengkapan.
+// Dihitung dari SELURUH aset yang lolos saringan, bukan hanya halaman yang
+// sedang tampil. Harga tersimpan per unit, jadi nilai dikali jumlah unit.
+type AssetListSummary struct {
+	Count       int     `json:"count"`
+	Units       int     `json:"units"`
+	Acquisition float64 `json:"acquisition"`
+	Book        float64 `json:"book"`
+	Attention   int     `json:"attention"` // rusak (ringan/berat) atau dalam perbaikan
+}
+
+// SummarizeAssets menghitung ringkasan atas seluruh aset yang lolos saringan.
+// Rumusnya sama dengan yang dulu dihitung layar dari semua baris: jumlah 0
+// dihitung 1 unit untuk nilai, dan "perlu perhatian" = kondisi bukan baik
+// atau sedang diperbaiki.
+func SummarizeAssets(f AssetListFilter) (AssetListSummary, error) {
+	where, args := f.where()
+	var s AssetListSummary
+	err := database.DB.QueryRow(fmt.Sprintf(`
+		SELECT COUNT(*), COALESCE(SUM(COALESCE(a.quantity, 0)), 0),
+		       COALESCE(SUM(COALESCE(a.purchase_price, 0) * COALESCE(NULLIF(a.quantity, 0), 1)), 0),
+		       COALESCE(SUM((COALESCE(a.purchase_price, 0) - COALESCE(dep.accum, 0)) * COALESCE(NULLIF(a.quantity, 0), 1)), 0),
+		       COUNT(*) FILTER (WHERE COALESCE(a.condition, '') <> 'baik' OR COALESCE(a.status, 'aktif') = 'perbaikan')
+		FROM assets a %s WHERE %s`, assetJoins, where), args...).
+		Scan(&s.Count, &s.Units, &s.Acquisition, &s.Book, &s.Attention)
+	return s, err
+}
+
+// ListAssetsPage mengembalikan satu halaman daftar (limit baris) beserta
+// ringkasan seluruh hasil saringan. Halaman di luar jangkauan — mis. setelah
+// baris terakhir di halaman terakhir dihapus — digeser ke halaman terakhir;
+// halaman yang benar-benar dipakai ikut dikembalikan.
+func ListAssetsPage(f AssetListFilter, page, limit int) ([]models.Asset, AssetListSummary, int, error) {
+	if limit < 1 {
+		limit = 100
+	}
+	if page < 1 {
+		page = 1
+	}
+	s, err := SummarizeAssets(f)
+	if err != nil {
+		return nil, s, page, err
+	}
+	last := (s.Count + limit - 1) / limit
+	if last < 1 {
+		last = 1 // hasil kosong tetap "halaman 1 dari 1"
+	}
+	if page > last {
+		page = last
+	}
+	where, args := f.where()
+	n := len(args)
+	args = append(args, limit, (page-1)*limit)
+	rows, err := queryAssets(fmt.Sprintf(`SELECT %s FROM assets a %s WHERE %s %s LIMIT $%d OFFSET $%d`,
+		assetSelectCols, assetJoins, where, assetListOrder, n+1, n+2), args...)
+	return rows, s, page, err
 }
 
 func GetAsset(id string, outletScope []string) (*models.Asset, error) {

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/lib/pq"
@@ -97,7 +98,8 @@ func ListFinanceOperations(c *fiber.Ctx) error {
 		return financeError(c, services.ErrFinanceAccess)
 	}
 	page, limit := getPagination(c)
-	data, err := services.ListFinanceOperations(from, to, c.Query("outlet_id"), c.Query("source"), c.Query("direction"), c.Query("account"), c.Query("search"), page, limit, getOutletScope(c))
+	includeReceivable := c.Query("include_receivable") == "1" || strings.EqualFold(c.Query("include_receivable"), "true")
+	data, err := services.ListFinanceOperationsFiltered(from, to, c.Query("outlet_id"), c.Query("source"), c.Query("direction"), c.Query("account"), c.Query("search"), page, limit, getOutletScope(c), includeReceivable)
 	if err != nil {
 		return financeError(c, err)
 	}

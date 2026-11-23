@@ -643,6 +643,19 @@ disahkan sesudahnya.
 **Di pembukuan**, Pembelian Darurat dicatat seperti pengajuan yang disetujui saat dicatat, lalu
 dibayar dari Kas Kasir Outlet. Kas keluar tablet yang tertaut tidak dihitung dua kali (§4.4).
 
+### Audit oleh Keuangan
+
+| Menu | Yang diperiksa |
+|---|---|
+| **Keuangan → Pembayaran** | Saringan **Jenis**: Pembelian Darurat, menunggu pengesahan, pengesahan ditolak (temuan), disahkan, Urgent, Prioritas. Saringan ini ikut ke **Download Excel**. Detail Pembelian Darurat memuat kas yang diserahkan (kasir & pemberi PIN), **foto struk, total & selisihnya**, serta **pengesahan** (siapa, kapan, catatan). Keuangan hanya membaca; keputusannya tetap di penyetuju. |
+| **Excel Pembayaran** | Kolom tambahan di bagian akhir: Tingkat, Tahap Darurat, Alasan Darurat, Total Struk, Selisih Kas−Struk, Disahkan/Ditolak Oleh, Catatan Pengesahan. Lembar Ringkasan memuat rekap tahap Pembelian Darurat. |
+| **Keuangan → Rekap Pembelian Darurat** | Per bulan (tanggal dicatat) dan per outlet: jumlah dan nilai yang dicatat, menunggu kas / struk / pengesahan, disahkan, **ditolak (temuan)**, dibatalkan, **selisih kas − struk**, serta pembanding **Kas Keluar tablet lain** (gaji harian, BBM, refund, belanja di luar sistem). Rincian tiap transaksi bisa dibuka, dan rekap bisa diunduh sebagai Excel (Ringkasan, Rincian, Cara Membaca). Dapat dibuka pemegang `finance.payments.view` atau `procurement.requests.approve`, sesuai cakupan outletnya. |
+
+Kroscek fisik setiap Pembelian Darurat: **nilai kas = Kas Keluar di laporan tutup kasir shift itu = Bukti
+Penyerahan Kas** yang ditandatangani kasir dan penerima. Selisih kas − struk yang positif harus kembali ke
+laci sebagai **Kas Masuk** di shift outlet. Pengesahan yang ditolak ditindaklanjuti Keuangan, misalnya menjadi
+tanggungan manajer outlet; pembukuan pembeliannya tidak dibalik.
+
 **Belanja barang/jasa lewat Kas Keluar biasa di tablet** (tanpa Pembelian Darurat) tidak tercatat
 sebagai pengadaan. Belanja seperti itu tidak punya alasan, struk, pengesahan, maupun catatan aset.
 Gunakan Kas Keluar biasa hanya untuk biaya operasional rutin seperti BBM, token listrik, dan gaji

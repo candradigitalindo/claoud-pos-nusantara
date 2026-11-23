@@ -60,13 +60,22 @@ func buildPayTo(st payToStored, vendorID string, v vendorAccount) models.Purchas
 		if v.registered() {
 			p.Effective = PayToVendorAccount
 			p.BankName, p.AccountNumber, p.AccountHolder = v.bank, v.number, v.holder
+		} else if strings.TrimSpace(st.bank) != "" && strings.TrimSpace(st.number) != "" {
+			// Pembayaran manual di luar pengajuan dengan rekening penerima langsung.
+			p.Effective = PayToVendorAccount
+			p.BankName, p.AccountNumber, p.AccountHolder = st.bank, st.number, st.holder
 		}
 	}
 	switch {
-	case strings.TrimSpace(vendorID) == "":
-		p.Problem = "pengajuan ini belum memilih vendor dari daftar vendor"
 	case st.returnedAt != nil:
 		p.Problem = "detail pembayaran dikembalikan ke Pembelian: " + st.returnReason
+	case st.method == PayToManual && strings.TrimSpace(st.text) != "":
+		// Pembayaran tunai/kas kasir yang sudah memiliki tujuan jelas (termasuk
+		// yang diarahkan langsung oleh penyetuju ke Kas Kasir Outlet).
+	case (p.Effective == PayToVendorAccount || p.Effective == PayToMarketplaceVA) && strings.TrimSpace(p.BankName) != "" && strings.TrimSpace(p.AccountNumber) != "":
+		// Rekening bank atau VA tujuan sudah lengkap.
+	case strings.TrimSpace(vendorID) == "":
+		p.Problem = "pengajuan ini belum memilih vendor dari daftar vendor"
 	case p.Effective == "" && st.method == PayToVendorAccount:
 		p.Problem = "rekening terdaftar vendor ini kosong — Pembelian perlu memperbarui detail pembayaran atau data vendor"
 	case p.Effective == "":
@@ -131,12 +140,13 @@ func resolvePayToInput(vendorName string, v vendorAccount, in *models.PurchasePa
 // (dikunci FOR SHARE supaya tidak berganti di tengah transaksi). vendorID ""
 // bila pengajuan belum memilih vendor.
 func prVendorAccountTx(tx *sql.Tx, prID string) (vendorID, vendorName string, acct vendorAccount, err error) {
-	if err = tx.QueryRow(`SELECT COALESCE(vendor_id, '') FROM purchase_requests WHERE id = $1`, prID).Scan(&vendorID); err != nil {
+	if err = tx.QueryRow(`SELECT COALESCE(vendor_id, ''), COALESCE(vendor_name, '') FROM purchase_requests WHERE id = $1`, prID).Scan(&vendorID, &vendorName); err != nil {
 		return "", "", vendorAccount{}, err
 	}
 	vendorID = strings.TrimSpace(vendorID)
+	vendorName = strings.TrimSpace(vendorName)
 	if vendorID == "" {
-		return "", "", vendorAccount{}, nil
+		return "", vendorName, vendorAccount{}, nil
 	}
 	err = tx.QueryRow(`
 		SELECT name, COALESCE(bank_name, ''), COALESCE(account_number, ''), COALESCE(account_holder, '')
