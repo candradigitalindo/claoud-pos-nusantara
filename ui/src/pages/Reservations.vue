@@ -368,6 +368,7 @@ import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah, formatDateStr, todayDateString } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
@@ -446,8 +447,8 @@ async function saveSettings() {
   catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { savingSettings.value = false }
 }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     rows.value = asArray(await reservationsApi.list({
       outlet_id: filterOutlet.value || undefined,
@@ -455,7 +456,7 @@ async function load() {
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
     }))
-  } catch (e) { errorMsg.value = e?.message || 'Gagal memuat reservasi' } finally { loading.value = false }
+  } catch (e) { if (!silent) errorMsg.value = e?.message || 'Gagal memuat reservasi' } finally { if (!silent) loading.value = false }
 }
 async function loadOutlets() {
   try { const d = await outletsApi.myOutlets(); outlets.value = d?.outlets ?? d ?? [] } catch { outlets.value = [] }
@@ -620,6 +621,7 @@ async function confirmDelete(r) {
 }
 
 onMounted(async () => { await loadOutlets(); await Promise.all([load(), loadSettings()]) })
+useRealtime(['reservation'], () => load({ silent: true }))
 </script>
 
 <style scoped>

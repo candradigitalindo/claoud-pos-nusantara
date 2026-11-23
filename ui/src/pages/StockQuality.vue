@@ -78,6 +78,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { safeUrl } from '@/utils/safeUrl'
 import { formatRupiah as money } from '@/utils/format'
+import { useRealtime } from '@/utils/realtime.js'
 import { stockUnitRatio, preferredStockUnit } from '@/utils/stockUnits'
 import { QUALITY_REASONS, QUALITY_STATUSES, QUALITY_ACTIONS, QUALITY_DISPOSITIONS } from '@/utils/stockQuality'
 import StockEvidenceCapture from '@/components/StockEvidenceCapture.vue'
@@ -101,11 +102,12 @@ const units = computed(() => selectedItem.value ? [...new Set([selectedItem.valu
 const reportReasons = computed(() => Object.fromEntries(Object.entries(QUALITY_REASONS).filter(([key]) => key !== 'return' || lookups.value.warehouses.find(w => w.id === report.value.warehouse_id)?.type === 'central')))
 const date = v => v ? new Date(v).toLocaleString('id-ID') : '—'
 let seq = 0, batchSeq = 0, timer
-async function load() {
-  const request = ++seq; loading.value = true; error.value = ''
+async function load({ silent = false } = {}) {
+  const request = ++seq
+  if (!silent) { loading.value = true; error.value = '' }
   try { const data = await stockQualityApi.list({ warehouse_id: warehouse.value, status: status.value, search: search.value, page: page.value, limit: 20 }); if (request === seq) { rows.value = data.rows || []; total.value = data.total || 0 } }
-  catch (e) { if (request === seq) { rows.value = []; error.value = e.message } }
-  finally { if (request === seq) loading.value = false }
+  catch (e) { if (request === seq && !silent) { rows.value = []; error.value = e.message } }
+  finally { if (request === seq && !silent) loading.value = false }
 }
 watch([warehouse, status], () => { if (page.value !== 1) page.value = 1; else load() })
 watch(page, load)
@@ -115,6 +117,12 @@ onMounted(async () => {
   load()
   try { lookups.value = await stockQualityApi.lookups(); if (canReport.value) { const data = await stockItemsApi.list({ active_only: true, limit: 1000 }); items.value = Array.isArray(data) ? data : data.data || [] } }
   catch (e) { error.value = e.message }
+})
+useRealtime(['stock_quality', 'stock_transfer'], async () => {
+  await load({ silent: true })
+  if (showDetail.value && detail.value?.id) {
+    try { detail.value = await stockQualityApi.get(detail.value.id) } catch {}
+  }
 })
 function openReport() { report.value = { warehouse_id: reportWarehouses.value.find(w => w.id === warehouse.value)?.id || '', item_id: '', batch_id: '', qty: 1, unit_used: '', reason: 'reject', notes: '' }; reportEvidence.value = null; showReport.value = true }
 watch(() => [report.value.warehouse_id, report.value.item_id], async () => {

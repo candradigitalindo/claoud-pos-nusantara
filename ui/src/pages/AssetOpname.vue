@@ -119,6 +119,7 @@ import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { OPNAME_STATUSES, opnameStatusCls } from '@/utils/assets.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -147,13 +148,18 @@ const newSession = ref({ outlet_id: '', notes: '' })
 function asArray(d) { return Array.isArray(d) ? d : (d?.data || []) }
 function asObject(d) { return d?.data ?? d ?? null }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     rows.value = asArray(await assetOpnamesApi.list())
-    const running = rows.value.find(s => s.status === 'berjalan')
-    if (running) await open(running)
-  } catch (e) { errorMsg.value = e?.message || 'Gagal memuat sesi opname' } finally { loading.value = false }
+    if (!silent) {
+      const running = rows.value.find(s => s.status === 'berjalan')
+      if (running) await open(running)
+    } else if (active.value && active.value.status !== 'berjalan') {
+      const updated = rows.value.find(s => s.id === active.value.id)
+      if (updated) await open(updated)
+    }
+  } catch (e) { if (!silent) errorMsg.value = e?.message || 'Gagal memuat sesi opname' } finally { if (!silent) loading.value = false }
 }
 
 async function loadOutlets() {
@@ -211,6 +217,7 @@ async function approve() {
 }
 
 onMounted(async () => { await loadOutlets(); await load() })
+useRealtime(['asset_workflow'], () => load({ silent: true }))
 </script>
 
 <style scoped>

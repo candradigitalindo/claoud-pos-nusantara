@@ -244,6 +244,7 @@ import {
 } from 'chart.js'
 import { purchaseApi } from '@/api/purchase.js'
 import { formatRupiah } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 
 // Grafik tren = Bar dengan dataset bertipe 'line' (grafik campuran): komponen
 // Bar hanya mendaftarkan BarController, jadi LineController wajib didaftarkan
@@ -256,16 +257,19 @@ const loading  = ref(false)
 const errorMsg = ref('')
 
 onMounted(fetchData)
+useRealtime(['procurement', 'procurement_payment'], () => fetchData({ silent: true }))
 
-async function fetchData() {
-  loading.value  = true
-  errorMsg.value = ''
+async function fetchData({ silent = false } = {}) {
+  if (!silent) {
+    loading.value  = true
+    errorMsg.value = ''
+  }
   try {
     data.value = await purchaseApi.getDashboard()
   } catch (err) {
-    errorMsg.value = err?.message ?? 'Gagal memuat dashboard pengadaan.'
+    if (!silent) errorMsg.value = err?.message ?? 'Gagal memuat dashboard pengadaan.'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -577,7 +581,7 @@ function pct(val, total) {
 /* ── Stat Cards ── */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .875rem; }
 .stat-card {
-  position: relative; overflow: hidden; border-radius: 1.1rem;
+  position: relative; overflow: hidden; min-width: 0; border-radius: 1.1rem;
   padding: 1.1rem 1.15rem .9rem;
   background: rgba(255,255,255,.75); backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255,255,255,.68);
@@ -615,29 +619,31 @@ function pct(val, total) {
 .sc-orange  .sc-icon-wrap { background: rgba(249,115,22,.12);  color: #ea580c; }
 .sc-indigo  .sc-icon-wrap { background: rgba(99,102,241,.12);  color: #4f46e5; }
 
-.sc-top { display: flex; align-items: center; gap: .65rem; margin-bottom: .75rem; }
+.sc-top { display: flex; align-items: center; gap: .65rem; margin-bottom: .75rem; min-width: 0; }
 .sc-label {
   font-size: .68rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: .07em; color: #6b7f74; line-height: 1.3;
+  min-width: 0; overflow-wrap: break-word;
 }
-.sc-value-row { margin-bottom: .7rem; min-height: 1.8rem; }
+.sc-value-row { margin-bottom: .7rem; min-height: 1.8rem; min-width: 0; }
 .sc-value {
-  font-size: clamp(1.1rem, 2.8vw, 1.45rem);
+  display: block;
+  font-size: clamp(1rem, 3.2vw, 1.45rem);
   font-weight: 800; color: #0f2d1d;
-  letter-spacing: -.035em; line-height: 1;
-  word-break: break-word;
+  letter-spacing: -.035em; line-height: 1.15;
+  overflow-wrap: anywhere; word-break: break-word;
 }
 .sc-footer {
   display: flex; align-items: center; justify-content: space-between; gap: .5rem;
   padding-top: .55rem; border-top: 1px solid rgba(0,0,0,.06);
-  min-height: 1.4rem;
+  min-height: 1.4rem; min-width: 0;
 }
-.sc-tag { font-size: .67rem; color: #8a9e93; font-weight: 500; }
+.sc-tag { font-size: .67rem; color: #8a9e93; font-weight: 500; overflow-wrap: break-word; }
 
 /* ── Chart Panels ── */
-.chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .875rem; }
+.chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: .875rem; }
 .chart-panel {
-  border-radius: 1.1rem; overflow: hidden;
+  border-radius: 1.1rem; overflow: hidden; min-width: 0;
   background: rgba(255,255,255,.78); backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255,255,255,.68);
   box-shadow: 0 2px 16px rgba(0,0,0,.07), 0 1px 0 rgba(255,255,255,.95) inset;
@@ -645,20 +651,20 @@ function pct(val, total) {
 .chart-panel--wide { grid-column: 1 / -1; }
 
 .cp-header {
-  display: flex; align-items: center; gap: .55rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .55rem;
   padding: .85rem 1.15rem;
   border-bottom: 1px solid rgba(0,0,0,.06);
   background: linear-gradient(135deg, rgba(255,255,255,.6) 0%, rgba(240,249,244,.4) 100%);
 }
 .cp-icon {
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: 30px; height: 30px; border-radius: .55rem;
   background: rgba(59,130,246,.12); color: #2563eb;
 }
 .cp-icon--amber   { background: rgba(245,158,11,.12); color: #d97706; }
 .cp-icon--violet  { background: rgba(139,92,246,.12); color: #7c3aed; }
 .cp-icon--emerald { background: rgba(16,185,129,.12); color: #059669; }
-.cp-title { font-size: .85rem; font-weight: 700; color: #0f3d23; }
+.cp-title { font-size: .85rem; font-weight: 700; color: #0f3d23; min-width: 0; overflow-wrap: break-word; }
 .cp-count {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 20px; height: 20px; padding: 0 .4rem;
@@ -677,7 +683,7 @@ function pct(val, total) {
   padding: .75rem 1.15rem 1rem;
   border-top: 1px solid rgba(0,0,0,.05);
 }
-.ts-item { display: flex; align-items: center; gap: .4rem; font-size: .75rem; }
+.ts-item { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .4rem; font-size: .75rem; min-width: 0; max-width: 100%; }
 .ts-dot {
   width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0;
 }
@@ -685,21 +691,21 @@ function pct(val, total) {
 .ts-dot--green  { background: #10b981; }
 .ts-dot--violet { background: #8b5cf6; }
 .ts-label { color: #6b7f74; font-weight: 500; }
-.ts-val { color: #0f3d23; font-weight: 700; }
+.ts-val { color: #0f3d23; font-weight: 700; overflow-wrap: anywhere; }
 
 /* ── Chart Legend ── */
 .chart-legend {
   display: flex; flex-wrap: wrap; gap: .4rem .85rem;
   padding: 0 1.15rem 1rem;
 }
-.legend-item { display: flex; align-items: center; gap: .3rem; font-size: .72rem; color: #4a6355; }
+.legend-item { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .3rem; font-size: .72rem; color: #4a6355; min-width: 0; max-width: 100%; }
 .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .legend-label { font-weight: 600; }
-.legend-val { color: #6b7f74; }
+.legend-val { color: #6b7f74; overflow-wrap: anywhere; }
 
 /* ── Work Unit Panel ── */
 .wu-panel {
-  border-radius: 1.1rem; overflow: hidden;
+  border-radius: 1.1rem; overflow: hidden; min-width: 0;
   background: rgba(255,255,255,.78); backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255,255,255,.68);
   box-shadow: 0 2px 16px rgba(0,0,0,.07), 0 1px 0 rgba(255,255,255,.95) inset;
@@ -740,6 +746,7 @@ function pct(val, total) {
 .badge {
   display: inline-flex; align-items: center; padding: .12rem .45rem;
   border-radius: 999px; font-size: .65rem; font-weight: 700;
+  max-width: 100%; overflow-wrap: break-word;
 }
 .badge-pending   { background: rgba(245,158,11,.13); color: #b45309; }
 .badge-verified  { background: rgba(99,102,241,.13);  color: #4338ca; }
@@ -753,15 +760,16 @@ function pct(val, total) {
 /* ── Mobile Cards (hidden on desktop) ── */
 .wu-mobile { display: none; }
 .wmc {
-  padding: .9rem 1.1rem; border-bottom: 1px solid rgba(0,0,0,.05);
+  padding: .9rem 1rem; border-bottom: 1px solid rgba(0,0,0,.05);
+  min-width: 0; overflow: hidden;
 }
 .wmc:last-child { border-bottom: none; }
-.wmc-top { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.wmc-top { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; min-width: 0; }
 .wmc-info { flex: 1; min-width: 0; }
-.wmc-name { display: block; font-size: .82rem; font-weight: 700; color: #0f3d23; }
-.wmc-amount { display: block; font-size: .72rem; color: #059669; font-weight: 600; }
+.wmc-name { display: block; font-size: .82rem; font-weight: 700; color: #0f3d23; overflow-wrap: break-word; }
+.wmc-amount { display: block; font-size: .72rem; color: #059669; font-weight: 600; overflow-wrap: anywhere; }
 .wmc-total {
-  font-size: .72rem; color: #fff; font-weight: 700; white-space: nowrap;
+  font-size: .72rem; color: #fff; font-weight: 700; white-space: nowrap; flex-shrink: 0;
   background: linear-gradient(135deg, #1a5c38, #0f4226);
   padding: .15rem .5rem; border-radius: 999px;
 }
@@ -782,15 +790,18 @@ function pct(val, total) {
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .chart-row { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chart-row { grid-template-columns: minmax(0, 1fr); }
   .chart-line-wrap { height: 240px; }
   .wu-table-wrap { display: none; }
   .wu-mobile { display: block; }
 }
 @media (max-width: 480px) {
-  .stat-grid { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: minmax(0, 1fr); }
   .page-header { flex-direction: column; align-items: flex-start; }
+  .chart-wrap { padding: .75rem; }
+  .chart-legend { padding: 0 .75rem .85rem; }
+  .trend-summary { padding: .65rem .75rem .85rem; }
   .chart-doughnut-wrap { height: 170px; }
   .chart-line-wrap { height: 200px; }
 }

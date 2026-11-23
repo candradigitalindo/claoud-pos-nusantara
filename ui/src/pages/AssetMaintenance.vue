@@ -208,6 +208,7 @@ import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah, todayDateString } from '@/utils/format.js'
 import { CONDITIONS, MTYPES, condLabel, woStatusCls, woStatusLabel, dueCls, dueLabel } from '@/utils/assets.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
@@ -270,13 +271,13 @@ function paramsForTab() {
   return { ...base, due: tab.value }
 }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     rows.value = asArray(await assetMaintenanceApi.list(paramsForTab()))
   } catch (e) {
-    errorMsg.value = e?.message || 'Gagal memuat perawatan'
-  } finally { loading.value = false }
+    if (!silent) errorMsg.value = e?.message || 'Gagal memuat perawatan'
+  } finally { if (!silent) loading.value = false }
 }
 let _t = null
 function debouncedLoad() { clearTimeout(_t); _t = setTimeout(load, 350) }
@@ -361,6 +362,7 @@ async function runAction(act) {
 }
 
 onMounted(async () => { await loadOutlets(); await Promise.all([load(), loadSummary()]) })
+useRealtime(['asset_workflow', 'asset_maintenance_due'], () => Promise.all([load({ silent: true }), loadSummary()]))
 </script>
 
 <style scoped>

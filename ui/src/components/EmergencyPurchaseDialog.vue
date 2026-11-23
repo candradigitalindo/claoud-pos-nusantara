@@ -225,6 +225,7 @@ async function submit() {
 <style scoped>
 .fld {
   width: 100%;
+  min-width: 0;
   border-radius: 0.5rem;
   border: 1px solid rgb(209 213 219);
   background: #fff;

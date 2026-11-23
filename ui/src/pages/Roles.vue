@@ -514,17 +514,30 @@ const REDIRECT_GROUPS = [
 // Template role cepat untuk mempermudah pendaftaran role sesuai struktur operasional.
 const ROLE_PRESETS = [
   {
-    key: 'approver_goods_projects',
-    label: 'Penyetuju Barang, Jasa & Proyek',
-    name: 'penyetuju barang, jasa & proyek',
-    description: 'Penyetuju pengadaan barang, perlengkapan, jasa, serta pengelola & penetap RAB proyek',
-    redirect_to: '/procurement-dashboard',
+    key: 'approver_goods',
+    label: 'Penyetuju Barang',
+    name: 'penyetuju barang',
+    description: 'Penyetuju khusus pengadaan barang & perlengkapan (tanpa jasa dan bahan baku)',
+    redirect_to: '/purchase-goods',
     scope_type: 'all',
     permissions: [
       'dashboard', 'documents.view', 'documents.download',
       'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.approve',
       'procurement.projects.view', 'procurement.projects.manage',
       'vendors.view', 'assets.usage.view',
+    ],
+  },
+  {
+    key: 'approver_services',
+    label: 'Penyetuju Jasa',
+    name: 'penyetuju jasa',
+    description: 'Penyetuju khusus pengadaan jasa (tanpa barang dan bahan baku)',
+    redirect_to: '/purchase-services',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.approve_services',
+      'procurement.projects.view', 'vendors.view',
     ],
   },
   {
@@ -538,6 +551,20 @@ const ROLE_PRESETS = [
       'dashboard', 'documents.view', 'documents.download',
       'procurement.dashboard.view', 'procurement.rawmaterials.view', 'procurement.rawmaterials.approve',
       'vendors.view', 'warehouse_dashboard.view', 'stockitems.view', 'stockledger.view',
+    ],
+  },
+  {
+    key: 'approver_goods_projects',
+    label: 'Penyetuju Barang, Jasa & Proyek',
+    name: 'penyetuju barang, jasa & proyek',
+    description: 'Penyetuju pengadaan barang, perlengkapan, jasa, serta pengelola & penetap RAB proyek',
+    redirect_to: '/procurement-dashboard',
+    scope_type: 'all',
+    permissions: [
+      'dashboard', 'documents.view', 'documents.download',
+      'procurement.dashboard.view', 'procurement.requests.view', 'procurement.requests.approve', 'procurement.requests.approve_services',
+      'procurement.projects.view', 'procurement.projects.manage',
+      'vendors.view', 'assets.usage.view',
     ],
   },
   {

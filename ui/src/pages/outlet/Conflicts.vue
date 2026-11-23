@@ -44,6 +44,7 @@ import { outletsApi } from '@/api/outlets.js'
 import { formatDateTime } from '@/utils/format.js'
 import { PAGE_SIZE, CONFLICT_STRATEGY } from '@/utils/constants.js'
 import { useToastStore } from '@/stores/toast.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
 import AppBadge from '@/components/ui/AppBadge.vue'
@@ -78,17 +79,20 @@ const errorMsg    = ref('')
 const resolvingId = ref(null)
 
 onMounted(fetch); watch(page, fetch)
+useRealtime(['transaction', 'order', 'cashier_shift'], (ev) => {
+  if (!ev?.outlet_id || ev.outlet_id === outletId.value) fetch({ silent: true })
+})
 
-async function fetch() {
-  loading.value = true; errorMsg.value = ''
+async function fetch({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const res  = await outletsApi.conflicts(outletId.value, { page: page.value, limit: PAGE_SIZE })
     const data = res.data?.data ?? res.data
     items.value = data.conflicts ?? data ?? []
     total.value = data.total ?? items.value.length
   } catch (err) {
-    errorMsg.value = err?.response?.data?.message ?? 'Gagal memuat konflik.'
-  } finally { loading.value = false }
+    if (!silent) errorMsg.value = err?.response?.data?.message ?? 'Gagal memuat konflik.'
+  } finally { if (!silent) loading.value = false }
 }
 
 async function resolve(row, strategy) {

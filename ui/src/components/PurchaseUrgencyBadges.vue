@@ -55,12 +55,17 @@ const needByTitle = computed(() => needBy.value
   align-items: center;
   gap: 3px;
   border-radius: 9999px;
-  padding: 1px 7px;
+  padding: 2px 7px;
   font-size: 10px;
   font-weight: 700;
-  line-height: 16px;
+  line-height: 1.3;
   letter-spacing: .02em;
-  white-space: nowrap;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+@media (min-width: 640px) {
+  .ub { white-space: nowrap; }
 }
 .ub-emergency { background: #e11d48; color: #fff; text-transform: uppercase; }
 .ub-urgent    { background: #fee2e2; color: #b91c1c; box-shadow: inset 0 0 0 1px #fca5a5; }

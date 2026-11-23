@@ -40,10 +40,16 @@ export function purchaseTypePath(t) {
 }
 
 // Kunci izin pengadaan untuk (jenis, aksi) — cermin services.ProcurementPermission:
-// barang & jasa diatur procurement.requests.*, bahan baku procurement.rawmaterials.*.
-// Aksi: view, submit, verify, approve, purchasing.
+// barang & jasa diatur procurement.requests.*, bahan baku procurement.rawmaterials.*,
+// dengan approval dipisah per jenis:
+//   barang → procurement.requests.approve
+//   jasa   → procurement.requests.approve_services
+//   bahan  → procurement.rawmaterials.approve
+// Aksi: view, submit, verify, approve, purchasing, pickup.
 export function procurementPerm(t, action) {
-  return (normalizePurchaseType(t) === 'bahan' ? 'procurement.rawmaterials.' : 'procurement.requests.') + action
+  const v = normalizePurchaseType(t)
+  if (v === 'jasa' && action === 'approve') return 'procurement.requests.approve_services'
+  return (v === 'bahan' ? 'procurement.rawmaterials.' : 'procurement.requests.') + action
 }
 
 // ── Status pengajuan ───────────────────────────────────────────────────────

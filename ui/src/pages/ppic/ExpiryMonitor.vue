@@ -99,6 +99,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
+import { useRealtime } from '@/utils/realtime.js'
 import debounce from 'lodash/debounce'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
@@ -141,18 +142,20 @@ onMounted(async () => {
   } catch (e) { toast.error(e?.message || 'Gagal memuat pilihan gudang') }
 })
 
-async function load() {
-  loading.value = true
+async function load({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     resp.value = await ppicApi.getExpiry({ ...filters, page: page.value, limit: 25 })
     rows.value = resp.value?.data || []
     totalPages.value = Math.max(1, Math.ceil((resp.value?.total || 0) / 25))
   } catch (e) {
-    toast.error(e?.message ?? 'Gagal memuat monitor kedaluwarsa')
+    if (!silent) toast.error(e?.message ?? 'Gagal memuat monitor kedaluwarsa')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
+
+useRealtime(['ppic_alert', 'goods_receipt'], () => load({ silent: true }))
 
 function bucketData(key) {
   const s = resp.value?.summary?.find(x => x.bucket === key)

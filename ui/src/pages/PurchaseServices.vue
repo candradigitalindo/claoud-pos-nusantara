@@ -62,7 +62,7 @@
                 <span v-if="payToReturned(row)" class="payto-returned-badge" title="Keuangan mengembalikan detail pembayaran — perbaiki di detail pengajuan">Detail bayar dikembalikan</span>
               </div>
             </div>
-            <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            <dl class="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
               <dt class="text-gray-400">Unit</dt>
               <dd class="font-medium text-gray-800">{{ row.work_unit_name || '-' }}</dd>
               <dt class="text-gray-400">Pengaju</dt>
@@ -159,38 +159,43 @@
           RAB <b>{{ projectRab.project_number }}</b> v{{ projectRab.rab_version }} · {{ rabLines.length }} baris bisa diserap pengajuan ini.
           Pilih baris RAB pada tiap item agar serapannya tercatat per pos; memilih baris mengisi nama, satuan, HPS, dan sumber HPS.
         </div>
+        <div class="modal-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          Pengajuan jasa langsung <strong>menunggu persetujuan</strong> (tanpa verifikasi) dan masih bisa diubah sampai disetujui.
+        </div>
         <div class="modal-span-full">
           <label class="text-sm font-medium text-gray-700 mb-2 block">Daftar Pengadaan Jasa</label>
           <div class="space-y-3">
-            <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+            <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200 overflow-hidden">
               <div class="flex items-start gap-2">
-                <div class="flex-1 space-y-3">
+                <div class="min-w-0 flex-1 space-y-3">
                   <div class="flex items-center gap-2">
                     <span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-semibold">Pengadaan #{{ i + 1 }}</span>
                     <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeItem(i)" :disabled="form.items.length <= 1" class="ml-auto" />
                   </div>
-                  <input v-model="item.name" placeholder="Nama Pengadaan Jasa" class="input-sm w-full" />
+                  <input v-model="item.name" placeholder="Nama Pengadaan Jasa" class="input-sm w-full min-w-0" />
                   <!-- Sub-items -->
-                  <div class="pl-2 sm:ml-2 sm:pl-3 border-l-2 border-emerald-200 space-y-2">
+                  <div class="pl-2 sm:ml-2 sm:pl-3 border-l-2 border-emerald-200 space-y-2 min-w-0">
                     <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Detail Item</p>
                     <div v-for="(sub, j) in item.items" :key="j"
                       class="grid grid-cols-2 gap-1.5 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
-                      <div v-if="form.project_id && rabLines.length" class="col-span-2 sm:col-span-12">
-                        <div class="flex items-center gap-1.5">
+                      <div v-if="form.project_id && rabLines.length" class="col-span-2 sm:col-span-12 min-w-0">
+                        <div class="flex items-center gap-1.5 min-w-0">
                           <span class="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">RAB</span>
-                          <SearchableSelect v-model="sub.rab_item_id" class="input-sm w-full" @change="applyRabLine(sub)">
+                          <SearchableSelect v-model="sub.rab_item_id" class="input-sm min-w-0 flex-1 w-full" @change="applyRabLine(sub)">
                             <option value="">— Di luar RAB (tidak menyerap baris mana pun) —</option>
                             <option v-for="l in rabLines" :key="l.id" :value="l.id">{{ rabOptionLabel(l) }}</option>
                           </SearchableSelect>
                         </div>
-                        <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600">{{ rabWarn(sub) }}</p>
+                        <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600 break-words">{{ rabWarn(sub) }}</p>
                       </div>
-                      <input v-model="sub.name" placeholder="Nama item" class="input-sm col-span-2 sm:col-span-4" />
-                      <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm sm:col-span-2" />
-                      <input v-model="sub.unit" placeholder="Satuan" class="input-sm sm:col-span-1" />
-                      <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" class="col-span-2" />
-                      <p class="col-span-1 self-center text-right text-xs text-gray-500 sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
-                      <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center" />
+                      <input v-model="sub.name" placeholder="Nama item" class="input-sm min-w-0 w-full col-span-2 sm:col-span-4" />
+                      <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm min-w-0 w-full sm:col-span-2" />
+                      <input v-model="sub.unit" placeholder="Satuan" class="input-sm min-w-0 w-full sm:col-span-1" />
+                      <div class="col-span-2 min-w-0">
+                        <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" />
+                      </div>
+                      <p class="col-span-1 min-w-0 break-words self-center text-right text-xs text-gray-500 sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
+                      <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center justify-self-end" />
                       <!-- Sumber HPS diberi barisnya sendiri: tautan marketplace
                            panjang dan tidak muat di deret kolom angka. -->
                       <div class="col-span-2 sm:col-span-12">
@@ -250,7 +255,7 @@
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-emerald-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 mb-1.5">Permohonan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Pengaju</dt>
                 <dd class="font-medium text-gray-900">{{ detail.requested_by }}</dd>
                 <dt class="text-gray-400">Diajukan</dt>
@@ -281,7 +286,7 @@
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-blue-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">Nilai</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="showHps">
                   <dt class="text-gray-400">HPS</dt>
                   <dd class="font-medium text-gray-900">{{ formatRupiah(detail.status === 'pending' ? detailHpsTotal : detail.total_hps) }}</dd>
@@ -296,7 +301,7 @@
           <div v-if="detail.verified_by || detail.verified_at" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-indigo-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 mb-1.5">Verifikasi</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.verified_by || '-' }}</dd>
                 <template v-if="detail.verified_at">
@@ -319,7 +324,7 @@
           <div v-if="detail.approved_by && detail.status !== 'rejected'" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-amber-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-amber-600 mb-1.5">Persetujuan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.approved_by }}</dd>
                 <template v-if="detail.approved_at">
@@ -335,7 +340,7 @@
           <div v-if="detail.status === 'rejected'" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-red-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-red-600 mb-1.5">Penolakan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.rejected_by || detail.approved_by || '-' }}</dd>
                 <template v-if="detail.rejected_at || detail.approved_at">
@@ -354,7 +359,7 @@
           <div v-if="detail.paid_by || detail.payment_account_dest" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-green-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-green-600 mb-1.5">Pembayaran</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.paid_by">
                   <dt class="text-gray-400">Oleh</dt>
                   <dd class="font-medium text-gray-900">{{ detail.paid_by }}</dd>
@@ -388,7 +393,7 @@
           <div v-if="detail.received_by" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-purple-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-purple-600 mb-1.5">Penerimaan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.received_by }}</dd>
                 <template v-if="detail.received_at">
@@ -402,7 +407,7 @@
           <!-- No. Invoice & Catatan -->
           <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
             <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-2">
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
                   <dt class="text-gray-400">No. Invoice</dt>
                   <dd class="font-medium font-mono text-gray-900">{{ detail.invoice_number }}</dd>
@@ -423,16 +428,16 @@
             Pecahan Vendor ({{ detail.children.length }})
           </p>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div v-for="child in detail.children" :key="child.id" class="bg-white border border-emerald-100 rounded-lg p-3 shadow-sm flex flex-col gap-2">
-              <div class="flex justify-between items-start">
-                <div>
-                  <p class="text-xs font-bold text-gray-900 line-clamp-1">{{ child.vendor_name || 'Vendor Lain' }}</p>
+            <div v-for="child in detail.children" :key="child.id" class="bg-white border border-emerald-100 rounded-lg p-3 shadow-sm flex flex-col gap-2 min-w-0">
+              <div class="flex flex-wrap justify-between items-start gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-bold text-gray-900 break-words">{{ child.vendor_name || 'Vendor Lain' }}</p>
                   <p v-if="child.request_number" class="text-[10px] text-gray-500 font-mono">No. {{ child.request_number }}</p>
                 </div>
-                <span :class="statusBadge(child.status)" class="text-[10px]">{{ statusLabel(child.status) }}</span>
+                <span :class="statusBadge(child.status)" class="text-[10px] shrink-0">{{ statusLabel(child.status) }}</span>
               </div>
-              <div class="flex justify-between items-end mt-auto">
-                <p class="text-xs font-bold text-emerald-700">{{ formatRupiah(child.total_final || child.total_amount) }}</p>
+              <div class="flex justify-between items-end gap-2 mt-auto">
+                <p class="min-w-0 break-words text-xs font-bold text-emerald-700">{{ formatRupiah(child.total_final || child.total_amount) }}</p>
                 <AppActionButton icon="view" label="Lihat Detail →" @click="viewChildDetail(child)" />
               </div>
             </div>
@@ -461,7 +466,7 @@
                     </div>
                     <AppActionButton icon="delete" label="Hapus baris" v-if="canEditItems" @click="removeDetailSubItem(i, j)" />
                   </div>
-                  <dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+                  <dl class="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px]">
                     <dt class="text-gray-400">Qty</dt>
                     <dd class="text-gray-800">
                       <span v-if="canEditItems" class="inline-flex items-center gap-1">
@@ -584,14 +589,14 @@
             </div>
             
             <!-- For Child requests (already split) -->
-            <div v-else class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+            <div v-else class="bg-blue-50 border border-blue-200 rounded-xl p-3.5 sm:p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm">
+              <div class="flex items-start sm:items-center gap-3 min-w-0">
+                <div class="w-10 h-10 shrink-0 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 </div>
-                <div>
+                <div class="min-w-0 flex-1">
                   <p class="text-sm font-bold text-blue-900">Data Hasil Split</p>
-                  <p class="text-xs text-blue-700">Silakan lengkapi harga final untuk vendor ini<template v-if="detail.parent_id">, lalu ajukan pembayarannya</template>.</p>
+                  <p class="text-xs text-blue-700 break-words">Silakan lengkapi harga final untuk vendor ini<template v-if="detail.parent_id">, lalu ajukan pembayarannya</template>.</p>
                 </div>
               </div>
               <div class="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
@@ -645,64 +650,11 @@
         <!-- Pembelian Darurat punya bukti belanjanya sendiri (panel di atas). -->
         <PurchaseStrukSection v-if="showStrukSection && !detail.emergency" :doc="detail" :can-manage="canManageStruk" @changed="reloadDetail" />
 
-        <!-- Verifikasi (status pending, izin procurement.requests.verify):
-             pastikan jasa memang perlu dibeli sebelum diteruskan ke penyetuju. -->
-        <div v-if="detail.status === 'pending' && canVerify" class="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3 sm:p-4">
-          <div>
-            <p class="flex items-center gap-1.5 text-sm font-bold text-indigo-900">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-              Verifikasi Pengajuan Jasa
-            </p>
-            <p class="mt-0.5 text-xs text-indigo-800">
-              Periksa tiap item jasa — mis. sudah tercakup kontrak lain atau bisa dikerjakan teknisi internal.
-              Item yang tidak perlu dibeli ditolak per item beserta alasannya; item lain tetap diteruskan ke persetujuan.
-            </p>
-          </div>
-          <ul class="space-y-2">
-            <li v-for="row in verifyRows" :key="row.key" class="rounded-lg border bg-white p-2.5" :class="row.reject ? 'border-red-200' : 'border-gray-200'">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="break-words text-sm font-medium" :class="row.reject ? 'text-gray-400 line-through' : 'text-gray-900'">{{ row.name }}</p>
-                  <p class="break-words text-[11px] text-gray-500">{{ row.groupName }} · {{ row.qty }} {{ row.unit }}<template v-if="showHps"> · HPS {{ formatRupiah((row.qty || 0) * (row.hps_price || 0)) }}</template></p>
-                </div>
-                <label class="inline-flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-xs font-semibold text-red-700">
-                  <input v-model="row.reject" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
-                  Tolak item ini
-                </label>
-              </div>
-              <div v-if="row.reject" class="mt-2">
-                <input v-model="row.reason" class="input-sm w-full" placeholder="mis. Bisa dikerjakan teknisi internal — konfirmasi ke bagian perlengkapan" />
-                <p v-if="reasonLength(row.reason) < VERIFY_REASON_MIN" class="mt-0.5 text-[11px] text-red-600">Alasan wajib diisi, minimal {{ VERIFY_REASON_MIN }} huruf.</p>
-              </div>
-            </li>
-          </ul>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-gray-700">Catatan verifikasi <span class="font-normal text-gray-400">(opsional)</span></label>
-            <textarea v-model="verifyNotes" rows="2" class="input-sm w-full" placeholder="mis. sudah dicek ke teknisi & kontrak servis yang berjalan"></textarea>
-          </div>
-          <AppAlert v-if="verifyAllRejected" type="warning"
-            message="Semua item ditandai ditolak — pengajuan ini akan berstatus Ditolak dan tidak diteruskan ke persetujuan." />
-          <div v-if="detailRejectMode" class="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div class="min-w-0 flex-1">
-              <label class="text-xs font-medium text-red-600 mb-1 block">Alasan Menolak Seluruh Pengajuan</label>
-              <input v-model="detailRejectReason" placeholder="Masukkan alasan penolakan..." class="input-sm w-full border-red-300 focus:ring-red-500 focus:border-red-500" />
-            </div>
-            <div class="flex items-center justify-end gap-2">
-              <button @click="detailRejectMode = false" class="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">Batal</button>
-              <button @click="submitDetailReject" :disabled="actionLoading" class="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium disabled:opacity-50">Konfirmasi Tolak</button>
-            </div>
-          </div>
-          <div v-else class="flex flex-wrap items-center justify-end gap-2">
-            <AppActionButton icon="reject" label="Tolak Seluruh Pengajuan" @click="detailRejectMode = true" />
-            <AppActionButton :icon="verifyAllRejected ? 'reject' : 'review'" :label="(verifyAllRejected ? 'Tolak Semua Item' : 'Verifikasi &amp; Teruskan ke Persetujuan')" @click="submitVerify" :disabled="actionLoading || !verifyRows.length" />
-          </div>
-        </div>
-
-        <!-- Persetujuan: untuk pengajuan verified, atau pengajuan urgent yang masih pending. -->
+        <!-- Persetujuan: pengajuan jasa langsung menunggu persetujuan tanpa tahap verifikasi. -->
         <div v-if="canShowApprovePanel" class="rounded-xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4">
           <p class="mb-3 text-xs text-gray-600">
-            <template v-if="detail.status === 'pending'">Diajukan oleh <strong>{{ detail.requested_by || '-' }}</strong> · {{ formatDateTime(detail.created_at) }} — pengajuan <strong>Urgent</strong> dapat langsung diputuskan penyetuju.</template>
-            <template v-else>Diverifikasi oleh <strong>{{ detail.verified_by || '-' }}</strong><template v-if="detail.verified_at"> · {{ formatDateTime(detail.verified_at) }}</template><template v-if="detail.rejected_items?.length"> · {{ detail.rejected_items.length }} item ditolak saat verifikasi</template>.</template>
+            <template v-if="!detail.verified_by">Diajukan oleh <strong>{{ detail.requested_by || '-' }}</strong> · {{ formatDateTime(detail.created_at) }} — pengajuan jasa tanpa tahap verifikasi, langsung menunggu persetujuan.</template>
+            <template v-else>Diverifikasi oleh <strong>{{ detail.verified_by }}</strong><template v-if="detail.verified_at"> · {{ formatDateTime(detail.verified_at) }}</template><template v-if="detail.rejected_items?.length"> · {{ detail.rejected_items.length }} item ditolak saat verifikasi</template>.</template>
           </p>
           <!-- Anggaran projek baru terpakai saat disetujui: peringatkan bila melampaui sisa baris RAB. -->
           <div v-if="approvalRabWarnings.length" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -824,14 +776,14 @@
           <p class="text-sm font-semibold text-gray-900 mb-2">{{ item.name }}</p>
           <div class="space-y-2 sm:space-y-1.5">
             <div v-for="(sub, j) in item.items" :key="j"
-              class="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
-              <p class="col-span-2 break-words text-sm text-gray-700 sm:col-span-4">{{ sub.name }}</p>
-              <p class="self-center text-xs text-gray-500 sm:col-span-2 sm:text-right">{{ sub.qty }} {{ sub.unit }}</p>
+              class="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-white p-2.5 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+              <p class="col-span-2 min-w-0 break-words text-sm text-gray-700 sm:col-span-4">{{ sub.name }}</p>
+              <p class="col-span-1 min-w-0 self-center text-xs text-gray-500 sm:col-span-2 sm:text-right">{{ sub.qty }} {{ sub.unit }}</p>
               <div class="hidden sm:block sm:col-span-1"></div>
-              <div class="col-span-2 order-last sm:order-none sm:col-span-3">
+              <div class="col-span-2 min-w-0 order-last sm:order-none sm:col-span-3">
                 <RupiahInput v-model="sub.final_price" placeholder="Harga/satuan" />
               </div>
-              <p class="self-center text-xs text-emerald-700 text-right font-medium sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</p>
+              <p class="col-span-1 min-w-0 break-words self-center text-xs text-emerald-700 text-right font-medium sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</p>
             </div>
           </div>
           <p class="text-xs text-right mt-2 text-gray-500">Harga pengadaan: <strong class="text-emerald-700">{{ formatRupiah(calcEditItemFinal(item)) }}</strong></p>
@@ -863,8 +815,8 @@
             @click="sub.selected = !sub.selected">
             <input type="checkbox" v-model="sub.selected" @click.stop class="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
             <div class="flex-1 min-w-0">
-              <div class="flex justify-between items-start gap-2">
-                <div class="min-w-0">
+              <div class="flex flex-wrap justify-between items-start gap-2">
+                <div class="min-w-0 flex-1">
                   <p class="text-sm font-bold text-gray-900 break-words">{{ sub.name }}</p>
                   <p class="text-[10px] text-gray-400 uppercase font-semibold break-words">{{ sub.groupName }}</p>
                 </div>
@@ -995,6 +947,7 @@ import { safeUrl } from '@/utils/safeUrl.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
 import { formatRupiah, formatDateTime, formatDateStr } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import AppButton     from '@/components/ui/AppButton.vue'
@@ -1125,9 +1078,9 @@ const savingDetailQty = ref(false)
 const detailRejectMode = ref(false)
 const detailRejectReason = ref('')
 
-// Isi pengajuan hanya boleh diubah pengaju selama menunggu verifikasi; sejak
-// diverifikasi isinya terkunci (server menolak dengan 400).
-const canEditItems = computed(() => detail.value?.status === 'pending' && authStore.hasPermission(perm('submit')))
+// Pengajuan jasa tidak melalui verifikasi: lahir 'verified' (Menunggu
+// Persetujuan) dan isinya masih boleh diubah pengaju sampai disetujui.
+const canEditItems = computed(() => ['pending', 'verified'].includes(detail.value?.status) && authStore.hasPermission(perm('submit')))
 // Batal: pending/verified, atau approved sebelum diajukan bayar.
 const canCancel = computed(() => {
   const d = detail.value
@@ -1340,9 +1293,9 @@ async function submitSplit() {
   }
 }
 
-// Jasa tidak "diterima" fisik: status received ditampilkan sebagai Selesai.
+// Jasa tidak "diterima" fisik (received = Selesai) dan tidak melalui verifikasi (tanpa 'pending').
 const STATUS_OVERRIDES = { received: 'Selesai' }
-const STATUS_OPTIONS = purchaseStatusOptions(STATUS_OVERRIDES)
+const STATUS_OPTIONS = purchaseStatusOptions(STATUS_OVERRIDES).filter(s => s.value !== 'pending')
 
 const COLUMNS = [
   { key: 'request_number', label: 'Nomor' },
@@ -1554,8 +1507,8 @@ const unitOptions = computed(() => workUnits.value.map(u => ({
   name: u.outlet_name && u.outlet_name !== u.name ? `${u.name} — ${u.outlet_name}` : u.name,
 })))
 
-async function fetchList() {
-  loading.value = true; errorMsg.value = ''
+async function fetchList({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const params = { page: page.value, limit: 20, type: REQUEST_TYPE }
     if (filterWorkUnit.value) params.work_unit_id = filterWorkUnit.value
@@ -1566,9 +1519,23 @@ async function fetchList() {
     const data = await purchaseApi.list(params)
     requests.value = data.requests || []
     totalPages.value = data.total_pages || 1
-  } catch (err) { errorMsg.value = err?.message ?? 'Gagal memuat data.' }
-  finally { loading.value = false }
+  } catch (err) { if (!silent) errorMsg.value = err?.message ?? 'Gagal memuat data.' }
+  finally { if (!silent) loading.value = false }
 }
+
+useRealtime(['procurement', 'procurement_payment'], async () => {
+  await fetchList({ silent: true })
+  if (showDetail.value && detail.value?.id && !detailRejectMode.value && !savingDetailQty.value) {
+    const id = detail.value.id
+    try {
+      const d = await purchaseApi.get(id)
+      if (showDetail.value && detail.value?.id === id && (!canEditItems.value || d.version !== detail.value.version)) {
+        detail.value = d
+        detailItems.value = getUnsplitItems(d)
+      }
+    } catch {}
+  }
+})
 
 function goPage(p) { page.value = p; fetchList() }
 
@@ -1983,7 +1950,7 @@ async function submitEditFinal(andRequestPayment = false) {
 <style scoped>
 @reference "tailwindcss";
 .payto-returned-badge {
-  @apply inline-flex whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700;
+  @apply inline-flex max-w-full whitespace-normal break-words rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 leading-snug;
 }
 .input-sm {
   @apply rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500;
@@ -2002,5 +1969,5 @@ dl dd, dl dt { min-width: 0; overflow-wrap: anywhere; }
 .act-edit:hover { background: rgba(45,143,86,.2); }
 .act-del  { background: rgba(220,38,38,.07); color: #dc2626; }
 .act-del:hover { background: rgba(220,38,38,.15); }
-.rab-chip { display: inline-block; margin-top: .15rem; padding: .05rem .4rem; border-radius: .3rem; background: #ecfdf5; color: #047857; font-size: .62rem; font-weight: 700; }
+.rab-chip { display: inline-block; max-width: 100%; overflow-wrap: break-word; margin-top: .15rem; padding: .05rem .4rem; border-radius: .3rem; background: #ecfdf5; color: #047857; font-size: .62rem; font-weight: 700; }
 </style>

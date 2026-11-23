@@ -31,14 +31,14 @@
       <!-- Rekap RAB -->
       <AppCard>
         <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div v-for="t in tiles" :key="t.label">
+          <div v-for="t in tiles" :key="t.label" class="min-w-0">
             <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ t.label }}</p>
-            <p class="mt-0.5 text-base sm:text-lg font-bold" :class="t.cls">{{ formatRupiah(t.value) }}</p>
-            <p v-if="t.hint" class="text-[10px] text-gray-400">{{ t.hint }}</p>
+            <p class="mt-0.5 text-sm sm:text-lg font-bold break-words leading-snug" :class="t.cls">{{ formatRupiah(t.value) }}</p>
+            <p v-if="t.hint" class="text-[10px] text-gray-400 break-words">{{ t.hint }}</p>
           </div>
         </div>
         <BudgetBar class="mt-4" :budget="project.budget" :committed="project.committed" :paid="project.paid" :estimated="project.estimated" :pending="project.pending_amount" />
-        <p v-if="project.notes" class="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600">
+        <p v-if="project.notes" class="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600 break-words">
           <span class="text-gray-400">Catatan:</span> {{ project.notes }}
         </p>
       </AppCard>
@@ -176,22 +176,22 @@
                 </button>
                 <span :class="prStatusBadge(r.status)" class="shrink-0">{{ prStatusLabel(r.status) }}</span>
               </div>
-              <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Jenis</dt>
-                <dd class="text-gray-700">{{ purchaseTypeLabel(r.request_type || 'barang') }}</dd>
+                <dd class="text-gray-700 break-words">{{ purchaseTypeLabel(r.request_type || 'barang') }}</dd>
                 <dt class="text-gray-400">Vendor</dt>
-                <dd class="text-gray-700">{{ r.vendor_name || '-' }}</dd>
+                <dd class="text-gray-700 break-words">{{ r.vendor_name || '-' }}</dd>
                 <dt class="text-gray-400">Tanggal</dt>
-                <dd class="text-gray-600">{{ formatDateTime(r.created_at) }}</dd>
+                <dd class="text-gray-600 break-words">{{ formatDateTime(r.created_at) }}</dd>
               </dl>
-              <div class="mt-2 flex items-end justify-between gap-2 border-t border-gray-100 pt-2 text-xs">
-                <div>
+              <div class="mt-2 flex flex-wrap items-end justify-between gap-2 border-t border-gray-100 pt-2 text-xs">
+                <div class="min-w-0">
                   <p class="text-gray-400">Nilai <span v-if="isEstimate(r)" class="text-amber-600">(HPS)</span></p>
-                  <p class="text-sm font-semibold text-gray-900">{{ formatRupiah(r.total_amount) }}</p>
+                  <p class="text-sm font-semibold text-gray-900 break-words">{{ formatRupiah(r.total_amount) }}</p>
                 </div>
-                <div class="text-right">
+                <div class="min-w-0 text-right">
                   <p class="text-gray-400">Terbayar</p>
-                  <p class="font-medium text-emerald-700">{{ formatRupiah(r.paid_amount) }}</p>
+                  <p class="font-medium text-emerald-700 break-words">{{ formatRupiah(r.paid_amount) }}</p>
                 </div>
               </div>
             </li>

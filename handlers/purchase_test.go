@@ -169,7 +169,7 @@ func TestPurchaseIdentityFromSessionNotBody(t *testing.T) {
 	})
 
 	code, res := doJSON(t, app, "POST", "/pr", map[string]interface{}{
-		"request_type": "jasa", "requested_by": "Orang Lain", "work_unit_id": unit, "items": testItemsBody,
+		"request_type": "barang", "requested_by": "Orang Lain", "work_unit_id": unit, "items": testItemsBody,
 	})
 	if code != fiber.StatusCreated {
 		t.Fatalf("create: %d %q", code, res.Error)
@@ -234,7 +234,7 @@ func TestRejectPermissionDependsOnStage(t *testing.T) {
 
 	mk := func() *models.PurchaseRequest {
 		pr, err := services.CreatePurchaseRequest(models.CreatePurchaseRequestInput{
-			RequestType: "jasa", RequestedBy: "pengaju", WorkUnitID: unit,
+			RequestType: "barang", RequestedBy: "pengaju", WorkUnitID: unit,
 			Items: []models.PurchaseRequestItem{{Name: "Servis", Items: []models.PurchaseSubItem{{Name: "Cuci AC", Qty: 1, HpsPrice: 1000}}}},
 		})
 		if err != nil {

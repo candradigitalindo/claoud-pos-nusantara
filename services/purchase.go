@@ -879,11 +879,11 @@ func CreatePurchaseRequest(input models.CreatePurchaseRequestInput) (*models.Pur
 		return nil, fmt.Errorf("failed to marshal items: %w", err)
 	}
 
-	// Semua jalur pembuatan (form, MRP, work order) barang & jasa lahir
-	// 'pending' dan wajib melewati verifikasi sebelum sampai ke penyetuju.
-	// Bahan baku tanpa verifikasi: lahir 'verified' (Menunggu Persetujuan).
+	// Pengajuan barang lahir 'pending' dan wajib melewati verifikasi (cek
+	// ketersediaan di outlet lain) sebelum sampai ke penyetuju.
+	// Bahan baku & jasa tanpa verifikasi: lahir 'verified' (Menunggu Persetujuan).
 	initialStatus := "pending"
-	if input.RequestType == RequestTypeBahan {
+	if SkipsVerification(input.RequestType) {
 		initialStatus = "verified"
 	}
 	now := time.Now().UTC()
@@ -1291,8 +1291,8 @@ func UpdatePurchaseStatus(id string, input models.UpdatePurchaseStatusInput) (*m
 	if v := strings.TrimSpace(input.Version); v != "" && !versionMatches(v, cur.UpdatedAt) {
 		return nil, Conflict(purchaseChangedMsg)
 	}
-	if input.Action == "verify" && cur.RequestType == RequestTypeBahan {
-		return nil, Invalid("pengadaan bahan baku tidak melalui verifikasi — pengajuannya langsung menunggu persetujuan")
+	if input.Action == "verify" && SkipsVerification(cur.RequestType) {
+		return nil, Invalid("pengadaan %s tidak melalui verifikasi — pengajuannya langsung menunggu persetujuan", strings.ToLower(RequestTypeLabel(cur.RequestType)))
 	}
 	if input.Action == "receive" && cur.RequestType == RequestTypeJasa && cur.Status == "received" {
 		return GetPurchaseRequest(id)
@@ -2388,9 +2388,9 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	switch cur.Status {
 	case "pending", "approved":
 	case "verified":
-		// Bahan baku tidak melalui verifikasi, jadi 'verified' baginya berarti
-		// "baru diajukan, menunggu persetujuan": pengaju masih boleh mengubah.
-		if cur.RequestType != RequestTypeBahan {
+		// Bahan baku dan jasa tidak melalui verifikasi, jadi 'verified' baginya
+		// berarti "baru diajukan, menunggu persetujuan": pengaju masih boleh mengubah.
+		if !SkipsVerification(cur.RequestType) {
 			return nil, Invalid("pengajuan sudah diverifikasi dan menunggu persetujuan — isinya terkunci. Batalkan lalu ajukan ulang bila perlu diubah")
 		}
 	default:

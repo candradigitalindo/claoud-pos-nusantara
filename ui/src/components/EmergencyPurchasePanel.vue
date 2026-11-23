@@ -18,7 +18,7 @@
     </div>
 
     <div class="space-y-3 p-3 text-xs">
-      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+      <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
         <dt class="text-gray-400">Kategori</dt>
         <dd class="font-medium text-gray-900">{{ em.category_label || em.category || '-' }}</dd>
         <dt class="text-gray-400">Alasan</dt>

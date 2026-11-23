@@ -41,11 +41,11 @@
     <div v-if="loading" class="p-6 text-center text-sm text-gray-400">Memuat…</div>
     <template v-else-if="recap">
       <!-- Ringkasan -->
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <div v-for="tile in tiles" :key="tile.key" :class="['rounded-xl border bg-white p-3 shadow-sm', tile.cls]">
-          <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ tile.label }}</p>
-          <p class="mt-1 text-base font-bold text-gray-900 sm:text-lg">{{ formatRupiah(tile.amount) }}</p>
-          <p class="text-[11px] text-gray-500">{{ tile.note }}</p>
+      <div class="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
+        <div v-for="tile in tiles" :key="tile.key" :class="['min-w-0 overflow-hidden rounded-xl border bg-white p-3 shadow-sm', tile.key === 'diff' ? 'col-span-2 lg:col-span-1' : '', tile.cls]">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 break-words">{{ tile.label }}</p>
+          <p class="mt-1 text-sm font-bold text-gray-900 sm:text-lg break-words leading-snug">{{ formatRupiah(tile.amount) }}</p>
+          <p class="text-[11px] text-gray-500 break-words">{{ tile.note }}</p>
         </div>
       </div>
 
@@ -120,10 +120,10 @@
                 </button>
                 <span :class="['shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', STAGE[r.stage]?.cls]">{{ STAGE[r.stage]?.label || r.stage }}</span>
               </div>
-              <div class="mt-2 flex items-end justify-between gap-2 text-xs">
-                <div>
-                  <p class="text-sm font-semibold text-gray-900">{{ formatRupiah(r.amount) }}</p>
-                  <p class="text-gray-500">ke {{ r.recipient || '-' }}<template v-if="r.cashier"> · kasir {{ r.cashier }}</template></p>
+              <div class="mt-2 flex flex-wrap items-end justify-between gap-2 text-xs">
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold text-gray-900 break-words">{{ formatRupiah(r.amount) }}</p>
+                  <p class="text-gray-500 break-words">ke {{ r.recipient || '-' }}<template v-if="r.cashier"> · kasir {{ r.cashier }}</template></p>
                   <p v-if="r.difference" :class="r.difference > 0 ? 'text-amber-700' : 'text-gray-600'">Selisih struk {{ formatRupiah(r.difference) }}</p>
                 </div>
                 <AppActionButton icon="view" label="Lihat" @click="openDetail(r)" />
@@ -184,16 +184,16 @@
 
     <AppModal v-model="showDetail" :title="detail ? `Pembelian Darurat ${detail.request_number}` : 'Pembelian Darurat'" size="xl">
       <div v-if="detail" class="space-y-3">
-        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-          <dt class="text-gray-400">Outlet</dt><dd class="text-gray-900">{{ detail.outlet_name || '-' }} · {{ detail.work_unit_name || '-' }}</dd>
-          <dt class="text-gray-400">Dicatat</dt><dd class="text-gray-700">{{ detail.requested_by }} · {{ formatDateTime(detail.created_at) }}</dd>
+        <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
+          <dt class="text-gray-400">Outlet</dt><dd class="text-gray-900 break-words">{{ detail.outlet_name || '-' }} · {{ detail.work_unit_name || '-' }}</dd>
+          <dt class="text-gray-400">Dicatat</dt><dd class="text-gray-700 break-words">{{ detail.requested_by }} · {{ formatDateTime(detail.created_at) }}</dd>
           <dt class="text-gray-400">Barang/Jasa</dt>
-          <dd class="text-gray-700">
+          <dd class="text-gray-700 break-words">
             <template v-for="g in detail.items || []" :key="g.name">
               <span v-for="(it, i) in g.items || []" :key="i" class="block">{{ it.name }} ×{{ it.qty }} {{ it.unit }} · {{ formatRupiah(it.final_price) }}</span>
             </template>
           </dd>
-          <dt class="text-gray-400">Status</dt><dd class="text-gray-700">{{ purchaseStatusLabel(detail.status) }}</dd>
+          <dt class="text-gray-400">Status</dt><dd class="text-gray-700 break-words">{{ purchaseStatusLabel(detail.status) }}</dd>
         </dl>
         <EmergencyPurchasePanel :doc="detail" :can-submit-side="false" :can-approve="false" />
       </div>
@@ -211,6 +211,7 @@ import { purchaseApi } from '@/api/purchase.js'
 import { outletsApi } from '@/api/outlets.js'
 import { formatRupiah, formatDateTime, todayDateString } from '@/utils/format.js'
 import { purchaseStatusLabel } from '@/utils/procurement.js'
+import { useRealtime } from '@/utils/realtime.js'
 import { useToastStore } from '@/stores/toast.js'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppCard from '@/components/ui/AppCard.vue'
@@ -279,18 +280,22 @@ function params() {
   return p
 }
 
-async function load() {
-  loading.value = true
-  errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) {
+    loading.value = true
+    errorMsg.value = ''
+  }
   try {
     const res = await purchaseApi.emergencyRecap(params())
     // apiClient membuka amplop {success,data} respons non-paginated.
     recap.value = Array.isArray(res?.rows) ? res : (res?.data ?? null)
   } catch (err) {
-    recap.value = null
-    errorMsg.value = err?.message || 'Gagal memuat rekap.'
+    if (!silent) {
+      recap.value = null
+      errorMsg.value = err?.message || 'Gagal memuat rekap.'
+    }
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -338,5 +343,12 @@ onMounted(async () => {
     outletOptions.value = [{ value: '', label: 'Semua outlet' }, ...list.map(o => ({ value: o.id, label: o.name }))]
   } catch { /* filter outlet tetap "Semua outlet" */ }
   await load()
+})
+
+useRealtime(['procurement', 'procurement_payment'], async () => {
+  await load({ silent: true })
+  if (showDetail.value && detail.value?.id) {
+    try { detail.value = await purchaseApi.get(detail.value.id) } catch {}
+  }
 })
 </script>

@@ -24,48 +24,48 @@
     </div>
 
     <!-- Stat Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
       <div class="stat-card stat-waiting">
         <div class="stat-icon">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
-        <div>
+        <div class="min-w-0 flex-1">
           <p class="stat-val">{{ stats.waiting }}</p>
           <p class="stat-lbl">Menunggu Bayar</p>
-        </div>
-      </div>
-      <div class="stat-card stat-total">
-        <div class="stat-icon">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-        </div>
-        <div>
-          <p class="stat-val">{{ formatRupiah(stats.totalWaiting) }}</p>
-          <p class="stat-lbl">Total Menunggu</p>
         </div>
       </div>
       <div class="stat-card stat-paid">
         <div class="stat-icon">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
-        <div>
+        <div class="min-w-0 flex-1">
           <p class="stat-val">{{ stats.paid }}</p>
           <p class="stat-lbl">Sudah Dibayar</p>
         </div>
       </div>
-      <div class="stat-card stat-received">
+      <div class="stat-card stat-total col-span-2 lg:col-span-1">
+        <div class="stat-icon">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="stat-val">{{ formatRupiah(stats.totalWaiting) }}</p>
+          <p class="stat-lbl">Total Menunggu</p>
+        </div>
+      </div>
+      <div class="stat-card stat-received col-span-2 sm:col-span-1">
         <div class="stat-icon">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
         </div>
-        <div>
+        <div class="min-w-0 flex-1">
           <p class="stat-val">{{ stats.received }}</p>
           <p class="stat-lbl">Diterima</p>
         </div>
       </div>
-      <div class="stat-card stat-hutang">
+      <div class="stat-card stat-hutang col-span-2 sm:col-span-1">
         <div class="stat-icon">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
         </div>
-        <div>
+        <div class="min-w-0 flex-1">
           <p class="stat-val">{{ formatRupiah(stats.accountsPayable) }}</p>
           <p class="stat-lbl">Hutang Usaha</p>
         </div>
@@ -76,8 +76,8 @@
 
     <!-- Filters -->
     <AppCard>
-      <div class="flex flex-wrap items-end gap-4">
-        <div class="flex flex-col gap-1 min-w-[200px] flex-1">
+      <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 sm:gap-4">
+        <div class="flex w-full flex-col gap-1 sm:min-w-[200px] sm:flex-1">
           <label class="text-sm font-medium text-gray-700">Cari</label>
           <input
             v-model="searchQuery"
@@ -87,7 +87,7 @@
             @keydown.enter="page = 1; clearSelection(); fetchList()"
           />
         </div>
-        <div class="flex flex-col gap-1 min-w-[180px]">
+        <div class="flex w-full flex-col gap-1 sm:w-auto sm:min-w-[180px]">
           <label class="text-sm font-medium text-gray-700">Status</label>
           <SearchSelect
             v-model="filterStatus"
@@ -98,7 +98,7 @@
             labelKey="label"
           />
         </div>
-        <div class="flex flex-col gap-1 min-w-[200px]">
+        <div class="flex w-full flex-col gap-1 sm:w-auto sm:min-w-[200px]">
           <label class="text-sm font-medium text-gray-700">Projek</label>
           <SearchSelect
             v-model="filterProject"
@@ -107,37 +107,39 @@
             searchPlaceholder="Cari projek…"
           />
         </div>
-        <div class="flex flex-col gap-1 min-w-[130px]">
+        <div class="flex w-full flex-col gap-1 sm:w-auto sm:min-w-[130px]">
           <label class="text-sm font-medium text-gray-700">Tipe</label>
           <SearchableSelect v-model="filterType" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white/85 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all">
             <option v-for="opt in typeFilterOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </SearchableSelect>
         </div>
         <!-- Pembelian Darurat & tingkat kebutuhan (ikut ke Download Excel). -->
-        <div class="flex flex-col gap-1 min-w-[160px]">
+        <div class="flex w-full flex-col gap-1 sm:w-auto sm:min-w-[160px]">
           <label class="text-sm font-medium text-gray-700">Jenis</label>
           <SearchableSelect v-model="filterKind" aria-label="Filter jenis pembelian" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white/85 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all">
             <option v-for="opt in KIND_FILTERS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </SearchableSelect>
         </div>
-        <div class="flex flex-col gap-1 min-w-[210px]">
+        <div class="flex w-full flex-col gap-1 sm:w-auto sm:min-w-[210px]">
           <label class="text-sm font-medium text-gray-700">Persetujuan Bayar</label>
           <SearchableSelect v-model="filterApproval" aria-label="Filter persetujuan pembayaran" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white/85 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all">
             <option v-for="opt in APPROVAL_FILTERS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </SearchableSelect>
         </div>
-        <button @click="page = 1; clearSelection(); fetchList()"
-          class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
-          Tampilkan
-        </button>
-        <button @click="downloadExcel" :disabled="exporting"
-          class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-emerald-600 text-emerald-700 text-sm font-medium rounded-lg hover:bg-emerald-50 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
-          <svg v-if="!exporting" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
-          </svg>
-          <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-          {{ exporting ? 'Menyiapkan…' : 'Download Excel' }}
-        </button>
+        <div class="flex w-full sm:w-auto flex-wrap items-center gap-2">
+          <button @click="page = 1; clearSelection(); fetchList()"
+            class="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm">
+            Tampilkan
+          </button>
+          <button @click="downloadExcel" :disabled="exporting"
+            class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-emerald-600 text-emerald-700 text-sm font-medium rounded-lg hover:bg-emerald-50 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+            <svg v-if="!exporting" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
+            </svg>
+            <svg v-else class="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            {{ exporting ? 'Menyiapkan…' : 'Download Excel' }}
+          </button>
+        </div>
       </div>
     </AppCard>
 
@@ -187,7 +189,117 @@
 
     <!-- List -->
     <AppCard :padding="false">
-      <div class="overflow-x-auto rounded-lg border border-gray-200">
+      <!-- Mobile Cards -->
+      <div class="sm:hidden">
+        <div v-if="showSelect && selectableRows.length > 0 && !loading" class="flex items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/80 px-3.5 py-2.5 text-xs">
+          <label class="inline-flex items-center gap-2 font-medium text-gray-700 cursor-pointer">
+            <input type="checkbox" :checked="allSelectableChecked" @change="toggleSelectAll" class="tbl-check" />
+            <span>Pilih semua ({{ selectableRows.length }})</span>
+          </label>
+          <span v-if="selectedIds.size > 0" class="font-semibold text-emerald-700">{{ selectedIds.size }} dipilih</span>
+        </div>
+        <div v-if="loading" class="p-6 text-center text-sm text-gray-400">Memuat…</div>
+        <div v-else-if="!requests.length" class="p-8 text-center text-sm text-gray-400">Tidak ada data pembayaran.</div>
+        <ul v-else class="divide-y divide-gray-100">
+          <li v-for="row in requests" :key="row.id" class="p-3.5 space-y-2.5 transition-colors" :class="{ 'bg-emerald-50/40': selectedIds.has(row.id) }">
+            <div class="flex items-start gap-2.5">
+              <div v-if="showSelect" class="pt-0.5 shrink-0">
+                <input v-if="isCheckable(row)" type="checkbox" :checked="selectedIds.has(row.id)" @change="toggleSelect(row)" class="tbl-check" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button type="button" @click="viewDetail(row)" class="font-mono text-xs font-semibold text-gray-800 hover:text-emerald-700">
+                    {{ row.request_number || '-' }}
+                  </button>
+                  <span :class="typeBadgeCls(row.request_type)">{{ purchaseTypeLabel(row.request_type) }}</span>
+                  <span v-if="row.is_manual_payment" class="inline-flex items-center rounded-full bg-purple-100 border border-purple-200 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800">
+                    Manual
+                  </span>
+                  <span v-if="row.parent_id" class="split-badge">Split</span>
+                </div>
+                <button type="button" @click="viewDetail(row)" class="mt-1 block w-full text-left text-sm font-semibold text-gray-900 break-words leading-snug">
+                  {{ (row.items || []).map(i => i.name).join(', ') || '-' }}
+                </button>
+                <div v-if="row.payment_batch_number || row.project_name || row.parent_number" class="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span v-if="row.payment_batch_number" class="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-700">
+                    Batch: {{ row.payment_batch_number }}
+                  </span>
+                  <span v-if="row.project_name" class="project-badge">{{ row.project_name }}</span>
+                  <span v-if="row.parent_number" class="text-[10px] text-gray-400">Induk: {{ row.parent_number }}</span>
+                </div>
+              </div>
+            </div>
+
+            <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs pl-0.5">
+              <dt class="text-gray-400">Vendor</dt>
+              <dd class="min-w-0 break-words font-medium text-gray-900">
+                {{ row.vendor_name || '-' }}
+                <span v-if="row.invoice_number" class="block font-mono text-[11px] font-normal text-gray-500 break-all">Inv: {{ row.invoice_number }}</span>
+                <a
+                  v-if="safeUrl(row.invoice_url)"
+                  :href="safeUrl(row.invoice_url)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  @click.stop
+                  class="mt-1 inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  📄 Lihat Invoice
+                </a>
+              </dd>
+              <dt class="text-gray-400">Unit Kerja</dt>
+              <dd class="min-w-0 break-words text-gray-700">{{ row.work_unit_name || '-' }}</dd>
+              <dt class="text-gray-400">Tanggal</dt>
+              <dd class="min-w-0 break-words text-gray-600">{{ formatDateTime(row.created_at) }}</dd>
+            </dl>
+
+            <div class="flex flex-wrap items-start gap-1">
+              <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+              <span v-if="showApprovalBadge(row)" :class="paymentApprovalBadgeCls(row)" :title="paymentApprovalHint(row)">
+                {{ paymentApprovalLabel(row) }}
+              </span>
+              <PurchaseUrgencyBadges :doc="row" />
+              <span v-if="!row.is_manual_payment && isPhysicalPurchaseType(row.request_type)" :class="receiptBadgeCls(row)" :title="receiptHint(row)">
+                {{ receiptLabel(row) }}
+              </span>
+              <span v-if="row.cash_payout" :class="payoutBadgeCls(row.cash_payout)" :title="payoutHint(row.cash_payout)">
+                {{ payoutLabel(row.cash_payout) }}
+              </span>
+              <span v-if="payToBlocked(row)" :class="payToBlockCls(row)" :title="row.pay_to?.problem">{{ payToBlockLabel(row) }}</span>
+            </div>
+            <p v-if="row.payment_approval_status === 'rejected' && row.payment_rejection_reason" class="text-[11px] leading-snug text-red-600 break-words">
+              Alasan tolak: {{ row.payment_rejection_reason }}
+            </p>
+            <p v-if="row.cash_payout?.status === 'returned'" class="text-[11px] leading-snug text-red-600 break-words">
+              Alasan kasir: {{ row.cash_payout.resolution_reason || '-' }}
+            </p>
+            <p v-if="payToBlocked(row) && row.pay_to?.returned_at" class="text-[11px] leading-snug text-red-600 break-words">
+              Alasan: {{ row.pay_to.return_reason || '-' }}
+            </p>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
+              <div class="min-w-0">
+                <p class="text-sm font-bold text-emerald-700 break-words">{{ formatRupiah(row.total_final) }}</p>
+                <p v-if="row.paid_amount > 0 && remainingOf(row) > 0" class="text-[11px] text-amber-600">
+                  Sisa: {{ formatRupiah(remainingOf(row)) }}
+                </p>
+              </div>
+              <div class="action-btns flex-wrap justify-end shrink-0">
+                <AppActionButton icon="view" label="Lihat Detail" @click="viewDetail(row)" />
+                <AppActionButton icon="send" tone="warning" label="Ajukan Pembayaran ke Mgr Keuangan / GM" v-if="canSubmitRowForApproval(row)" @click="openSubmitApprovalModal([row])" />
+                <AppActionButton icon="approve" label="Setujui Pembayaran (Mgr Keuangan / GM)" v-if="canApprovePayment && canApproveRowPayment(row)" :disabled="approvalDecisionLoading" @click="approvePaymentRows([row])" />
+                <AppActionButton icon="reject" label="Tolak Pengajuan Pembayaran" v-if="canApprovePayment && canApproveRowPayment(row)" :disabled="approvalDecisionLoading" @click="openRejectApprovalModal([row])" />
+                <AppActionButton icon="pay" label="Bayar" v-if="canPay && isPayable(row)" @click="openPayModal(row)" />
+                <AppActionButton icon="receive" label="Selesaikan Jasa" v-if="canPay && canFinishJasa(row)" @click="finishJasa(row)" />
+                <AppActionButton icon="cancel" label="Tarik tugas Kas Kasir Outlet" v-if="canPay && row.cash_payout?.status === 'pending'" @click="cancelPayout(row)" />
+                <AppActionButton icon="return" label="Kembalikan detail pembayaran ke Pembelian" v-if="canPay && canReturnPayTo(row)" @click="openReturnPayTo(row)" />
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Desktop Table -->
+      <div class="hidden sm:block overflow-x-auto rounded-lg border border-gray-200">
         <table class="min-w-full text-sm divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
@@ -343,7 +455,7 @@
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-emerald-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 mb-1.5">Informasi</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Pengaju</dt>
                 <dd class="font-medium text-gray-900">{{ detail.requested_by }}</dd>
                 <template v-if="detail.work_unit_name">
@@ -366,7 +478,7 @@
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-blue-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">Nilai</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">HPS</dt>
                 <dd class="font-medium text-gray-900">{{ formatRupiah(detail.total_hps) }}</dd>
                 <dt class="text-gray-400">Harga Final</dt>
@@ -390,7 +502,7 @@
           <div v-if="detail.approved_by || detail.verified_by" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-amber-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-amber-600 mb-1.5">Persetujuan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.verified_by">
                   <dt class="text-gray-400">Diverifikasi</dt>
                   <dd class="font-medium text-gray-900">{{ detail.verified_by }}<span v-if="detail.verified_at" class="font-normal text-gray-500"> · {{ formatDateTime(detail.verified_at) }}</span></dd>
@@ -409,7 +521,7 @@
               <p class="text-[11px] font-semibold uppercase tracking-wider mb-1.5" :class="detail.payment_approval_status === 'approved' ? 'text-emerald-700' : detail.payment_approval_status === 'rejected' ? 'text-red-700' : 'text-amber-700'">
                 Persetujuan Pembayaran (Manager Keuangan / General Manager)
               </p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Status</dt>
                 <dd class="font-semibold text-gray-900">{{ paymentApprovalLabel(detail) }}</dd>
                 <template v-if="detail.payment_batch_number">
@@ -450,7 +562,7 @@
             <div class="border-l-4 border-green-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-green-600 mb-1.5">Pembayaran</p>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                   <dt class="text-gray-400">Oleh</dt>
                   <dd class="font-medium text-gray-900">{{ detail.paid_by }}</dd>
                   <template v-if="detail.payment_account_dest">
@@ -484,7 +596,7 @@
           <!-- No. Invoice & Catatan -->
           <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
             <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-3">
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
                   <dt class="text-gray-400">No. Invoice</dt>
                   <dd class="font-medium font-mono text-gray-900">{{ detail.invoice_number }}</dd>
@@ -550,27 +662,27 @@
           <p class="text-sm font-semibold text-gray-700 mb-2">Histori Pembayaran ({{ paymentHistories.length }})</p>
           <div class="space-y-2">
             <div v-for="(ph, idx) in paymentHistories" :key="ph.id" class="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div class="flex items-center justify-between mb-1">
+              <div class="flex flex-wrap items-center justify-between gap-1 mb-1.5">
                 <span class="text-xs font-semibold text-gray-700">Pembayaran #{{ idx + 1 }}</span>
                 <span class="text-xs text-gray-500">{{ formatDateTime(ph.created_at) }}</span>
               </div>
-              <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                <div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div class="min-w-0 break-words">
                   <span class="text-gray-400">Jumlah:</span>
                   <span class="font-semibold text-emerald-700 ml-1">{{ formatRupiah(ph.amount) }}</span>
                 </div>
-                <div v-if="ph.bank_fee > 0">
+                <div v-if="ph.bank_fee > 0" class="min-w-0 break-words">
                   <span class="text-gray-400">Biaya Bank:</span>
                   <span class="font-semibold text-amber-700 ml-1">+{{ formatRupiah(ph.bank_fee) }}</span>
                   <span class="text-gray-500 ml-1">(Total: {{ formatRupiah((Number(ph.amount) || 0) + (Number(ph.bank_fee) || 0)) }})</span>
                 </div>
-                <div v-if="ph.paid_by">
+                <div v-if="ph.paid_by" class="min-w-0 break-words">
                   <span class="text-gray-400">Oleh:</span>
                   <span class="font-medium text-gray-700 ml-1">{{ ph.paid_by }}</span>
                 </div>
-                <div v-if="ph.payment_account_dest" class="col-span-2">
+                <div v-if="ph.payment_account_dest" class="sm:col-span-2 min-w-0 break-words">
                   <span class="text-gray-400">Rek Tujuan:</span>
-                  <span class="font-mono text-gray-700 ml-1">{{ ph.payment_account_dest }}</span>
+                  <span class="font-mono text-gray-700 ml-1 break-all">{{ ph.payment_account_dest }}</span>
                   <span v-if="ph.vendor_name" class="ml-1 text-gray-500">({{ ph.vendor_name }})</span>
                   <span v-if="ph.payment_method === 'marketplace_va'" class="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">VA Marketplace</span>
                   <span v-else-if="ph.payment_method === 'outlet_cash'" class="ml-1 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700"
@@ -578,23 +690,23 @@
                   <span v-else-if="ph.dest_manual" class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
                     title="Vendor belum punya rekening terdaftar — rekening/cara bayar diketik pembayar">manual</span>
                 </div>
-                <div v-if="ph.payment_marketplace" class="col-span-2">
+                <div v-if="ph.payment_marketplace" class="sm:col-span-2 min-w-0 break-words">
                   <span class="text-gray-400">Marketplace / Pesanan:</span>
                   <span class="text-gray-700 ml-1">{{ ph.payment_marketplace }} · {{ ph.payment_order_number }}</span>
                 </div>
-                <div v-if="ph.struk_number">
+                <div v-if="ph.struk_number" class="min-w-0 break-words">
                   <span class="text-gray-400">Struk:</span>
                   <span class="font-mono text-gray-700 ml-1">{{ ph.struk_number }}</span>
                 </div>
-                <div v-if="ph.payment_account_source">
+                <div v-if="ph.payment_account_source" class="min-w-0 break-words">
                   <span class="text-gray-400">Rek Asal:</span>
-                  <span class="font-mono text-gray-700 ml-1">{{ ph.payment_account_source }}</span>
+                  <span class="font-mono text-gray-700 ml-1 break-all">{{ ph.payment_account_source }}</span>
                 </div>
-                <div v-if="parsedPaymentProof(ph.payment_proof).refNumber">
+                <div v-if="parsedPaymentProof(ph.payment_proof).refNumber" class="min-w-0 break-words">
                   <span class="text-gray-400">Ref:</span>
-                  <span class="font-mono text-gray-700 ml-1">{{ parsedPaymentProof(ph.payment_proof).refNumber }}</span>
+                  <span class="font-mono text-gray-700 ml-1 break-all">{{ parsedPaymentProof(ph.payment_proof).refNumber }}</span>
                 </div>
-                <div v-if="ph.payment_notes" class="col-span-2">
+                <div v-if="ph.payment_notes" class="sm:col-span-2 min-w-0 break-words">
                   <span class="text-gray-400">Catatan:</span>
                   <span class="text-gray-700 ml-1">{{ ph.payment_notes }}</span>
                 </div>
@@ -611,32 +723,45 @@
           <p class="text-sm font-semibold text-gray-700 mb-2">Daftar Item ({{ detailItems.length }})</p>
           <div class="space-y-3">
             <div v-for="(item, i) in detailItems" :key="i" class="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div class="flex items-center justify-between mb-2">
-                <p class="text-sm font-semibold text-gray-900">{{ i + 1 }}. {{ item.name }}</p>
-                <span class="text-xs text-emerald-700 font-medium">{{ formatRupiah(item.final_total || 0) }}</span>
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <p class="min-w-0 break-words text-sm font-semibold text-gray-900">{{ i + 1 }}. {{ item.name }}</p>
+                <span class="shrink-0 text-xs text-emerald-700 font-semibold">{{ formatRupiah(item.final_total || 0) }}</span>
               </div>
-              <table class="w-full text-xs">
-                <thead>
-                  <tr class="border-b border-gray-200 text-left text-gray-500 uppercase">
-                    <th class="py-1.5 pr-2">#</th>
-                    <th class="py-1.5 pr-2">Item</th>
-                    <th class="py-1.5 pr-2 text-right">Qty</th>
-                    <th class="py-1.5 pr-2">Satuan</th>
-                    <th class="py-1.5 pr-2 text-right">Harga</th>
-                    <th class="py-1.5 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(sub, j) in item.items" :key="j" class="border-b border-gray-100">
-                    <td class="py-1.5 pr-2 text-gray-400">{{ j + 1 }}</td>
-                    <td class="py-1.5 pr-2 text-gray-800">{{ sub.name }}</td>
-                    <td class="py-1.5 pr-2 text-right">{{ sub.qty }}</td>
-                    <td class="py-1.5 pr-2">{{ sub.unit }}</td>
-                    <td class="py-1.5 pr-2 text-right">{{ formatRupiah(sub.final_price || 0) }}</td>
-                    <td class="py-1.5 text-right font-medium">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</td>
-                  </tr>
-                </tbody>
-              </table>
+              <!-- Mobile item cards -->
+              <div class="space-y-2 sm:hidden">
+                <div v-for="(sub, j) in item.items" :key="j" class="rounded-lg border border-gray-200 bg-white p-2.5 text-xs">
+                  <p class="font-medium text-gray-900 break-words">{{ j + 1 }}. {{ sub.name }}</p>
+                  <div class="mt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-600">
+                    <span>{{ sub.qty }} {{ sub.unit }} × {{ formatRupiah(sub.final_price || 0) }}</span>
+                    <span class="font-semibold text-emerald-700">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Desktop table -->
+              <div class="hidden sm:block overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="border-b border-gray-200 text-left text-gray-500 uppercase">
+                      <th class="py-1.5 pr-2">#</th>
+                      <th class="py-1.5 pr-2">Item</th>
+                      <th class="py-1.5 pr-2 text-right">Qty</th>
+                      <th class="py-1.5 pr-2">Satuan</th>
+                      <th class="py-1.5 pr-2 text-right">Harga</th>
+                      <th class="py-1.5 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(sub, j) in item.items" :key="j" class="border-b border-gray-100">
+                      <td class="py-1.5 pr-2 text-gray-400">{{ j + 1 }}</td>
+                      <td class="py-1.5 pr-2 text-gray-800">{{ sub.name }}</td>
+                      <td class="py-1.5 pr-2 text-right">{{ sub.qty }}</td>
+                      <td class="py-1.5 pr-2">{{ sub.unit }}</td>
+                      <td class="py-1.5 pr-2 text-right">{{ formatRupiah(sub.final_price || 0) }}</td>
+                      <td class="py-1.5 text-right font-medium">{{ formatRupiah((sub.qty || 0) * (sub.final_price || 0)) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
           <div class="flex justify-end mt-3 text-sm">
@@ -677,7 +802,7 @@
                 </template>
               </div>
               <div class="px-4 py-2.5">
-                <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
                   <dt class="text-gray-400">Vendor</dt>
                   <dd class="font-medium text-gray-800 truncate">{{ payTargets[0]?.vendor_name || '-' }}</dd>
                   <template v-if="payTargets.length === 1">
@@ -1062,24 +1187,24 @@
           </div>
           <div class="space-y-2">
             <div v-for="(item, idx) in manualForm.items" :key="idx" class="grid grid-cols-12 gap-2 items-end rounded-lg border border-gray-200 bg-white p-2.5">
-              <div class="col-span-12 sm:col-span-5">
-                <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Uraian / Nama Item *</label>
+              <div class="col-span-12 sm:col-span-5 min-w-0">
+                <label :class="idx === 0 ? 'block' : 'block sm:hidden'" class="text-[11px] font-medium text-gray-500 mb-1">Uraian / Nama Item *</label>
                 <input v-model="item.name" type="text" placeholder="Uraian biaya / barang" class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-emerald-500 focus:outline-none" />
               </div>
-              <div class="col-span-4 sm:col-span-2">
-                <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Qty</label>
+              <div class="col-span-6 sm:col-span-2 min-w-0">
+                <label :class="idx === 0 ? 'block' : 'block sm:hidden'" class="text-[11px] font-medium text-gray-500 mb-1">Qty</label>
                 <input v-model.number="item.qty" type="number" min="1" class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-emerald-500 focus:outline-none" />
               </div>
-              <div class="col-span-4 sm:col-span-2">
-                <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Satuan</label>
+              <div class="col-span-6 sm:col-span-2 min-w-0">
+                <label :class="idx === 0 ? 'block' : 'block sm:hidden'" class="text-[11px] font-medium text-gray-500 mb-1">Satuan</label>
                 <input v-model="item.unit" type="text" placeholder="paket" class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-emerald-500 focus:outline-none" />
               </div>
-              <div class="col-span-4 sm:col-span-3 flex items-end gap-1.5">
+              <div class="col-span-12 sm:col-span-3 min-w-0 flex items-end gap-1.5">
                 <div class="flex-1 min-w-0">
-                  <label v-if="idx === 0" class="block text-[11px] font-medium text-gray-500 mb-1">Harga Satuan *</label>
+                  <label :class="idx === 0 ? 'block' : 'block sm:hidden'" class="text-[11px] font-medium text-gray-500 mb-1">Harga Satuan *</label>
                   <RupiahInput v-model="item.price" placeholder="0" />
                 </div>
-                <button v-if="manualForm.items.length > 1" type="button" @click="removeManualItem(idx)" class="mb-1 rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 cursor-pointer" title="Hapus baris">
+                <button v-if="manualForm.items.length > 1" type="button" @click="removeManualItem(idx)" class="mb-1 shrink-0 rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 cursor-pointer" title="Hapus baris">
                   ✕
                 </button>
               </div>
@@ -1126,14 +1251,14 @@
         </div>
 
         <div class="max-h-64 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
-          <div v-for="t in submitApprovalTargets" :key="t.id" class="flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs bg-white">
-            <div class="min-w-0">
-              <div class="flex items-center gap-1.5">
+          <div v-for="t in submitApprovalTargets" :key="t.id" class="flex flex-wrap items-start justify-between gap-2 px-3 py-2.5 text-xs bg-white">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-1.5">
                 <span class="font-mono font-semibold text-gray-800">{{ t.request_number }}</span>
                 <span v-if="t.is_manual_payment" class="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800">Manual</span>
               </div>
-              <p class="text-gray-700 truncate">{{ (t.items || []).map(i => i.name).join(', ') || '-' }}</p>
-              <p class="text-[11px] text-gray-500">Vendor: {{ t.vendor_name || '-' }} <span v-if="t.work_unit_name">· {{ t.work_unit_name }}</span></p>
+              <p class="text-gray-700 break-words">{{ (t.items || []).map(i => i.name).join(', ') || '-' }}</p>
+              <p class="text-[11px] text-gray-500 break-words">Vendor: {{ t.vendor_name || '-' }} <span v-if="t.work_unit_name">· {{ t.work_unit_name }}</span></p>
             </div>
             <div class="text-right shrink-0">
               <span class="font-semibold text-emerald-700">{{ formatRupiah(remainingOf(t)) }}</span>
@@ -1141,7 +1266,7 @@
           </div>
         </div>
 
-        <div class="flex items-center justify-between rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-sm">
           <span class="text-emerald-900 font-medium">Total {{ submitApprovalTargets.length }} Tagihan Diajukan</span>
           <span class="text-emerald-800 font-bold">{{ formatRupiah(submitApprovalTotal) }}</span>
         </div>
@@ -1186,6 +1311,7 @@ import { purchaseApi } from '@/api/purchase.js'
 import { vendorsApi } from '@/api/vendors.js'
 import { apiClient } from '@/api/client.js'
 import { formatRupiah, formatDateTime, formatDate } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import AppButton     from '@/components/ui/AppButton.vue'
@@ -1487,7 +1613,7 @@ function paymentApprovalBadgeCls(r) {
     approved: 'bg-emerald-50 text-emerald-800 border-emerald-300',
     rejected: 'bg-red-50 text-red-700 border-red-300',
   }[r?.payment_approval_status] || 'bg-slate-100 text-slate-600 border-slate-200'
-  return `inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`
+  return `inline-flex items-center max-w-full whitespace-normal break-words leading-snug rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tone}`
 }
 function paymentApprovalHint(r) {
   if (!r) return ''
@@ -1954,6 +2080,29 @@ function adminName() { return authStore.admin?.name || 'Admin' }
 
 onMounted(() => { fetchList(); fetchStats(); fetchBankAccounts(); fetchProjects(); fetchWorkUnits(); fetchVendors() })
 
+useRealtime(['procurement_payment', 'procurement'], async () => {
+  await Promise.all([fetchList({ silent: true }), fetchStats()])
+  if (selectedIds.value.size > 0) {
+    const allowed = new Set(selectableRows.value.map(r => r.id))
+    const pruned = new Set([...selectedIds.value].filter(id => allowed.has(id)))
+    if (pruned.size !== selectedIds.value.size) selectedIds.value = pruned
+  }
+  if (showDetail.value && detail.value?.id) {
+    const id = detail.value.id
+    try {
+      const d = ownBilling(await purchaseApi.get(id))
+      if (showDetail.value && detail.value?.id === id) {
+        detail.value = d
+        detailItems.value = d?.items || []
+        const hist = await purchaseApi.getPaymentHistories(id)
+        if (showDetail.value && detail.value?.id === id && Array.isArray(hist)) {
+          paymentHistories.value = hist
+        }
+      }
+    } catch {}
+  }
+}, { pauseWhen: () => payLoading.value })
+
 async function fetchBankAccounts() {
   try {
     const data = await bankAccountsApi.list()
@@ -1982,8 +2131,8 @@ async function fetchStats() {
   } catch { /* ignore */ }
 }
 
-async function fetchList() {
-  loading.value = true; errorMsg.value = ''
+async function fetchList({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const params = { page: page.value, limit: 20, parent_id: 'all', exclude_masters: 'true', ...kindParams() }
     if (filterStatus.value) params.status = filterStatus.value
@@ -1993,8 +2142,8 @@ async function fetchList() {
     const data = await purchaseApi.list(params)
     requests.value = data.requests || []
     totalPages.value = data.total_pages || 1
-  } catch (err) { errorMsg.value = err?.message ?? 'Gagal memuat data.' }
-  finally { loading.value = false }
+  } catch (err) { if (!silent) errorMsg.value = err?.message ?? 'Gagal memuat data.' }
+  finally { if (!silent) loading.value = false }
 }
 
 function goPage(p) { page.value = p; clearSelection(); fetchList() }
@@ -2324,19 +2473,22 @@ async function submitPay() {
 .source-opt--on { @apply border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500; }
 .source-opt--off { @apply cursor-not-allowed opacity-60 hover:border-gray-200; }
 .hero-title { font-size: 1.35rem; font-weight: 800; color: #fff; letter-spacing: -.02em; }
-.hero-sub { font-size: .82rem; color: rgba(255,255,255,.7); margin-top: .2rem; }
+.hero-sub { font-size: .82rem; color: rgba(255,255,255,.78); margin-top: .2rem; }
 
 .stat-card {
-  display: flex; align-items: center; gap: .75rem;
-  padding: 1rem 1.1rem; border-radius: .85rem; border: 1px solid; transition: box-shadow .15s;
+  display: flex; align-items: center; gap: .75rem; min-width: 0; overflow: hidden;
+  padding: .95rem 1rem; border-radius: .85rem; border: 1px solid; transition: box-shadow .15s;
 }
 .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.06); }
 .stat-icon {
-  width: 2.5rem; height: 2.5rem; border-radius: .6rem;
+  width: 2.35rem; height: 2.35rem; border-radius: .6rem;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.stat-val { font-size: 1.1rem; font-weight: 800; line-height: 1.2; }
-.stat-lbl { font-size: .7rem; font-weight: 500; margin-top: .1rem; }
+.stat-val {
+  font-size: clamp(.92rem, 3.2vw, 1.1rem); font-weight: 800; line-height: 1.25;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.stat-lbl { font-size: .7rem; font-weight: 500; margin-top: .1rem; line-height: 1.25; }
 
 .stat-waiting { border-color: rgba(249,115,22,.2); background: rgba(249,115,22,.04); }
 .stat-waiting .stat-icon { background: rgba(249,115,22,.12); color: #ea580c; }
@@ -2415,10 +2567,20 @@ async function submitPay() {
 
 /* Penanda penerimaan barang di halaman pembayaran */
 .receipt-ok, .receipt-partial, .receipt-none {
-  display: inline-block; padding: .1rem .45rem; border-radius: 999px;
-  font-size: .65rem; font-weight: 700; white-space: nowrap;
+  display: inline-block; padding: .12rem .45rem; border-radius: 999px;
+  font-size: .65rem; font-weight: 700; line-height: 1.3;
+  max-width: 100%; white-space: normal; overflow-wrap: break-word;
 }
 .receipt-ok      { background: rgba(16,185,129,.13); color: #047857; }
 .receipt-partial { background: rgba(245,158,11,.15); color: #b45309; }
 .receipt-none    { background: rgba(107,114,128,.12); color: #4b5563; }
+
+@media (max-width: 640px) {
+  .hero-header { padding: 1.1rem 1.15rem; }
+  .hero-title { font-size: 1.15rem; }
+  .stat-card { padding: .75rem .8rem; gap: .6rem; }
+  .stat-icon { width: 2.1rem; height: 2.1rem; }
+  .selection-bar { padding: .65rem .85rem; }
+  .bar-btn { padding: .38rem .75rem; font-size: .75rem; }
+}
 </style>

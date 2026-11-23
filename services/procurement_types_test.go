@@ -12,12 +12,15 @@ import (
 func TestProcurementPermissionMapping(t *testing.T) {
 	cases := []struct{ rt, action, want string }{
 		{"barang", "view", "procurement.requests.view"},
-		{"jasa", "approve", "procurement.requests.approve"},
+		{"barang", "approve", "procurement.requests.approve"},
+		{"jasa", "approve", "procurement.requests.approve_services"},
+		{"bahan", "approve", "procurement.rawmaterials.approve"},
 		{"bahan", "submit", "procurement.rawmaterials.submit"},
 		{"bahan", "purchasing", "procurement.rawmaterials.purchasing"},
 		// Aksi baru (mis. verifikasi) cukup ditambahkan sebagai nama aksi.
 		{"bahan", "verify", "procurement.rawmaterials.verify"},
 		{"barang", "verify", "procurement.requests.verify"},
+		{"jasa", "verify", "procurement.requests.verify"},
 	}
 	for _, c := range cases {
 		if got := ProcurementPermission(c.rt, c.action); got != c.want {
@@ -30,8 +33,17 @@ func TestMapProcurementPermission(t *testing.T) {
 	if got := MapProcurementPermission("procurement.requests.approve", "bahan"); got != "procurement.rawmaterials.approve" {
 		t.Errorf("approve bahan = %q", got)
 	}
+	if got := MapProcurementPermission("procurement.requests.approve", "jasa"); got != "procurement.requests.approve_services" {
+		t.Errorf("approve jasa = %q", got)
+	}
 	if got := MapProcurementPermission("procurement.requests.approve", "barang"); got != "procurement.requests.approve" {
 		t.Errorf("approve barang = %q", got)
+	}
+	if got := MapProcurementPermission("procurement.requests.approve_services", "barang"); got != "procurement.requests.approve" {
+		t.Errorf("approve_services → barang = %q", got)
+	}
+	if got := MapProcurementPermission("procurement.requests.approve_services", "bahan"); got != "procurement.rawmaterials.approve" {
+		t.Errorf("approve_services → bahan = %q", got)
 	}
 	// Izin di luar pengadaan per jenis tidak diterjemahkan.
 	if got := MapProcurementPermission("finance.payments.pay", "bahan"); got != "finance.payments.pay" {
@@ -57,10 +69,20 @@ func TestPermitsProcurementPrefixView(t *testing.T) {
 	}
 	onlyBarang := []string{"procurement.requests.approve"}
 	if PermitsProcurement(onlyBarang, "bahan", "approve") {
-		t.Error("procurement.requests.* tidak lagi mengatur pengajuan bahan")
+		t.Error("procurement.requests.approve tidak boleh menyetujui bahan")
 	}
-	if !PermitsProcurement(onlyBarang, "barang", "view") || !PermitsProcurement(onlyBarang, "jasa", "approve") {
-		t.Error("procurement.requests.approve harus berlaku untuk barang & jasa")
+	if PermitsProcurement(onlyBarang, "jasa", "approve") {
+		t.Error("procurement.requests.approve tidak boleh menyetujui jasa (sudah dipisah)")
+	}
+	if !PermitsProcurement(onlyBarang, "barang", "view") || !PermitsProcurement(onlyBarang, "barang", "approve") {
+		t.Error("procurement.requests.approve harus berlaku untuk barang")
+	}
+	onlyJasa := []string{"procurement.requests.approve_services"}
+	if !PermitsProcurement(onlyJasa, "jasa", "approve") || !PermitsProcurement(onlyJasa, "jasa", "view") {
+		t.Error("procurement.requests.approve_services harus berlaku untuk approve & lihat jasa")
+	}
+	if PermitsProcurement(onlyJasa, "barang", "approve") || PermitsProcurement(onlyJasa, "bahan", "approve") {
+		t.Error("procurement.requests.approve_services tidak boleh menyetujui barang atau bahan")
 	}
 	// Awalan yang mirip tapi bukan modul yang sama tidak dihitung.
 	if PermitsProcurement([]string{"procurement.requestsx.view"}, "barang", "view") {
@@ -103,6 +125,12 @@ func TestIsValidRequestTypeAndLabel(t *testing.T) {
 	}
 	if RequestTypeLabel("bahan") != "Bahan Baku" || RequestTypeLabel("barang") != "Barang" || RequestTypeLabel("jasa") != "Jasa" {
 		t.Error("label jenis tidak sesuai")
+	}
+	if SkipsVerification(RequestTypeBarang) {
+		t.Error("barang harus tetap melalui verifikasi")
+	}
+	if !SkipsVerification(RequestTypeJasa) || !SkipsVerification(RequestTypeBahan) {
+		t.Error("jasa dan bahan baku harus melewati tahap verifikasi (langsung ke persetujuan)")
 	}
 }
 

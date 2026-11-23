@@ -240,6 +240,7 @@ import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { TRANSFER_REASONS, trStatusCls, trStatusLabel, printTransferNote } from '@/utils/assets.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
@@ -286,13 +287,13 @@ const emptyText = computed(() => filterStatus.value
 function asArray(d) { return Array.isArray(d) ? d : (d?.data || []) }
 function asObject(d) { return d?.data ?? d ?? null }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     rows.value = asArray(await assetTransfersApi.list({ status: filterStatus.value || undefined }))
   } catch (e) {
-    errorMsg.value = e?.message || 'Gagal memuat mutasi'
-  } finally { loading.value = false }
+    if (!silent) errorMsg.value = e?.message || 'Gagal memuat mutasi'
+  } finally { if (!silent) loading.value = false }
 }
 
 async function loadOutlets() {
@@ -447,6 +448,12 @@ function doPrint() {
 }
 
 onMounted(async () => { await loadOutlets(); await load() })
+useRealtime(['asset_workflow'], async () => {
+  await load({ silent: true })
+  if (detailModal.value && detail.value?.id && !acting.value && !isReceiving.value && !isSending.value) {
+    try { detail.value = asObject(await assetTransfersApi.get(detail.value.id)) } catch {}
+  }
+})
 </script>
 
 <style scoped>

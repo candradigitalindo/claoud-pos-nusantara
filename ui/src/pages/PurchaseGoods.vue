@@ -63,7 +63,7 @@
                 <span v-if="payToReturned(row)" class="payto-returned-badge" title="Keuangan mengembalikan detail pembayaran — perbaiki di detail pengajuan">Detail bayar dikembalikan</span>
               </div>
             </div>
-            <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            <dl class="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
               <dt class="text-gray-400">Unit</dt>
               <dd class="font-medium text-gray-800">{{ row.work_unit_name || '-' }}</dd>
               <dt class="text-gray-400">Pengaju</dt>
@@ -186,41 +186,43 @@
         <div class="modal-span-full">
           <label class="text-sm font-medium text-gray-700 mb-2 block">Daftar Pengadaan</label>
           <div class="space-y-3">
-            <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+            <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200 overflow-hidden">
               <div class="flex items-start gap-2">
-                <div class="flex-1 space-y-3">
+                <div class="min-w-0 flex-1 space-y-3">
                   <div class="flex items-center gap-2">
                     <span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-semibold">Pengadaan #{{ i + 1 }}</span>
                     <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeItem(i)" :disabled="form.items.length <= 1" class="ml-auto" />
                   </div>
-                  <input v-model="item.name" placeholder="Nama Pengadaan" class="input-sm w-full" />
+                  <input v-model="item.name" placeholder="Nama Pengadaan" class="input-sm w-full min-w-0" />
                   <!-- Sub-items table -->
-                  <div class="pl-2 sm:ml-2 sm:pl-3 border-l-2 border-emerald-200 space-y-2">
+                  <div class="pl-2 sm:ml-2 sm:pl-3 border-l-2 border-emerald-200 space-y-2 min-w-0">
                     <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Detail Item</p>
                     <div v-for="(sub, j) in item.items" :key="j"
                       class="grid grid-cols-2 gap-1.5 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
-                      <div v-if="!isBahan && form.project_id && rabLines.length" class="col-span-2 sm:col-span-12">
-                        <div class="flex items-center gap-1.5">
+                      <div v-if="!isBahan && form.project_id && rabLines.length" class="col-span-2 sm:col-span-12 min-w-0">
+                        <div class="flex items-center gap-1.5 min-w-0">
                           <span class="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">RAB</span>
-                          <SearchableSelect v-model="sub.rab_item_id" class="input-sm w-full" @change="applyRabLine(sub)">
+                          <SearchableSelect v-model="sub.rab_item_id" class="input-sm min-w-0 flex-1 w-full" @change="applyRabLine(sub)">
                             <option value="">— Di luar RAB (tidak menyerap baris mana pun) —</option>
                             <option v-for="l in rabLines" :key="l.id" :value="l.id">{{ rabOptionLabel(l) }}</option>
                           </SearchableSelect>
                         </div>
-                        <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600">{{ rabWarn(sub) }}</p>
+                        <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600 break-words">{{ rabWarn(sub) }}</p>
                       </div>
-                      <div v-if="isBahan" class="col-span-2 sm:col-span-4">
+                      <div v-if="isBahan" class="col-span-2 sm:col-span-4 min-w-0">
                         <SearchSelect v-model="sub.name" :options="stockItemOptions" value-key="name" label-key="label"
                           :disabled="stockCatalogLoading || stockCatalogFailed" placeholder="Pilih bahan baku…" searchPlaceholder="Cari nama atau kode bahan baku…"
                           :aria-label="`Bahan baku pengadaan ${i + 1} item ${j + 1}`" @change="applyCatalogItem(sub)" />
-                        <p v-if="sub.name" class="mt-1 text-[11px] text-emerald-700">{{ stockBalanceLabel(sub) }}</p>
+                        <p v-if="sub.name" class="mt-1 text-[11px] text-emerald-700 break-words">{{ stockBalanceLabel(sub) }}</p>
                       </div>
-                      <input v-else v-model="sub.name" placeholder="Nama item" autocomplete="off" class="input-sm col-span-2 sm:col-span-4" />
-                      <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm sm:col-span-2" />
-                      <input v-model="sub.unit" placeholder="Satuan" class="input-sm sm:col-span-1" />
-                      <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" class="col-span-2" />
-                      <p class="col-span-1 self-center text-right text-xs text-gray-500 sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
-                      <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center" />
+                      <input v-else v-model="sub.name" placeholder="Nama item" autocomplete="off" class="input-sm min-w-0 w-full col-span-2 sm:col-span-4" />
+                      <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm min-w-0 w-full sm:col-span-2" />
+                      <input v-model="sub.unit" placeholder="Satuan" class="input-sm min-w-0 w-full sm:col-span-1" />
+                      <div class="col-span-2 min-w-0">
+                        <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" />
+                      </div>
+                      <p class="col-span-1 min-w-0 break-words self-center text-right text-xs text-gray-500 sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
+                      <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center justify-self-end" />
                       <!-- Sumber HPS diberi barisnya sendiri: tautan marketplace
                            panjang dan tidak muat di deret kolom angka. -->
                       <div class="col-span-2 sm:col-span-12">
@@ -288,7 +290,7 @@
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-emerald-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 mb-1.5">Permohonan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Pengaju</dt>
                 <dd class="font-medium text-gray-900">{{ detail.requested_by }}</dd>
                 <dt class="text-gray-400">Diajukan</dt>
@@ -319,7 +321,7 @@
           <div class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-blue-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">Nilai</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="showHps">
                   <dt class="text-gray-400">HPS</dt>
                   <dd class="font-medium text-gray-900">{{ formatRupiah(detail.status === 'pending' ? detailHpsTotal : detail.total_hps) }}</dd>
@@ -334,7 +336,7 @@
           <div v-if="detail.verified_by || detail.verified_at" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-indigo-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 mb-1.5">Verifikasi</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.verified_by || '-' }}</dd>
                 <template v-if="detail.verified_at">
@@ -357,7 +359,7 @@
           <div v-if="detail.approved_by && detail.status !== 'rejected'" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-amber-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-amber-600 mb-1.5">Persetujuan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.approved_by }}</dd>
                 <template v-if="detail.approved_at">
@@ -373,7 +375,7 @@
           <div v-if="detail.status === 'rejected'" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-red-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-red-600 mb-1.5">Penolakan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.rejected_by || detail.approved_by || '-' }}</dd>
                 <template v-if="detail.rejected_at || detail.approved_at">
@@ -392,7 +394,7 @@
           <div v-if="detail.paid_by || detail.payment_account_dest" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-green-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-green-600 mb-1.5">Pembayaran</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.paid_by">
                   <dt class="text-gray-400">Oleh</dt>
                   <dd class="font-medium text-gray-900">{{ detail.paid_by }}</dd>
@@ -426,7 +428,7 @@
           <div v-if="detail.received_by" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div class="border-l-4 border-purple-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-purple-600 mb-1.5">Penerimaan</p>
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <dt class="text-gray-400">Oleh</dt>
                 <dd class="font-medium text-gray-900">{{ detail.received_by }}</dd>
                 <template v-if="detail.received_at">
@@ -440,7 +442,7 @@
           <!-- No. Invoice & Catatan -->
           <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
             <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-2">
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
                   <dt class="text-gray-400">No. Invoice</dt>
                   <dd class="font-medium font-mono text-gray-900">{{ detail.invoice_number }}</dd>
@@ -461,16 +463,16 @@
             Pecahan Vendor ({{ detail.children.length }})
           </p>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div v-for="child in detail.children" :key="child.id" class="bg-white border border-emerald-100 rounded-lg p-3 shadow-sm flex flex-col gap-2">
-              <div class="flex justify-between items-start">
-                <div>
-                  <p class="text-xs font-bold text-gray-900 line-clamp-1">{{ child.vendor_name || 'Vendor Lain' }}</p>
+            <div v-for="child in detail.children" :key="child.id" class="bg-white border border-emerald-100 rounded-lg p-3 shadow-sm flex flex-col gap-2 min-w-0">
+              <div class="flex flex-wrap justify-between items-start gap-2">
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-bold text-gray-900 break-words">{{ child.vendor_name || 'Vendor Lain' }}</p>
                   <p v-if="child.request_number" class="text-[10px] text-gray-500 font-mono">No. {{ child.request_number }}</p>
                 </div>
-                <span :class="statusBadge(child.status)" class="text-[10px]">{{ statusLabel(child.status) }}</span>
+                <span :class="statusBadge(child.status)" class="text-[10px] shrink-0">{{ statusLabel(child.status) }}</span>
               </div>
-              <div class="flex justify-between items-end mt-auto">
-                <p class="text-xs font-bold text-emerald-700">{{ formatRupiah(child.total_final || child.total_amount) }}</p>
+              <div class="flex justify-between items-end gap-2 mt-auto">
+                <p class="min-w-0 break-words text-xs font-bold text-emerald-700">{{ formatRupiah(child.total_final || child.total_amount) }}</p>
                 <AppActionButton icon="view" label="Lihat Detail →" @click="viewChildDetail(child)" />
               </div>
             </div>
@@ -500,7 +502,7 @@
                     </div>
                     <AppActionButton icon="delete" label="Hapus baris" v-if="canEditItems" @click="removeDetailSubItem(i, j)" />
                   </div>
-                  <dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+                  <dl class="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px]">
                     <dt class="text-gray-400">Qty diajukan</dt>
                     <dd class="text-gray-800">
                       <span v-if="canEditItems" class="inline-flex items-center gap-1">
@@ -630,13 +632,13 @@
             
             <!-- For Child requests (already split) -->
             <div v-else class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+              <div class="flex items-center gap-3 min-w-0 flex-1">
+                <div class="w-10 h-10 shrink-0 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 </div>
-                <div>
+                <div class="min-w-0 flex-1">
                   <p class="text-sm font-bold text-blue-900">Data Hasil Split</p>
-                  <p class="text-xs text-blue-700">Silakan lengkapi harga final untuk vendor ini<template v-if="detail.parent_id">, lalu ajukan pembayarannya</template>.</p>
+                  <p class="text-xs text-blue-700 break-words">Silakan lengkapi harga final untuk vendor ini<template v-if="detail.parent_id">, lalu ajukan pembayarannya</template>.</p>
                 </div>
               </div>
               <div class="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
@@ -707,8 +709,8 @@
           </div>
           <ul class="space-y-2">
             <li v-for="row in verifyRows" :key="row.key" class="rounded-lg border bg-white p-2.5" :class="row.reject ? 'border-red-200' : 'border-gray-200'">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="min-w-0 flex-1">
                   <p class="break-words text-sm font-medium" :class="row.reject ? 'text-gray-400 line-through' : 'text-gray-900'">{{ row.name }}</p>
                   <p class="break-words text-[11px] text-gray-500">{{ row.groupName }} · {{ row.qty }} {{ row.unit }}<template v-if="showHps"> · HPS {{ formatRupiah((row.qty || 0) * (row.hps_price || 0)) }}</template></p>
                 </div>
@@ -874,22 +876,22 @@
           <p class="text-sm font-semibold text-gray-900 mb-2">{{ item.name }}</p>
           <div class="space-y-2 sm:space-y-1.5">
             <div v-for="(sub, j) in item.items" :key="j"
-              class="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
-              <div class="col-span-2 sm:col-span-4">
+              class="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-white p-2.5 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+              <div class="col-span-2 sm:col-span-4 min-w-0">
                 <p class="break-words text-sm text-gray-700">{{ sub.name }}</p>
                 <p class="text-xs text-gray-500">Diajukan: {{ sub.qty }} {{ sub.unit }}</p>
               </div>
-              <label class="sm:col-span-3 text-xs text-gray-500">
+              <label class="col-span-2 sm:col-span-3 min-w-0 text-xs text-gray-500">
                 Jumlah dibeli ({{ sub.unit }})
                 <input v-model.number="sub.purchased_qty" type="number" min="1" :max="sub.qty" step="1"
                   :disabled="!canAdjustPurchaseQuantity" :aria-label="`Jumlah dibeli ${sub.name}`"
                   class="input-sm mt-1 w-full disabled:bg-gray-100 disabled:text-gray-500" />
               </label>
-              <div class="sm:col-span-3">
+              <div class="col-span-2 sm:col-span-3 min-w-0">
                 <label class="mb-1 block text-xs text-gray-500">Harga/satuan</label>
                 <RupiahInput v-model="sub.final_price" placeholder="Harga/satuan" />
               </div>
-              <p class="self-center text-xs text-emerald-700 text-right font-medium sm:col-span-2">{{ formatRupiah(purchaseQuantity(sub) * (sub.final_price || 0)) }}</p>
+              <p class="col-span-2 self-center text-xs text-emerald-700 text-right font-semibold sm:col-span-2">{{ formatRupiah(purchaseQuantity(sub) * (sub.final_price || 0)) }}</p>
             </div>
           </div>
           <p class="text-xs text-right mt-2 text-gray-500">Harga pengadaan: <strong class="text-emerald-700">{{ formatRupiah(calcEditItemFinal(item)) }}</strong></p>
@@ -921,8 +923,8 @@
             @click="sub.selected = !sub.selected">
             <input type="checkbox" v-model="sub.selected" @click.stop class="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
             <div class="flex-1 min-w-0">
-              <div class="flex justify-between items-start gap-2">
-                <div class="min-w-0">
+              <div class="flex flex-wrap justify-between items-start gap-2">
+                <div class="min-w-0 flex-1">
                   <p class="text-sm font-bold text-gray-900 break-words">{{ sub.name }}</p>
                   <p class="text-[10px] text-gray-400 uppercase font-semibold break-words">{{ sub.groupName }}</p>
                 </div>
@@ -1055,6 +1057,7 @@ import { safeUrl } from '@/utils/safeUrl.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
 import { formatRupiah, formatDateTime, formatDateStr } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import AppButton     from '@/components/ui/AppButton.vue'
@@ -1744,9 +1747,9 @@ let listSeq = 0
 // Nomor urut pemuatan detail, sama seperti listSeq: detail yang datang setelah
 // pengguna pindah jenis (atau membuka detail lain) tidak boleh membuka modal.
 let detailSeq = 0
-async function fetchList() {
+async function fetchList({ silent = false } = {}) {
   const seq = ++listSeq
-  loading.value = true; errorMsg.value = ''
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const params = { page: page.value, limit: 20, type: requestType.value }
     if (filterWorkUnit.value) params.work_unit_id = filterWorkUnit.value
@@ -1758,9 +1761,23 @@ async function fetchList() {
     if (seq !== listSeq) return
     requests.value = data.requests || []
     totalPages.value = data.total_pages || 1
-  } catch (err) { if (seq === listSeq) errorMsg.value = err?.message ?? 'Gagal memuat data.' }
-  finally { if (seq === listSeq) loading.value = false }
+  } catch (err) { if (seq === listSeq && !silent) errorMsg.value = err?.message ?? 'Gagal memuat data.' }
+  finally { if (seq === listSeq && !silent) loading.value = false }
 }
+
+useRealtime(['procurement', 'procurement_payment', 'procurement_receiving'], async () => {
+  await fetchList({ silent: true })
+  if (showDetail.value && detail.value?.id && !detailRejectMode.value && !showEditFinal.value && !showSplitModal.value && !showReceiving.value) {
+    const id = detail.value.id
+    try {
+      const d = await purchaseApi.get(id)
+      if (showDetail.value && detail.value?.id === id && (detail.value.status !== 'pending' || d.version !== detail.value.version)) {
+        detail.value = d
+        detailItems.value = getUnsplitItems(d)
+      }
+    } catch {}
+  }
+})
 
 const exportingPurchasing = ref(false)
 async function downloadPurchasingExcel() {
@@ -2243,7 +2260,7 @@ async function submitEditFinal(andRequestPayment = false) {
 <style scoped>
 @reference "tailwindcss";
 .payto-returned-badge {
-  @apply inline-flex whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700;
+  @apply inline-flex max-w-full whitespace-normal break-words rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 leading-snug;
 }
 .input-sm {
   @apply rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500;
@@ -2262,5 +2279,5 @@ dl dd, dl dt { min-width: 0; overflow-wrap: anywhere; }
 .act-edit:hover { background: rgba(45,143,86,.2); }
 .act-del  { background: rgba(220,38,38,.07); color: #dc2626; }
 .act-del:hover { background: rgba(220,38,38,.15); }
-.rab-chip { display: inline-block; margin-top: .15rem; padding: .05rem .4rem; border-radius: .3rem; background: #ecfdf5; color: #047857; font-size: .62rem; font-weight: 700; }
+.rab-chip { display: inline-block; max-width: 100%; overflow-wrap: break-word; margin-top: .15rem; padding: .05rem .4rem; border-radius: .3rem; background: #ecfdf5; color: #047857; font-size: .62rem; font-weight: 700; }
 </style>

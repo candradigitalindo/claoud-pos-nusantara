@@ -48,6 +48,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, RouterLink, RouterView } from 'vue-router'
 import { outletsApi } from '@/api/outlets.js'
+import { useRealtime } from '@/utils/realtime.js'
 
 const route    = useRoute()
 const outletId = computed(() => route.params.id)
@@ -55,13 +56,16 @@ const outletId = computed(() => route.params.id)
 const outlet        = ref(null)
 const loadingOutlet = ref(true)
 
-async function fetchOutlet() {
-  loadingOutlet.value = true
+async function fetchOutlet({ silent = false } = {}) {
+  if (!silent) loadingOutlet.value = true
   try { outlet.value = await outletsApi.get(outletId.value) } catch {}
-  finally { loadingOutlet.value = false }
+  finally { if (!silent) loadingOutlet.value = false }
 }
 
 onMounted(fetchOutlet)
+useRealtime(['transaction', 'order', 'cashier_shift', 'device'], (ev) => {
+  if (!ev?.outlet_id || ev.outlet_id === outletId.value) fetchOutlet({ silent: true })
+})
 
 function isTabActive(path) {
   return route.path.includes(`/outlets/${outletId.value}/${path}`)

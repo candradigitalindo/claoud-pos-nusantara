@@ -346,6 +346,7 @@ import { ref, onMounted, watch } from 'vue'
 import { apiClient } from '@/api/client.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useAuthStore } from '@/stores/auth.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard    from '@/components/ui/AppCard.vue'
 import AppAlert   from '@/components/ui/AppAlert.vue'
 import AppSpinner from '@/components/ui/AppSpinner.vue'
@@ -395,8 +396,8 @@ onMounted(async () => {
   canVoid ? fetchReport() : fetchTitipan()
 })
 
-async function fetchReport() {
-  loading.value = true; errorMsg.value = ''
+async function fetchReport({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const params = new URLSearchParams({
       date_from: dateFrom.value,
@@ -407,14 +408,14 @@ async function fetchReport() {
     if (selectedOutlet.value) params.set('outlet_id', selectedOutlet.value)
     report.value = await apiClient.get(`/admin/void-report?${params}`)
   } catch (err) {
-    errorMsg.value = err?.message ?? 'Gagal memuat laporan void'
+    if (!silent) errorMsg.value = err?.message ?? 'Gagal memuat laporan void'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
-async function fetchTitipan() {
-  loading.value = true; errorMsg.value = ''
+async function fetchTitipan({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const params = new URLSearchParams({
       date_from: dateFrom.value,
@@ -425,11 +426,16 @@ async function fetchTitipan() {
     if (selectedOutlet.value) params.set('outlet_id', selectedOutlet.value)
     titipan.value = await apiClient.get(`/admin/titipan-report?${params}`)
   } catch (err) {
-    errorMsg.value = err?.message ?? 'Gagal memuat laporan titipan'
+    if (!silent) errorMsg.value = err?.message ?? 'Gagal memuat laporan titipan'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
+
+useRealtime(['order_item_void', 'order_item_titipan'], () => {
+  if (activeTab.value === 'titipan') fetchTitipan({ silent: true })
+  else fetchReport({ silent: true })
+})
 
 function parseItems(raw) {
   try { return JSON.parse(raw) ?? [] } catch { return [] }

@@ -43,6 +43,14 @@ func IsValidRequestType(t string) bool {
 	return false
 }
 
+// SkipsVerification melaporkan apakah jenis pengajuan ini langsung masuk ke
+// tahap Menunggu Persetujuan ('verified') tanpa melalui verifikasi ('pending').
+// Bahan Baku dan Jasa langsung ke persetujuan; hanya Barang/Perlengkapan yang
+// melalui verifikasi (cek ketersediaan di outlet lain).
+func SkipsVerification(requestType string) bool {
+	return requestType == RequestTypeBahan || requestType == RequestTypeJasa
+}
+
 // RequestTypeLabel: label jenis untuk layar, Excel, dan pesan WhatsApp.
 func RequestTypeLabel(t string) string {
 	switch t {
@@ -65,21 +73,32 @@ func procurementPermModule(requestType string) string {
 }
 
 // ProcurementPermission memetakan (jenis, aksi) ke kunci izin.
-// Aksi: view, submit, verify, approve, purchasing.
+// Aksi: view, submit, verify, approve, purchasing, pickup.
+// Approval dipisah untuk ketiga jenis pengadaan:
+//   - barang → procurement.requests.approve
+//   - jasa   → procurement.requests.approve_services
+//   - bahan  → procurement.rawmaterials.approve
 func ProcurementPermission(requestType, action string) string {
+	if requestType == RequestTypeJasa && action == "approve" {
+		return "procurement.requests.approve_services"
+	}
 	return procurementPermModule(requestType) + "." + action
 }
 
 // MapProcurementPermission menerjemahkan kunci procurement.requests.* ke
 // padanannya untuk jenis pengajuan ini. Kunci lain dikembalikan apa adanya
 // (finance.payments.pay tetap finance.payments.pay). Dipakai perutean
-// notifikasi yang mendaftarkan izin penerimanya dalam bentuk barang/jasa.
+// notifikasi yang mendaftarkan izin penerimanya dalam bentuk barang.
 func MapProcurementPermission(perm, requestType string) string {
 	const base = "procurement.requests."
 	if !strings.HasPrefix(perm, base) {
 		return perm
 	}
-	return ProcurementPermission(requestType, strings.TrimPrefix(perm, base))
+	action := strings.TrimPrefix(perm, base)
+	if action == "approve_services" {
+		action = "approve"
+	}
+	return ProcurementPermission(requestType, action)
 }
 
 // permitsKey meniru aturan middleware.RequirePermission: cocok persis, atau

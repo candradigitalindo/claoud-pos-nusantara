@@ -34,10 +34,10 @@
     </AppCard>
 
     <!-- Ringkasan seluruh projek yang tampil -->
-    <div v-if="projects.length" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <div v-for="t in totals" :key="t.label" class="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-gray-100">
+    <div v-if="projects.length" class="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+      <div v-for="t in totals" :key="t.label" class="min-w-0 overflow-hidden rounded-xl bg-white px-3 py-2.5 sm:px-4 sm:py-3 shadow-sm ring-1 ring-gray-100">
         <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{{ t.label }}</p>
-        <p class="mt-1 text-base sm:text-lg font-bold" :class="t.cls">{{ formatRupiah(t.value) }}</p>
+        <p class="mt-1 text-sm sm:text-lg font-bold break-words leading-snug" :class="t.cls">{{ formatRupiah(t.value) }}</p>
       </div>
     </div>
 
@@ -50,26 +50,26 @@
           <li v-for="p in projects" :key="p.id" class="p-4">
             <div class="flex items-start justify-between gap-2">
               <button @click="goDetail(p)" class="min-w-0 flex-1 text-left">
-                <p class="font-mono text-[11px] text-gray-500">{{ p.project_number || '-' }}</p>
+                <p class="font-mono text-[11px] text-gray-500 break-all">{{ p.project_number || '-' }}</p>
                 <p class="mt-0.5 text-sm font-medium text-gray-900 break-words">{{ p.name }}</p>
               </button>
               <span :class="statusBadge(p.status)" class="shrink-0">{{ statusLabel(p.status) }}</span>
             </div>
-            <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            <dl class="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
               <dt class="text-gray-400">Unit</dt>
-              <dd class="font-medium text-gray-800">{{ p.work_unit_name || '-' }}</dd>
+              <dd class="font-medium text-gray-800 break-words">{{ p.work_unit_name || '-' }}</dd>
               <dt class="text-gray-400">PIC</dt>
-              <dd class="text-gray-700">{{ p.pic || '-' }}</dd>
+              <dd class="text-gray-700 break-words">{{ p.pic || '-' }}</dd>
               <dt class="text-gray-400">Belanja</dt>
-              <dd class="text-gray-700">{{ p.request_count }} disetujui<span v-if="p.pending_count" class="text-gray-400"> · {{ p.pending_count }} menunggu persetujuan</span></dd>
+              <dd class="text-gray-700 break-words">{{ p.request_count }} disetujui<span v-if="p.pending_count" class="text-gray-400"> · {{ p.pending_count }} menunggu persetujuan</span></dd>
               <dt class="text-gray-400">RAB</dt>
-              <dd><span :class="rabBadge(p)">{{ rabLabel(p) }}</span> <span class="text-gray-700">{{ formatRupiah(p.budget) }}</span></dd>
+              <dd class="flex flex-wrap items-center gap-1"><span :class="rabBadge(p)">{{ rabLabel(p) }}</span> <span class="text-gray-700 break-words">{{ formatRupiah(p.budget) }}</span></dd>
             </dl>
             <BudgetBar class="mt-2" :budget="p.budget" :committed="p.committed" :paid="p.paid" :estimated="p.estimated" :pending="p.pending_amount" />
-            <div class="mt-2 flex items-end justify-between gap-2 border-t border-gray-100 pt-2">
-              <div class="min-w-0 text-xs">
+            <div class="mt-2 flex flex-wrap items-end justify-between gap-2 border-t border-gray-100 pt-2">
+              <div class="min-w-0 flex-1 text-xs">
                 <p class="text-gray-400">Sisa RAB</p>
-                <p class="text-sm font-semibold" :class="p.remaining_budget < 0 ? 'text-red-600' : 'text-gray-900'">
+                <p class="text-sm font-semibold break-words" :class="p.remaining_budget < 0 ? 'text-red-600' : 'text-gray-900'">
                   {{ formatRupiah(p.remaining_budget) }}
                 </p>
               </div>

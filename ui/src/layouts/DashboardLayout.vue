@@ -790,10 +790,10 @@ NAV_ITEMS_DATA.forEach(item => {
 .hamburger svg { width: 20px; height: 20px; display: block; }
 
 /* Breadcrumb */
-.tb-crumb   { display: flex; align-items: center; gap: .4rem; }
+.tb-crumb   { display: flex; align-items: center; gap: .4rem; min-width: 0; overflow: hidden; }
 .crumb-home { width: 15px; height: 15px; color: #86a893; flex-shrink: 0; }
 .crumb-sep  { width: 8px; height: 12px; color: #b0c4b8; flex-shrink: 0; }
-.crumb-active { font-size: .875rem; font-weight: 600; color: #1a4731; letter-spacing: -.015em; }
+.crumb-active { font-size: .875rem; font-weight: 600; color: #1a4731; letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Right actions */
 .tb-actions { display: flex; align-items: center; gap: .6rem; }
@@ -833,9 +833,16 @@ NAV_ITEMS_DATA.forEach(item => {
   overflow: hidden; min-width: 0; background: #eef2ee;
 }
 .content-area {
-  flex: 1; overflow-y: auto; padding: 1.5rem; background: #eef2ee;
+  flex: 1; overflow-y: auto; overflow-x: hidden; min-width: 0;
+  padding: 1.5rem; background: #eef2ee;
   scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.12) transparent;
 }
 .content-area::-webkit-scrollbar { width: 5px; }
 .content-area::-webkit-scrollbar-thumb { background: rgba(0,0,0,.1); border-radius: 9999px; }
+
+@media (max-width: 640px) {
+  .topbar { padding: 0 .85rem; gap: .5rem; }
+  .tb-user-meta { display: none; }
+  .content-area { padding: .85rem; }
+}
 </style>

@@ -142,6 +142,7 @@ import { outletsApi } from '@/api/outlets.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useToastStore } from '@/stores/toast.js'
 import { formatRupiah, todayDateString } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppModal from '@/components/ui/AppModal.vue'
@@ -206,12 +207,14 @@ async function doConfirm() {
   }
 }
 
-async function load() {
+async function load({ silent = false } = {}) {
   const sequence = ++loadSequence
-  loading.value = true; errorMsg.value = ''
-  report.value = null
-  active.value = null
-  confirmOpen.value = false
+  if (!silent) {
+    loading.value = true; errorMsg.value = ''
+    report.value = null
+    active.value = null
+    confirmOpen.value = false
+  }
   try {
     const d = await reconciliationApi.report({
       date_from: range.value.from,
@@ -220,9 +223,9 @@ async function load() {
     })
     if (sequence === loadSequence) report.value = d?.data ?? d
   } catch (e) {
-    if (sequence === loadSequence) errorMsg.value = e?.message || 'Gagal memuat rekonsiliasi'
+    if (sequence === loadSequence && !silent) errorMsg.value = e?.message || 'Gagal memuat rekonsiliasi'
   } finally {
-    if (sequence === loadSequence) loading.value = false
+    if (sequence === loadSequence && !silent) loading.value = false
   }
 }
 
@@ -236,6 +239,8 @@ onMounted(async () => {
   } catch {}
   await load()
 })
+
+useRealtime(['cashier_shift', 'cash_movement', 'transaction', 'shift_reconciliation'], () => load({ silent: true }), { pauseWhen: () => confirmOpen.value || busy.value })
 </script>
 
 <style scoped>

@@ -231,6 +231,22 @@ Catatan: {notes}
 Menunggu persetujuan.`,
 	},
 	{
+		// Jasa tidak melalui verifikasi: pengajuan langsung ke penyetuju jasa
+		// (procurement.requests.approve_services).
+		Key: "purchase.service_submitted", Label: "Pengajuan jasa baru (menunggu persetujuan)", Group: "Pengadaan", Audience: "internal",
+		Permissions: []string{"procurement.requests.approve_services"}, Extra: "pengaju",
+		Description:  "Pengajuan jasa baru langsung menunggu persetujuan (tanpa verifikasi); pengaju menerima tanda terima.",
+		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "project", "vendor", "total", "items", "notes", "urgency"},
+		Template: `📝 *Pengajuan Jasa {number}*{urgency}
+Oleh: {requested_by} · {outlet} {work_unit} {project}
+Perkiraan: *{total}*
+
+{items}
+
+Catatan: {notes}
+Menunggu persetujuan.`,
+	},
+	{
 		Key: "purchase.verified", Label: "Pengajuan terverifikasi (menunggu persetujuan)", Group: "Pengadaan", Audience: "internal",
 		Permissions: []string{"procurement.requests.approve"}, Extra: "pengaju",
 		Description:  "Verifikator meloloskan pengajuan; item yang ditolak beserta alasannya ikut disebut.",
@@ -1117,6 +1133,9 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 	if action == "submitted" && pr.RequestType == RequestTypeBahan {
 		// Tanpa tahap verifikasi: langsung ke penyetuju bahan baku.
 		event = "purchase.rawmaterial_submitted"
+	} else if action == "submitted" && pr.RequestType == RequestTypeJasa {
+		// Tanpa tahap verifikasi: langsung ke penyetuju jasa.
+		event = "purchase.service_submitted"
 	}
 	vars := waPurchaseVars(pr)
 	vars["actor"] = waOr(actor, "-")
@@ -1393,7 +1412,7 @@ func SendEmergencyPurchaseFollowups(now time.Time) {
 			continue
 		}
 		vars := waPurchaseVars(pr)
-		perm := "procurement.requests.approve"
+		perm := ProcurementPermission(pr.RequestType, "approve")
 		vars["duration"] = "struk diunggah " + waDuration(now.Sub(p.since)) + " lalu"
 		vars["next_action"] = "Mohon disahkan atau ditolak (dengan alasan) di detail pengajuan."
 		if p.noProof {

@@ -120,6 +120,7 @@ import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah } from '@/utils/format.js'
 import { DISPOSAL_METHODS, DISPOSAL_STATUSES, disposalStatusCls } from '@/utils/assets.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
@@ -165,11 +166,11 @@ const emptyText = computed(() => filterStatus.value === 'pending'
   ? 'Tidak ada pengajuan yang menunggu persetujuan.'
   : 'Belum ada dokumen penghapusan.')
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     rows.value = asArray(await assetDisposalsApi.list({ status: filterStatus.value || undefined }))
-  } catch (e) { errorMsg.value = e?.message || 'Gagal memuat penghapusan' } finally { loading.value = false }
+  } catch (e) { if (!silent) errorMsg.value = e?.message || 'Gagal memuat penghapusan' } finally { if (!silent) loading.value = false }
 }
 async function loadAssets() {
   try { assets.value = asArray(await assetsApi.list()) } catch { assets.value = [] }
@@ -206,6 +207,7 @@ async function decide(d, approve) {
 }
 
 onMounted(async () => { await Promise.all([load(), loadAssets()]) })
+useRealtime(['asset_workflow'], () => Promise.all([load({ silent: true }), loadAssets()]))
 </script>
 
 <style scoped>

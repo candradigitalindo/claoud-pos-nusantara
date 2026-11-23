@@ -26,14 +26,14 @@
     <ul v-else class="space-y-2">
       <li v-for="m in materials" :key="m.id" class="rounded-xl border border-gray-200 p-3">
         <div class="flex flex-wrap items-start justify-between gap-2">
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <p class="break-words font-medium text-gray-900">{{ m.name }}</p>
-            <p class="text-xs text-gray-500">
+            <p class="text-xs text-gray-500 break-words">
               {{ formatRupiah(m.unit_cost) }}/{{ m.unit || 'unit' }}
               <span v-if="m.request_number"> · {{ m.request_number }}</span>
             </p>
           </div>
-          <span :class="m.remaining > 0 ? 'badge-warn' : 'badge-ok'">
+          <span :class="m.remaining > 0 ? 'badge-warn' : 'badge-ok'" class="shrink-0">
             sisa {{ fmtQty(m.remaining) }} {{ m.unit }}
           </span>
         </div>

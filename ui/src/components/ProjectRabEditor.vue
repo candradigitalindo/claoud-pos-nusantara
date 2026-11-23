@@ -68,14 +68,14 @@
             <AppActionButton icon="delete" label="Hapus baris" v-if="!disabled" type="button" @click="removeRow(g, ri)" />
           </div>
           <div class="grid grid-cols-2 gap-1.5">
-            <label class="fld"><span>Jenis</span>
+            <label class="fld min-w-0"><span>Jenis</span>
               <SearchableSelect v-model="r.kind" :disabled="disabled" class="input-sm w-full">
                 <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
               </SearchableSelect>
             </label>
-            <label class="fld"><span>Satuan</span><input v-model.trim="r.unit" :disabled="disabled" class="input-sm w-full" placeholder="m², sak, ls" /></label>
-            <label class="fld"><span>Volume</span><input v-model.number="r.qty" :disabled="disabled" type="number" min="0" step="any" class="input-sm w-full text-right" /></label>
-            <label class="fld"><span>Harga satuan</span><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="0" /></label>
+            <label class="fld min-w-0"><span>Satuan</span><input v-model.trim="r.unit" :disabled="disabled" class="input-sm w-full" placeholder="m², sak, ls" /></label>
+            <label class="fld min-w-0"><span>Volume</span><input v-model.number="r.qty" :disabled="disabled" type="number" min="0" step="any" class="input-sm w-full text-right" /></label>
+            <label class="fld min-w-0"><span>Harga satuan</span><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="0" /></label>
           </div>
           <input v-model.trim="r.notes" :disabled="disabled" class="input-sm w-full border-dashed text-[11px]" placeholder="Spesifikasi / catatan (opsional)" />
           <p class="text-right text-xs">Jumlah: <b class="text-gray-800">{{ formatRupiah(rowTotal(r)) }}</b></p>

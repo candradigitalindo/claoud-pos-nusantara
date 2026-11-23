@@ -25,14 +25,14 @@
 
     <ul v-if="struks.length" class="mt-2 divide-y divide-gray-100">
       <li v-for="s in struks" :key="s.id" class="flex flex-wrap items-start justify-between gap-2 py-2 text-xs">
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1">
           <p class="break-words font-mono font-medium text-gray-900">{{ s.struk_number }}</p>
-          <p class="text-gray-500">{{ formatDate(s.struk_date) }} · {{ formatRupiah(s.total) }}<template v-if="s.created_by"> · dicatat {{ s.created_by }}</template></p>
+          <p class="break-words text-gray-500">{{ formatDate(s.struk_date) }} · {{ formatRupiah(s.total) }}<template v-if="s.created_by"> · dicatat {{ s.created_by }}</template></p>
           <p v-if="s.notes" class="break-words text-gray-400">{{ s.notes }}</p>
         </div>
         <div class="flex shrink-0 flex-wrap items-center gap-2">
           <span v-if="s.remaining <= 0" class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lunas</span>
-          <span v-else class="text-[11px] text-amber-700">Sisa {{ formatRupiah(s.remaining) }}<template v-if="s.paid_amount > 0"> · dibayar {{ formatRupiah(s.paid_amount) }}</template></span>
+          <span v-else class="break-words text-[11px] text-amber-700">Sisa {{ formatRupiah(s.remaining) }}<template v-if="s.paid_amount > 0"> · dibayar {{ formatRupiah(s.paid_amount) }}</template></span>
           <AppActionButton icon="photo" label="Foto" v-if="safeUrl(s.photo_url)" :href="safeUrl(s.photo_url)" target="_blank" rel="noopener noreferrer" />
           <AppActionButton icon="delete" label="Hapus" v-if="canManage && !(s.paid_amount > 0)" type="button" :disabled="busy" @click="remove(s)" />
         </div>

@@ -176,6 +176,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ppicApi } from '@/api/ppic'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
+import { useRealtime } from '@/utils/realtime.js'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
 import AppModal      from '@/components/ui/AppModal.vue'
@@ -231,19 +232,30 @@ onMounted(async () => {
   } catch (e) { toast.error(e?.message || 'Gagal memuat pilihan gudang dan kategori opname') }
 })
 
-async function load() {
-  loading.value = true
+async function load({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const res = await ppicApi.listOpnames({ ...filters, page: page.value, limit: 20 })
     rows.value = res.data || []
     total.value = res.total || 0
     totalPages.value = res.total_pages || 1
   } catch (e) {
-    toast.error(e?.message ?? 'Gagal memuat sesi opname')
+    if (!silent) toast.error(e?.message ?? 'Gagal memuat sesi opname')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
+
+useRealtime(['ppic_alert'], async () => {
+  await load({ silent: true })
+  if (detail.value?.id && !dirtyCount.value && !savingCounts.value && !acting.value) {
+    try {
+      const so = await ppicApi.getOpname(detail.value.id)
+      detail.value = so
+      originalCounts.value = Object.fromEntries((so.items || []).map(i => [i.item_id, countSnap(i)]))
+    } catch {}
+  }
+})
 function reload() { page.value = 1; load() }
 function changePage(p) { page.value = p; load() }
 

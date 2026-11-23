@@ -715,7 +715,7 @@ func TestVerifiedNotCountedAsPayableOrSpend(t *testing.T) {
 	requireDB(t)
 	marker := "verif-hutang-" + NewULID()[20:]
 	pr, err := CreatePurchaseRequest(models.CreatePurchaseRequestInput{
-		RequestType: RequestTypeJasa, RequestedBy: marker,
+		RequestType: RequestTypeBarang, RequestedBy: marker,
 		Items: []models.PurchaseRequestItem{{Name: "Servis", Items: []models.PurchaseSubItem{
 			{Name: "Servis genset uji", Qty: 1, Unit: "kali", HpsPrice: 400000, FinalPrice: 400000},
 		}}},

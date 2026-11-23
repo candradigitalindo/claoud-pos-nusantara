@@ -83,7 +83,9 @@ func waRoleEventEligible(spec *waEventSpec, role string, info waRoleInfo, mapPer
 }
 
 func waRoleEventEligibleAny(spec *waEventSpec, role string, info waRoleInfo) bool {
-	return waRoleEventEligible(spec, role, info, nil) || waRoleEventEligible(spec, role, info, waBahanPermMapper)
+	return waRoleEventEligible(spec, role, info, nil) ||
+		waRoleEventEligible(spec, role, info, waJasaPermMapper) ||
+		waRoleEventEligible(spec, role, info, waBahanPermMapper)
 }
 
 // nil means all outlets. A nonnil empty/none scope must never be interpreted as

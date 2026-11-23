@@ -1,24 +1,24 @@
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div><h1 class="text-xl font-bold text-gray-900">Penggunaan Barang Projek</h1><p class="mt-1 text-sm text-gray-500">Pertanggungjawaban material, bukti pekerjaan, dan penempatan peralatan.</p></div>
-      <div class="flex gap-2"><AppButton variant="secondary" :loading="exporting" @click="exportReports">Unduh Excel</AppButton><AppButton v-if="canCreate" :disabled="!projectId || closed" @click="newReport">Buat laporan</AppButton></div>
+      <div class="min-w-0"><h1 class="text-lg sm:text-xl font-bold text-gray-900">Penggunaan Barang Projek</h1><p class="mt-1 text-xs sm:text-sm text-gray-500">Pertanggungjawaban material, bukti pekerjaan, dan penempatan peralatan.</p></div>
+      <div class="flex flex-wrap gap-2"><AppButton variant="secondary" :loading="exporting" @click="exportReports">Unduh Excel</AppButton><AppButton v-if="canCreate" :disabled="!projectId || closed" @click="newReport">Buat laporan</AppButton></div>
     </div>
     <AppAlert type="error" :message="error" />
     <AppCard>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div class="lg:col-span-2"><label for="usage-project" class="lbl">Projek</label><SearchableSelect id="usage-project" search-placeholder="Cari nomor atau nama projek…" v-model="projectId" class="field"><option value="">Semua projek</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.project_number }} · {{ p.name }}</option></SearchableSelect></div>
-        <div><label for="usage-status" class="lbl">Status laporan</label><SearchableSelect id="usage-status" search-placeholder="Cari status laporan…" v-model="status" class="field"><option value="">Semua status</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option></SearchableSelect></div>
-        <div><label for="usage-from" class="lbl">Dari tanggal</label><input id="usage-from" v-model="from" type="date" class="field" /></div>
-        <div><label for="usage-to" class="lbl">Sampai tanggal</label><input id="usage-to" v-model="to" type="date" class="field" /></div>
+        <div class="min-w-0 lg:col-span-2"><label for="usage-project" class="lbl">Projek</label><SearchableSelect id="usage-project" search-placeholder="Cari nomor atau nama projek…" v-model="projectId" class="field"><option value="">Semua projek</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.project_number }} · {{ p.name }}</option></SearchableSelect></div>
+        <div class="min-w-0"><label for="usage-status" class="lbl">Status laporan</label><SearchableSelect id="usage-status" search-placeholder="Cari status laporan…" v-model="status" class="field"><option value="">Semua status</option><option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option></SearchableSelect></div>
+        <div class="min-w-0"><label for="usage-from" class="lbl">Dari tanggal</label><input id="usage-from" v-model="from" type="date" class="field" /></div>
+        <div class="min-w-0"><label for="usage-to" class="lbl">Sampai tanggal</label><input id="usage-to" v-model="to" type="date" class="field" /></div>
       </div>
       <p class="mt-3 text-xs text-gray-500">{{ projectId ? (closed ? 'Projek sudah ditutup. Laporan tersedia untuk dibaca.' : 'Pilih Buat laporan untuk mencatat pemakaian atau susut material.') : 'Pilih projek untuk melihat saldo barang dan membuat laporan.' }}</p>
     </AppCard>
-    <div v-if="overview" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <AppCard><p class="text-xs text-gray-500">Material diterima</p><p class="mt-1 font-semibold">{{ money(overview.summary.value_received) }}</p></AppCard>
-      <AppCard><p class="text-xs text-gray-500">Material terpakai</p><p class="mt-1 font-semibold">{{ money(overview.summary.value_used) }}</p></AppCard>
-      <AppCard><p class="text-xs text-gray-500">Sisa material</p><p class="mt-1 font-semibold">{{ money(overview.summary.value_remaining) }}</p></AppCard>
-      <AppCard><p class="text-xs text-gray-500">Laporan belum diverifikasi</p><p class="mt-1 font-semibold">{{ overview.pending_reports }}</p></AppCard>
+    <div v-if="overview" class="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+      <AppCard><p class="text-xs text-gray-500">Material diterima</p><p class="mt-1 text-sm sm:text-base font-semibold break-words leading-snug">{{ money(overview.summary.value_received) }}</p></AppCard>
+      <AppCard><p class="text-xs text-gray-500">Material terpakai</p><p class="mt-1 text-sm sm:text-base font-semibold break-words leading-snug">{{ money(overview.summary.value_used) }}</p></AppCard>
+      <AppCard><p class="text-xs text-gray-500">Sisa material</p><p class="mt-1 text-sm sm:text-base font-semibold break-words leading-snug">{{ money(overview.summary.value_remaining) }}</p></AppCard>
+      <AppCard><p class="text-xs text-gray-500">Laporan belum diverifikasi</p><p class="mt-1 text-sm sm:text-base font-semibold break-words leading-snug">{{ overview.pending_reports }}</p></AppCard>
     </div>
     <div class="flex flex-wrap gap-2" aria-label="Tampilan penggunaan barang">
       <button v-for="t in tabs" :key="t.key" type="button" class="rounded-lg px-3 py-2 text-sm font-medium" :class="tab === t.key ? 'bg-emerald-700 text-white' : 'bg-white text-gray-600 border'" :disabled="t.key !== 'reports' && !overview" @click="tab = t.key">{{ t.label }}</button>
@@ -72,15 +72,15 @@
     <AppModal v-model="showDetail" :title="detail?.report_number || 'Laporan'" size="2xl">
       <div v-if="detail" class="space-y-4">
         <AppAlert type="error" :message="detailError" />
-        <div class="flex flex-wrap justify-between gap-2"><h2 class="font-semibold">{{ detail.project_name }}</h2><span class="rounded-full px-3 py-1 text-xs" :class="badge(detail.status)">{{ statuses[detail.status] }}</span></div>
-        <dl class="grid grid-cols-2 gap-3 text-sm"><div><dt class="text-gray-500">Tanggal penggunaan</dt><dd>{{ detail.usage_date }}</dd></div><div><dt class="text-gray-500">Lokasi</dt><dd>{{ detail.location || '—' }}</dd></div><div><dt class="text-gray-500">Pelaksana</dt><dd>{{ detail.performer || '—' }}</dd></div><div><dt class="text-gray-500">PIC</dt><dd>{{ detail.pic_name || '—' }}</dd></div><div><dt class="text-gray-500">Dicatat oleh</dt><dd>{{ detail.created_by }} · {{ date(detail.created_at) }}</dd></div><div><dt class="text-gray-500">Diperiksa oleh</dt><dd>{{ detail.reviewed_by || 'Belum diperiksa' }}<template v-if="detail.reviewed_at"> · {{ date(detail.reviewed_at) }}</template></dd></div></dl>
+        <div class="flex flex-wrap items-start justify-between gap-2"><h2 class="min-w-0 flex-1 font-semibold break-words">{{ detail.project_name }}</h2><span class="shrink-0 rounded-full px-3 py-1 text-xs" :class="badge(detail.status)">{{ statuses[detail.status] }}</span></div>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"><div class="min-w-0"><dt class="text-gray-500">Tanggal penggunaan</dt><dd class="break-words">{{ detail.usage_date }}</dd></div><div class="min-w-0"><dt class="text-gray-500">Lokasi</dt><dd class="break-words">{{ detail.location || '—' }}</dd></div><div class="min-w-0"><dt class="text-gray-500">Pelaksana</dt><dd class="break-words">{{ detail.performer || '—' }}</dd></div><div class="min-w-0"><dt class="text-gray-500">PIC</dt><dd class="break-words">{{ detail.pic_name || '—' }}</dd></div><div class="min-w-0"><dt class="text-gray-500">Dicatat oleh</dt><dd class="break-words">{{ detail.created_by }} · {{ date(detail.created_at) }}</dd></div><div class="min-w-0"><dt class="text-gray-500">Diperiksa oleh</dt><dd class="break-words">{{ detail.reviewed_by || 'Belum diperiksa' }}<template v-if="detail.reviewed_at"> · {{ date(detail.reviewed_at) }}</template></dd></div></dl>
         <p class="whitespace-pre-line break-words rounded-lg bg-gray-50 p-3 text-sm">{{ detail.work_description || 'Pekerjaan belum diisi' }}</p>
-        <ul class="divide-y text-sm"><li v-for="item in detail.items" :key="item.material_id" class="py-2"><strong>{{ item.name }}</strong> · {{ qty(item.qty) }} {{ item.unit }}<p class="text-xs text-gray-500">{{ item.request_number }}</p></li></ul>
+        <ul class="divide-y text-sm"><li v-for="item in detail.items" :key="item.material_id" class="py-2 break-words"><strong>{{ item.name }}</strong> · {{ qty(item.qty) }} {{ item.unit }}<p class="text-xs text-gray-500 break-words">{{ item.request_number }}</p></li></ul>
         <div class="flex flex-wrap gap-3"><a v-for="(url, i) in detail.evidence" :key="url" :href="safeUrl(url)" target="_blank" rel="noopener noreferrer" class="text-sm text-emerald-700 underline"><span v-if="url.toLowerCase().endsWith('.pdf')">PDF {{ i + 1 }}</span><img v-else :src="safeUrl(url)" :alt="`Bukti penggunaan ${i + 1}`" class="h-28 w-36 rounded-lg border object-cover" /></a></div>
-        <p v-if="detail.review_note" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Catatan pemeriksa / pembatalan: {{ detail.review_note }}</p>
+        <p v-if="detail.review_note" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 break-words">Catatan pemeriksa / pembatalan: {{ detail.review_note }}</p>
         <p v-if="detail.status === 'revision'" class="text-xs text-gray-600">Saldo masih mengikuti pengajuan terakhir. Perubahan jumlah diterapkan saat diajukan ulang.</p>
         <div v-if="mayReview || mayEdit"><label for="review-note" class="lbl">Catatan pemeriksaan / alasan pembatalan</label><textarea id="review-note" v-model="actionNote" rows="2" maxlength="2000" class="field" /></div>
-        <details><summary class="cursor-pointer text-sm font-semibold">Riwayat perubahan ({{ detail.events?.length || 0 }})</summary><ul class="mt-2 space-y-3 text-xs"><li v-for="(event, i) in detail.events" :key="i" class="border-l-2 pl-3"><p class="font-medium">{{ eventLabels[event.action] }} · {{ event.actor }} · {{ date(event.created_at) }}</p><p v-if="event.note">{{ event.note }}</p><details class="mt-1"><summary class="cursor-pointer text-gray-500">Isi laporan saat itu</summary><p class="mt-1">{{ event.snapshot.work_description }}</p><p v-for="item in event.snapshot.items" :key="item.material_id">{{ item.name }}: {{ qty(item.qty) }} {{ item.unit }}</p><a v-for="(url, j) in event.snapshot.evidence" :key="url" :href="safeUrl(url)" target="_blank" rel="noopener noreferrer" class="mr-3 text-emerald-700 underline">Bukti {{ j + 1 }}</a></details></li></ul></details>
+        <details><summary class="cursor-pointer text-sm font-semibold">Riwayat perubahan ({{ detail.events?.length || 0 }})</summary><ul class="mt-2 space-y-3 text-xs"><li v-for="(event, i) in detail.events" :key="i" class="border-l-2 pl-3 break-words"><p class="font-medium">{{ eventLabels[event.action] }} · {{ event.actor }} · {{ date(event.created_at) }}</p><p v-if="event.note">{{ event.note }}</p><details class="mt-1"><summary class="cursor-pointer text-gray-500">Isi laporan saat itu</summary><p class="mt-1">{{ event.snapshot.work_description }}</p><p v-for="item in event.snapshot.items" :key="item.material_id">{{ item.name }}: {{ qty(item.qty) }} {{ item.unit }}</p><a v-for="(url, j) in event.snapshot.evidence" :key="url" :href="safeUrl(url)" target="_blank" rel="noopener noreferrer" class="mr-3 text-emerald-700 underline">Bukti {{ j + 1 }}</a></details></li></ul></details>
       </div>
       <template #footer>
         <div class="flex flex-wrap justify-end gap-2">
@@ -101,6 +101,7 @@ import { projectUsageApi } from '@/api/projectUsage.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useToastStore } from '@/stores/toast.js'
 import { formatDateTime, formatRupiah } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import { safeUrl } from '@/utils/safeUrl.js'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -128,17 +129,19 @@ const mayEdit = computed(() => canCreate.value && detail.value?.created_by_id ==
 const mayReview = computed(() => auth.hasPermission('assets.usage.verify') && detail.value?.status === 'submitted' && detail.value?.created_by_id !== actorID.value && detail.value?.submitted_by_id !== actorID.value)
 const params = () => ({ project_id: projectId.value, status: status.value, from: from.value, to: to.value, page: page.value, limit: 20 })
 let listSeq = 0, overviewSeq = 0
-async function loadReports() {
-  const seq = ++listSeq; loading.value = true; error.value = ''
+async function loadReports({ silent = false } = {}) {
+  const seq = ++listSeq
+  if (!silent) { loading.value = true; error.value = '' }
   try { const data = await projectUsageApi.list(params()); if (seq === listSeq) { reports.value = data.items; total.value = data.total } }
-  catch (e) { if (seq === listSeq) error.value = e.message }
-  finally { if (seq === listSeq) loading.value = false }
+  catch (e) { if (seq === listSeq && !silent) error.value = e.message }
+  finally { if (seq === listSeq && !silent) loading.value = false }
 }
-async function loadOverview() {
-  const seq = ++overviewSeq; overview.value = null
+async function loadOverview({ silent = false } = {}) {
+  const seq = ++overviewSeq
+  if (!silent) overview.value = null
   if (!projectId.value) { tab.value = 'reports'; return }
   try { const data = await projectUsageApi.overview(projectId.value); if (seq === overviewSeq) overview.value = data }
-  catch (e) { if (seq === overviewSeq) error.value = e.message }
+  catch (e) { if (seq === overviewSeq && !silent) error.value = e.message }
 }
 async function newReport() {
   if (!overview.value || closed.value || !canCreate.value) return
@@ -183,6 +186,12 @@ async function exportReports() {
 watch(projectId, () => { page.value = 1; loadReports(); loadOverview() })
 watch([status, from, to], () => { page.value = 1; loadReports() })
 onMounted(async () => { try { projects.value = await projectUsageApi.projects() } catch (e) { error.value = e.message }; await Promise.all([loadReports(), loadOverview()]) })
+useRealtime(['asset_workflow', 'procurement_receiving'], async () => {
+  await Promise.all([loadReports({ silent: true }), loadOverview({ silent: true })])
+  if (showDetail.value && detail.value?.id && !acting.value) {
+    try { detail.value = await projectUsageApi.get(detail.value.id) } catch {}
+  }
+})
 </script>
 <style scoped>
 .lbl { display:block;font-size:.8rem;font-weight:500;color:#374151;margin-bottom:.35rem; }

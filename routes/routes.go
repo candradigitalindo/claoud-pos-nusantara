@@ -4,9 +4,27 @@ import (
 	"cloud-pos/config"
 	"cloud-pos/handlers"
 	"cloud-pos/middleware"
+	"cloud-pos/services"
 
 	"github.com/gofiber/fiber/v2"
 )
+
+// broadcastAfter membungkus handler mutasi supaya memancarkan event SSE
+// realtime ke browser admin hanya setelah handler selesai sukses (HTTP 2xx).
+func broadcastAfter(h fiber.Handler, events ...string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if err := h(c); err != nil {
+			return err
+		}
+		if code := c.Response().StatusCode(); code >= 200 && code < 300 {
+			outletID := c.Params("outletId")
+			for _, ev := range events {
+				services.BroadcastSync(ev, outletID)
+			}
+		}
+		return nil
+	}
+}
 
 func Setup(app *fiber.App, cfg *config.Config) {
 	// Media CCTV harus melewati pemeriksaan akun, izin, outlet, dan sesi HLS.
@@ -37,14 +55,14 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Public reservation (no auth) — per-outlet by slug, dibatasi per IP
 	public := api.Group("/public", middleware.PublicRateLimiter())
 	public.Get("/outlets/:slug/menu", handlers.PublicGetMenu)
-	public.Post("/outlets/:slug/reservations", handlers.PublicCreateReservation)
+	public.Post("/outlets/:slug/reservations", broadcastAfter(handlers.PublicCreateReservation, "reservation"))
 	// Cek status + unggah bukti DP oleh pelanggan (id reservasi = ULID, tidak bisa ditebak).
 	public.Get("/outlets/:slug/reservations/:id", handlers.PublicGetReservation)
-	public.Post("/outlets/:slug/reservations/:id/payments", handlers.PublicSubmitReservationPayment)
+	public.Post("/outlets/:slug/reservations/:id/payments", broadcastAfter(handlers.PublicSubmitReservationPayment, "reservation"))
 
-	public.Post("/outlets/:slug/orders", handlers.PublicCreateOrder)
+	public.Post("/outlets/:slug/orders", broadcastAfter(handlers.PublicCreateOrder, "order"))
 	public.Get("/outlets/:slug/orders/:orderId", handlers.PublicOrderStatus)
-	public.Post("/outlets/:slug/orders/:orderId/simulate-paid", handlers.PublicSimulateOrderPaid)
+	public.Post("/outlets/:slug/orders/:orderId/simulate-paid", broadcastAfter(handlers.PublicSimulateOrderPaid, "order", "transaction"))
 
 	// Data terbuka (tanpa auth), outlet dirujuk lewat slug, tanpa ID internal.
 	// Sengaja BUKAN di bawah /public: middleware grup Fiber dicocokkan dengan
@@ -58,7 +76,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Callback penyedia pembayaran. Tanpa AuthOutlet — keasliannya dibuktikan
 	// tanda tangan yang diverifikasi adapter penyedia, bukan API key outlet.
-	api.Post("/webhooks/qris/:provider", handlers.QRISWebhook)
+	api.Post("/webhooks/qris/:provider", broadcastAfter(handlers.QRISWebhook, "reservation", "order", "transaction"))
 
 	// Outlet self-discovery: GET /api/v1/outlet/me — returns outlet info from API key alone
 	api.Get("/outlet/me", middleware.AuthOutlet(), func(c *fiber.Ctx) error {
@@ -74,7 +92,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Reservasi untuk app POS: daftar hari ini + menutup reservasi dari transaksi.
 	// Transaksi juga bisa membawa reservation_id di payload (SaveTransaction).
 	outlet.Get("/reservations", handlers.OutletListReservations)
-	outlet.Post("/reservations/:rid/settle", handlers.OutletSettleReservation)
+	outlet.Post("/reservations/:rid/settle", broadcastAfter(handlers.OutletSettleReservation, "reservation", "transaction"))
 
 	// Orders
 	outlet.Post("/orders", handlers.PushOrder)
@@ -94,15 +112,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Pemesanan mandiri tamu (QR dine-in) — ditarik POS
 	outlet.Get("/online-orders", handlers.GetPendingOnlineOrders)
-	outlet.Post("/online-orders/:orderId/claim", handlers.ClaimOnlineOrder)
-	outlet.Post("/online-orders/:orderId/confirm", handlers.ConfirmOnlineOrder)
-	outlet.Post("/online-orders/:orderId/reject", handlers.RejectOnlineOrder)
+	outlet.Post("/online-orders/:orderId/claim", broadcastAfter(handlers.ClaimOnlineOrder, "order"))
+	outlet.Post("/online-orders/:orderId/confirm", broadcastAfter(handlers.ConfirmOnlineOrder, "order"))
+	outlet.Post("/online-orders/:orderId/reject", broadcastAfter(handlers.RejectOnlineOrder, "order"))
 
 	// QRIS terintegrasi
 	outlet.Get("/qris/info", handlers.GetPaymentGatewayInfo)
 	outlet.Post("/qris/charges", handlers.CreateQRISCharge)
 	outlet.Get("/qris/charges/:chargeId", handlers.GetQRISCharge)
-	outlet.Post("/qris/charges/:chargeId/simulate-paid", handlers.SimulateQRISPaid)
+	outlet.Post("/qris/charges/:chargeId/simulate-paid", broadcastAfter(handlers.SimulateQRISPaid, "reservation", "order", "transaction"))
 
 	// Printers
 	outlet.Get("/printers", handlers.GetOutletPrinters)
@@ -118,10 +136,10 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Bayar Pengadaan dari Kas Kasir Outlet — tablet mengambil tugas langsung
 	// (online, tidak lewat sinkron), mengklaim, lalu menyelesaikan/mengembalikan.
 	outlet.Get("/procurement-payouts", handlers.ListOutletCashPayouts)
-	outlet.Post("/procurement-payouts/:id/claim", handlers.ClaimCashPayout)
-	outlet.Post("/procurement-payouts/:id/complete", handlers.CompleteCashPayout)
-	outlet.Post("/procurement-payouts/:id/return", handlers.ReturnCashPayout)
-	outlet.Post("/procurement-payouts/:id/release", handlers.ReleaseCashPayout)
+	outlet.Post("/procurement-payouts/:id/claim", broadcastAfter(handlers.ClaimCashPayout, "procurement_payment", "procurement"))
+	outlet.Post("/procurement-payouts/:id/complete", broadcastAfter(handlers.CompleteCashPayout, "procurement_payment", "procurement"))
+	outlet.Post("/procurement-payouts/:id/return", broadcastAfter(handlers.ReturnCashPayout, "procurement_payment", "procurement"))
+	outlet.Post("/procurement-payouts/:id/release", broadcastAfter(handlers.ReleaseCashPayout, "procurement_payment", "procurement"))
 
 	// Updates
 	outlet.Get("/updates", handlers.GetUpdates)
@@ -134,7 +152,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Conflicts
 	outlet.Get("/conflicts", handlers.GetConflicts)
-	outlet.Post("/conflicts/:conflictId/resolve", handlers.ResolveConflict)
+	outlet.Post("/conflicts/:conflictId/resolve", broadcastAfter(handlers.ResolveConflict, "transaction"))
 
 	// Sync logs
 	outlet.Get("/sync/logs", handlers.GetSyncLogs)
@@ -219,8 +237,8 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Rekonsiliasi shift (tutup kasir vs cloud). Lihat: shift_reconciliation.view (dipisah dari cashier_shifts.view).
 	// Penyesuaian data (ikuti versi kasir) = khusus superadmin, tercatat & bisa dibatalkan.
 	admin.Get("/shift-reconciliation", middleware.RequirePermission("shift_reconciliation.view"), handlers.GetShiftReconciliation)
-	admin.Post("/shift-reconciliation/:shiftId/apply", middleware.RequireSuperadmin(), handlers.ApplyShiftAdjustment)
-	admin.Post("/shift-reconciliation/adjustments/:id/revert", middleware.RequireSuperadmin(), handlers.RevertShiftAdjustment)
+	admin.Post("/shift-reconciliation/:shiftId/apply", middleware.RequireSuperadmin(), broadcastAfter(handlers.ApplyShiftAdjustment, "shift_reconciliation", "cashier_shift"))
+	admin.Post("/shift-reconciliation/adjustments/:id/revert", middleware.RequireSuperadmin(), broadcastAfter(handlers.RevertShiftAdjustment, "shift_reconciliation", "cashier_shift"))
 	admin.Get("/devices", middleware.RequirePermission("devices.view"), handlers.GetDeviceMonitor)
 	admin.Get("/devices/:outletId/history", middleware.RequirePermission("devices.view"), handlers.GetDeviceHistory)
 
@@ -340,12 +358,12 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/finance/accounts", middleware.RequireAnyPermission("finance.entries.view", "reports.ledger.view", "reports.pnl.view", "reports.balance.view"), handlers.FinanceAccounts)
 	admin.Get("/finance/lookups", middleware.RequirePermission("finance.entries.view"), handlers.FinanceLookups)
 	admin.Get("/finance/operations", middleware.RequirePermission("finance.entries.view"), handlers.ListFinanceOperations)
-	admin.Put("/finance/cash-movements/:id/account", middleware.RequirePermission("finance.entries.post"), handlers.ClassifyFinanceCash)
+	admin.Put("/finance/cash-movements/:id/account", middleware.RequirePermission("finance.entries.post"), broadcastAfter(handlers.ClassifyFinanceCash, "finance_entry", "cash_movement"))
 	admin.Get("/finance/entries", middleware.RequirePermission("finance.entries.view"), handlers.ListFinanceEntries)
 	admin.Get("/finance/entries/:id", middleware.RequirePermission("finance.entries.view"), handlers.GetFinanceEntry)
-	admin.Post("/finance/entries", middleware.RequirePermission("finance.entries.create"), handlers.SaveFinanceEntry)
-	admin.Put("/finance/entries/:id", middleware.RequirePermission("finance.entries.create"), handlers.SaveFinanceEntry)
-	admin.Post("/finance/entries/:id/actions", middleware.RequireAnyPermission("finance.entries.post", "finance.entries.void"), handlers.ActFinanceEntry)
+	admin.Post("/finance/entries", middleware.RequirePermission("finance.entries.create"), broadcastAfter(handlers.SaveFinanceEntry, "finance_entry"))
+	admin.Put("/finance/entries/:id", middleware.RequirePermission("finance.entries.create"), broadcastAfter(handlers.SaveFinanceEntry, "finance_entry"))
+	admin.Post("/finance/entries/:id/actions", middleware.RequireAnyPermission("finance.entries.post", "finance.entries.void"), broadcastAfter(handlers.ActFinanceEntry, "finance_entry"))
 	// Export Excel memakai permission & scope yang sama dengan halaman Pembayaran.
 	admin.Get("/procurement-payments/export", middleware.RequirePermission("finance.payments.view"), handlers.ExportProcurementPayments)
 	// Projek (pembangunan/renovasi) — payung RAB di atas pengadaan.
@@ -355,15 +373,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// pilihannya hanya "Semua Projek"). Ubah/hapus tetap terkunci di manage.
 	admin.Get("/projects", middleware.RequireAnyPermission("procurement.projects.view", "procurement.requests.submit", "procurement.requests.view", "finance.payments.view"), handlers.ListProjects)
 	admin.Get("/projects/:id", middleware.RequirePermission("procurement.projects.view"), handlers.GetProject)
-	admin.Post("/projects", middleware.RequirePermission("procurement.projects.manage"), handlers.CreateProject)
-	admin.Put("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), handlers.UpdateProject)
-	admin.Delete("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), handlers.DeleteProject)
+	admin.Post("/projects", middleware.RequirePermission("procurement.projects.manage"), broadcastAfter(handlers.CreateProject, "procurement"))
+	admin.Put("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), broadcastAfter(handlers.UpdateProject, "procurement"))
+	admin.Delete("/projects/:id", middleware.RequirePermission("procurement.projects.manage"), broadcastAfter(handlers.DeleteProject, "procurement"))
 	// RAB per baris: dilihat oleh siapa pun yang boleh mengajukan/melihat
 	// pengadaan (form pengajuan memilih baris RAB), diubah oleh pengelola projek.
 	admin.Get("/projects/:id/rab", middleware.RequireAnyPermission("procurement.projects.view", "procurement.requests.submit", "procurement.requests.view"), handlers.GetProjectRab)
-	admin.Put("/projects/:id/rab", middleware.RequirePermission("procurement.projects.manage"), handlers.SaveProjectRab)
-	admin.Post("/projects/:id/rab/set", middleware.RequirePermission("procurement.projects.manage"), handlers.SetProjectRab)
-	admin.Post("/projects/:id/rab/reopen", middleware.RequirePermission("procurement.projects.manage"), handlers.ReopenProjectRab)
+	admin.Put("/projects/:id/rab", middleware.RequirePermission("procurement.projects.manage"), broadcastAfter(handlers.SaveProjectRab, "procurement"))
+	admin.Post("/projects/:id/rab/set", middleware.RequirePermission("procurement.projects.manage"), broadcastAfter(handlers.SetProjectRab, "procurement"))
+	admin.Post("/projects/:id/rab/reopen", middleware.RequirePermission("procurement.projects.manage"), broadcastAfter(handlers.ReopenProjectRab, "procurement"))
 
 	// Perlengkapan: laporan penggunaan dengan bukti dan pemeriksa terpisah.
 	admin.Get("/project-usage-export", middleware.RequirePermission("assets.usage.view"), handlers.ExportProjectUsage)
@@ -371,16 +389,16 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/project-usage/projects/:id", middleware.RequirePermission("assets.usage.view"), handlers.ProjectUsageOverview)
 	admin.Get("/project-usage", middleware.RequirePermission("assets.usage.view"), handlers.ListProjectUsage)
 	admin.Get("/project-usage/:id", middleware.RequirePermission("assets.usage.view"), handlers.GetProjectUsage)
-	admin.Post("/project-usage", middleware.RequirePermission("assets.usage.create"), handlers.SaveProjectUsage)
-	admin.Put("/project-usage/:id", middleware.RequirePermission("assets.usage.create"), handlers.SaveProjectUsage)
-	admin.Post("/project-usage/:id/actions", middleware.RequirePermission("assets.usage.view"), handlers.ActProjectUsage)
+	admin.Post("/project-usage", middleware.RequirePermission("assets.usage.create"), broadcastAfter(handlers.SaveProjectUsage, "asset_workflow"))
+	admin.Put("/project-usage/:id", middleware.RequirePermission("assets.usage.create"), broadcastAfter(handlers.SaveProjectUsage, "asset_workflow"))
+	admin.Post("/project-usage/:id/actions", middleware.RequirePermission("assets.usage.view"), broadcastAfter(handlers.ActProjectUsage, "asset_workflow"))
 
 	// Material projek — barang habis pakai milik projek (docs §8.8–8.9).
 	// Izinnya memakai kunci Projek yang sudah ada (keputusan B, docs §15.1).
 	admin.Get("/projects/:id/materials", middleware.RequireAnyPermission("procurement.projects.view", "assets.usage.view"), handlers.ListProjectMaterials)
 	admin.Get("/projects/:id/materials/:mid/logs", middleware.RequireAnyPermission("procurement.projects.view", "assets.usage.view"), handlers.ListProjectMaterialLogs)
-	admin.Post("/projects/:id/materials/:mid/usage", middleware.RequirePermission("assets.usage.create"), handlers.RecordProjectMaterialUsage)
-	admin.Post("/projects/:id/materials/:mid/settle", middleware.RequirePermission("assets.usage.create"), handlers.SettleProjectMaterial)
+	admin.Post("/projects/:id/materials/:mid/usage", middleware.RequirePermission("assets.usage.create"), broadcastAfter(handlers.RecordProjectMaterialUsage, "asset_workflow"))
+	admin.Post("/projects/:id/materials/:mid/settle", middleware.RequirePermission("assets.usage.create"), broadcastAfter(handlers.SettleProjectMaterial, "asset_workflow"))
 	admin.Get("/project-materials/unsettled", middleware.RequirePermission("procurement.projects.view"), handlers.ListUnsettledProjectMaterials)
 
 	// Halaman Pembayaran (finance.payments.view) memuat daftar & detail lewat
@@ -392,51 +410,51 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// tablet, PIN Manager), struk diunggah, lalu disahkan penyetuju.
 	// Didaftarkan sebelum rute ber-:id.
 	admin.Get("/purchase-requests/emergency/context", middleware.RequirePermission("procurement.requests.emergency"), handlers.GetEmergencyContext)
-	admin.Post("/purchase-requests/emergency", middleware.RequirePermission("procurement.requests.emergency"), handlers.CreateEmergencyPurchase)
-	admin.Post("/purchase-requests/:id/emergency/proof", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit"), handlers.SubmitEmergencyProof)
-	admin.Post("/purchase-requests/:id/emergency/decision", middleware.RequirePermission("procurement.requests.approve"), handlers.DecideEmergencyPurchase)
-	admin.Post("/purchase-requests/:id/emergency/cancel", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit", "procurement.requests.approve"), handlers.CancelEmergencyPurchase)
-	admin.Post("/purchase-requests/:id/emergency/resend", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit"), handlers.ResendEmergencyPayout)
+	admin.Post("/purchase-requests/emergency", middleware.RequirePermission("procurement.requests.emergency"), broadcastAfter(handlers.CreateEmergencyPurchase, "procurement", "procurement_payment"))
+	admin.Post("/purchase-requests/:id/emergency/proof", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit"), broadcastAfter(handlers.SubmitEmergencyProof, "procurement", "procurement_payment"))
+	admin.Post("/purchase-requests/:id/emergency/decision", middleware.RequireAnyPermission("procurement.requests.approve", "procurement.requests.approve_services"), broadcastAfter(handlers.DecideEmergencyPurchase, "procurement", "procurement_payment"))
+	admin.Post("/purchase-requests/:id/emergency/cancel", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit", "procurement.requests.approve", "procurement.requests.approve_services"), broadcastAfter(handlers.CancelEmergencyPurchase, "procurement", "procurement_payment"))
+	admin.Post("/purchase-requests/:id/emergency/resend", middleware.RequireAnyPermission("procurement.requests.emergency", "procurement.requests.submit"), broadcastAfter(handlers.ResendEmergencyPayout, "procurement", "procurement_payment"))
 	admin.Get("/procurement/emergency-settings", middleware.RequirePermission("procurement.requests.view"), handlers.GetEmergencySettings)
-	admin.Put("/procurement/emergency-settings", middleware.RequirePermission("procurement.requests.approve"), handlers.UpdateEmergencySettings)
+	admin.Put("/procurement/emergency-settings", middleware.RequireAnyPermission("procurement.requests.approve", "procurement.requests.approve_services"), handlers.UpdateEmergencySettings)
 	// Rekap bulanan Pembelian Darurat untuk audit Keuangan (dan penyetuju).
-	admin.Get("/procurement/emergency-recap", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.approve"), handlers.GetEmergencyRecap)
-	admin.Get("/procurement/emergency-recap/export", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.approve"), handlers.ExportEmergencyRecap)
+	admin.Get("/procurement/emergency-recap", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.approve", "procurement.requests.approve_services"), handlers.GetEmergencyRecap)
+	admin.Get("/procurement/emergency-recap/export", middleware.RequireAnyPermission("finance.payments.view", "procurement.requests.approve", "procurement.requests.approve_services"), handlers.ExportEmergencyRecap)
 	// Pembayaran Manual & Pengajuan / Persetujuan Pembayaran (Mgr Keuangan / GM)
-	admin.Post("/purchase-requests/manual-payment", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), handlers.CreateManualPayment)
-	admin.Post("/purchase-requests/payment-submissions", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), handlers.SubmitPaymentApprovalBatch)
-	admin.Post("/purchase-requests/payment-approvals", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), handlers.DecidePaymentApprovalBatch)
+	admin.Post("/purchase-requests/manual-payment", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), broadcastAfter(handlers.CreateManualPayment, "procurement_payment", "procurement"))
+	admin.Post("/purchase-requests/payment-submissions", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), broadcastAfter(handlers.SubmitPaymentApprovalBatch, "procurement_payment", "procurement"))
+	admin.Post("/purchase-requests/payment-approvals", middleware.RequireAnyPermission("finance.payments.view", "finance.payments.pay", "finance.payments.approve"), broadcastAfter(handlers.DecidePaymentApprovalBatch, "procurement_payment", "procurement"))
 	admin.Get("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.ListPurchaseRequests)
 	admin.Get("/purchasing/export", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.ExportPurchasing)
 	admin.Get("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetPurchaseRequest)
 	admin.Get("/purchase-requests/:id/payment-histories", middleware.RequirePermission("finance.payments.view"), handlers.GetPaymentHistories)
-	admin.Post("/purchase-requests/:id/split", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), handlers.SplitPurchaseRequest)
+	admin.Post("/purchase-requests/:id/split", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), broadcastAfter(handlers.SplitPurchaseRequest, "procurement"))
 	// Struk pembelian (dibayar per struk) dicatat bagian pembelian atau
 	// petugas logistik; pengambilan barang dari vendor oleh petugas logistik.
 	// Izin per jenis diperiksa handler.
 	strukPerms := []string{"procurement.requests.purchasing", "procurement.rawmaterials.purchasing", "procurement.requests.pickup", "procurement.rawmaterials.pickup"}
-	admin.Post("/purchase-requests/:id/struks", middleware.RequireAnyPermission(strukPerms...), handlers.AddPurchaseStruk)
-	admin.Delete("/purchase-requests/:id/struks/:strukId", middleware.RequireAnyPermission(strukPerms...), handlers.DeletePurchaseStruk)
-	admin.Post("/purchase-requests/:id/pickups", middleware.RequireAnyPermission("procurement.requests.pickup", "procurement.rawmaterials.pickup"), handlers.AddPurchasePickup)
+	admin.Post("/purchase-requests/:id/struks", middleware.RequireAnyPermission(strukPerms...), broadcastAfter(handlers.AddPurchaseStruk, "procurement", "procurement_payment"))
+	admin.Delete("/purchase-requests/:id/struks/:strukId", middleware.RequireAnyPermission(strukPerms...), broadcastAfter(handlers.DeletePurchaseStruk, "procurement", "procurement_payment"))
+	admin.Post("/purchase-requests/:id/pickups", middleware.RequireAnyPermission("procurement.requests.pickup", "procurement.rawmaterials.pickup"), broadcastAfter(handlers.AddPurchasePickup, "procurement", "procurement_receiving"))
 	// Serah Terima pengadaan → aset / stok gudang (docs/perlengkapan-aset.md §8).
 	// Penerima: pengaju jenisnya (semua baris), bagian Aset (assets.create —
 	// baris peralatan), atau petugas gudang (stockledger.adjust — baris
 	// dapur/stok). Wewenang per baris diputus handler & service (T-10, T-17).
 	receivePerms := []string{"procurement.requests.submit", "procurement.rawmaterials.submit", "assets.create", "stockledger.adjust"}
 	admin.Get("/purchase-requests/:id/receiving-draft", middleware.RequireAnyPermission(receivePerms...), handlers.GetReceivingDraft)
-	admin.Post("/purchase-requests/:id/receive-goods", middleware.RequireAnyPermission(receivePerms...), handlers.ReceiveGoods)
-	admin.Post("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), handlers.CreatePurchaseRequest)
+	admin.Post("/purchase-requests/:id/receive-goods", middleware.RequireAnyPermission(receivePerms...), broadcastAfter(handlers.ReceiveGoods, "procurement", "procurement_receiving", "goods_receipt", "asset_workflow"))
+	admin.Post("/purchase-requests", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), broadcastAfter(handlers.CreatePurchaseRequest, "procurement"))
 	// finance.payments.pay: keuangan membayar (aksi pay); izin per aksi diputus handler.
-	admin.Put("/purchase-requests/:id/status", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.pay"), handlers.UpdatePurchaseStatus)
+	admin.Put("/purchase-requests/:id/status", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.pay"), broadcastAfter(handlers.UpdatePurchaseStatus, "procurement", "procurement_payment", "procurement_receiving"))
 	// Sumber dana Kas Kasir Outlet: tugas penyerahan kas untuk tablet kasir.
-	admin.Post("/procurement-payouts", middleware.RequirePermission("finance.payments.pay"), handlers.AssignCashPayout)
-	admin.Post("/procurement-payouts/:id/cancel", middleware.RequirePermission("finance.payments.pay"), handlers.CancelCashPayout)
-	admin.Put("/purchase-requests/:id/items", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), handlers.UpdatePurchaseItems)
+	admin.Post("/procurement-payouts", middleware.RequirePermission("finance.payments.pay"), broadcastAfter(handlers.AssignCashPayout, "procurement_payment", "procurement"))
+	admin.Post("/procurement-payouts/:id/cancel", middleware.RequirePermission("finance.payments.pay"), broadcastAfter(handlers.CancelCashPayout, "procurement_payment", "procurement"))
+	admin.Put("/purchase-requests/:id/items", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view"), broadcastAfter(handlers.UpdatePurchaseItems, "procurement"))
 	// Tujuan pembayaran: diisi/diubah Pembelian (izin per jenis diputus
 	// handler), dikembalikan Keuangan bila salah.
-	admin.Put("/purchase-requests/:id/payment-details", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), handlers.UpdatePurchasePaymentDetails)
-	admin.Post("/purchase-requests/:id/payment-details/return", middleware.RequirePermission("finance.payments.pay"), handlers.ReturnPurchasePaymentDetails)
-	admin.Delete("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), handlers.DeletePurchaseRequest)
+	admin.Put("/purchase-requests/:id/payment-details", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), broadcastAfter(handlers.UpdatePurchasePaymentDetails, "procurement", "procurement_payment"))
+	admin.Post("/purchase-requests/:id/payment-details/return", middleware.RequirePermission("finance.payments.pay"), broadcastAfter(handlers.ReturnPurchasePaymentDetails, "procurement", "procurement_payment"))
+	admin.Delete("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.submit", "procurement.rawmaterials.submit"), broadcastAfter(handlers.DeletePurchaseRequest, "procurement", "procurement_payment", "procurement_receiving"))
 
 	// File upload — dipakai untuk bukti pembayaran pengadaan
 	// stockledger.adjust: petugas gudang mengunggah foto serah terima barang dapur.
@@ -463,7 +481,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Impor aset dari Excel. Template dan pemeriksaan berkas dipisah dari
 	// penyimpanan, supaya berkas ratusan baris tidak langsung masuk.
 	admin.Get("/asset-import/template", middleware.RequirePermission("assets.create"), handlers.DownloadAssetImportTemplate)
-	admin.Post("/asset-import", middleware.RequirePermission("assets.create"), handlers.ImportAssets)
+	admin.Post("/asset-import", middleware.RequirePermission("assets.create"), broadcastAfter(handlers.ImportAssets, "asset_workflow"))
 
 	// Master kategori aset — dipakai form aset, dialog penerimaan, dan laporan.
 	admin.Get("/asset-categories", middleware.RequirePermission("assets.view"), handlers.ListAssetCategories)
@@ -476,15 +494,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// paginasi. Path terpisah supaya tidak pernah bentrok dengan "/assets/:id".
 	admin.Get("/asset-export", middleware.RequirePermission("assets.view"), handlers.ExportAssets)
 	admin.Get("/assets/:id", middleware.RequirePermission("assets.view"), handlers.GetAsset)
-	admin.Post("/assets", middleware.RequirePermission("assets.create"), handlers.CreateAsset)
-	admin.Put("/assets/:id", middleware.RequirePermission("assets.update"), handlers.UpdateAsset)
-	admin.Delete("/assets/:id", middleware.RequirePermission("assets.delete"), handlers.DeleteAsset)
+	admin.Post("/assets", middleware.RequirePermission("assets.create"), broadcastAfter(handlers.CreateAsset, "asset_workflow"))
+	admin.Put("/assets/:id", middleware.RequirePermission("assets.update"), broadcastAfter(handlers.UpdateAsset, "asset_workflow"))
+	admin.Delete("/assets/:id", middleware.RequirePermission("assets.delete"), broadcastAfter(handlers.DeleteAsset, "asset_workflow"))
 	admin.Get("/assets/:id/movements", middleware.RequirePermission("assets.view"), handlers.ListAssetMovements)
 	// Perawatan dipisah dari assets.update supaya teknisi bisa mencatat pekerjaan
 	// tanpa ikut berhak mengubah harga perolehan dan outlet aset.
 	admin.Get("/assets/:id/maintenances", middleware.RequirePermission("assets.maintenance.view"), handlers.ListAssetMaintenances)
-	admin.Post("/assets/:id/maintenances", middleware.RequirePermission("assets.maintenance.create"), handlers.AddAssetMaintenance)
-	admin.Delete("/assets/:id/maintenances/:mid", middleware.RequirePermission("assets.maintenance.create"), handlers.DeleteAssetMaintenance)
+	admin.Post("/assets/:id/maintenances", middleware.RequirePermission("assets.maintenance.create"), broadcastAfter(handlers.AddAssetMaintenance, "asset_workflow"))
+	admin.Delete("/assets/:id/maintenances/:mid", middleware.RequirePermission("assets.maintenance.create"), broadcastAfter(handlers.DeleteAssetMaintenance, "asset_workflow"))
 
 	// Work order perawatan lintas aset. "summary" didaftarkan sebelum ":id".
 	// Antrean serah terima. Dua meja: "perlengkapan" (bagian Aset) dan "dapur"
@@ -494,7 +512,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/asset-handovers", middleware.RequirePermission("assets.view"), handlers.ListAssetHandovers)
 	admin.Get("/asset-handovers/awaiting", middleware.RequirePermission("assets.view"), handlers.ListAssetsAwaitingHandover)
 	admin.Get("/asset-handovers/:id", middleware.RequirePermission("assets.view"), handlers.GetAssetHandover)
-	admin.Post("/asset-handovers", middleware.RequirePermission("assets.update"), handlers.CreateAssetHandover)
+	admin.Post("/asset-handovers", middleware.RequirePermission("assets.update"), broadcastAfter(handlers.CreateAssetHandover, "asset_workflow", "procurement_receiving"))
 
 	// Cadangan bukti foto ke email.
 	admin.Get("/photo-backup/settings", middleware.RequirePermission("settings.company.view"), handlers.GetPhotoBackupSettings)
@@ -513,22 +531,22 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// Penghapusan aset — soft delete biasa hanya untuk salah input (§5.4).
 	admin.Get("/asset-disposals", middleware.RequirePermission("assets.disposal.view"), handlers.ListAssetDisposals)
-	admin.Post("/asset-disposals", middleware.RequirePermission("assets.disposal.create"), handlers.CreateAssetDisposal)
-	admin.Post("/asset-disposals/:id/approve", middleware.RequirePermission("assets.disposal.approve"), handlers.ApproveAssetDisposal)
+	admin.Post("/asset-disposals", middleware.RequirePermission("assets.disposal.create"), broadcastAfter(handlers.CreateAssetDisposal, "asset_workflow"))
+	admin.Post("/asset-disposals/:id/approve", middleware.RequirePermission("assets.disposal.approve"), broadcastAfter(handlers.ApproveAssetDisposal, "asset_workflow"))
 
 	// Opname aset — audit fisik per outlet (§4.5).
 	admin.Get("/asset-opnames", middleware.RequirePermission("assets.opname.view"), handlers.ListAssetOpnames)
 	admin.Get("/asset-opnames/:id", middleware.RequirePermission("assets.opname.view"), handlers.GetAssetOpname)
-	admin.Post("/asset-opnames", middleware.RequirePermission("assets.opname.create"), handlers.CreateAssetOpname)
-	admin.Put("/asset-opnames/:id/items", middleware.RequirePermission("assets.opname.create"), handlers.SaveAssetOpnameCount)
-	admin.Post("/asset-opnames/:id/approve", middleware.RequirePermission("assets.opname.approve"), handlers.ApproveAssetOpname)
+	admin.Post("/asset-opnames", middleware.RequirePermission("assets.opname.create"), broadcastAfter(handlers.CreateAssetOpname, "asset_workflow"))
+	admin.Put("/asset-opnames/:id/items", middleware.RequirePermission("assets.opname.create"), broadcastAfter(handlers.SaveAssetOpnameCount, "asset_workflow"))
+	admin.Post("/asset-opnames/:id/approve", middleware.RequirePermission("assets.opname.approve"), broadcastAfter(handlers.ApproveAssetOpname, "asset_workflow"))
 	admin.Get("/asset-maintenances", middleware.RequirePermission("assets.maintenance.view"), handlers.ListMaintenances)
 	admin.Get("/asset-maintenances/summary", middleware.RequirePermission("assets.maintenance.view"), handlers.GetMaintenanceSummary)
 	admin.Get("/asset-maintenances/:id", middleware.RequirePermission("assets.maintenance.view"), handlers.GetMaintenance)
-	admin.Post("/asset-maintenances/:id/start", middleware.RequirePermission("assets.maintenance.create"), handlers.StartMaintenance)
-	admin.Post("/asset-maintenances/:id/complete", middleware.RequirePermission("assets.maintenance.create"), handlers.CompleteMaintenance)
-	admin.Post("/asset-maintenances/:id/cancel", middleware.RequirePermission("assets.maintenance.create"), handlers.CancelMaintenance)
-	admin.Post("/asset-maintenances/:id/purchase-request", middleware.RequireAnyPermission("assets.maintenance.create"), handlers.CreateMaintenancePurchaseRequest)
+	admin.Post("/asset-maintenances/:id/start", middleware.RequirePermission("assets.maintenance.create"), broadcastAfter(handlers.StartMaintenance, "asset_workflow"))
+	admin.Post("/asset-maintenances/:id/complete", middleware.RequirePermission("assets.maintenance.create"), broadcastAfter(handlers.CompleteMaintenance, "asset_workflow"))
+	admin.Post("/asset-maintenances/:id/cancel", middleware.RequirePermission("assets.maintenance.create"), broadcastAfter(handlers.CancelMaintenance, "asset_workflow"))
+	admin.Post("/asset-maintenances/:id/purchase-request", middleware.RequireAnyPermission("assets.maintenance.create"), broadcastAfter(handlers.CreateMaintenancePurchaseRequest, "asset_workflow", "procurement"))
 
 	// Mutasi aset antar outlet. Path terpisah dari /assets supaya rute statis
 	// seperti "available" tidak pernah tertangkap sebagai "/assets/:id".
@@ -536,15 +554,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/asset-transfers", middleware.RequirePermission("assets.transfer.view"), handlers.ListAssetTransfers)
 	admin.Get("/asset-transfers/available", middleware.RequirePermission("assets.transfer.create"), handlers.ListTransferableAssets)
 	admin.Get("/asset-transfers/:id", middleware.RequirePermission("assets.transfer.view"), handlers.GetAssetTransfer)
-	admin.Post("/asset-transfers", middleware.RequirePermission("assets.transfer.create"), handlers.CreateAssetTransfer)
-	admin.Put("/asset-transfers/:id", middleware.RequirePermission("assets.transfer.create"), handlers.UpdateAssetTransfer)
-	admin.Delete("/asset-transfers/:id", middleware.RequirePermission("assets.transfer.create"), handlers.DeleteAssetTransfer)
-	admin.Post("/asset-transfers/:id/submit", middleware.RequirePermission("assets.transfer.create"), handlers.SubmitAssetTransfer)
-	admin.Post("/asset-transfers/:id/approve", middleware.RequirePermission("assets.transfer.approve"), handlers.ApproveAssetTransfer)
-	admin.Post("/asset-transfers/:id/reject", middleware.RequirePermission("assets.transfer.approve"), handlers.RejectAssetTransfer)
-	admin.Post("/asset-transfers/:id/send", middleware.RequirePermission("assets.transfer.create"), handlers.SendAssetTransfer)
-	admin.Post("/asset-transfers/:id/receive", middleware.RequirePermission("assets.transfer.receive"), handlers.ReceiveAssetTransfer)
-	admin.Post("/asset-transfers/:id/cancel", middleware.RequirePermission("assets.transfer.create"), handlers.CancelAssetTransfer)
+	admin.Post("/asset-transfers", middleware.RequirePermission("assets.transfer.create"), broadcastAfter(handlers.CreateAssetTransfer, "asset_workflow"))
+	admin.Put("/asset-transfers/:id", middleware.RequirePermission("assets.transfer.create"), broadcastAfter(handlers.UpdateAssetTransfer, "asset_workflow"))
+	admin.Delete("/asset-transfers/:id", middleware.RequirePermission("assets.transfer.create"), broadcastAfter(handlers.DeleteAssetTransfer, "asset_workflow"))
+	admin.Post("/asset-transfers/:id/submit", middleware.RequirePermission("assets.transfer.create"), broadcastAfter(handlers.SubmitAssetTransfer, "asset_workflow"))
+	admin.Post("/asset-transfers/:id/approve", middleware.RequirePermission("assets.transfer.approve"), broadcastAfter(handlers.ApproveAssetTransfer, "asset_workflow"))
+	admin.Post("/asset-transfers/:id/reject", middleware.RequirePermission("assets.transfer.approve"), broadcastAfter(handlers.RejectAssetTransfer, "asset_workflow"))
+	admin.Post("/asset-transfers/:id/send", middleware.RequirePermission("assets.transfer.create"), broadcastAfter(handlers.SendAssetTransfer, "asset_workflow"))
+	admin.Post("/asset-transfers/:id/receive", middleware.RequirePermission("assets.transfer.receive"), broadcastAfter(handlers.ReceiveAssetTransfer, "asset_workflow"))
+	admin.Post("/asset-transfers/:id/cancel", middleware.RequirePermission("assets.transfer.create"), broadcastAfter(handlers.CancelAssetTransfer, "asset_workflow"))
 
 	// Pelanggan (Penjualan) — master otomatis dari order kasir, scoped per outlet
 	admin.Get("/customers", middleware.RequirePermission("customers.view"), handlers.ListCustomers)
@@ -556,15 +574,15 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Put("/reservations/settings", middleware.RequirePermission("reservations.update"), handlers.UpdateReservationSettings)
 	admin.Get("/reservations", middleware.RequirePermission("reservations.view"), handlers.ListReservations)
 	admin.Get("/reservations/:id", middleware.RequirePermission("reservations.view"), handlers.GetReservation)
-	admin.Post("/reservations", middleware.RequirePermission("reservations.create"), handlers.CreateReservation)
-	admin.Put("/reservations/:id", middleware.RequirePermission("reservations.update"), handlers.UpdateReservation)
-	admin.Patch("/reservations/:id/status", middleware.RequirePermission("reservations.update"), handlers.UpdateReservationStatus)
-	admin.Delete("/reservations/:id", middleware.RequirePermission("reservations.delete"), handlers.DeleteReservation)
+	admin.Post("/reservations", middleware.RequirePermission("reservations.create"), broadcastAfter(handlers.CreateReservation, "reservation"))
+	admin.Put("/reservations/:id", middleware.RequirePermission("reservations.update"), broadcastAfter(handlers.UpdateReservation, "reservation"))
+	admin.Patch("/reservations/:id/status", middleware.RequirePermission("reservations.update"), broadcastAfter(handlers.UpdateReservationStatus, "reservation"))
+	admin.Delete("/reservations/:id", middleware.RequirePermission("reservations.delete"), broadcastAfter(handlers.DeleteReservation, "reservation"))
 	// Uang muka: catat (admin), validasi/tolak bukti dari pelanggan.
 	admin.Get("/reservations/:id/payments", middleware.RequirePermission("reservations.view"), handlers.ListReservationPayments)
-	admin.Post("/reservations/:id/payments", middleware.RequirePermission("reservations.update"), handlers.AddReservationPayment)
-	admin.Post("/reservations/:id/payments/:pid/validate", middleware.RequirePermission("reservations.update"), handlers.ValidateReservationPayment)
-	admin.Post("/reservations/:id/payments/:pid/reject", middleware.RequirePermission("reservations.update"), handlers.RejectReservationPayment)
+	admin.Post("/reservations/:id/payments", middleware.RequirePermission("reservations.update"), broadcastAfter(handlers.AddReservationPayment, "reservation"))
+	admin.Post("/reservations/:id/payments/:pid/validate", middleware.RequirePermission("reservations.update"), broadcastAfter(handlers.ValidateReservationPayment, "reservation"))
+	admin.Post("/reservations/:id/payments/:pid/reject", middleware.RequirePermission("reservations.update"), broadcastAfter(handlers.RejectReservationPayment, "reservation"))
 
 	// Foto produk
 	admin.Post("/products/:id/photo", middleware.RequirePermission("products.update"), handlers.UploadProductPhoto)
@@ -603,24 +621,24 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Stock Ledger & Movements
 	admin.Get("/stock-ledger", middleware.RequireAnyPermission(whView...), handlers.GetStockLedger)
 	admin.Get("/stock-movements", middleware.RequireAnyPermission(whView...), handlers.GetStockMovements)
-	admin.Post("/stock-adjustments", middleware.RequirePermission("stockledger.adjust"), handlers.CreateAdjustment)
+	admin.Post("/stock-adjustments", middleware.RequirePermission("stockledger.adjust"), broadcastAfter(handlers.CreateAdjustment, "goods_receipt", "ppic_alert"))
 
 	// Stock Transfers
 	admin.Get("/stock-transfers", middleware.RequirePermission("stocktransfers.view"), handlers.ListStockTransfers)
 	admin.Get("/stock-transfers/:id", middleware.RequirePermission("stocktransfers.view"), handlers.GetStockTransfer)
-	admin.Post("/stock-transfers/:id/receive", middleware.RequireAnyPermission("stocktransfers.receive", "stockquality.central.receive", "stockquality.outlet.receive"), handlers.ReceiveStockTransfer)
-	admin.Post("/stock-transfers", middleware.RequirePermission("stocktransfers.create"), handlers.CreateStockTransfer)
+	admin.Post("/stock-transfers/:id/receive", middleware.RequireAnyPermission("stocktransfers.receive", "stockquality.central.receive", "stockquality.outlet.receive"), broadcastAfter(handlers.ReceiveStockTransfer, "stock_transfer", "goods_receipt", "stock_quality"))
+	admin.Post("/stock-transfers", middleware.RequirePermission("stocktransfers.create"), broadcastAfter(handlers.CreateStockTransfer, "stock_transfer"))
 	// Tahap transfer punya izin masing-masing (setujui / kirim / terima);
 	// pemeriksaannya per status ada di dalam handler.
-	admin.Put("/stock-transfers/:id/status", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.approve", "stocktransfers.receive"), handlers.UpdateTransferStatus)
-	admin.Put("/stock-transfers/:id/items/:itemId/received", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.receive"), handlers.UpdateReceivedQty)
+	admin.Put("/stock-transfers/:id/status", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.approve", "stocktransfers.receive"), broadcastAfter(handlers.UpdateTransferStatus, "stock_transfer"))
+	admin.Put("/stock-transfers/:id/items/:itemId/received", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.receive"), broadcastAfter(handlers.UpdateReceivedQty, "stock_transfer"))
 
 	// Recipes
 	admin.Get("/products/:id/recipes", middleware.RequirePermission("recipes.view"), handlers.GetProductRecipes)
 	admin.Put("/products/:id/recipes", middleware.RequirePermission("recipes.update"), handlers.SaveProductRecipes)
 	admin.Get("/stock-items/:id/recipes", middleware.RequirePermission("recipes.view"), handlers.GetStockItemRecipes)
 	admin.Put("/stock-items/:id/recipes", middleware.RequirePermission("recipes.update"), handlers.SaveStockItemRecipes)
-	admin.Post("/stock-items/:id/produce", middleware.RequirePermission("stockledger.adjust"), handlers.ProduceStockItem)
+	admin.Post("/stock-items/:id/produce", middleware.RequirePermission("stockledger.adjust"), broadcastAfter(handlers.ProduceStockItem, "goods_receipt", "ppic_alert"))
 	// Pemotongan (satu bahan → beberapa hasil, mis. ayam utuh → paha/dada/sayap).
 	// Template dibaca juga oleh pemegang stockledger.adjust (form Pemotongan
 	// butuh hasil standar & bobotnya); diubah hanya pengelola katalog (handler).
@@ -628,7 +646,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/stock-items/:id/breakdown", middleware.RequireAnyPermission("recipes.view", "stockledger.adjust"), handlers.GetStockItemBreakdown)
 	admin.Put("/stock-items/:id/breakdown", middleware.RequirePermission("recipes.update"), handlers.SaveStockItemBreakdown)
 	admin.Get("/stock-breakdowns", middleware.RequireAnyPermission(whView...), handlers.ListStockBreakdowns)
-	admin.Post("/stock-breakdowns", middleware.RequirePermission("stockledger.adjust"), handlers.CreateStockBreakdown)
+	admin.Post("/stock-breakdowns", middleware.RequirePermission("stockledger.adjust"), broadcastAfter(handlers.CreateStockBreakdown, "goods_receipt", "ppic_alert"))
 	admin.Get("/recipe-masters", middleware.RequirePermission("recipes.view"), handlers.ListRecipeMasters)
 	admin.Get("/recipe-masters/:id", middleware.RequirePermission("recipes.view"), handlers.GetRecipeMaster)
 	admin.Post("/recipe-masters", middleware.RequirePermission("recipes.create"), handlers.CreateRecipeMaster)
@@ -644,18 +662,18 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/stock-quality/batches", middleware.RequireAnyPermission("stockquality.central.report", "stockquality.outlet.report"), handlers.StockQualityBatches)
 	admin.Get("/stock-quality", middleware.RequirePermission("stockquality.view"), handlers.ListStockQuality)
 	admin.Get("/stock-quality/:id", middleware.RequirePermission("stockquality.view"), handlers.GetStockQuality)
-	admin.Post("/stock-quality", middleware.RequireAnyPermission("stockquality.central.report", "stockquality.outlet.report"), handlers.CreateStockQuality)
-	admin.Post("/stock-quality/:id/actions", middleware.RequireAnyPermission("stockquality.central.approve", "stockquality.central.execute", "stockquality.central.receive", "stockquality.refund", "stockquality.outlet.approve", "stockquality.outlet.execute"), handlers.ActStockQuality)
+	admin.Post("/stock-quality", middleware.RequireAnyPermission("stockquality.central.report", "stockquality.outlet.report"), broadcastAfter(handlers.CreateStockQuality, "stock_quality", "stock_transfer"))
+	admin.Post("/stock-quality/:id/actions", middleware.RequireAnyPermission("stockquality.central.approve", "stockquality.central.execute", "stockquality.central.receive", "stockquality.refund", "stockquality.outlet.approve", "stockquality.outlet.execute"), broadcastAfter(handlers.ActStockQuality, "stock_quality", "stock_transfer"))
 
 	// Penerimaan Barang (Goods Receipt / GRN) — stok masuk ke gudang.
 	// Baca: siapa pun pemirsa modul gudang; tulis: pemegang stockledger.adjust.
 	admin.Get("/goods-receipts", middleware.RequireAnyPermission(whView...), handlers.ListGoodsReceipts)
 	admin.Get("/goods-receipts/:id", middleware.RequireAnyPermission(whView...), handlers.GetGoodsReceipt)
-	admin.Post("/goods-receipts", middleware.RequirePermission("stockledger.adjust"), handlers.CreateGoodsReceipt)
+	admin.Post("/goods-receipts", middleware.RequirePermission("stockledger.adjust"), broadcastAfter(handlers.CreateGoodsReceipt, "goods_receipt", "ppic_alert"))
 
 	// PPIC — kontrol pemakaian: lookup minimal dan kebijakan terpisah dari mutasi Gudang/resep F&B.
 	admin.Get("/ppic/usage-control/lookups", middleware.RequirePermission("ppic.control.view"), handlers.GetPpicUsageLookups)
-	admin.Put("/ppic/usage-control/policy", middleware.RequirePermission("ppic.control.update"), handlers.SavePpicUsagePolicy)
+	admin.Put("/ppic/usage-control/policy", middleware.RequirePermission("ppic.control.update"), broadcastAfter(handlers.SavePpicUsagePolicy, "ppic_alert"))
 	admin.Get("/ppic/usage-control/policy/history", middleware.RequirePermission("ppic.control.view"), handlers.GetPpicUsagePolicyHistory)
 	admin.Get("/ppic/usage-control/export", middleware.RequirePermission("ppic.control.export"), handlers.ExportPpicUsageControl)
 	admin.Get("/ppic/usage-control", middleware.RequirePermission("ppic.control.view"), handlers.GetPpicUsageControl)
@@ -663,14 +681,14 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// PPIC — lookup minimal, opname, dan pemantauan kedaluwarsa.
 	admin.Get("/ppic/lookups", middleware.RequireAnyPermission("ppic.control.view", "ppic.opname.view", "ppic.expiry.view"), handlers.GetPpicUsageLookups)
 	admin.Get("/ppic/expiry", middleware.RequirePermission("ppic.expiry.view"), handlers.GetExpiryMonitor)
-	admin.Post("/ppic/expiry/:batchId/ack", middleware.RequirePermission("ppic.expiry.ack"), handlers.AckExpiryBatch)
+	admin.Post("/ppic/expiry/:batchId/ack", middleware.RequirePermission("ppic.expiry.ack"), broadcastAfter(handlers.AckExpiryBatch, "ppic_alert"))
 	admin.Get("/ppic/opnames", middleware.RequirePermission("ppic.opname.view"), handlers.ListStockOpnames)
 	admin.Get("/ppic/opnames/:id", middleware.RequirePermission("ppic.opname.view"), handlers.GetStockOpname)
-	admin.Post("/ppic/opnames", middleware.RequirePermission("ppic.opname.create"), handlers.CreateStockOpname)
-	admin.Put("/ppic/opnames/:id/items", middleware.RequirePermission("ppic.opname.create"), handlers.UpdateOpnameItems)
-	admin.Post("/ppic/opnames/:id/submit", middleware.RequirePermission("ppic.opname.create"), handlers.SubmitStockOpname)
-	admin.Post("/ppic/opnames/:id/approve", middleware.RequirePermission("ppic.opname.approve"), handlers.ApproveStockOpname)
-	admin.Post("/ppic/opnames/:id/cancel", middleware.RequirePermission("ppic.opname.create"), handlers.CancelStockOpname)
+	admin.Post("/ppic/opnames", middleware.RequirePermission("ppic.opname.create"), broadcastAfter(handlers.CreateStockOpname, "ppic_alert"))
+	admin.Put("/ppic/opnames/:id/items", middleware.RequirePermission("ppic.opname.create"), broadcastAfter(handlers.UpdateOpnameItems, "ppic_alert"))
+	admin.Post("/ppic/opnames/:id/submit", middleware.RequirePermission("ppic.opname.create"), broadcastAfter(handlers.SubmitStockOpname, "ppic_alert"))
+	admin.Post("/ppic/opnames/:id/approve", middleware.RequirePermission("ppic.opname.approve"), broadcastAfter(handlers.ApproveStockOpname, "ppic_alert"))
+	admin.Post("/ppic/opnames/:id/cancel", middleware.RequirePermission("ppic.opname.create"), broadcastAfter(handlers.CancelStockOpname, "ppic_alert"))
 
 	// Settings — view + update only (no create/delete for settings)
 	// ── WhatsApp: koneksi gateway, notifikasi, penerima, log, broadcast ──

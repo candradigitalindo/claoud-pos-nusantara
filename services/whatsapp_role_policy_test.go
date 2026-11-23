@@ -114,6 +114,19 @@ func TestWARolePolicyValidationAndBahanMapping(t *testing.T) {
 	if waUserMatchesEvent(waSpec("purchase.verified"), "raw", roles["raw"], s, nil) || !waUserMatchesEvent(waSpec("purchase.verified"), "raw", roles["raw"], s, waBahanPermMapper) {
 		t.Fatal("explicit raw-material subscription escaped its actual procurement type")
 	}
+
+	// Approval Jasa hanya menerima notifikasi pengajuan jasa, bukan barang atau bahan baku.
+	roles["jasa"] = waRoleInfo{scopeType: "all", perms: []string{"procurement.requests.approve_services"}}
+	jasaPolicy := models.WARoleNotificationPolicy{Enabled: true, Events: map[string]string{"purchase.verified": "on"}}
+	if _, err := normalizeWARolePolicies(map[string]models.WARoleNotificationPolicy{"jasa": jasaPolicy}, roles, outlets); err != nil {
+		t.Fatalf("service approval permission not recognized: %v", err)
+	}
+	sj := models.WASettings{RoleNotifications: map[string]models.WARoleNotificationPolicy{"jasa": jasaPolicy}}
+	if waUserMatchesEvent(waSpec("purchase.verified"), "jasa", roles["jasa"], sj, nil) ||
+		waUserMatchesEvent(waSpec("purchase.verified"), "jasa", roles["jasa"], sj, waBahanPermMapper) ||
+		!waUserMatchesEvent(waSpec("purchase.verified"), "jasa", roles["jasa"], sj, waJasaPermMapper) {
+		t.Fatal("service approver subscription must match only jasa procurement type")
+	}
 }
 
 func TestWASettingsPartialPresence(t *testing.T) {

@@ -304,15 +304,17 @@ const CATEGORIES = [
     items: [
       { type: 'single', key: 'procurement.dashboard.view', label: 'Dashboard Pengadaan', icon: IC.gauge },
       {
-        // Alur: Buat → Verifikasi (cek ketersediaan di outlet lain) → Approval Barang & Jasa → Pembelian.
+        // Alur: Barang = Buat → Verifikasi (cek ketersediaan di outlet lain) → Approval Barang → Pembelian.
+        //       Jasa   = Buat → Approval Jasa (tanpa verifikasi) → Pembelian.
         type: 'toggles', label: 'Pengadaan Barang, Perlengkapan & Jasa', icon: IC.cart,
         toggles: [
-          { key: 'procurement.requests.view',       label: 'Lihat', hint: 'Melihat daftar & detail pengajuan barang, perlengkapan, dan jasa' },
-          { key: 'procurement.requests.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan, mengubah isinya selama menunggu verifikasi, membatalkan sebelum diajukan bayar, dan menghapus' },
-          { key: 'procurement.requests.verify',     label: 'Verifikasi', hint: 'Memeriksa ketersediaan di outlet lain: menolak per item atau meneruskan pengajuan ke persetujuan' },
-          { key: 'procurement.requests.approve',    label: 'Approval Barang & Jasa', hint: 'Menyetujui/menolak pengajuan barang & jasa (termasuk pengajuan Urgent langsung), serta mengarahkan ke Pembayaran Kasir Outlet atau Proses Melalui Umum' },
-          { key: 'procurement.requests.purchasing', label: 'Pembelian Barang & Jasa', hint: 'Mengisi harga final, vendor, tujuan pembayaran, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran (termasuk jasa)' },
-          { key: 'procurement.requests.pickup',     label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan barang dari vendor (foto & waktu) sebelum diantar ke tempat penerimaan, termasuk struk yang dibawa' },
+          { key: 'procurement.requests.view',             label: 'Lihat', hint: 'Melihat daftar & detail pengajuan barang, perlengkapan, dan jasa' },
+          { key: 'procurement.requests.submit',           label: 'Buat/Hapus', hint: 'Membuat pengajuan, mengubah isinya selama menunggu verifikasi (barang) atau menunggu persetujuan (jasa), membatalkan sebelum diajukan bayar, dan menghapus' },
+          { key: 'procurement.requests.verify',           label: 'Verifikasi', hint: 'Memeriksa ketersediaan barang di outlet lain: menolak per item atau meneruskan pengajuan barang ke persetujuan (jasa langsung ke persetujuan tanpa verifikasi)' },
+          { key: 'procurement.requests.approve',          label: 'Approval Barang', hint: 'Khusus menyetujui/menolak pengajuan barang & perlengkapan (termasuk pengajuan Urgent langsung), serta mengarahkan ke Pembayaran Kasir Outlet atau Proses Melalui Umum' },
+          { key: 'procurement.requests.approve_services', label: 'Approval Jasa', hint: 'Khusus menyetujui/menolak pengajuan jasa (tanpa tahap verifikasi, langsung menunggu persetujuan), serta mengarahkan ke Pembayaran Kasir Outlet atau Proses Melalui Umum' },
+          { key: 'procurement.requests.purchasing',       label: 'Pembelian Barang & Jasa', hint: 'Mengisi harga final, vendor, tujuan pembayaran, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran (termasuk jasa)' },
+          { key: 'procurement.requests.pickup',           label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan barang dari vendor (foto & waktu) sebelum diantar ke tempat penerimaan, termasuk struk yang dibawa' },
         ],
       },
       {

@@ -116,8 +116,22 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    # `edge` menyambungkan nginx ini ke web lingkungan DEMO: demo.nbp.co.id
+    # diteruskan ke sana (blok di nginx/default.http-only.conf). Lihat
+    # docs/lingkungan-demo.md.
+    networks:
+      - default
+      - edge
     depends_on:
       - app
+
+# Jaringan bersama nginx produksi ↔ web demo (internal, tanpa jalan keluar ke
+# internet). Dibuat sekali di server: docker network create --internal nbp-edge
+# (deploy/demo.sh dan deploy/release.sh membuatnya otomatis bila belum ada).
+networks:
+  edge:
+    name: nbp-edge
+    external: true
 
 volumes:
   postgres_data:

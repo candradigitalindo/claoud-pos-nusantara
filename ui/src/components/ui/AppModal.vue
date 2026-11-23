@@ -33,7 +33,7 @@
     >
       <div
         v-if="modelValue"
-        class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
+        class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
       >
         <!-- Backdrop -->
         <div
@@ -48,13 +48,13 @@
           aria-modal="true"
           :aria-labelledby="titleId"
           :class="[
-            'app-modal-panel relative bg-white rounded-xl shadow-xl w-full min-w-0 flex flex-col',
+            'app-modal-panel relative bg-white rounded-xl shadow-xl w-full max-w-full min-w-0 overflow-hidden flex flex-col',
             SIZES[size] || SIZES.md,
           ]"
           @keydown.esc="close"
         >
           <!-- Header -->
-          <div class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0">
+          <div class="flex items-center justify-between gap-3 px-3.5 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0">
             <h2 :id="titleId" class="min-w-0 break-words text-base sm:text-lg leading-snug font-semibold text-gray-900">
               {{ title }}
             </h2>
@@ -70,14 +70,14 @@
           </div>
 
           <!-- Body -->
-          <div class="app-modal-body modal-layout min-h-0 min-w-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 flex-1">
+          <div class="app-modal-body modal-layout min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain px-3.5 sm:px-6 py-3.5 sm:py-4 flex-1">
             <slot />
           </div>
 
           <!-- Footer -->
           <div
             v-if="$slots.footer"
-            class="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex-shrink-0"
+            class="flex flex-wrap items-center justify-end gap-2 px-3.5 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex-shrink-0"
           >
             <slot name="footer" />
           </div>

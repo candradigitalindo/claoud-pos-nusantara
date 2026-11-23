@@ -21,12 +21,12 @@
 
     <ul v-if="pickups.length" class="mt-2 divide-y divide-gray-100">
       <li v-for="p in pickups" :key="p.id" class="flex flex-wrap items-start justify-between gap-2 py-2 text-xs">
-        <div class="min-w-0">
-          <p class="font-medium text-gray-900">Diambil {{ p.picked_by || '-' }} · {{ formatDateTime(p.picked_at) }}</p>
+        <div class="min-w-0 flex-1">
+          <p class="break-words font-medium text-gray-900">Diambil {{ p.picked_by || '-' }} · {{ formatDateTime(p.picked_at) }}</p>
           <p v-if="p.notes" class="break-words text-gray-500">{{ p.notes }}</p>
-          <p v-if="p.received_at" class="text-gray-400">Diterima {{ p.received_by || '-' }} · {{ formatDateTime(p.received_at) }}</p>
+          <p v-if="p.received_at" class="break-words text-gray-400">Diterima {{ p.received_by || '-' }} · {{ formatDateTime(p.received_at) }}</p>
         </div>
-        <div class="flex shrink-0 items-center gap-2">
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
           <span v-if="p.received_at" class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Sudah diterima</span>
           <span v-else class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Dalam pengantaran</span>
           <AppActionButton icon="photo" label="Foto" v-if="safeUrl(p.photo_url)" :href="safeUrl(p.photo_url)" target="_blank" rel="noopener noreferrer" />

@@ -22,9 +22,9 @@
       </div>
     </fieldset>
 
-    <div v-if="model.method === 'vendor_account'" class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-      <p class="font-semibold">{{ payTo?.vendor_bank_name || 'Bank' }} · <span class="font-mono">{{ payTo?.vendor_account_number }}</span></p>
-      <p>a.n. {{ payTo?.vendor_account_holder || '-' }}</p>
+    <div v-if="model.method === 'vendor_account'" class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900 break-words">
+      <p class="font-semibold break-all">{{ payTo?.vendor_bank_name || 'Bank' }} · <span class="font-mono">{{ payTo?.vendor_account_number }}</span></p>
+      <p class="break-words">a.n. {{ payTo?.vendor_account_holder || '-' }}</p>
       <p class="mt-1 text-[11px] leading-snug text-blue-700">Diambil dari data Vendor. Bila rekeningnya berubah, perbarui di menu Vendor — nomor rekening tidak bisa diketik di sini.</p>
     </div>
 

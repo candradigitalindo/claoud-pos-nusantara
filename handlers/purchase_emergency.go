@@ -73,17 +73,18 @@ func CreateEmergencyPurchase(c *fiber.Ctx) error {
 
 // emergencyDocOrFail: dokumen dalam cakupan pemanggil dan memang Pembelian
 // Darurat. Bila tidak, respons sudah ditulis.
-func emergencyDocOrFail(c *fiber.Ctx, id string) (bool, error) {
+func emergencyDocOrFail(c *fiber.Ctx, id string) (string, bool, error) {
 	if !validatePurchaseRequestScope(c, id) {
-		return false, c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses pengajuan tidak diizinkan"})
+		return "", false, c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses pengajuan tidak diizinkan"})
 	}
-	if _, found, ferr := purchaseTypeOrFail(c, id); !found {
-		return false, ferr
+	reqType, found, ferr := purchaseTypeOrFail(c, id)
+	if !found {
+		return "", false, ferr
 	}
 	if !services.IsEmergencyPurchase(id) {
-		return false, c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Pengajuan ini bukan Pembelian Darurat."})
+		return "", false, c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "Pengajuan ini bukan Pembelian Darurat."})
 	}
-	return true, nil
+	return reqType, true, nil
 }
 
 func emergencyDecisionBody(c *fiber.Ctx) (models.EmergencyDecisionInput, bool, error) {
@@ -101,7 +102,7 @@ func emergencyDecisionBody(c *fiber.Ctx) (models.EmergencyDecisionInput, bool, e
 // SubmitEmergencyProof: pengaju mengunggah foto struk & total belanja.
 func SubmitEmergencyProof(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if ok, err := emergencyDocOrFail(c, id); !ok {
+	if _, ok, err := emergencyDocOrFail(c, id); !ok {
 		return err
 	}
 	var in models.EmergencyProofInput
@@ -116,10 +117,14 @@ func SubmitEmergencyProof(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: pr})
 }
 
-// DecideEmergencyPurchase: penyetuju mengesahkan atau menolak.
+// DecideEmergencyPurchase: penyetuju mengesahkan atau menolak sesuai jenis pengajuannya (barang vs jasa).
 func DecideEmergencyPurchase(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if ok, err := emergencyDocOrFail(c, id); !ok {
+	reqType, ok, err := emergencyDocOrFail(c, id)
+	if !ok {
+		return err
+	}
+	if ok, err := requirePurchasePerm(c, reqType, "approve", "Anda tidak memiliki izin persetujuan untuk pengadaan "+services.RequestTypeLabel(reqType)+"."); !ok {
 		return err
 	}
 	in, ok, err := emergencyDecisionBody(c)
@@ -136,8 +141,16 @@ func DecideEmergencyPurchase(c *fiber.Ctx) error {
 // CancelEmergencyPurchase: dibatalkan sebelum kas diserahkan.
 func CancelEmergencyPurchase(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if ok, err := emergencyDocOrFail(c, id); !ok {
+	reqType, ok, err := emergencyDocOrFail(c, id)
+	if !ok {
 		return err
+	}
+	acc, err := loadPurchaseAccess(c)
+	if err != nil {
+		return permissionLoadError(c)
+	}
+	if !acc.has("procurement.requests.emergency") && !acc.can(reqType, "submit") && !acc.can(reqType, "approve") {
+		return purchaseForbidden(c, "Anda tidak memiliki akses membatalkan pengajuan "+services.RequestTypeLabel(reqType)+" ini.")
 	}
 	in, ok, err := emergencyDecisionBody(c)
 	if !ok {
@@ -153,7 +166,7 @@ func CancelEmergencyPurchase(c *fiber.Ctx) error {
 // ResendEmergencyPayout: kirim ulang tugas kas ke tablet kasir.
 func ResendEmergencyPayout(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if ok, err := emergencyDocOrFail(c, id); !ok {
+	if _, ok, err := emergencyDocOrFail(c, id); !ok {
 		return err
 	}
 	in, ok, err := emergencyDecisionBody(c)

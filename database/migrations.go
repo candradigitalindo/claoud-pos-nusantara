@@ -1316,7 +1316,7 @@ func RunMigrations() error {
 
 		"procurement.view":       {"procurement.dashboard.view", "procurement.requests.view", "vendors.view"},
 		"procurement.submit":     {"procurement.requests.submit"},
-		"procurement.approve":    {"procurement.requests.approve"},
+		"procurement.approve":    {"procurement.requests.approve", "procurement.requests.approve_services"},
 		"procurement.purchasing": {"procurement.requests.purchasing"},
 		"procurement.finance":    {"finance.payments.view", "finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete"},
 		"procurement.vendors":    {"vendors.create", "vendors.update", "vendors.delete"},
@@ -1382,7 +1382,7 @@ func RunMigrations() error {
 		"finance.payments.view", "finance.payments.pay", "finance.payments.approve",
 		"finance.bank.view", "finance.bank.create", "finance.bank.update", "finance.bank.delete",
 		"procurement.dashboard.view", "procurement.requests.view", "procurement.requests.submit",
-		"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing",
+		"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.approve_services", "procurement.requests.purchasing",
 		"procurement.requests.pickup",
 		"procurement.projects.view", "procurement.projects.manage",
 		"procurement.rawmaterials.view", "procurement.rawmaterials.submit",
@@ -3488,6 +3488,71 @@ func RunMigrations() error {
 			}
 			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_finance_payments_approve_v1', 'done') ON CONFLICT (key) DO NOTHING`)
 			log.Printf("Seeded finance.payments.approve untuk manager keuangan, General Manager, Direktur, admin, superadmin")
+		}
+	}
+
+	// ── Pemisahan izin Approval: Barang, Jasa, dan Bahan Baku ──
+	// Sebelumnya Barang & Jasa berbagi procurement.requests.approve. Kini:
+	//   - Barang     → procurement.requests.approve
+	//   - Jasa       → procurement.requests.approve_services
+	//   - Bahan Baku → procurement.rawmaterials.approve
+	// Role lama yang sudah memegang procurement.requests.approve otomatis diberi
+	// procurement.requests.approve_services agar akses yang berjalan tidak putus,
+	// lalu role terpisah 'penyetuju barang' dan 'penyetuju jasa' disiapkan
+	// (melengkapi 'penyetuju bahan baku' yang sudah ada).
+	{
+		var done bool
+		DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM app_settings WHERE key='mig_procurement_split_approve_goods_services_raw_v1')`).Scan(&done)
+		if !done {
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT role, 'procurement.requests.approve_services'
+				FROM role_permissions
+				WHERE permission = 'procurement.requests.approve'
+				  AND role <> 'penyetuju barang'
+				ON CONFLICT (role, permission) DO NOTHING`)
+
+			splitApproverRoles := []struct {
+				name, description, redirectTo string
+				perms                         []string
+			}{
+				{
+					name:        "penyetuju barang",
+					description: "Penyetuju khusus pengadaan barang & perlengkapan (tanpa jasa dan bahan baku)",
+					redirectTo:  "/purchase-goods",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.requests.view", "procurement.requests.approve",
+						"procurement.projects.view", "procurement.projects.manage",
+						"vendors.view", "assets.usage.view",
+					},
+				},
+				{
+					name:        "penyetuju jasa",
+					description: "Penyetuju khusus pengadaan jasa (tanpa barang dan bahan baku)",
+					redirectTo:  "/purchase-services",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.requests.view", "procurement.requests.approve_services",
+						"procurement.projects.view",
+						"vendors.view",
+					},
+				},
+			}
+			for _, sr := range splitApproverRoles {
+				DB.Exec(`INSERT INTO roles (name, description, is_system, scope_type, redirect_to)
+					VALUES ($1, $2, false, 'all', $3) ON CONFLICT (name) DO NOTHING`,
+					sr.name, sr.description, sr.redirectTo)
+				for _, p := range sr.perms {
+					DB.Exec(`INSERT INTO role_permissions (role, permission)
+						VALUES ($1, $2) ON CONFLICT (role, permission) DO NOTHING`,
+						sr.name, p)
+				}
+			}
+
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_procurement_split_approve_goods_services_raw_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Migrasi pemisahan Approval Barang, Jasa, dan Bahan Baku + role 'penyetuju barang' & 'penyetuju jasa' selesai")
 		}
 	}
 

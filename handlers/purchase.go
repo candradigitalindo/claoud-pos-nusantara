@@ -5,6 +5,7 @@ import (
 	"cloud-pos/models"
 	"cloud-pos/services"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 
@@ -394,9 +395,9 @@ func UpdatePurchaseStatus(c *fiber.Ctx) error {
 			Success: false, Error: "Pengajuan tidak ditemukan.",
 		})
 	}
-	if input.Action == "verify" && reqType == services.RequestTypeBahan {
+	if input.Action == "verify" && services.SkipsVerification(reqType) {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
-			Success: false, Error: "Pengadaan bahan baku tidak melalui verifikasi — pengajuannya langsung menunggu persetujuan.",
+			Success: false, Error: fmt.Sprintf("Pengadaan %s tidak melalui verifikasi — pengajuannya langsung menunggu persetujuan.", strings.ToLower(services.RequestTypeLabel(reqType))),
 		})
 	}
 
@@ -499,10 +500,10 @@ func UpdatePurchaseItems(c *fiber.Ctx) error {
 		// menolak perubahan isi lain (T-6).
 		action = "purchasing"
 	case "verified":
-		// Bahan baku tidak melalui verifikasi: lahir 'verified' (Menunggu
-		// Persetujuan) dan pengajunya masih boleh mengubah isi sampai
-		// disetujui. Barang & jasa yang sudah diverifikasi terkunci.
-		if reqType != services.RequestTypeBahan {
+		// Bahan baku dan jasa tidak melalui verifikasi: lahir 'verified'
+		// (Menunggu Persetujuan) dan pengajunya masih boleh mengubah isi sampai
+		// disetujui. Barang yang sudah diverifikasi terkunci.
+		if !services.SkipsVerification(reqType) {
 			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
 				Success: false, Error: "Pengajuan sudah diverifikasi dan menunggu persetujuan — isinya terkunci.",
 			})

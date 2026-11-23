@@ -71,7 +71,7 @@ var AllPermissions = []string{
 
 	// Pengadaan
 	"procurement.dashboard.view",
-	"procurement.requests.view", "procurement.requests.submit", "procurement.requests.approve", "procurement.requests.purchasing",
+	"procurement.requests.view", "procurement.requests.submit", "procurement.requests.approve", "procurement.requests.approve_services", "procurement.requests.purchasing",
 	// Verifikasi (pending → verified) sebelum persetujuan: memeriksa
 	// ketersediaan, mis. barang masih ada di outlet lain. Hanya disemai ke
 	// admin & superadmin; role lain diberi lewat halaman Role.

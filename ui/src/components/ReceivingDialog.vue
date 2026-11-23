@@ -56,7 +56,7 @@
       </div>
 
       <div v-for="group in groups" :key="group.key" class="modal-span-full space-y-3">
-        <div v-if="groups.length > 1" class="flex items-center gap-2">
+        <div v-if="groups.length > 1" class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span class="text-xs font-bold uppercase tracking-wide text-gray-500">{{ group.title }}</span>
           <span class="text-[11px] text-gray-400">{{ group.hint }}</span>
         </div>

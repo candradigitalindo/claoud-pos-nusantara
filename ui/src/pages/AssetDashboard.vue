@@ -169,6 +169,7 @@ import VueApexCharts from 'vue3-apexcharts'
 import { assetReportsApi } from '@/api/assetOps.js'
 import { formatRupiah } from '@/utils/format.js'
 import { condLabel, statusLabel } from '@/utils/assets.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 
@@ -298,14 +299,15 @@ function barTone(label) {
   return 'bg-gray-400'
 }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try { data.value = asObject(await assetReportsApi.dashboard()) || {} }
-  catch (e) { errorMsg.value = e?.message || 'Gagal memuat dashboard' }
-  finally { loading.value = false }
+  catch (e) { if (!silent) errorMsg.value = e?.message || 'Gagal memuat dashboard' }
+  finally { if (!silent) loading.value = false }
 }
 
 onMounted(load)
+useRealtime(['asset_workflow', 'asset_maintenance_due', 'procurement_receiving'], () => load({ silent: true }))
 </script>
 
 <style scoped>

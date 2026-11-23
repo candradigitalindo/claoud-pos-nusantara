@@ -1,18 +1,18 @@
 <template>
   <div class="space-y-5">
     <!-- Header -->
-    <div class="flex items-center gap-3">
-      <router-link to="/vendors" class="text-gray-400 hover:text-gray-600">
+    <div class="flex flex-wrap items-start sm:items-center gap-3">
+      <router-link to="/vendors" class="mt-0.5 sm:mt-0 shrink-0 text-gray-400 hover:text-gray-600">
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       </router-link>
-      <div class="flex-1">
-        <h1 class="text-xl font-bold text-gray-900">{{ vendor.name || 'Detail Vendor' }}</h1>
-        <p v-if="vendor.email || vendor.phone" class="text-sm text-gray-500">{{ [vendor.phone, vendor.email].filter(Boolean).join(' · ') }}</p>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-lg sm:text-xl font-bold text-gray-900 break-words">{{ vendor.name || 'Detail Vendor' }}</h1>
+        <p v-if="vendor.email || vendor.phone" class="text-xs sm:text-sm text-gray-500 break-all">{{ [vendor.phone, vendor.email].filter(Boolean).join(' · ') }}</p>
       </div>
       <span v-if="vendor.id" :class="vendor.is_active
         ? 'bg-emerald-100 text-emerald-700'
         : 'bg-gray-100 text-gray-500'"
-        class="px-3 py-1 rounded-full text-xs font-semibold">
+        class="shrink-0 px-3 py-1 rounded-full text-xs font-semibold">
         {{ vendor.is_active ? 'Aktif' : 'Nonaktif' }}
       </span>
     </div>
@@ -28,21 +28,21 @@
         <AppCard>
           <h3 class="text-sm font-semibold text-gray-700 mb-3">Informasi Vendor</h3>
           <div class="space-y-2 text-sm">
-            <div class="flex justify-between">
-              <span class="text-gray-500">Alamat</span>
-              <span class="text-gray-900 text-right max-w-[60%]">{{ vendor.address || '—' }}</span>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="shrink-0 text-gray-500">Alamat</span>
+              <span class="min-w-0 text-gray-900 text-right break-words sm:max-w-[65%]">{{ vendor.address || '—' }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">Telepon</span>
-              <span class="text-gray-900">{{ vendor.phone || '—' }}</span>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="shrink-0 text-gray-500">Telepon</span>
+              <span class="min-w-0 text-gray-900 break-all">{{ vendor.phone || '—' }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">Email</span>
-              <span class="text-gray-900">{{ vendor.email || '—' }}</span>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="shrink-0 text-gray-500">Email</span>
+              <span class="min-w-0 text-gray-900 break-all">{{ vendor.email || '—' }}</span>
             </div>
-            <div v-if="vendor.notes" class="flex justify-between">
-              <span class="text-gray-500">Catatan</span>
-              <span class="text-gray-900 text-right max-w-[60%]">{{ vendor.notes }}</span>
+            <div v-if="vendor.notes" class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="shrink-0 text-gray-500">Catatan</span>
+              <span class="min-w-0 text-gray-900 text-right break-words sm:max-w-[65%]">{{ vendor.notes }}</span>
             </div>
           </div>
         </AppCard>
@@ -51,17 +51,17 @@
         <AppCard>
           <h3 class="text-sm font-semibold text-gray-700 mb-3">Detail Pembayaran</h3>
           <div v-if="vendor.bank_name" class="space-y-2 text-sm">
-            <div class="flex justify-between">
-              <span class="text-gray-500">Bank</span>
-              <span class="text-gray-900 font-medium">{{ vendor.bank_name }}</span>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="shrink-0 text-gray-500">Bank</span>
+              <span class="min-w-0 text-gray-900 font-medium break-words text-right">{{ vendor.bank_name }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">No. Rekening</span>
-              <span class="text-gray-900 font-mono">{{ vendor.account_number || '—' }}</span>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="shrink-0 text-gray-500">No. Rekening</span>
+              <span class="min-w-0 text-gray-900 font-mono break-all text-right">{{ vendor.account_number || '—' }}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">Atas Nama</span>
-              <span class="text-gray-900">{{ vendor.account_holder || '—' }}</span>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="shrink-0 text-gray-500">Atas Nama</span>
+              <span class="min-w-0 text-gray-900 break-words text-right">{{ vendor.account_holder || '—' }}</span>
             </div>
           </div>
           <p v-else class="text-sm text-gray-400 italic">Belum ada data pembayaran.</p>
@@ -85,50 +85,50 @@
       </div>
 
       <!-- Stats Cards -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-white rounded-xl border border-gray-200 p-4">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Total Belanja</p>
-          <p class="text-lg font-bold text-gray-900 mt-1">{{ formatRupiah(totalSpent) }}</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
+        <div class="min-w-0 overflow-hidden bg-white rounded-xl border border-gray-200 p-3 sm:p-4">
+          <p class="text-[11px] sm:text-xs text-gray-500 uppercase tracking-wide">Total Belanja</p>
+          <p class="text-sm sm:text-lg font-bold text-gray-900 mt-1 break-words leading-snug">{{ formatRupiah(totalSpent) }}</p>
         </div>
-        <div class="bg-white rounded-xl border border-gray-200 p-4">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Sudah Dibayar</p>
-          <p class="text-lg font-bold text-emerald-600 mt-1">{{ formatRupiah(totalPaid) }}</p>
+        <div class="min-w-0 overflow-hidden bg-white rounded-xl border border-gray-200 p-3 sm:p-4">
+          <p class="text-[11px] sm:text-xs text-gray-500 uppercase tracking-wide">Sudah Dibayar</p>
+          <p class="text-sm sm:text-lg font-bold text-emerald-600 mt-1 break-words leading-snug">{{ formatRupiah(totalPaid) }}</p>
         </div>
-        <div class="bg-white rounded-xl border border-gray-200 p-4">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Hutang</p>
-          <p class="text-lg font-bold text-red-600 mt-1">{{ formatRupiah(totalDebt) }}</p>
+        <div class="min-w-0 overflow-hidden bg-white rounded-xl border border-gray-200 p-3 sm:p-4">
+          <p class="text-[11px] sm:text-xs text-gray-500 uppercase tracking-wide">Hutang</p>
+          <p class="text-sm sm:text-lg font-bold text-red-600 mt-1 break-words leading-snug">{{ formatRupiah(totalDebt) }}</p>
         </div>
-        <div class="bg-white rounded-xl border border-gray-200 p-4">
-          <p class="text-xs text-gray-500 uppercase tracking-wide">Menunggu</p>
-          <p class="text-lg font-bold text-amber-600 mt-1">{{ formatRupiah(totalPending) }}</p>
+        <div class="min-w-0 overflow-hidden bg-white rounded-xl border border-gray-200 p-3 sm:p-4">
+          <p class="text-[11px] sm:text-xs text-gray-500 uppercase tracking-wide">Menunggu</p>
+          <p class="text-sm sm:text-lg font-bold text-amber-600 mt-1 break-words leading-snug">{{ formatRupiah(totalPending) }}</p>
         </div>
       </div>
 
       <!-- Spending Chart -->
       <AppCard>
         <h3 class="text-sm font-semibold text-gray-700 mb-4">Tren Belanja (12 Bulan Terakhir)</h3>
-        <div style="height: 320px">
+        <div class="h-[240px] sm:h-[320px]">
           <Bar v-if="chartData" :data="chartData" :options="chartOptions" />
         </div>
-        <div v-if="monthlySpend.length" class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100">
-          <div class="text-center">
+        <div v-if="monthlySpend.length" class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4 pt-4 border-t border-gray-100">
+          <div class="min-w-0 text-center">
             <p class="text-xs text-gray-500">Total Transaksi</p>
-            <p class="text-sm font-bold text-gray-800">{{ totalTxCount }} pengadaan</p>
+            <p class="text-sm font-bold text-gray-800 break-words">{{ totalTxCount }} pengadaan</p>
           </div>
-          <div class="text-center">
+          <div class="min-w-0 text-center">
             <p class="text-xs text-gray-500">Total Nominal</p>
-            <p class="text-sm font-bold text-gray-800">{{ formatRupiah(totalTxAmount) }}</p>
+            <p class="text-sm font-bold text-gray-800 break-words">{{ formatRupiah(totalTxAmount) }}</p>
           </div>
-          <div class="text-center">
+          <div class="min-w-0 text-center">
             <p class="text-xs text-gray-500">Rata-rata/Bulan</p>
-            <p class="text-sm font-bold text-gray-800">{{ formatRupiah(avgMonthly) }}</p>
+            <p class="text-sm font-bold text-gray-800 break-words">{{ formatRupiah(avgMonthly) }}</p>
           </div>
         </div>
       </AppCard>
 
       <!-- Purchase History -->
       <AppCard :padding="false">
-        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div class="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
           <h3 class="text-sm font-semibold text-gray-700">Histori Pengadaan</h3>
           <div class="flex items-center gap-2">
             <SearchableSelect v-model="historyFilter" @change="fetchHistory(1)"
@@ -138,7 +138,30 @@
             </SearchableSelect>
           </div>
         </div>
-        <AppTable :columns="HISTORY_COLUMNS" :rows="filteredHistory" :loading="historyLoading" emptyText="Belum ada histori pengadaan.">
+        <!-- Mobile history cards -->
+        <div class="sm:hidden">
+          <div v-if="historyLoading" class="p-6 text-center text-sm text-gray-400">Memuat...</div>
+          <div v-else-if="!filteredHistory.length" class="p-6 text-center text-sm text-gray-400">Belum ada histori pengadaan.</div>
+          <ul v-else class="divide-y divide-gray-100">
+            <li v-for="row in filteredHistory" :key="row.id" class="p-4 space-y-1.5">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span :class="typeBadgeCls(row.request_type)" class="px-2 py-0.5 rounded-full text-[11px] font-medium">{{ purchaseTypeLabel(row.request_type) }}</span>
+                  <span class="text-xs text-gray-500">{{ formatDate(row.created_at) }}</span>
+                </div>
+                <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+              </div>
+              <p class="text-sm font-medium text-gray-800 break-words">{{ (row.items || []).map(i => i.name).join(', ') || '-' }}</p>
+              <div class="flex flex-wrap items-baseline justify-between gap-2 pt-1 text-xs">
+                <span class="font-semibold text-gray-900">{{ formatRupiah(row.total_final || row.total_hps || row.total_amount) }}</span>
+                <span v-if="row.status === 'partial' && row.paid_amount > 0" class="text-[11px] text-amber-600">
+                  Sisa: {{ formatRupiah((row.total_final || row.total_amount || 0) - (row.paid_amount || 0)) }}
+                </span>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <AppTable class="hidden sm:block" :columns="HISTORY_COLUMNS" :rows="filteredHistory" :loading="historyLoading" emptyText="Belum ada histori pengadaan.">
           <template #cell-created_at="{ row }">
             <span class="text-gray-700 text-xs">{{ formatDate(row.created_at) }}</span>
           </template>

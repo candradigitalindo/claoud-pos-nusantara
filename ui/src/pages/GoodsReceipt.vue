@@ -162,6 +162,7 @@ import { stockUnitOptions, stockUnitRatio, preferredStockUnit } from '@/utils/st
 import { ref, computed, onMounted, watch } from 'vue'
 import { goodsReceiptsApi, warehousesApi, stockItemsApi } from '@/api/warehouse.js'
 import { formatRupiah } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppModal from '@/components/ui/AppModal.vue'
@@ -253,14 +254,14 @@ async function submit() {
   finally { saving.value = false }
 }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const d = await goodsReceiptsApi.list({ warehouse_id: filterWarehouse.value || undefined, page: page.value, limit: PER_PAGE })
     receipts.value = d?.data ?? []
     total.value = d?.total ?? receipts.value.length
-  } catch (e) { errorMsg.value = e?.message || 'Gagal memuat penerimaan' }
-  finally { loading.value = false }
+  } catch (e) { if (!silent) errorMsg.value = e?.message || 'Gagal memuat penerimaan' }
+  finally { if (!silent) loading.value = false }
 }
 watch(page, load)
 
@@ -287,6 +288,8 @@ onMounted(async () => {
   } catch { /* ignore */ }
   await load()
 })
+
+useRealtime(['goods_receipt', 'procurement_receiving'], () => load({ silent: true }))
 </script>
 
 <style scoped>

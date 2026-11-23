@@ -15,20 +15,20 @@
         <!-- Mobile -->
         <ul class="divide-y divide-gray-100 sm:hidden">
           <li v-for="r in rows" :key="r.purchase_request_id" class="space-y-2 p-4">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <p class="font-mono text-sm font-semibold text-gray-900">{{ r.request_number }}</p>
-                <p class="text-xs text-gray-500">{{ r.outlet_name || '—' }}<span v-if="r.vendor_name"> · {{ r.vendor_name }}</span></p>
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <p class="font-mono text-sm font-semibold text-gray-900 break-all">{{ r.request_number }}</p>
+                <p class="text-xs text-gray-500 break-words">{{ r.outlet_name || '—' }}<span v-if="r.vendor_name"> · {{ r.vendor_name }}</span></p>
               </div>
-              <span :class="payCls(r)">{{ payLabel(r) }}</span>
+              <span :class="payCls(r)" class="shrink-0">{{ payLabel(r) }}</span>
             </div>
-            <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
               <template v-if="r.target_warehouse_name">
-                <dt class="text-gray-400">Untuk</dt><dd class="text-gray-700">{{ r.target_warehouse_name }}</dd>
+                <dt class="text-gray-400">Untuk</dt><dd class="text-gray-700 break-words">{{ r.target_warehouse_name }}</dd>
               </template>
-              <dt class="text-gray-400">Belum diterima</dt><dd class="text-gray-700">{{ r.lines }} baris · {{ r.units }} unit</dd>
-              <dt class="text-gray-400">Nilai</dt><dd class="text-gray-700">{{ formatRupiah(r.value) }}</dd>
-              <dt class="text-gray-400">Dibayar</dt><dd class="text-gray-700">{{ r.paid_at || '—' }}</dd>
+              <dt class="text-gray-400">Belum diterima</dt><dd class="text-gray-700 break-words">{{ r.lines }} baris · {{ r.units }} unit</dd>
+              <dt class="text-gray-400">Nilai</dt><dd class="text-gray-700 break-words">{{ formatRupiah(r.value) }}</dd>
+              <dt class="text-gray-400">Dibayar</dt><dd class="text-gray-700 break-words">{{ r.paid_at || '—' }}</dd>
             </dl>
             <AppActionButton icon="receive" label="Terima Barang" @click="open(r)" />
           </li>
@@ -66,6 +66,7 @@ import { useRoute } from 'vue-router'
 import { receivingApi } from '@/api/purchase.js'
 import { useToastStore } from '@/stores/toast.js'
 import { formatRupiah } from '@/utils/format.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppTable from '@/components/ui/AppTable.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
@@ -119,11 +120,11 @@ function payCls(r) {
   return 'badge-info'
 }
 
-async function load() {
-  loading.value = true; errorMsg.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     rows.value = asArray(await receivingApi.queue(kind.value))
-  } catch (e) { errorMsg.value = e?.message || 'Gagal memuat antrean' } finally { loading.value = false }
+  } catch (e) { if (!silent) errorMsg.value = e?.message || 'Gagal memuat antrean' } finally { if (!silent) loading.value = false }
 }
 
 function open(r) {
@@ -139,6 +140,7 @@ async function onDone(res) {
 }
 
 onMounted(load)
+useRealtime(['procurement_receiving', 'procurement', 'procurement_payment'], () => load({ silent: true }))
 </script>
 
 <style scoped>

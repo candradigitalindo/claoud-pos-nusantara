@@ -19,14 +19,14 @@
     </AppCard>
 -->
 <template>
-  <div :class="['tahoe-card', padding ? 'p-5' : '']">
+  <div :class="['tahoe-card min-w-0 max-w-full', padding ? 'p-3.5 sm:p-5' : '']">
     <!-- Specular top edge -->
     <div class="card-specular" aria-hidden="true" />
 
     <!-- Optional header slot -->
     <div
       v-if="$slots.header"
-      class="flex items-center justify-between mb-4"
+      class="flex flex-wrap items-center justify-between gap-2 mb-4"
     >
       <slot name="header" />
     </div>
@@ -36,7 +36,7 @@
     <!-- Optional footer slot -->
     <div
       v-if="$slots.footer"
-      class="mt-4 pt-4 border-t border-glass flex items-center justify-end gap-2"
+      class="mt-4 pt-4 border-t border-glass flex flex-wrap items-center justify-end gap-2"
     >
       <slot name="footer" />
     </div>

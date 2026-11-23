@@ -347,7 +347,7 @@ const routes = [
         path: 'emergency-purchase-recap',
         name: 'EmergencyPurchaseRecap',
         component: EmergencyPurchaseRecap,
-        meta: { title: 'Rekap Pembelian Darurat — Cloud POS', requiresAuth: true, permission: ['finance.payments.view', 'procurement.requests.approve'] },
+        meta: { title: 'Rekap Pembelian Darurat — Cloud POS', requiresAuth: true, permission: ['finance.payments.view', 'procurement.requests.approve', 'procurement.requests.approve_services'] },
       },
       {
         path: 'bank-accounts',

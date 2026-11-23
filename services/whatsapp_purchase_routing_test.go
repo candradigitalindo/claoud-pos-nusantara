@@ -121,7 +121,7 @@ func TestWAStaleReminderTargetsStageHolder(t *testing.T) {
 
 // Semua event pengadaan terdaftar dan aktif secara bawaan.
 func TestWAPurchaseEventsCatalog(t *testing.T) {
-	for _, key := range []string{"purchase.submitted", "purchase.rawmaterial_submitted", "purchase.verified", "purchase.approved",
+	for _, key := range []string{"purchase.submitted", "purchase.rawmaterial_submitted", "purchase.service_submitted", "purchase.verified", "purchase.approved",
 		"purchase.rejected", "purchase.priced", "purchase.payment_requested", "purchase.paid", "purchase.picked_up",
 		"purchase.received", "purchase.stale"} {
 		spec := waSpec(key)

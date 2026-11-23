@@ -263,6 +263,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { apiClient } from '@/api/client.js'
 import { movementLabel, transferStatusLabel } from '@/utils/warehouse.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppAlert   from '@/components/ui/AppAlert.vue'
 import AppSpinner from '@/components/ui/AppSpinner.vue'
 
@@ -271,15 +272,16 @@ const loading = ref(false)
 const err     = ref('')
 
 onMounted(load)
+useRealtime(['stock_transfer', 'stock_quality', 'goods_receipt', 'ppic_alert'], () => load({ silent: true }))
 
-async function load() {
-  loading.value = true; err.value = ''
+async function load({ silent = false } = {}) {
+  if (!silent) { loading.value = true; err.value = '' }
   try {
     d.value = await apiClient.get('/admin/warehouse-dashboard')
   } catch (e) {
-    err.value = e?.message ?? 'Gagal memuat dashboard gudang'
+    if (!silent) err.value = e?.message ?? 'Gagal memuat dashboard gudang'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 

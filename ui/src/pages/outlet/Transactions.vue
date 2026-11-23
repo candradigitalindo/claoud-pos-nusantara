@@ -44,6 +44,7 @@ import { useRoute } from 'vue-router'
 import { outletsApi } from '@/api/outlets.js'
 import { formatRupiah, formatDateTime } from '@/utils/format.js'
 import { PAGE_SIZE } from '@/utils/constants.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppCard        from '@/components/ui/AppCard.vue'
 import AppTable       from '@/components/ui/AppTable.vue'
 import AppBadge       from '@/components/ui/AppBadge.vue'
@@ -69,16 +70,19 @@ const errorMsg = ref('')
 
 onMounted(fetch)
 watch(page, fetch)
+useRealtime(['transaction'], (ev) => {
+  if (!ev?.outlet_id || ev.outlet_id === outletId.value) fetch({ silent: true })
+})
 
-async function fetch() {
-  loading.value = true; errorMsg.value = ''
+async function fetch({ silent = false } = {}) {
+  if (!silent) { loading.value = true; errorMsg.value = '' }
   try {
     const res  = await outletsApi.transactions(outletId.value, { page: page.value, limit: PAGE_SIZE })
     const data = res.data?.data ?? res.data
     items.value = data.transactions ?? data ?? []
     total.value = data.total ?? items.value.length
   } catch (err) {
-    errorMsg.value = err?.response?.data?.message ?? 'Gagal memuat transaksi.'
-  } finally { loading.value = false }
+    if (!silent) errorMsg.value = err?.response?.data?.message ?? 'Gagal memuat transaksi.'
+  } finally { if (!silent) loading.value = false }
 }
 </script>

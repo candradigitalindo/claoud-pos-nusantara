@@ -14,7 +14,7 @@
       </div>
     </section>
 
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div class="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-5">
       <div class="metric-card metric-card--slate">
         <p class="metric-card__label">Total Vendor</p>
         <p class="metric-card__value">{{ summary.total }}</p>
@@ -35,7 +35,7 @@
         <p class="metric-card__value">{{ summary.withContact }}</p>
         <p class="metric-card__hint">Telepon atau email tersedia</p>
       </div>
-      <div class="metric-card metric-card--rose">
+      <div class="metric-card metric-card--rose col-span-2 xl:col-span-1">
         <p class="metric-card__label">Tagihan Belum Bayar</p>
         <p class="metric-card__value">{{ formatRupiah(summary.totalUnpaid) }}</p>
         <p class="metric-card__hint">{{ summary.vendorsWithUnpaid }} vendor memiliki tagihan</p>
@@ -94,7 +94,70 @@
     </AppCard>
 
     <AppCard :padding="false">
-      <AppTable :columns="COLUMNS" :rows="filteredVendors" :loading="loading" :emptyText="emptyStateText">
+      <!-- Mobile card list -->
+      <div class="sm:hidden">
+        <div v-if="loading" class="p-6 text-center text-sm text-gray-400">Memuat data vendor...</div>
+        <div v-else-if="!filteredVendors.length" class="p-6 text-center text-sm text-gray-400">{{ emptyStateText }}</div>
+        <ul v-else class="divide-y divide-gray-100">
+          <li v-for="row in filteredVendors" :key="row.id" class="p-4 space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2.5 min-w-0 flex-1">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 text-xs font-bold text-white shadow-sm">
+                  {{ getInitial(row.name) }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <router-link :to="`/vendors/${row.id}`" class="block font-semibold text-sm text-emerald-700 hover:text-emerald-900 hover:underline break-words">{{ row.name }}</router-link>
+                  <p v-if="row.email" class="text-xs text-gray-400 break-all">{{ row.email }}</p>
+                  <p v-else class="text-xs text-gray-300 italic">Email belum diisi</p>
+                </div>
+              </div>
+              <span v-if="row.is_active" class="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Aktif
+              </span>
+              <span v-else class="shrink-0 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span> Nonaktif
+              </span>
+            </div>
+
+            <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+              <dt class="text-gray-400">Telepon</dt>
+              <dd class="text-gray-700 break-all">{{ row.phone || '—' }}</dd>
+              <dt class="text-gray-400">Rekening</dt>
+              <dd class="space-y-0.5">
+                <div v-if="row.bank_name" class="font-medium text-gray-700 break-words">{{ row.bank_name }}</div>
+                <div v-if="row.account_number" class="font-mono text-[11px] text-gray-500 break-all">{{ row.account_number }} — {{ row.account_holder || 'Tanpa nama' }}</div>
+                <span
+                  class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                  :class="hasBankInfo(row) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
+                >
+                  {{ hasBankInfo(row) ? 'Siap bayar' : 'Data rekening kurang' }}
+                </span>
+              </dd>
+              <dt class="text-gray-400">Tagihan</dt>
+              <dd>
+                <span v-if="row.unpaid_amount > 0" class="font-semibold text-rose-600 break-words">{{ formatRupiah(row.unpaid_amount) }} <span class="font-normal text-[11px] text-rose-400">(menunggu bayar)</span></span>
+                <span v-else class="text-emerald-600 font-medium">Lunas</span>
+              </dd>
+            </dl>
+
+            <div class="flex flex-wrap items-center justify-end gap-1.5 border-t border-gray-100 pt-2">
+              <router-link
+                :to="`/vendors/${row.id}`"
+                class="action-icon text-blue-600 hover:bg-blue-50 hover:text-blue-800"
+                title="Lihat detail vendor"
+                aria-label="Lihat detail vendor"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+              </router-link>
+              <AppActionButton icon="edit" label="Edit vendor" @click="openEdit(row)" />
+              <AppActionButton :icon="row.is_active ? 'disable' : 'enable'" :label="row.is_active ? 'Nonaktifkan vendor' : 'Aktifkan vendor'" @click="toggleActive(row)" />
+              <AppActionButton icon="delete" label="Hapus vendor" @click="confirmDelete(row)" />
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <AppTable class="hidden sm:block" :columns="COLUMNS" :rows="filteredVendors" :loading="loading" :emptyText="emptyStateText">
         <template #cell-name="{ row }">
           <div class="flex items-center gap-3">
             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 text-xs font-bold text-white shadow-sm">
@@ -509,31 +572,37 @@ async function confirmDelete(row) {
 }
 
 .metric-card {
+  min-width: 0;
+  overflow: hidden;
   border-radius: 1rem;
   border: 1px solid rgba(226, 232, 240, 0.9);
   background: rgba(255, 255, 255, 0.88);
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 0.9rem;
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
 }
 
 .metric-card__label {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  overflow-wrap: break-word;
 }
 
 .metric-card__value {
   margin-top: 0.3rem;
-  font-size: 1.55rem;
-  line-height: 1;
+  font-size: clamp(1.05rem, 4vw, 1.55rem);
+  line-height: 1.2;
   font-weight: 800;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .metric-card__hint {
   margin-top: 0.35rem;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: rgb(100 116 139);
+  overflow-wrap: break-word;
 }
 
 .metric-card--slate .metric-card__label,

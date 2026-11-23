@@ -108,6 +108,7 @@ import { ppicApi } from '@/api/ppic'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { formatDateTime, formatRupiah, todayDateString } from '@/utils/format'
+import { useRealtime } from '@/utils/realtime.js'
 import { usageStatuses, usageStatus, usageFlagLabel, usageQty as qty } from '@/utils/ppicUsageControl'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -138,17 +139,17 @@ const percent = value => value == null ? '—' : `${qty(value)}%`
 const rowKey = row => `${row.warehouse_id}:${row.item_id}`
 let loadSequence = 0
 
-async function load(params = { ...filters }, requestedPage = 1) {
+async function load(params = { ...filters }, requestedPage = 1, { silent = false } = {}) {
   const sequence = ++loadSequence
-  loading.value = true; error.value = ''; report.value = null
+  if (!silent) { loading.value = true; error.value = ''; report.value = null }
   try {
     if (!params.date_from || !params.date_to || params.date_from > params.date_to) throw new Error('Periksa rentang tanggal laporan.')
     const result = await ppicApi.getUsageControl({ ...params, page: requestedPage, limit: 20 })
     if (sequence !== loadSequence) return
     report.value = result; applied.value = { ...params }; page.value = requestedPage
   } catch (e) {
-    if (sequence === loadSequence) error.value = e?.message || 'Gagal memuat kontrol bahan.'
-  } finally { if (sequence === loadSequence) loading.value = false }
+    if (sequence === loadSequence && !silent) error.value = e?.message || 'Gagal memuat kontrol bahan.'
+  } finally { if (sequence === loadSequence && !silent) loading.value = false }
 }
 function applyFilters() { load({ ...filters }, 1) }
 function changePage(value) { load(applied.value, value) }
@@ -159,6 +160,7 @@ onMounted(async () => {
   finally { loadingLookups.value = false }
   await load()
 })
+useRealtime(['ppic_alert', 'transaction', 'goods_receipt'], () => load(applied.value, page.value, { silent: true }))
 
 const editorOpen = ref(false), editorError = ref(''), editingFixed = ref(false), policyLoading = ref(false), saving = ref(false)
 const blankPolicy = () => ({ warehouse_id: '', item_id: '', usage_tolerance_pct: '', waste_tolerance_pct: '', version: 0, reason: '' })

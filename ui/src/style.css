@@ -108,10 +108,29 @@ h1, h2, h3, h4, h5 { color: #14532d; }
    Warna sengaja seragam di semua layar: satu status = satu warna. */
 .badge-ok, .badge-warn, .badge-bad, .badge-info, .badge-mute {
   display: inline-block; padding: .12rem .5rem; border-radius: 999px;
-  font-size: .68rem; font-weight: 700; white-space: nowrap; line-height: 1.35;
+  font-size: .68rem; font-weight: 700; line-height: 1.35;
+  max-width: 100%; overflow-wrap: break-word;
 }
 .badge-ok   { background: rgba(16,185,129,.13); color: #047857; }
 .badge-warn { background: rgba(245,158,11,.15); color: #b45309; }
 .badge-bad  { background: rgba(239,68,68,.13);  color: #b91c1c; }
 .badge-info { background: rgba(59,130,246,.13); color: #1d4ed8; }
 .badge-mute { background: rgba(107,114,128,.12); color: #4b5563; }
+
+/* ── Mobile-safe wrapping inside cards & modals ──────────────────
+   Mencegah teks panjang (nomor rekening, invoice, URL, nama item) keluar
+   dari batas kartu/modal pada layar ponsel sempit. */
+.app-modal-body dl > dd,
+.tahoe-card dl > dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.app-modal-body dl > dt,
+.tahoe-card dl > dt {
+  min-width: 0;
+}
+.app-modal-body p,
+.app-modal-body li {
+  overflow-wrap: break-word;
+}

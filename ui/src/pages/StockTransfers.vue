@@ -306,6 +306,7 @@ import { useAuthStore } from '@/stores/auth.js'
 import PhotoCapture  from '@/components/PhotoCapture.vue'
 import StockEvidenceCapture from '@/components/StockEvidenceCapture.vue'
 import { safeUrl } from '@/utils/safeUrl.js'
+import { useRealtime } from '@/utils/realtime.js'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
 import AppTable      from '@/components/ui/AppTable.vue'
@@ -443,19 +444,21 @@ const selectedToWarehouse = computed(() => formWarehouseMap.value[form.value.to_
 const isRequestForm = computed(() => isOutletUser && selectedFromWarehouse.value?.type === 'central')
 
 let loadSeq = 0
-async function load() {
+async function load({ silent = false } = {}) {
   const seq = ++loadSeq
-  loading.value = true
-  errorMsg.value = ''
+  if (!silent) {
+    loading.value = true
+    errorMsg.value = ''
+  }
   try {
     const data = await stockTransfersApi.list({ page: page.value, limit, status: filterStatus.value, warehouse_id: filterWarehouse.value })
     if (seq !== loadSeq) return // respons lama, sudah ada request lebih baru
     transfers.value = data.data || []
     totalPages.value = data.total_pages || 1
   } catch (e) {
-    errorMsg.value = e?.message || 'Gagal memuat data'
+    if (!silent) errorMsg.value = e?.message || 'Gagal memuat data'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -508,6 +511,12 @@ watch(() => form.value.to_warehouse_id, (nextValue) => {
   }
 })
 onMounted(() => { load(); loadWarehouses(); loadFormWarehouses(); loadStockItems() })
+useRealtime(['stock_transfer', 'stock_quality'], async () => {
+  await load({ silent: true })
+  if (showDetail.value && detail.value?.id && !saving.value && !isReceiving.value && !isSending.value) {
+    try { detail.value = await stockTransfersApi.get(detail.value.id) } catch {}
+  }
+})
 
 function addItem() {
   form.value.items.push({ item_id: '', qty_dist: 0, unit_used: '', notes: '', dist_ratio: 1, base_unit: '', unit_label: '' })

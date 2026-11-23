@@ -101,6 +101,7 @@ import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { formatRupiah, todayDateString } from '@/utils/format'
+import { useRealtime } from '@/utils/realtime.js'
 import { safeUrl } from '@/utils/safeUrl'
 import AppCard from '@/components/ui/AppCard.vue'
 import RupiahInput from '@/components/ui/RupiahInput.vue'
@@ -149,19 +150,26 @@ const rowDetail = row => promoteDetail(row) ? '' : (row?.detail || '')
 const nonCashAmount = row => (row?.postings || []).reduce((sum, p) => sum + (Number(p.debit) || 0), 0)
 const visibleEntries = computed(() => entries.value.filter(r => !filters.search || [r.number, r.description, r.counterparty, r.notes].join(' ').toLowerCase().includes(filters.search.toLowerCase())))
 let request = 0
-async function load() {
-  const current = ++request; loading.value = true; error.value = ''
+async function load({ silent = false } = {}) {
+  const current = ++request
+  if (!silent) { loading.value = true; error.value = '' }
   try {
     const params = { date_from: range.value.from, date_to: range.value.to, ...filters, page: page.value, limit: 20 }
     const [ops, docs] = await Promise.all([financeApi.operations(params), financeApi.entries(params)])
     if (current === request) { operations.value = ops; entries.value = docs }
-  } catch (e) { if (current === request) { error.value = e.message; operations.value = { rows: [], total: 0 }; entries.value = [] } }
-  finally { if (current === request) loading.value = false }
+  } catch (e) { if (current === request && !silent) { error.value = e.message; operations.value = { rows: [], total: 0 }; entries.value = [] } }
+  finally { if (current === request && !silent) loading.value = false }
 }
 function reload() { page.value = 1; load() }
 function changePage(p) { page.value = p; load() }
 watch([range, () => filters.outlet_id, () => filters.source, () => filters.direction, () => filters.account, () => filters.include_receivable], reload)
 onMounted(async () => { try { lookups.value = await financeApi.lookups(); await load() } catch (e) { error.value = e.message } })
+useRealtime(['finance_entry', 'cash_movement', 'procurement_payment'], async () => {
+  await load({ silent: true })
+  if (showDetail.value && detail.value?.id) {
+    try { detail.value = await financeApi.detail(detail.value.id) } catch {}
+  }
+})
 const showForm = ref(false), editing = ref(''), form = reactive({}), formError = ref(''), saving = ref(false), uploading = ref(false)
 const entryAccounts = computed(() => lookups.value.accounts.filter(a => a.direction === form.direction || a.direction === 'both'))
 const entryUnits = computed(() => lookups.value.work_units.filter(w => (w.outlet_id || '') === (form.outlet_id || '')))

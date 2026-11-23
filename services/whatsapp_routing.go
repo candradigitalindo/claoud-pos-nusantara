@@ -297,6 +297,11 @@ func waBahanPermMapper(perm string) string {
 	return MapProcurementPermission(perm, RequestTypeBahan)
 }
 
+// waJasaPermMapper: padanan izin untuk event pengajuan jasa (approval jasa terpisah dari barang).
+func waJasaPermMapper(perm string) string {
+	return MapProcurementPermission(perm, RequestTypeJasa)
+}
+
 func waRecipientsForMapped(event, outletID string, mapPerm waPermMapper, extraNames ...string) []models.WARecipient {
 	s := GetWASettings()
 	if !s.Enabled || !waEventEnabled(s, event) {
@@ -384,9 +389,10 @@ func WARecipientUsers() []models.WARecipientUser {
 		if a.Active && a.Notify && a.Phone != "" && known && s.Enabled {
 			for i := range waEventSpecs {
 				spec := &waEventSpecs[i]
-				// Event pengadaan juga sampai ke pemegang izin bahan baku
-				// (untuk pengajuan berjenis bahan), jadi keduanya dihitung.
+				// Event pengadaan juga sampai ke pemegang izin jasa & bahan baku
+				// (untuk pengajuan berjenis jasa / bahan), jadi ketiganya dihitung.
 				if spec.Audience == "internal" && waRoleEventHasContext(spec, info, policy, activeOutlets, centralUnits) && (waUserMatchesEvent(spec, a.Role, info, s, nil) ||
+					waUserMatchesEvent(spec, a.Role, info, s, waJasaPermMapper) ||
 					waUserMatchesEvent(spec, a.Role, info, s, waBahanPermMapper)) {
 					u.Events = append(u.Events, spec.Key)
 				}
@@ -449,7 +455,7 @@ func WARoleOptions() []models.WARoleOption {
 			if waRoleEventEligibleAny(spec, r.Name, info) {
 				r.EligibleEvents = append(r.EligibleEvents, spec.Key)
 			}
-			if waAutomaticMatchesEvent(spec, r.Name, info, settings, nil) || waAutomaticMatchesEvent(spec, r.Name, info, settings, waBahanPermMapper) {
+			if waAutomaticMatchesEvent(spec, r.Name, info, settings, nil) || waAutomaticMatchesEvent(spec, r.Name, info, settings, waJasaPermMapper) || waAutomaticMatchesEvent(spec, r.Name, info, settings, waBahanPermMapper) {
 				r.AutomaticEvents = append(r.AutomaticEvents, spec.Key)
 			}
 			if canRequest && strings.HasPrefix(spec.Key, "purchase.") && (spec.Extra != "" || spec.Key == "purchase.stale") {
@@ -480,7 +486,7 @@ func WARoleOptions() []models.WARoleOption {
 // memegang Lihat/Buat (pengaju) tidak — setiap pengaju hanya dikabari tentang
 // pengajuannya sendiri lewat jalur "pengaju", bukan semua pengajuan.
 var waStageProcurementPerms = []string{
-	"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing", "procurement.requests.pickup",
+	"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.approve_services", "procurement.requests.purchasing", "procurement.requests.pickup",
 	"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing", "procurement.rawmaterials.pickup",
 	"finance.payments.pay", "stockledger.adjust", "assets.create",
 }
@@ -534,10 +540,12 @@ func waRouteDesc(spec *waEventSpec) string {
 		} else {
 			labels = append(labels, p)
 		}
-		// Padanan bahan baku (pengajuan berjenis 'bahan').
-		if m := waBahanPermMapper(p); m != p {
-			if l, ok := waPermissionLabels[m]; ok {
-				labels = append(labels, l)
+		// Padanan jasa & bahan baku (pengajuan berjenis 'jasa' dan 'bahan').
+		for _, mapper := range []waPermMapper{waJasaPermMapper, waBahanPermMapper} {
+			if m := mapper(p); m != p {
+				if l, ok := waPermissionLabels[m]; ok {
+					labels = append(labels, l)
+				}
 			}
 		}
 	}
@@ -552,17 +560,18 @@ func waRouteDesc(spec *waEventSpec) string {
 }
 
 var waPermissionLabels = map[string]string{
-	"reservations.view":               "Reservasi",
-	"cashier_shifts.view":             "Laporan Shift Kasir",
-	"reports.sales.view":              "Laporan Penjualan",
-	"procurement.requests.verify":     "Verifikasi Pengadaan",
-	"procurement.requests.approve":    "Persetujuan Pengadaan",
-	"procurement.requests.purchasing": "Purchasing (isi harga/beli)",
-	"finance.payments.pay":            "Pencairan Pembayaran",
-	"ppic.expiry.view":                "Kedaluwarsa PPIC",
-	"warehouse_dashboard.view":        "Dashboard Gudang",
-	"assets.maintenance.view":         "Perawatan Aset",
-	"devices.view":                    "Monitoring Perangkat",
+	"reservations.view":                     "Reservasi",
+	"cashier_shifts.view":                   "Laporan Shift Kasir",
+	"reports.sales.view":                    "Laporan Penjualan",
+	"procurement.requests.verify":           "Verifikasi Pengadaan",
+	"procurement.requests.approve":          "Persetujuan Pengadaan Barang",
+	"procurement.requests.approve_services": "Persetujuan Pengadaan Jasa",
+	"procurement.requests.purchasing":       "Purchasing (isi harga/beli)",
+	"finance.payments.pay":                  "Pencairan Pembayaran",
+	"ppic.expiry.view":                      "Kedaluwarsa PPIC",
+	"warehouse_dashboard.view":              "Dashboard Gudang",
+	"assets.maintenance.view":               "Perawatan Aset",
+	"devices.view":                          "Monitoring Perangkat",
 
 	// Padanan untuk pengajuan bahan baku (lihat MapProcurementPermission).
 	"procurement.rawmaterials.approve":    "Persetujuan Pengadaan Bahan Baku",
