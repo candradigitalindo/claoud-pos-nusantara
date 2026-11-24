@@ -139,11 +139,13 @@
             <strong>Pengaju:</strong> {{ form.requested_by || '-' }}
             <template v-if="workUnits.length === 1"> — <strong>Unit Kerja:</strong> {{ unitOptions[0].name }}</template>
           </p>
-          <div v-if="workUnits.length > 1" class="flex flex-col gap-1">
+          <div v-if="workUnits.length > 1" class="flex flex-col gap-1" :data-form-error="formErrors.work_unit_id ? '1' : undefined">
             <label class="text-xs font-semibold text-emerald-900">Unit Kerja Pengaju <span class="text-red-500">*</span></label>
             <SearchSelect v-model="form.work_unit_id" :options="unitOptions"
-              placeholder="Pilih unit kerja yang mengajukan…" searchPlaceholder="Cari unit kerja…" />
-            <p class="text-[11px] text-emerald-700">Cakupan Anda meliputi beberapa unit kerja — pilih unit yang mengajukan pengadaan ini.</p>
+              placeholder="Pilih unit kerja yang mengajukan…" searchPlaceholder="Cari unit kerja…"
+              @update:model-value="clearFieldError('work_unit_id')" />
+            <p v-if="formErrors.work_unit_id" class="text-[11px] font-medium text-red-600">{{ formErrors.work_unit_id }}</p>
+            <p v-else class="text-[11px] text-emerald-700">Cakupan Anda meliputi beberapa unit kerja — pilih unit yang mengajukan pengadaan ini.</p>
           </div>
         </div>
         <!-- Bahan baku tidak pernah tertaut projek (server menolaknya), jadi
@@ -154,7 +156,7 @@
             placeholder="Tanpa projek" searchPlaceholder="Cari projek…" />
           <p class="text-xs text-gray-400">Isi bila belanja ini bagian dari projek pembangunan/renovasi — tiap item lalu memilih baris RAB yang diserapnya.</p>
         </div>
-        <div v-if="!isBahan && rabNotSet" class="modal-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <div v-if="!isBahan && rabNotSet" :data-form-error="formErrors.project_id ? '1' : undefined" class="modal-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
           RAB projek <b>{{ projectRab.project_number }}</b> belum ditetapkan — pengajuan untuk projek ini ditolak server.
           Susun dan tetapkan RAB di halaman Projek dulu.
         </div>
@@ -184,45 +186,67 @@
 
         <!-- Items List -->
         <div class="modal-span-full">
-          <label class="text-sm font-medium text-gray-700 mb-2 block">Daftar Pengadaan</label>
+          <label class="text-sm font-medium text-gray-700 mb-2 block">{{ isProjectMode ? 'Daftar Item Pengadaan Projek' : 'Daftar Pengadaan' }}</label>
           <div class="space-y-3">
             <div v-for="(item, i) in form.items" :key="i" class="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200 overflow-hidden">
               <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1 space-y-3">
-                  <div class="flex items-center gap-2">
-                    <span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-semibold">Pengadaan #{{ i + 1 }}</span>
-                    <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeItem(i)" :disabled="form.items.length <= 1" class="ml-auto" />
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-semibold">
+                      {{ isProjectMode && form.items.length === 1 ? 'Item Projek' : `Pengadaan #${i + 1}` }}
+                    </span>
+                    <span v-if="isProjectMode && autoGroupName(item)" class="min-w-0 truncate text-xs text-gray-500">
+                      {{ autoGroupName(item) }}
+                    </span>
+                    <AppActionButton v-if="!isProjectMode || form.items.length > 1" icon="delete" label="Hapus baris" type="button" @click="removeItem(i)" :disabled="form.items.length <= 1" class="ml-auto" />
                   </div>
-                  <input v-model="item.name" placeholder="Nama Pengadaan" class="input-sm w-full min-w-0" />
+                  <div v-if="!isProjectMode" :data-form-error="formErrors[`group:${i}`] ? '1' : undefined">
+                    <input v-model="item.name" placeholder="Nama Pengadaan *"
+                      :class="['input-sm w-full min-w-0', formErrors[`group:${i}`] ? '!border-red-400 !bg-red-50/40' : '']"
+                      @input="clearFieldError(`group:${i}`)" />
+                    <p v-if="formErrors[`group:${i}`]" class="mt-0.5 text-[11px] font-medium text-red-600">{{ formErrors[`group:${i}`] }}</p>
+                  </div>
                   <!-- Sub-items table -->
                   <div class="pl-2 sm:ml-2 sm:pl-3 border-l-2 border-emerald-200 space-y-2 min-w-0">
                     <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Detail Item</p>
                     <div v-for="(sub, j) in item.items" :key="j"
-                      class="grid grid-cols-2 gap-1.5 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-center sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+                      class="grid grid-cols-2 gap-1.5 rounded-lg border border-gray-200 bg-white p-2 sm:grid-cols-12 sm:items-start sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
                       <div v-if="!isBahan && form.project_id && rabLines.length" class="col-span-2 sm:col-span-12 min-w-0">
                         <div class="flex items-center gap-1.5 min-w-0">
                           <span class="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">RAB</span>
-                          <SearchableSelect v-model="sub.rab_item_id" class="input-sm min-w-0 flex-1 w-full" @change="applyRabLine(sub)">
+                          <SearchableSelect :model-value="sub.rab_item_id" class="input-sm min-w-0 flex-1 w-full" @update:model-value="(val) => onRabSelect(sub, val, i, j)">
                             <option value="">— Di luar RAB (tidak menyerap baris mana pun) —</option>
                             <option v-for="l in rabLines" :key="l.id" :value="l.id">{{ rabOptionLabel(l) }}</option>
                           </SearchableSelect>
                         </div>
                         <p v-if="rabWarn(sub)" class="mt-0.5 text-[11px] font-semibold text-red-600 break-words">{{ rabWarn(sub) }}</p>
                       </div>
-                      <div v-if="isBahan" class="col-span-2 sm:col-span-4 min-w-0">
+                      <div v-if="isBahan" class="col-span-2 sm:col-span-4 min-w-0" :data-form-error="formErrors[`sub_name:${i}:${j}`] ? '1' : undefined">
                         <SearchSelect v-model="sub.name" :options="stockItemOptions" value-key="name" label-key="label"
                           :disabled="stockCatalogLoading || stockCatalogFailed" placeholder="Pilih bahan baku…" searchPlaceholder="Cari nama atau kode bahan baku…"
-                          :aria-label="`Bahan baku pengadaan ${i + 1} item ${j + 1}`" @change="applyCatalogItem(sub)" />
-                        <p v-if="sub.name" class="mt-1 text-[11px] text-emerald-700 break-words">{{ stockBalanceLabel(sub) }}</p>
+                          :aria-label="`Bahan baku pengadaan ${i + 1} item ${j + 1}`" @change="applyCatalogItem(sub); clearFieldError(`sub_name:${i}:${j}`)" />
+                        <p v-if="formErrors[`sub_name:${i}:${j}`]" class="mt-0.5 text-[11px] font-medium text-red-600">{{ formErrors[`sub_name:${i}:${j}`] }}</p>
+                        <p v-else-if="sub.name" class="mt-1 text-[11px] text-emerald-700 break-words">{{ stockBalanceLabel(sub) }}</p>
                       </div>
-                      <input v-else v-model="sub.name" placeholder="Nama item" autocomplete="off" class="input-sm min-w-0 w-full col-span-2 sm:col-span-4" />
-                      <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty" class="input-sm min-w-0 w-full sm:col-span-2" />
+                      <div v-else class="col-span-2 sm:col-span-4 min-w-0" :data-form-error="formErrors[`sub_name:${i}:${j}`] ? '1' : undefined">
+                        <input v-model="sub.name" placeholder="Nama item *" autocomplete="off"
+                          :class="['input-sm min-w-0 w-full', formErrors[`sub_name:${i}:${j}`] ? '!border-red-400 !bg-red-50/40' : '']"
+                          @input="sub._fromRab = false; clearFieldError(`sub_name:${i}:${j}`)" />
+                        <p v-if="formErrors[`sub_name:${i}:${j}`]" class="mt-0.5 text-[11px] font-medium text-red-600">{{ formErrors[`sub_name:${i}:${j}`] }}</p>
+                      </div>
+                      <div class="min-w-0 sm:col-span-2" :data-form-error="formErrors[`sub_qty:${i}:${j}`] ? '1' : undefined">
+                        <input v-model.number="sub.qty" type="number" min="1" placeholder="Qty *"
+                          :class="['input-sm min-w-0 w-full', formErrors[`sub_qty:${i}:${j}`] ? '!border-red-400 !bg-red-50/40' : '']"
+                          @input="clearFieldError(`sub_qty:${i}:${j}`)" />
+                        <p v-if="formErrors[`sub_qty:${i}:${j}`]" class="mt-0.5 text-[11px] font-medium text-red-600">{{ formErrors[`sub_qty:${i}:${j}`] }}</p>
+                      </div>
                       <input v-model="sub.unit" placeholder="Satuan" class="input-sm min-w-0 w-full sm:col-span-1" />
-                      <div class="col-span-2 min-w-0">
-                        <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" />
+                      <div class="col-span-2 min-w-0" :data-form-error="formErrors[`sub_hps:${i}:${j}`] ? '1' : undefined">
+                        <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" :error="formErrors[`sub_hps:${i}:${j}`]"
+                          @update:model-value="clearFieldError(`sub_hps:${i}:${j}`)" />
                       </div>
-                      <p class="col-span-1 min-w-0 break-words self-center text-right text-xs text-gray-500 sm:col-span-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
-                      <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center justify-self-end" />
+                      <p class="col-span-1 min-w-0 break-words self-center text-right text-xs text-gray-500 sm:col-span-2 sm:pt-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
+                      <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center justify-self-end sm:mt-0.5" />
                       <!-- Sumber HPS diberi barisnya sendiri: tautan marketplace
                            panjang dan tidak muat di deret kolom angka. -->
                       <div class="col-span-2 sm:col-span-12">
@@ -242,7 +266,7 @@
               </div>
             </div>
           </div>
-          <div class="mt-3">
+          <div v-if="!isProjectMode" class="mt-3">
             <button type="button" @click="addItem" class="text-sm text-emerald-600 hover:text-emerald-800 font-medium">+ Tambah Pengadaan</button>
           </div>
           <div v-if="mixedKind" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -258,10 +282,17 @@
           </p>
         </div>
 
-        <PurchaseUrgencyFields class="modal-span-full" v-model:urgency="form.urgency" v-model:need-by="form.need_by_date"
-          :can-emergency="false" :emergency-max="emergencyMax" />
-        <AppInput class="modal-span-full" v-model="form.notes" label="Catatan / Alasan Pembelian"
-          :placeholder="form.urgency === 'urgent' ? 'Wajib: dampaknya bila tidak segera dibeli' : 'Keterangan tambahan (opsional)'" />
+        <div class="modal-span-full space-y-1" :data-form-error="formErrors.need_by_date ? '1' : undefined">
+          <PurchaseUrgencyFields v-model:urgency="form.urgency" v-model:need-by="form.need_by_date"
+            :can-emergency="false" :emergency-max="emergencyMax"
+            @update:need-by="clearFieldError('need_by_date')" @update:urgency="clearFieldError('need_by_date'); clearFieldError('notes')" />
+          <p v-if="formErrors.need_by_date" class="text-xs font-medium text-red-600">{{ formErrors.need_by_date }}</p>
+        </div>
+        <div class="modal-span-full" :data-form-error="formErrors.notes ? '1' : undefined">
+          <AppInput v-model="form.notes" label="Catatan / Alasan Pembelian" :error="formErrors.notes"
+            :placeholder="form.urgency === 'urgent' ? 'Wajib: dampaknya bila tidak segera dibeli' : 'Keterangan tambahan (opsional)'"
+            @update:model-value="clearFieldError('notes')" />
+        </div>
       </form>
       <template #footer>
         <AppButton variant="secondary" @click="showCreate = false">Batal</AppButton>
@@ -1049,7 +1080,7 @@
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
 import { apiClient } from '@/api/client.js'
@@ -1292,7 +1323,14 @@ const myWorkUnit = ref(null)
 const showCreate = ref(false)
 const creating = ref(false)
 const createError = ref('')
+const formErrors = ref({})
 const form = ref(emptyForm())
+function clearFieldError(key) {
+  if (!formErrors.value[key]) return
+  const next = { ...formErrors.value }
+  delete next[key]
+  formErrors.value = next
+}
 
 const showDetail = ref(false)
 const detail = ref(null)
@@ -1590,9 +1628,9 @@ function emptyForm() {
 function addItem() {
   form.value.items.push({ name: '', items: [{ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '', rab_item_id: '' }] })
 }
-function removeItem(i) { if (form.value.items.length > 1) form.value.items.splice(i, 1) }
+function removeItem(i) { if (form.value.items.length > 1) { form.value.items.splice(i, 1); formErrors.value = {} } }
 function addSubItem(i) { form.value.items[i].items.push({ name: '', qty: 1, unit: 'pcs', hps_price: 0, hps_source: '', rab_item_id: '' }) }
-function removeSubItem(i, j) { if (form.value.items[i].items.length > 1) form.value.items[i].items.splice(j, 1) }
+function removeSubItem(i, j) { if (form.value.items[i].items.length > 1) { form.value.items[i].items.splice(j, 1); formErrors.value = {} } }
 function adminName() { return authStore.admin?.name || 'Admin' }
 
 const projects = ref([])
@@ -1603,11 +1641,17 @@ const projectOptions = computed(() => [
   { id: '', name: 'Tanpa projek' },
   ...projects.value
     .filter(p => p.status === 'berjalan' || p.status === 'draft')
-    .map(p => ({ id: p.id, name: p.project_number ? `${p.name} — ${p.project_number}` : p.name })),
+    .map(p => {
+      const base = p.project_number ? `${p.name} — ${p.project_number}` : p.name
+      const tag = p.rab_status === 'ditetapkan' ? '' : ' (RAB belum ditetapkan)'
+      return { id: p.id, name: base + tag }
+    }),
 ])
 
 // ── Baris RAB projek yang dipilih di form ──
 // Pengajuan barang hanya boleh menyerap baris barang/umum; jasa → jasa/umum.
+const isProjectMode = computed(() => !isBahan.value && !!form.value.project_id)
+const selectedProject = computed(() => projects.value.find(p => p.id === form.value.project_id) || null)
 const projectRab = ref(null)
 const rabLines = computed(() => (projectRab.value?.items || []).filter(l => l.kind === 'umum' || l.kind === requestType.value))
 const rabById = computed(() => Object.fromEntries((projectRab.value?.items || []).map(l => [l.id, l])))
@@ -1617,21 +1661,67 @@ async function loadProjectRab(id) {
   if (!id) return
   try { projectRab.value = await projectsApi.rab(id) } catch { projectRab.value = null }
 }
-watch(() => form.value.project_id, (id) => {
+watch(() => form.value.project_id, (id, oldId) => {
   loadProjectRab(id)
-  if (!id) for (const it of form.value.items || []) for (const sub of it.items || []) sub.rab_item_id = ''
+  if (id !== oldId) {
+    clearFieldError('project_id')
+    for (const it of form.value.items || []) {
+      for (const sub of it.items || []) {
+        sub.rab_item_id = ''
+        if (sub._fromRab) {
+          sub.name = ''
+          sub.unit = 'pcs'
+          sub.hps_price = 0
+          sub.hps_source = ''
+          sub._fromRab = false
+        } else if (String(sub.hps_source || '').startsWith('RAB ')) {
+          sub.hps_source = ''
+        }
+      }
+    }
+  }
 })
+function autoGroupName(item) {
+  const sections = []
+  for (const sub of item?.items || []) {
+    const l = sub.rab_item_id ? rabById.value[sub.rab_item_id] : null
+    const sec = String(l?.section || '').trim()
+    if (sec && !sections.includes(sec)) sections.push(sec)
+  }
+  if (sections.length) return sections.join(' · ').slice(0, 200)
+  const projName = String(selectedProject.value?.name || projectRab.value?.project_name || '').trim()
+  if (projName) return projName.slice(0, 200)
+  const firstSub = String((item?.items || []).find(s => String(s.name || '').trim())?.name || '').trim()
+  return firstSub.slice(0, 200)
+}
 function rabOptionLabel(l) {
   return `${l.section ? l.section + ' / ' : ''}${l.name} · sisa ${formatRupiah(l.remaining)}${l.unit ? ` (${l.qty} ${l.unit} @ ${formatRupiah(l.unit_price)})` : ''}`
 }
-// Memilih baris RAB mengisi nama (bila kosong), satuan, HPS satuan, dan sumber HPS.
-function applyRabLine(sub) {
+// Memilih / mengganti baris RAB selalu memperbarui nama, satuan, HPS satuan, dan sumber HPS.
+function onRabSelect(sub, val, groupIdx, subIdx) {
+  sub.rab_item_id = val || ''
   const l = rabById.value[sub.rab_item_id]
-  if (!l) return
-  if (!String(sub.name || '').trim()) sub.name = l.name
-  if (l.unit) sub.unit = l.unit
-  sub.hps_price = l.unit_price
+  if (!l) {
+    if (sub._fromRab) {
+      sub.name = ''
+      sub.unit = 'pcs'
+      sub.hps_price = 0
+      sub.hps_source = ''
+      sub._fromRab = false
+    } else if (String(sub.hps_source || '').startsWith('RAB ')) {
+      sub.hps_source = ''
+    }
+    return
+  }
+  sub.name = l.name
+  sub.unit = l.unit || ''
+  sub.hps_price = Number(l.unit_price) || 0
   sub.hps_source = `RAB ${projectRab.value.project_number} v${projectRab.value.rab_version}: ${l.section ? l.section + ' / ' : ''}${l.name}`
+  sub._fromRab = true
+  if (groupIdx != null && subIdx != null) {
+    clearFieldError(`sub_name:${groupIdx}:${subIdx}`)
+    clearFieldError(`sub_hps:${groupIdx}:${subIdx}`)
+  }
 }
 function rabWarn(sub) {
   const l = rabById.value[sub.rab_item_id]
@@ -1767,6 +1857,16 @@ async function fetchList({ silent = false } = {}) {
 
 useRealtime(['procurement', 'procurement_payment', 'procurement_receiving'], async () => {
   await fetchList({ silent: true })
+  if (!isBahan.value) {
+    fetchProjects()
+    if (showCreate.value && form.value.project_id) {
+      const pid = form.value.project_id
+      try {
+        const freshRab = await projectsApi.rab(pid)
+        if (showCreate.value && form.value.project_id === pid) projectRab.value = freshRab
+      } catch {}
+    }
+  }
   if (showDetail.value && detail.value?.id && !detailRejectMode.value && !showEditFinal.value && !showSplitModal.value && !showReceiving.value) {
     const id = detail.value.id
     try {
@@ -1828,19 +1928,25 @@ watch(requestType, () => {
   deleteTarget.value = null
   form.value = emptyForm()
   createError.value = ''
+  formErrors.value = {}
   filterWorkUnit.value = ''
   filterStatus.value = ''
   page.value = 1
   totalPages.value = 1
   requests.value = []
+  projectRab.value = null
   fetchList()
   loadStockItemNames()
+  if (!isBahan.value) {
+    fetchProjects()
+    loadEmergencyMax()
+  }
 })
 
 function goPage(p) { page.value = p; fetchList() }
 
 function openCreate() {
-  form.value = emptyForm(); createError.value = ''
+  form.value = emptyForm(); createError.value = ''; formErrors.value = {}; projectRab.value = null
   // Pengaju = akun yang login (server mengisinya dari sesi, bukan dari form).
   form.value.requested_by = authStore.admin?.name || authStore.admin?.username || myWorkUnit.value?.admin_name || ''
   // Satu unit → otomatis. Lebih dari satu → wajib dipilih; bawaannya unit yang
@@ -1850,28 +1956,86 @@ function openCreate() {
   else if (myWorkUnit.value && units.some(u => u.id === myWorkUnit.value.id)) form.value.work_unit_id = myWorkUnit.value.id
   showCreate.value = true
   loadStockItemNames()
+  if (!isBahan.value) fetchProjects()
 }
 
 async function submitCreate() {
   createError.value = ''
-  if (!workUnits.value.length) { createError.value = 'Anda belum memiliki unit kerja dalam cakupan — pengajuan tidak bisa dikirim.'; return }
+  formErrors.value = {}
+  if (!workUnits.value.length) {
+    createError.value = 'Anda belum memiliki unit kerja dalam cakupan — pengajuan tidak bisa dikirim.'
+    return
+  }
+
+  const errors = {}
   const unit = workUnits.value.find(u => u.id === form.value.work_unit_id)
-  if (!unit) { createError.value = 'Pilih unit kerja pengaju terlebih dahulu.'; return }
-  const validItems = form.value.items.filter(it => it.name.trim())
-  if (!validItems.length) { createError.value = 'Minimal 1 barang harus diisi.'; return }
+  if (!unit) {
+    errors.work_unit_id = 'Unit Kerja Pengaju wajib dipilih.'
+  }
+  if (!isBahan.value && rabNotSet.value) {
+    errors.project_id = `RAB projek ${projectRab.value?.project_number || ''} belum ditetapkan — tetapkan RAB di halaman Projek dulu.`
+  }
   if (isBahan.value && (stockCatalogFailed.value || stockCatalogLoading.value)) {
-    createError.value = 'Tunggu katalog bahan baku selesai dimuat, atau klik Perbarui stok.'; return
+    errors.catalog = 'Tunggu katalog bahan baku selesai dimuat, atau klik Perbarui stok.'
   }
-  if (isBahan.value && validItems.some(g => !(g.items || []).length || g.items.some(sub =>
-    !stockItemByName.value[String(sub.name || '').trim().toLowerCase()]?.active))) {
-    createError.value = 'Pilih bahan baku aktif dari pencarian katalog untuk setiap item.'; return
-  }
+
+  const payloadItems = []
+  const multiGroup = form.value.items.length > 1
+  form.value.items.forEach((it, i) => {
+    const groupName = isProjectMode.value ? autoGroupName(it) : String(it.name || '').trim()
+    if (!isProjectMode.value && !groupName) {
+      errors[`group:${i}`] = multiGroup ? `Nama Pengadaan #${i + 1} wajib diisi.` : 'Nama Pengadaan wajib diisi.'
+    }
+    const subs = it.items || []
+    if (!subs.length) {
+      errors[`group:${i}`] = `Pengadaan #${i + 1} minimal harus memiliki 1 item.`
+    }
+    const cleanSubs = []
+    subs.forEach((sub, j) => {
+      const loc = multiGroup ? `Pengadaan #${i + 1}, Item #${j + 1}` : `Item #${j + 1}`
+      const subName = String(sub.name || '').trim()
+      if (!subName) {
+        errors[`sub_name:${i}:${j}`] = `${loc}: ${isBahan.value ? 'Bahan baku' : 'Nama item'} wajib diisi.`
+      } else if (isBahan.value && !stockCatalogFailed.value && !stockCatalogLoading.value && !stockItemByName.value[subName.toLowerCase()]?.active) {
+        errors[`sub_name:${i}:${j}`] = `${loc}: Pilih bahan baku aktif dari pencarian katalog.`
+      }
+      const qty = Number(sub.qty)
+      if (!Number.isFinite(qty) || qty <= 0) {
+        errors[`sub_qty:${i}:${j}`] = `${loc}: Qty harus lebih dari 0.`
+      }
+      const hps = Number(sub.hps_price) || 0
+      if (hps < 0) {
+        errors[`sub_hps:${i}:${j}`] = `${loc}: HPS satuan tidak boleh negatif.`
+      }
+      cleanSubs.push({
+        name: subName,
+        qty: Number.isFinite(qty) ? qty : 0,
+        unit: String(sub.unit || '').trim(),
+        hps_price: hps,
+        hps_source: String(sub.hps_source || '').trim(),
+        rab_item_id: isBahan.value ? '' : String(sub.rab_item_id || ''),
+      })
+    })
+    payloadItems.push({
+      name: groupName || (cleanSubs[0]?.name || 'Pengadaan Projek'),
+      items: cleanSubs,
+    })
+  })
+
   // Tingkat kebutuhan: aturan yang sama dengan server (normalizeUrgency).
   if (form.value.urgency !== 'rutin' && !form.value.need_by_date) {
-    createError.value = `Isi tanggal dibutuhkan untuk pengajuan ${urgencyLabel(form.value.urgency).toUpperCase()}.`; return
+    errors.need_by_date = `Tanggal dibutuhkan wajib diisi untuk pengajuan ${urgencyLabel(form.value.urgency).toUpperCase()}.`
   }
   if (form.value.urgency === 'urgent' && [...form.value.notes.trim()].length < URGENT_NOTES_MIN) {
-    createError.value = `Pengajuan URGENT wajib menjelaskan dampaknya di Catatan (minimal ${URGENT_NOTES_MIN} huruf).`; return
+    errors.notes = `Catatan / alasan wajib diisi minimal ${URGENT_NOTES_MIN} huruf untuk pengajuan URGENT.`
+  }
+
+  if (Object.keys(errors).length) {
+    formErrors.value = errors
+    createError.value = 'Mohon lengkapi bagian berikut: ' + Object.values(errors).join(' • ')
+    await nextTick()
+    document.querySelector('[data-form-error]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    return
   }
 
   creating.value = true
@@ -1884,7 +2048,7 @@ async function submitCreate() {
       project_id: isBahan.value ? '' : (form.value.project_id || ''),
       request_type: requestType.value,
       requested_by: form.value.requested_by.trim(),
-      items: validItems,
+      items: payloadItems,
       notes: form.value.notes.trim(),
       urgency: form.value.urgency,
       need_by_date: form.value.urgency === 'rutin' ? '' : form.value.need_by_date,
