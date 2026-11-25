@@ -141,6 +141,20 @@
 
     <!-- ── Notifikasi ── -->
     <div v-show="tab === 'notifikasi'" class="space-y-4">
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-950">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="font-bold text-emerald-900">Cara cepat mengatur notifikasi WhatsApp per role</p>
+            <p class="mt-1 leading-relaxed text-emerald-800">
+              1) <strong>Tab ini</strong> mengatur saklar <em>global seluruh perusahaan</em> &amp; template pesan (jangan matikan event di sini jika masih ada role lain yang membutuhkannya).
+              2) Gunakan tab <strong>Atur per Role</strong> untuk memilih pesan apa saja yang aktif/nonaktif bagi tiap posisi tanpa mengubah hak akses web mereka.
+              3) Cek hasil akhirnya di tab <strong>Penerima</strong>.
+            </p>
+          </div>
+          <AppButton size="sm" @click="tab = 'matriks'">Buka Atur per Role →</AppButton>
+        </div>
+      </div>
+
       <AppCard v-if="settings">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h2 class="sec-title">Pengaturan pengiriman</h2>
@@ -210,12 +224,31 @@
                 </div>
                 <p v-if="ev.description" class="mt-0.5 text-xs text-gray-500">{{ ev.description }}</p>
                 <p v-if="ev.audience === 'internal'" class="mt-0.5 text-[11px] text-gray-500">
-                  <span class="font-semibold text-gray-600">Penerima:</span>{{ ' ' }}
+                  <span class="font-semibold text-gray-600">Aturan bawaan:</span>{{ ' ' }}
                   <template v-if="(settings.event_roles[ev.key] || []).length">posisi {{ (settings.event_roles[ev.key] || []).join(', ') }} (menimpa aturan otomatis)</template>
                   <template v-else>{{ ev.route_desc }}</template>
                 </p>
+                <div v-if="ev.audience === 'internal' && roleOptions.length" class="mt-1.5 flex flex-wrap items-center gap-1 text-[11px]">
+                  <span class="font-semibold text-gray-500">Role aktif menerima:</span>
+                  <template v-if="activeReceivingRolesFor(ev).length">
+                    <span v-for="r in activeReceivingRolesFor(ev).slice(0, 6)" :key="r.name"
+                      class="chip" :class="r.personalOnly ? 'chip--cust' : 'chip--int'"
+                      :title="r.personalOnly ? 'Hanya menerima pengajuan miliknya sendiri' : 'Menerima notifikasi event ini'">
+                      {{ r.name }}<template v-if="r.personalOnly"> (sendiri)</template>
+                    </span>
+                    <span v-if="activeReceivingRolesFor(ev).length > 6" class="text-[11px] font-medium text-gray-500">
+                      +{{ activeReceivingRolesFor(ev).length - 6 }} role lainnya
+                    </span>
+                  </template>
+                  <span v-else class="italic text-gray-400">tidak ada role aktif</span>
+                </div>
               </div>
-              <AppActionButton :icon="editing[ev.key] ? 'cancel' : 'edit'" :label="(editing[ev.key] ? 'Tutup' : 'Ubah template')" type="button" @click="toggleEdit(ev.key)" />
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button v-if="ev.audience === 'internal'" type="button"
+                  class="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                  @click="openMatrixForEvent(ev)">Atur role</button>
+                <AppActionButton :icon="editing[ev.key] ? 'cancel' : 'edit'" :label="(editing[ev.key] ? 'Tutup' : 'Ubah template')" type="button" @click="toggleEdit(ev.key)" />
+              </div>
             </div>
             <div v-if="editing[ev.key]" class="mt-3 grid gap-3 lg:grid-cols-2">
               <div>
@@ -250,6 +283,15 @@
       <div v-if="settings && canManage" class="sticky bottom-3 flex justify-end">
         <AppButton :loading="busy.save" @click="saveSettings">Simpan pengaturan & template</AppButton>
       </div>
+    </div>
+
+    <!-- ── Atur per Role (Matriks) ── -->
+    <div v-show="tab === 'matriks'" class="space-y-4">
+      <WhatsAppRoleMatrix v-if="settings" ref="roleMatrixRef"
+        :settings="settings" :events="events" :roles="roleOptions"
+        :can-manage="canManage" :can-view-users="auth.hasPermission('users.view')" :can-view-logs="auth.hasPermission('whatsapp.view')"
+        :saving="busy.roleSave" :initial-mode="matrixMode" :initial-search="matrixSearch"
+        @save-many="saveRolePolicies" @save-one="saveSingleRolePolicy" @reset-one="resetSingleRolePolicy" />
     </div>
 
     <!-- ── Penerima ── -->
@@ -429,18 +471,20 @@
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
 import AppAlert from '@/components/ui/AppAlert.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppModal from '@/components/ui/AppModal.vue'
+import WhatsAppRoleMatrix from '@/components/WhatsAppRoleMatrix.vue'
 import { whatsappApi } from '@/api/whatsapp.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useToastStore } from '@/stores/toast.js'
 import { formatDateTime } from '@/utils/format.js'
+import { normalizeRoleNotificationPolicy, roleNotificationEventState } from '@/utils/whatsappRoleNotifications.js'
 
 const auth = useAuthStore()
 const toast = useToastStore()
@@ -453,6 +497,7 @@ const canManage = computed(() => auth.isSuperadmin || (auth.permissions || []).i
 const TABS = [
   { key: 'koneksi', label: 'Koneksi' },
   { key: 'notifikasi', label: 'Pengaturan Umum & Template' },
+  { key: 'matriks', label: 'Atur per Role' },
   { key: 'penerima', label: 'Penerima' },
 ]
 const GROUP_DESC = {
@@ -473,17 +518,24 @@ function redirectLegacyRoleLink() {
 }
 redirectLegacyRoleLink()
 watch(() => route.query.tab, value => { if (value === 'role') redirectLegacyRoleLink(); else if (TABS.some(item => item.key === value)) tab.value = value })
-watch(tab, value => { if (route.query.tab !== value) router.replace({ query: { ...route.query, tab: value } }) })
+watch(tab, value => {
+  if (route.query.tab !== value) router.replace({ query: { ...route.query, tab: value } })
+  if (value === 'matriks' && !roleOptions.value.length) loadRoleOptions()
+})
 const status = ref(null)
 const settings = ref(null)
 const events = ref([])
+const roleOptions = ref([])
+const roleMatrixRef = ref(null)
+const matrixMode = ref('role')
+const matrixSearch = ref('')
 const recipients = ref([])
 const recipientUsers = ref([])
 const expandedUser = ref({})
 const groups = ref([])
 const outlets = ref([])
 const errorMsg = ref('')
-const busy = ref({ status: false, login: false, logout: false, test: false, save: false, groups: false, recipient: false })
+const busy = ref({ status: false, login: false, logout: false, test: false, save: false, roleSave: false, groups: false, recipient: false })
 const test = ref({ to: '', message: '' })
 const testResult = ref(null)
 const editing = ref({})
@@ -598,7 +650,83 @@ async function loadSettings() {
     for (const ev of res.events) if (!s.templates[ev.key]) s.templates[ev.key] = ev.template
     settings.value = s
     events.value = res.events
+    if (Array.isArray(res.roles)) roleOptions.value = res.roles
   } catch (e) { errorMsg.value = e?.message || 'Gagal memuat pengaturan' }
+}
+
+async function loadRoleOptions() {
+  try {
+    const list = await whatsappApi.roles()
+    if (Array.isArray(list)) roleOptions.value = list
+  } catch { /* abaikan bila tidak tersedia */ }
+}
+
+function activeReceivingRolesFor(ev) {
+  if (!settings.value || !roleOptions.value.length) return []
+  const out = []
+  for (const role of roleOptions.value) {
+    const activeUsers = typeof role.active_users === 'number' ? role.active_users : (role.users || 0)
+    if (activeUsers <= 0) continue
+    const policy = normalizeRoleNotificationPolicy(settings.value.role_notifications?.[role.name] || role.policy, role)
+    const effectiveSettings = { ...settings.value, enabled: true }
+    const st = roleNotificationEventState(ev, role, policy, effectiveSettings)
+    if (!st.active) continue
+    out.push({ name: role.name, personalOnly: st.personal && !st.eligible })
+  }
+  return out
+}
+
+async function openMatrixForEvent(ev) {
+  matrixMode.value = 'event'
+  matrixSearch.value = ev.label
+  tab.value = 'matriks'
+  await nextTick()
+  roleMatrixRef.value?.focusEvent?.(ev.label)
+}
+
+function applyRoleUpdateResponse(res, updatedRoles = []) {
+  if (res?.settings && settings.value) {
+    settings.value = { ...settings.value, role_notifications: res.settings.role_notifications || {} }
+  }
+  if (Array.isArray(res?.roles)) roleOptions.value = res.roles
+  if (updatedRoles.length) roleMatrixRef.value?.acceptSaved?.(updatedRoles)
+}
+
+async function saveRolePolicies(items) {
+  busy.value.roleSave = true
+  try {
+    let lastRes = null
+    const saved = []
+    for (const item of items) {
+      lastRes = await whatsappApi.updateRoleNotifications(item.role, item.policy)
+      saved.push(item.role)
+    }
+    applyRoleUpdateResponse(lastRes, saved)
+    toast.success(`Notifikasi untuk ${saved.length} role disimpan`)
+    loadRecipientUsers()
+  } catch (e) {
+    toast.error(e?.message || 'Gagal menyimpan notifikasi role')
+  } finally {
+    busy.value.roleSave = false
+  }
+}
+
+async function saveSingleRolePolicy({ role, policy }) {
+  await saveRolePolicies([{ role, policy }])
+}
+
+async function resetSingleRolePolicy(roleName) {
+  busy.value.roleSave = true
+  try {
+    const res = await whatsappApi.resetRoleNotifications(roleName)
+    applyRoleUpdateResponse(res, [roleName])
+    toast.success(`Notifikasi role "${roleName}" dikembalikan ke bawaan`)
+    loadRecipientUsers()
+  } catch (e) {
+    toast.error(e?.message || 'Gagal mengembalikan notifikasi role')
+  } finally {
+    busy.value.roleSave = false
+  }
 }
 
 function toggleEdit(key) { editing.value[key] = !editing.value[key] }
@@ -628,6 +756,7 @@ async function saveSettings() {
     for (const ev of res.events) if (!s.templates[ev.key]) s.templates[ev.key] = ev.template
     settings.value = s
     events.value = res.events
+    if (Array.isArray(res.roles)) roleOptions.value = res.roles
     loadRecipientUsers()
     refreshStatus(true)
   } catch (e) { toast.error(e?.message || 'Gagal menyimpan') } finally { busy.value.save = false }

@@ -35,6 +35,7 @@ func CreateReservation(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Format data tidak valid"})
 	}
+	req.Actor = assetActor(c)
 	r, err := services.CreateReservation(req, getOutletScope(c))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
@@ -223,6 +224,7 @@ func PublicCreateReservation(c *fiber.Ctx) error {
 	return c.Status(201).JSON(models.APIResponse{Success: true, Data: fiber.Map{
 		"id": r.ID, "customer_name": r.CustomerName, "status": r.Status,
 		"reservation_date": r.ReservationDate, "reservation_time": r.ReservationTime,
-		"total": r.Total, "down_payment": r.DownPayment, "remaining": r.Remaining,
+		"subtotal": r.Subtotal, "charges": r.Charges, "total": r.Total,
+		"down_payment": r.DownPayment, "remaining": r.Remaining,
 	}})
 }

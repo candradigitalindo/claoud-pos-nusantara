@@ -232,8 +232,10 @@ type WARecipientUser struct {
 type WARoleOption struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	ScopeType   string `json:"scope_type"`
-	Users       int    `json:"users"` // pengguna aktif ber-nomor WA pada role ini
+	ScopeType       string   `json:"scope_type"`
+	Users           int      `json:"users"`             // pengguna aktif ber-nomor WA pada role ini
+	ActiveUsers     int      `json:"active_users"`      // total pengguna aktif pada role ini (termasuk yang belum isi WA)
+	ActiveUserNames []string `json:"active_user_names"` // nama pengguna aktif pada role ini
 	// RequesterOnly: untuk pengadaan role ini hanya pengaju — tidak boleh
 	// menjadi penimpa penerima event pengadaan (pengaju saling menerima).
 	RequesterOnly        bool                     `json:"requester_only"`

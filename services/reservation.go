@@ -51,11 +51,21 @@ func resolveReservationItems(outletID string, items []models.ReservationItem) ([
 	return out, subtotal
 }
 
+func reservationBillTarget(total, downPayment float64) float64 {
+	if total > 0 {
+		return total
+	}
+	if downPayment > 0 {
+		return downPayment
+	}
+	return 0
+}
+
 func scanReservation(scan func(dest ...interface{}) error) (*models.Reservation, error) {
 	var r models.Reservation
-	var itemsJSON string
+	var itemsJSON, chargesJSON string
 	if err := scan(&r.ID, &r.OutletID, &r.OutletName, &r.CustomerName, &r.CustomerPhone, &r.Pax,
-		&itemsJSON, &r.Subtotal, &r.DownPayment, &r.Total, &r.ReservationDate, &r.ReservationTime,
+		&itemsJSON, &chargesJSON, &r.Subtotal, &r.DownPayment, &r.Total, &r.ReservationDate, &r.ReservationTime,
 		&r.Status, &r.Notes, &r.Source, &r.CreatedAt, &r.UpdatedAt,
 		&r.PaidAmount, &r.PendingAmount, &r.CancelDisposition, &r.ConfirmedAt, &r.CancelledAt,
 		&r.SettledAt, &r.PosTransactionID); err != nil {
@@ -65,8 +75,13 @@ func scanReservation(scan func(dest ...interface{}) error) (*models.Reservation,
 	if r.Items == nil {
 		r.Items = []models.ReservationItem{}
 	}
+	json.Unmarshal([]byte(chargesJSON), &r.Charges)
+	if r.Charges == nil {
+		r.Charges = []models.ChargeLine{}
+	}
 	// Sisa dihitung dari uang yang TERVALIDASI, bukan dari DP yang diminta.
-	r.Remaining = math.Max(r.Total-r.PaidAmount, 0)
+	// Untuk reservasi meja saja (tanpa pre-order menu), target bayarnya adalah DP manual.
+	r.Remaining = math.Max(reservationBillTarget(r.Total, r.DownPayment)-r.PaidAmount, 0)
 	r.DpPaid = r.DownPayment <= 0 || r.PaidAmount+0.009 >= r.DownPayment
 	return &r, nil
 }
@@ -75,7 +90,7 @@ func scanReservation(scan func(dest ...interface{}) error) (*models.Reservation,
 // dalam zona aplikasi, yang bisa diubah lewat pengaturan tanpa rilis ulang.
 func reservationCols() string {
 	return `r.id, r.outlet_id, COALESCE(o.name,''), r.customer_name, r.customer_phone, r.pax,
-	COALESCE(r.items::text,'[]'), r.subtotal, r.down_payment, r.total,
+	COALESCE(r.items::text,'[]'), COALESCE(r.charges::text,'[]'), r.subtotal, r.down_payment, r.total,
 	COALESCE(TO_CHAR(r.reservation_date,'YYYY-MM-DD'),''), r.reservation_time, r.status, r.notes, r.source,
 	r.created_at, r.updated_at,
 	COALESCE((SELECT SUM(CASE WHEN p.type = 'refund' THEN -p.amount ELSE p.amount END)
@@ -146,12 +161,66 @@ func GetReservation(id string, outletScope []string) (*models.Reservation, error
 	return r, nil
 }
 
-func saveReservation(id string, req models.ReservationRequest, source string) (*models.Reservation, error) {
+func calculateReservationCharges(outletID string, subtotal float64) (float64, []models.ChargeLine) {
+	if subtotal <= 0 {
+		return 0, []models.ChargeLine{}
+	}
+	charges, err := ActiveCharges(outletID)
+	if err != nil || len(charges) == 0 {
+		return math.Round(subtotal*100) / 100, []models.ChargeLine{}
+	}
+	rawTotal, lines := CalculateOrderTotal(subtotal, charges)
+	clean := make([]models.ChargeLine, 0, len(lines))
+	total := math.Round(subtotal*100) / 100
+	for _, ln := range lines {
+		amt := math.Round(ln.Amount*100) / 100
+		if amt > 0 {
+			clean = append(clean, models.ChargeLine{Name: ln.Name, Amount: amt})
+			total = math.Round((total+amt)*100) / 100
+		}
+	}
+	if len(clean) == 0 {
+		return math.Round(rawTotal*100) / 100, []models.ChargeLine{}
+	}
+	return total, clean
+}
+
+func validateReservationSchedule(dateStr, timeStr, source string, isCreate bool) (string, string, error) {
+	d := strings.TrimSpace(dateStr)
+	tm := strings.TrimSpace(timeStr)
+	if d == "" {
+		return "", "", Invalid("tanggal kunjungan wajib diisi")
+	}
+	parsedDate, err := time.Parse("2006-01-02", d)
+	if err != nil {
+		return "", "", Invalid("format tanggal kunjungan tidak valid (YYYY-MM-DD)")
+	}
+	if tm == "" {
+		return "", "", Invalid("jam kunjungan wajib diisi")
+	}
+	if _, err := time.Parse("15:04", tm); err != nil {
+		return "", "", Invalid("format jam kunjungan tidak valid (HH:MM)")
+	}
+	if source == "public" && isCreate {
+		todayStr := time.Now().In(GetTimezoneLocation()).Format("2006-01-02")
+		today, _ := time.Parse("2006-01-02", todayStr)
+		if parsedDate.Before(today) {
+			return "", "", Invalid("tanggal kunjungan tidak boleh di masa lalu")
+		}
+	}
+	return d, tm, nil
+}
+
+func saveReservation(id string, req models.ReservationRequest, source string, existing *models.Reservation) (*models.Reservation, error) {
 	if strings.TrimSpace(req.CustomerName) == "" {
 		return nil, fmt.Errorf("nama pemesan wajib diisi")
 	}
 	if req.OutletID == "" {
 		return nil, fmt.Errorf("outlet wajib dipilih")
+	}
+	resvDate, resvTime, err := validateReservationSchedule(req.ReservationDate, req.ReservationTime, source, id == "")
+	if err != nil {
+		return nil, err
 	}
 	// Endpoint publik tanpa auth: batasi jumlah item agar satu request tidak bisa
 	// memicu ribuan lookup produk (resolveReservationItems query per item).
@@ -163,14 +232,29 @@ func saveReservation(id string, req models.ReservationRequest, source string) (*
 	}
 	items, subtotal := resolveReservationItems(req.OutletID, req.Items)
 	itemsJSON, _ := json.Marshal(items)
-	total := subtotal
-	// DP yang diminta. Dari halaman publik mengikuti kebijakan persen DP;
-	// admin boleh menentukan sendiri, tapi tidak melebihi total.
+	total, chargeLines := calculateReservationCharges(req.OutletID, subtotal)
+	chargesJSON, _ := json.Marshal(chargeLines)
+	// DP yang diminta. Dari halaman publik mengikuti kebijakan persen DP (dari total termasuk pajak/charge);
+	// admin boleh menentukan sendiri — termasuk DP manual untuk reservasi meja tanpa menu (total = 0).
 	if source == "public" && id == "" {
 		req.DownPayment = math.Round(total * ReservationDpPercent() / 100)
 	}
-	if req.DownPayment < 0 || req.DownPayment > total+0.009 {
-		return nil, fmt.Errorf("DP yang diminta tidak boleh negatif atau melebihi total")
+	if req.DownPayment < 0 {
+		return nil, Invalid("DP yang diminta tidak boleh negatif")
+	}
+	if total > 0 && req.DownPayment > total+0.009 {
+		return nil, Invalid("DP yang diminta tidak boleh melebihi total tagihan")
+	}
+	// Saat mengubah reservasi yang sudah menerima pembayaran, total tagihan
+	// (atau DP manual bila tanpa menu) tidak boleh turun di bawah uang yang sudah masuk.
+	if existing != nil {
+		newTarget := reservationBillTarget(total, req.DownPayment)
+		if existing.PaidAmount > 0 && newTarget+0.009 < existing.PaidAmount {
+			return nil, Invalid("total tagihan (%.0f) tidak boleh lebih kecil dari pembayaran yang sudah tervalidasi (%.0f)", newTarget, existing.PaidAmount)
+		}
+		if existing.PendingAmount > 0 && newTarget+0.009 < existing.PaidAmount+existing.PendingAmount {
+			return nil, Invalid("total tagihan (%.0f) tidak boleh lebih kecil dari total pembayaran tervalidasi + menunggu validasi (%.0f)", newTarget, existing.PaidAmount+existing.PendingAmount)
+		}
 	}
 	// Status hanya boleh ditentukan saat DIBUAT, dan 'confirmed' langsung hanya
 	// sah bila tidak ada DP yang diminta. Setelah itu status bergerak lewat
@@ -189,23 +273,23 @@ func saveReservation(id string, req models.ReservationRequest, source string) (*
 			confirmedAt = time.Now().UTC()
 		}
 		_, err := database.DB.Exec(`
-			INSERT INTO reservations (id, outlet_id, customer_name, customer_phone, pax, items,
+			INSERT INTO reservations (id, outlet_id, customer_name, customer_phone, pax, items, charges,
 				subtotal, down_payment, total, reservation_date, reservation_time, status, notes, source, confirmed_at, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, NULLIF($10,'')::date, $11,$12,$13,$14,$15, NOW(), NOW())`,
-			id, req.OutletID, req.CustomerName, req.CustomerPhone, req.Pax, string(itemsJSON),
-			subtotal, req.DownPayment, total, req.ReservationDate, req.ReservationTime, status, req.Notes, source, confirmedAt)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NULLIF($11,'')::date, $12,$13,$14,$15,$16, NOW(), NOW())`,
+			id, req.OutletID, req.CustomerName, req.CustomerPhone, req.Pax, string(itemsJSON), string(chargesJSON),
+			subtotal, req.DownPayment, total, resvDate, resvTime, status, req.Notes, source, confirmedAt)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		// Status TIDAK disentuh di sini (lihat UpdateReservationStatus).
 		_, err := database.DB.Exec(`
-			UPDATE reservations SET customer_name=$1, customer_phone=$2, pax=$3, items=$4,
-				subtotal=$5, down_payment=$6, total=$7, reservation_date=NULLIF($8,'')::date,
-				reservation_time=$9, notes=$10, updated_at=NOW()
-			WHERE id=$11`,
-			req.CustomerName, req.CustomerPhone, req.Pax, string(itemsJSON),
-			subtotal, req.DownPayment, total, req.ReservationDate, req.ReservationTime, req.Notes, id)
+			UPDATE reservations SET customer_name=$1, customer_phone=$2, pax=$3, items=$4, charges=$5,
+				subtotal=$6, down_payment=$7, total=$8, reservation_date=NULLIF($9,'')::date,
+				reservation_time=$10, notes=$11, updated_at=NOW()
+			WHERE id=$12`,
+			req.CustomerName, req.CustomerPhone, req.Pax, string(itemsJSON), string(chargesJSON),
+			subtotal, req.DownPayment, total, resvDate, resvTime, req.Notes, id)
 		if err != nil {
 			return nil, err
 		}
@@ -228,11 +312,47 @@ func CreateReservation(req models.ReservationRequest, outletScope []string) (*mo
 			return nil, fmt.Errorf("outlet di luar akses Anda")
 		}
 	}
-	r, err := saveReservation("", req, "admin")
-	if err == nil {
-		go NotifyReservationCreated(r)
+	// Bila admin sekaligus mencatat DP/pembayaran awal, validasi dulu sebelum
+	// menyimpan reservasi supaya tidak tercipta reservasi yatim bila bukti/nominal salah.
+	var initPay *models.ReservationPaymentRequest
+	if req.InitialPayment != nil && req.InitialPayment.Amount > 0 {
+		cp := *req.InitialPayment
+		if strings.TrimSpace(cp.Type) == "" {
+			cp.Type = "dp"
+		}
+		_, subtotal := resolveReservationItems(req.OutletID, req.Items)
+		total, _ := calculateReservationCharges(req.OutletID, subtotal)
+		target := reservationBillTarget(total, req.DownPayment)
+		if err := validateReservationPaymentInput(cp, target, true); err != nil {
+			return nil, err
+		}
+		initPay = &cp
 	}
-	return r, err
+	r, err := saveReservation("", req, "admin", nil)
+	if err != nil {
+		return nil, err
+	}
+	if initPay != nil {
+		actor := strings.TrimSpace(req.Actor)
+		if actor == "" {
+			actor = "admin"
+		}
+		if _, perr := AddReservationPayment(r.ID, *initPay, actor, true, nil); perr != nil {
+			// Rollback reservasi baru bila pencatatan pembayaran awal gagal.
+			_, _ = database.DB.Exec(`DELETE FROM reservations WHERE id = $1`, r.ID)
+			return nil, perr
+		}
+		if refreshed, rerr := GetReservation(r.ID, nil); rerr == nil {
+			r = refreshed
+		}
+		// Bila pembayaran awal langsung membuat status 'confirmed', maybeAutoConfirm
+		// sudah mengirim WA konfirmasi ke pelanggan; cukup kirim notifikasi internal saja.
+		skipCustomer := req.SkipCustomerWA || r.Status == "confirmed"
+		go NotifyReservationCreatedWithOptions(r, skipCustomer)
+		return r, nil
+	}
+	go NotifyReservationCreatedWithOptions(r, req.SkipCustomerWA)
+	return r, nil
 }
 
 func UpdateReservation(id string, req models.ReservationRequest, outletScope []string) (*models.Reservation, error) {
@@ -244,7 +364,7 @@ func UpdateReservation(id string, req models.ReservationRequest, outletScope []s
 		return nil, Invalid("reservasi yang sudah selesai/dibatalkan tidak bisa diubah")
 	}
 	req.OutletID = existing.OutletID // outlet immutable on edit
-	return saveReservation(id, req, existing.Source)
+	return saveReservation(id, req, existing.Source, existing)
 }
 
 // UpdateReservationStatus menggerakkan status MENGIKUTI pembayaran:
@@ -273,6 +393,9 @@ func UpdateReservationStatus(id, status, disposition, actor string, outletScope 
 		}
 		_, err = database.DB.Exec(`UPDATE reservations SET status='confirmed', confirmed_at=COALESCE(confirmed_at, (now() AT TIME ZONE 'UTC')), updated_at=NOW() WHERE id=$1`, id)
 	case "done":
+		if r.Status != "confirmed" {
+			return nil, Invalid("konfirmasi reservasi terlebih dahulu sebelum menandai selesai (atau batalkan bila tamu tidak jadi datang)")
+		}
 		_, err = database.DB.Exec(`UPDATE reservations SET status='done', settled_at=COALESCE(settled_at, (now() AT TIME ZONE 'UTC')), updated_at=NOW() WHERE id=$1`, id)
 	case "cancelled":
 		if r.PaidAmount > 0 {
@@ -355,7 +478,11 @@ func GetPublicMenu(slug string) (*models.PublicMenu, error) {
 		addonsByProduct = map[string][]models.CloudProductAddon{}
 	}
 
-	menu := &models.PublicMenu{OutletID: outletID, OutletName: outletName, Slug: slug, Categories: []models.PublicCategory{}}
+	charges, _ := ActiveCharges(outletID)
+	if charges == nil {
+		charges = []models.CloudAdditionalCharge{}
+	}
+	menu := &models.PublicMenu{OutletID: outletID, OutletName: outletName, Slug: slug, DpPercent: ReservationDpPercent(), Charges: charges, Categories: []models.PublicCategory{}}
 	idxByCat := map[string]int{}
 	for rows.Next() {
 		var cat string
@@ -386,7 +513,7 @@ func CreatePublicReservation(slug string, req models.ReservationRequest) (*model
 	}
 	req.OutletID = outletID
 	req.Status = "pending"
-	r, err := saveReservation("", req, "public")
+	r, err := saveReservation("", req, "public", nil)
 	if err == nil {
 		go NotifyReservationCreated(r)
 	}

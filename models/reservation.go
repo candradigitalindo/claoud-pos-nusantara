@@ -29,6 +29,7 @@ type Reservation struct {
 	CustomerPhone string            `json:"customer_phone"`
 	Pax           int               `json:"pax"`
 	Items         []ReservationItem `json:"items"`
+	Charges       []ChargeLine      `json:"charges"`
 	Subtotal      float64           `json:"subtotal"`
 	// DownPayment = DP yang diminta. PaidAmount = pembayaran TERVALIDASI
 	// (dp + pelunasan − refund). PendingAmount = bukti yang masih menunggu
@@ -96,8 +97,9 @@ type ReservationStatusRequest struct {
 
 // ReservationSettings — kebijakan DP + rekening tujuan untuk form pembayaran.
 type ReservationSettings struct {
-	DpPercent    float64       `json:"dp_percent"`
-	BankAccounts []BankAccount `json:"bank_accounts"`
+	DpPercent     float64                            `json:"dp_percent"`
+	BankAccounts  []BankAccount                      `json:"bank_accounts"`
+	OutletCharges map[string][]CloudAdditionalCharge `json:"outlet_charges"`
 }
 
 // PublicReservationStatus — tampilan status untuk pelanggan (tanpa auth):
@@ -110,6 +112,8 @@ type PublicReservationStatus struct {
 	ReservationTime string               `json:"reservation_time"`
 	Pax             int                  `json:"pax"`
 	Items           []ReservationItem    `json:"items"`
+	Charges         []ChargeLine         `json:"charges"`
+	Subtotal        float64              `json:"subtotal"`
 	Total           float64              `json:"total"`
 	DownPayment     float64              `json:"down_payment"`
 	PaidAmount      float64              `json:"paid_amount"`
@@ -132,6 +136,8 @@ type OutletReservation struct {
 	ReservationDate string            `json:"reservation_date"`
 	ReservationTime string            `json:"reservation_time"`
 	Items           []ReservationItem `json:"items"`
+	Charges         []ChargeLine      `json:"charges"`
+	Subtotal        float64           `json:"subtotal"`
 	Total           float64           `json:"total"`
 	PaidAmount      float64           `json:"paid_amount"`
 	Remaining       float64           `json:"remaining"`
@@ -145,11 +151,14 @@ type ReservationRequest struct {
 	CustomerPhone   string            `json:"customer_phone"`
 	Pax             int               `json:"pax"`
 	Items           []ReservationItem `json:"items"`
-	DownPayment     float64           `json:"down_payment"`
-	ReservationDate string            `json:"reservation_date"`
-	ReservationTime string            `json:"reservation_time"`
-	Status          string            `json:"status"`
-	Notes           string            `json:"notes"`
+	DownPayment     float64                    `json:"down_payment"`
+	ReservationDate string                     `json:"reservation_date"`
+	ReservationTime string                     `json:"reservation_time"`
+	Status          string                     `json:"status"`
+	Notes           string                     `json:"notes"`
+	InitialPayment  *ReservationPaymentRequest `json:"initial_payment,omitempty"`
+	SkipCustomerWA  bool                       `json:"skip_customer_wa,omitempty"`
+	Actor           string                     `json:"-"`
 }
 
 // ── Public reservation page payloads ────────────────────────
@@ -171,8 +180,10 @@ type PublicCategory struct {
 }
 
 type PublicMenu struct {
-	OutletID   string           `json:"outlet_id"`
-	OutletName string           `json:"outlet_name"`
-	Slug       string           `json:"slug"`
-	Categories []PublicCategory `json:"categories"`
+	OutletID   string                  `json:"outlet_id"`
+	OutletName string                  `json:"outlet_name"`
+	Slug       string                  `json:"slug"`
+	DpPercent  float64                 `json:"dp_percent"`
+	Charges    []CloudAdditionalCharge `json:"charges"`
+	Categories []PublicCategory        `json:"categories"`
 }

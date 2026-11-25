@@ -2803,6 +2803,7 @@ func RunMigrations() error {
 		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP`,
 		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`,
 		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS settled_at TIMESTAMP`,
+		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS charges JSONB NOT NULL DEFAULT '[]'::jsonb`,
 		// VARCHAR, bukan CHAR(26): id transaksi = local_id dari app POS (sampai 50
 		// karakter), dan CHAR mem-padding nilai pendek dengan spasi.
 		`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS pos_transaction_id VARCHAR(50)`,

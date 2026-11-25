@@ -39,6 +39,10 @@
         <div class="rp-recap">
           <div><span>Jadwal</span><b>{{ status.reservation_date ? fmtDate(status.reservation_date) : '-' }} {{ status.reservation_time }}</b></div>
           <div><span>Tamu</span><b>{{ status.pax }} orang</b></div>
+          <template v-if="status.charges?.length">
+            <div><span>Subtotal menu</span><b>{{ rupiah(status.subtotal) }}</b></div>
+            <div v-for="(ch, ci) in status.charges" :key="ci"><span>{{ ch.name }}</span><b>{{ rupiah(ch.amount) }}</b></div>
+          </template>
           <div><span>Total</span><b>{{ rupiah(status.total) }}</b></div>
           <div v-if="status.down_payment > 0"><span>DP diminta</span><b>{{ rupiah(status.down_payment) }}</b></div>
           <div><span>Sudah tervalidasi</span><b>{{ rupiah(status.paid_amount) }}</b></div>
@@ -103,8 +107,8 @@
             <div><label>No. HP / WhatsApp</label><input v-model="f.customer_phone" placeholder="08xxxx" inputmode="tel" /></div>
             <div class="rp-row3">
               <div><label>Tamu</label><input v-model.number="f.pax" type="number" min="1" /></div>
-              <div><label>Tanggal</label><input v-model="f.reservation_date" type="date" /></div>
-              <div><label>Jam</label><input v-model="f.reservation_time" type="time" /></div>
+              <div><label>Tanggal <span>*</span></label><input v-model="f.reservation_date" type="date" :min="todayStr" required /></div>
+              <div><label>Jam <span>*</span></label><input v-model="f.reservation_time" type="time" required /></div>
             </div>
             <div><label>Catatan</label><textarea v-model="f.notes" rows="2" placeholder="Permintaan khusus (opsional)"></textarea></div>
           </div>
@@ -165,7 +169,12 @@
                 <AppActionButton icon="delete" label="Hapus baris" @click="remove(it.id)" />
               </li>
             </ul>
-            <div class="rp-order-total"><span>Total</span><b>{{ rupiah(total) }}</b></div>
+            <div v-if="chargeLines.length" class="rp-order-sub">
+              <div><span>Subtotal menu</span><span>{{ rupiah(subtotal) }}</span></div>
+              <div v-for="(ch, ci) in chargeLines" :key="ci"><span>{{ ch.name }}</span><span>+ {{ rupiah(ch.amount) }}</span></div>
+            </div>
+            <div class="rp-order-total"><span>Total</span><b>{{ rupiah(grandTotal) }}</b></div>
+            <div v-if="estimatedDp > 0" class="rp-order-dp"><span>DP diminta ({{ menu.dp_percent }}%)</span><b>{{ rupiah(estimatedDp) }}</b></div>
           </section>
         </div>
       </template>
@@ -174,7 +183,7 @@
     <!-- Sticky summary bar (step 2 only) -->
     <div v-if="menu && !status && step === 2" class="rp-bar">
       <div class="rp-bar-in">
-        <div class="rp-bar-info"><span class="rp-bar-count">{{ itemCount }} item</span><span class="rp-bar-total">{{ rupiah(total) }}</span></div>
+        <div class="rp-bar-info"><span class="rp-bar-count">{{ itemCount }} item<template v-if="chargeLines.length"> · termasuk pajak</template></span><span class="rp-bar-total">{{ rupiah(grandTotal) }}</span></div>
         <button class="rp-btn" :disabled="submitting" @click="submit">{{ submitting ? 'Mengirim…' : 'Kirim Reservasi' }}</button>
       </div>
     </div>
@@ -217,7 +226,8 @@ const activeCat = ref('')
 const searchQuery = ref('')
 const step = ref(1) // 1 = isi data, 2 = pilih menu
 
-const f = reactive({ customer_name: '', customer_phone: '', pax: 2, reservation_date: '', reservation_time: '', notes: '' })
+const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+const f = reactive({ customer_name: '', customer_phone: '', pax: 2, reservation_date: todayStr, reservation_time: '', notes: '' })
 
 const allProducts = computed(() => menu.value?.categories.flatMap(c => c.products) || [])
 const totalProducts = computed(() => allProducts.value.length)
@@ -231,7 +241,17 @@ const filteredProducts = computed(() => {
 const nameById = computed(() => Object.fromEntries(allProducts.value.map(p => [p.id, p.name])))
 const priceById = computed(() => Object.fromEntries(allProducts.value.map(p => [p.id, p.price])))
 const itemCount = computed(() => Object.values(qty).reduce((s, q) => s + (q || 0), 0))
-const total = computed(() => Object.entries(qty).reduce((s, [id, q]) => s + (priceById.value[id] || 0) * (q || 0), 0))
+const subtotal = computed(() => Object.entries(qty).reduce((s, [id, q]) => s + (priceById.value[id] || 0) * (q || 0), 0))
+const chargeLines = computed(() => {
+  const sub = subtotal.value
+  if (sub <= 0 || !menu.value?.charges?.length) return []
+  return menu.value.charges.map(c => {
+    const amt = c.charge_type === 'percentage' ? Math.round(sub * (Number(c.value) || 0)) / 100 : (Number(c.value) || 0)
+    return { name: c.charge_type === 'percentage' ? `${c.name} (${c.value}%)` : c.name, amount: Math.round(amt * 100) / 100 }
+  }).filter(c => c.amount > 0)
+})
+const grandTotal = computed(() => Math.round((subtotal.value + chargeLines.value.reduce((s, c) => s + c.amount, 0)) * 100) / 100)
+const estimatedDp = computed(() => Math.round(grandTotal.value * (Number(menu.value?.dp_percent) || 0) / 100))
 const cartItems = computed(() => Object.entries(qty).filter(([, q]) => q > 0).map(([id, q]) => ({ id, name: nameById.value[id], price: priceById.value[id], qty: q })))
 
 const PALETTE = [
@@ -263,9 +283,16 @@ async function loadMenu() {
     loadError.value = e?.response?.data?.error || 'Outlet tidak ditemukan.'
   } finally { loading.value = false }
 }
+function validateStep1() {
+  if (!f.customer_name.trim()) return 'Nama wajib diisi dulu.'
+  if (!f.reservation_date) return 'Tanggal kunjungan wajib diisi.'
+  if (f.reservation_date < todayStr) return 'Tanggal kunjungan tidak boleh di masa lalu.'
+  if (!f.reservation_time) return 'Jam kunjungan wajib diisi.'
+  return ''
+}
 function goMenu() {
-  formError.value = ''
-  if (!f.customer_name.trim()) { formError.value = 'Nama wajib diisi dulu.'; return }
+  formError.value = validateStep1()
+  if (formError.value) return
   step.value = 2
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -306,8 +333,8 @@ async function copyStatusLink() {
 }
 
 async function submit() {
-  formError.value = ''
-  if (!f.customer_name.trim()) { step.value = 1; formError.value = 'Nama wajib diisi.'; return }
+  formError.value = validateStep1()
+  if (formError.value) { step.value = 1; return }
   const items = cartItems.value.map(it => ({ product_id: it.id, qty: it.qty }))
   if (!items.length) { formError.value = 'Pilih minimal satu menu.'; return }
   submitting.value = true
@@ -437,6 +464,9 @@ onMounted(async () => {
 .rp-bar-info { display: flex; flex-direction: column; line-height: 1.1; }
 .rp-bar-count { font-size: .72rem; color: rgba(255,255,255,.6); font-weight: 600; }
 .rp-bar-total { font-size: 1.05rem; font-weight: 900; color: #fff; }
+.rp-order-sub { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed rgba(255,255,255,.12); display: flex; flex-direction: column; gap: .25rem; font-size: .82rem; color: rgba(255,255,255,.72); }
+.rp-order-sub div { display: flex; justify-content: space-between; }
+.rp-order-dp { display: flex; justify-content: space-between; margin-top: .35rem; font-size: .82rem; color: #fde68a; }
 .rp-btn { margin-left: auto; background: linear-gradient(145deg, #7eb89a, #5d9b78); color: #14271d; border: none; padding: .75rem 1.4rem; border-radius: .75rem; font-size: .92rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(126,184,154,.3); }
 .rp-btn:disabled { opacity: .6; }
 

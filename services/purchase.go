@@ -3011,6 +3011,7 @@ func CreateManualPayment(input models.CreateManualPaymentInput) (*models.Purchas
 	if err != nil {
 		return nil, fmt.Errorf("gagal menyimpan pembayaran manual: %w", err)
 	}
+	go NotifyPaymentApprovalRequested(batchNumber, []string{id}, input.ActorName, notes)
 	return GetPurchaseRequest(id)
 }
 
@@ -3094,6 +3095,7 @@ func SubmitPaymentApprovalBatch(input models.SubmitPaymentApprovalInput) (string
 	if err := tx.Commit(); err != nil {
 		return "", 0, err
 	}
+	go NotifyPaymentApprovalRequested(batchNumber, cleanIDs, input.ActorName, notes)
 	return batchNumber, int(affected), nil
 }
 
@@ -3183,5 +3185,6 @@ func DecidePaymentApprovalBatch(input models.DecidePaymentApprovalInput) (int, e
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	go NotifyPaymentApprovalDecided(decision, cleanIDs, input.ActorName, reason)
 	return int(affected), nil
 }

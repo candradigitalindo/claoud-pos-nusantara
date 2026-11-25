@@ -46,11 +46,17 @@ func SaveAdditionalCharge(outletID string, req models.PushAdditionalChargeReques
 }
 
 // ActiveCharges mengembalikan biaya aktif outlet, urut sesuai POS (nama).
+// Baris duplikat bernama sama (mis. sisa sinkronisasi perangkat lama) disaring
+// agar tiap nama pajak/biaya hanya dihitung sekali dari catatan terbaru.
 func ActiveCharges(outletID string) ([]models.CloudAdditionalCharge, error) {
 	rows, err := database.DB.Query(
 		`SELECT local_id, name, charge_type, value
-		FROM cloud_additional_charges
-		WHERE outlet_id = $1 AND is_active = true
+		FROM (
+			SELECT DISTINCT ON (LOWER(TRIM(name))) local_id, name, charge_type, value
+			FROM cloud_additional_charges
+			WHERE outlet_id = $1 AND is_active = true AND value > 0
+			ORDER BY LOWER(TRIM(name)), updated_at DESC, id DESC
+		) dedup
 		ORDER BY name ASC`,
 		outletID,
 	)

@@ -205,3 +205,140 @@ func slugOf(t *testing.T, outletID string) string {
 	}
 	return strings.TrimSpace(slug)
 }
+
+// Pajak / biaya tambahan outlet (PB1 10%) otomatis masuk total reservasi
+// dan baris duplikat bernama sama dari perangkat lama hanya dihitung sekali.
+func TestReservationAppliesOutletChargesAndDeduplicates(t *testing.T) {
+	requireDB(t)
+	outletID, cleanupOutlet := scratchOutlet(t)
+	defer cleanupOutlet()
+
+	// Sisipkan 2 baris aktif bernama sama ("Pajak Restoran (PB1)") seperti di production.
+	oldID, newID := NewULID(), NewULID()
+	if _, err := database.DB.Exec(`
+		INSERT INTO cloud_additional_charges (id, local_id, outlet_id, name, charge_type, value, is_active, version, created_at, updated_at)
+		VALUES
+			($1::char(26), $1::varchar, $3, 'Pajak Restoran (PB1)', 'percentage', 10, true, 1, NOW() - interval '2 days', NOW() - interval '2 days'),
+			($2::char(26), $2::varchar, $3, 'Pajak Restoran (PB1)', 'percentage', 10, true, 1, NOW(), NOW())`,
+		oldID, newID, outletID); err != nil {
+		t.Fatalf("seed charges: %v", err)
+	}
+	t.Cleanup(func() {
+		execScratch("DELETE FROM cloud_additional_charges WHERE outlet_id = $1", outletID)
+	})
+
+	r, err := CreateReservation(models.ReservationRequest{
+		OutletID: outletID, CustomerName: "PT Uji PB1", Pax: 30,
+		ReservationDate: time.Now().In(GetTimezoneLocation()).AddDate(0, 0, 1).Format("2006-01-02"),
+		ReservationTime: "11:00", DownPayment: 300000,
+		Items: []models.ReservationItem{{ProductName: "Nasi Kotak Paket A", Qty: 30, Price: 35000}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("create reservasi PB1: %v", err)
+	}
+	defer cleanupReservation(r.ID)
+
+	if r.Subtotal != 1050000 {
+		t.Errorf("subtotal = %.0f, mau 1050000", r.Subtotal)
+	}
+	if len(r.Charges) != 1 || r.Charges[0].Amount != 105000 {
+		t.Fatalf("charges = %+v, mau 1 baris PB1 105000 (bukan dobel 20%%)", r.Charges)
+	}
+	if r.Total != 1155000 || r.Remaining != 1155000 {
+		t.Errorf("total/remaining = %.0f/%.0f, mau 1155000/1155000", r.Total, r.Remaining)
+	}
+	if itemsTxt := waReservationItemsWithCharges(r); !strings.Contains(itemsTxt, "Pajak Restoran (PB1)") {
+		t.Errorf("rincian WA tidak mencantumkan PB1: %s", itemsTxt)
+	}
+}
+
+// Alur reservasi yang diperketat & disederhanakan:
+// 1. Reservasi tanpa menu + DP manual bisa dibuat dan dibayar.
+// 2. Jadwal (tanggal & jam) wajib; tanggal lampau ditolak untuk publik.
+// 3. Status pending tidak bisa langsung loncat ke done.
+// 4. Total edit tidak boleh turun di bawah pembayaran tervalidasi.
+// 5. InitialPayment saat buat reservasi langsung memvalidasi & konfirmasi otomatis.
+func TestReservationImprovedFlowAndGuards(t *testing.T) {
+	requireDB(t)
+	outletID, cleanupOutlet := scratchOutlet(t)
+	defer cleanupOutlet()
+	loc := GetTimezoneLocation()
+	today := time.Now().In(loc).Format("2006-01-02")
+	yesterday := time.Now().In(loc).AddDate(0, 0, -1).Format("2006-01-02")
+	tomorrow := time.Now().In(loc).AddDate(0, 0, 1).Format("2006-01-02")
+
+	// Jadwal wajib
+	if _, err := CreateReservation(models.ReservationRequest{
+		OutletID: outletID, CustomerName: "Tanpa Tanggal", Pax: 2,
+	}, nil); err == nil {
+		t.Error("reservasi tanpa tanggal/jam lolos")
+	}
+	// Publik tidak boleh pesan tanggal lampau
+	if _, err := CreatePublicReservation(slugOf(t, outletID), models.ReservationRequest{
+		CustomerName: "Tamu Kemarin", Pax: 2, ReservationDate: yesterday, ReservationTime: "12:00",
+		Items: []models.ReservationItem{{ProductName: "Teh", Qty: 1, Price: 10000}},
+	}); err == nil {
+		t.Error("reservasi publik tanggal lampau lolos")
+	}
+
+	// Reservasi tanpa menu + DP manual 200.000 harus diterima & bisa dibayar
+	noMenu, err := CreateReservation(models.ReservationRequest{
+		OutletID: outletID, CustomerName: "Meja VIP", Pax: 6,
+		ReservationDate: tomorrow, ReservationTime: "18:30", DownPayment: 200000,
+	}, nil)
+	if err != nil {
+		t.Fatalf("reservasi tanpa menu + DP manual ditolak: %v", err)
+	}
+	defer cleanupReservation(noMenu.ID)
+	if noMenu.Remaining != 200000 || noMenu.Status != "pending" {
+		t.Fatalf("tanpa menu: status=%s remaining=%.0f, mau pending/200000", noMenu.Status, noMenu.Remaining)
+	}
+	// Pending tidak boleh langsung ditandai selesai
+	if _, err := UpdateReservationStatus(noMenu.ID, "done", "", "admin", nil); err == nil {
+		t.Error("status pending langsung ke done lolos")
+	}
+	if _, err := AddReservationPayment(noMenu.ID, models.ReservationPaymentRequest{
+		Type: "dp", Amount: 200000, Method: "cash", PaidAt: today,
+	}, "admin", true, nil); err != nil {
+		t.Fatalf("bayar DP manual tanpa menu: %v", err)
+	}
+	noMenu, _ = GetReservation(noMenu.ID, nil)
+	if noMenu.Status != "confirmed" || noMenu.PaidAmount != 200000 || noMenu.Remaining != 0 {
+		t.Fatalf("setelah bayar DP manual: status=%s paid=%.0f rem=%.0f", noMenu.Status, noMenu.PaidAmount, noMenu.Remaining)
+	}
+
+	// InitialPayment gagal validasi (transfer tanpa bukti) tidak boleh meninggalkan reservasi yatim
+	if _, err := CreateReservation(models.ReservationRequest{
+		OutletID: outletID, CustomerName: "Gagal Bukti", Pax: 2,
+		ReservationDate: tomorrow, ReservationTime: "12:00", DownPayment: 100000,
+		Items:          []models.ReservationItem{{ProductName: "Paket", Qty: 2, Price: 100000}},
+		InitialPayment: &models.ReservationPaymentRequest{Type: "dp", Amount: 100000, Method: "transfer"},
+	}, nil); err == nil {
+		t.Error("initial payment transfer tanpa bukti lolos")
+	}
+
+	// InitialPayment valid → langsung tervalidasi & confirmed
+	instant, err := CreateReservation(models.ReservationRequest{
+		OutletID: outletID, CustomerName: "Langsung DP", Pax: 4,
+		ReservationDate: tomorrow, ReservationTime: "13:00", DownPayment: 100000,
+		Items:          []models.ReservationItem{{ProductName: "Paket", Qty: 2, Price: 100000}},
+		InitialPayment: &models.ReservationPaymentRequest{Type: "dp", Amount: 100000, Method: "transfer", ProofURL: "/uploads/uji-init.jpg", PaidAt: today},
+		Actor:          "Kasir",
+	}, nil)
+	if err != nil {
+		t.Fatalf("create dengan initial payment: %v", err)
+	}
+	defer cleanupReservation(instant.ID)
+	if instant.Status != "confirmed" || instant.PaidAmount != 100000 || instant.Remaining != 100000 {
+		t.Fatalf("instant DP: status=%s paid=%.0f rem=%.0f", instant.Status, instant.PaidAmount, instant.Remaining)
+	}
+
+	// Menurunkan total menu di bawah pembayaran tervalidasi (100.000) harus ditolak
+	if _, err := UpdateReservation(instant.ID, models.ReservationRequest{
+		CustomerName: "Langsung DP", Pax: 4, ReservationDate: tomorrow, ReservationTime: "13:00",
+		DownPayment: 50000,
+		Items:       []models.ReservationItem{{ProductName: "Paket Kecil", Qty: 1, Price: 50000}},
+	}, nil); err == nil {
+		t.Error("menurunkan total di bawah paid_amount lolos")
+	}
+}

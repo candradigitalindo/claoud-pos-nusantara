@@ -410,15 +410,26 @@ func WARoleOptions() []models.WARoleOption {
 	activeOutlets, _ := waActiveOutletNames()
 	centralUnits, _ := waCentralWorkUnitNames()
 	counts := map[string]int{}
+	activeCounts := map[string]int{}
+	activeUserNames := map[string][]string{}
 	for _, a := range waLoadAdmins() {
-		if a.Active && a.Notify && a.Phone != "" {
-			counts[a.Role]++
+		if a.Active {
+			activeCounts[a.Role]++
+			activeUserNames[a.Role] = append(activeUserNames[a.Role], a.Name)
+			if a.Notify && a.Phone != "" {
+				counts[a.Role]++
+			}
 		}
 	}
 	decorate := func(r models.WARoleOption) models.WARoleOption {
 		info := infos[r.Name]
 		r.ScopeType = info.scopeType
 		r.Users = counts[r.Name]
+		r.ActiveUsers = activeCounts[r.Name]
+		r.ActiveUserNames = activeUserNames[r.Name]
+		if r.ActiveUserNames == nil {
+			r.ActiveUserNames = []string{}
+		}
 		r.RequesterOnly = WARequesterOnlyRole(r.Name, info)
 		r.Policy, r.HasPolicy = waRolePolicy(r.Name, info, settings)
 		r.OutletIDs, r.OutletNames = []string{}, []string{}
@@ -488,7 +499,7 @@ func WARoleOptions() []models.WARoleOption {
 var waStageProcurementPerms = []string{
 	"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.approve_services", "procurement.requests.purchasing", "procurement.requests.pickup",
 	"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing", "procurement.rawmaterials.pickup",
-	"finance.payments.pay", "stockledger.adjust", "assets.create",
+	"finance.payments.approve", "finance.payments.pay", "stockledger.adjust", "assets.create",
 }
 
 // WARequesterOnlyRole: role yang untuk pengadaan hanya pengaju (tidak
@@ -567,6 +578,7 @@ var waPermissionLabels = map[string]string{
 	"procurement.requests.approve":          "Persetujuan Pengadaan Barang",
 	"procurement.requests.approve_services": "Persetujuan Pengadaan Jasa",
 	"procurement.requests.purchasing":       "Purchasing (isi harga/beli)",
+	"finance.payments.approve":              "Persetujuan Pembayaran",
 	"finance.payments.pay":                  "Pencairan Pembayaran",
 	"ppic.expiry.view":                      "Kedaluwarsa PPIC",
 	"warehouse_dashboard.view":              "Dashboard Gudang",

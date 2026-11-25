@@ -101,6 +101,47 @@ func parsePaidAt(s string) (time.Time, error) {
 	return time.Time{}, Invalid("format tanggal bayar tidak dikenali (YYYY-MM-DD atau YYYY-MM-DD HH:MM)")
 }
 
+// validateReservationPaymentInput memeriksa kelengkapan pembayaran awal sebelum
+// reservasi disimpan, agar tidak ada reservasi yatim jika input pembayaran tidak sah.
+func validateReservationPaymentInput(req models.ReservationPaymentRequest, maxTarget float64, validated bool) error {
+	tp := strings.ToLower(strings.TrimSpace(req.Type))
+	if tp != "dp" && tp != "pelunasan" {
+		return Invalid("jenis pembayaran awal harus dp atau pelunasan")
+	}
+	if req.Amount <= 0 {
+		return Invalid("nominal pembayaran harus lebih dari 0")
+	}
+	if maxTarget > 0 && req.Amount > maxTarget+0.009 {
+		return Invalid("nominal pembayaran (%.0f) melebihi total tagihan (%.0f)", req.Amount, maxTarget)
+	}
+	method := strings.ToLower(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = "transfer"
+	}
+	if !reservationPaymentMethods[method] {
+		return Invalid("metode '%s' tidak dikenal", method)
+	}
+	if strings.TrimSpace(req.ProofURL) == "" && (!validated || method == "transfer" || method == "qris") {
+		return Invalid("bukti pembayaran wajib diunggah untuk transfer/QRIS")
+	}
+	if strings.TrimSpace(req.ProofURL) != "" {
+		if err := validateUploadField("bukti pembayaran", req.ProofURL); err != nil {
+			return err
+		}
+	}
+	if req.BankAccountID != "" {
+		var exists bool
+		database.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM bank_accounts WHERE id = $1)`, req.BankAccountID).Scan(&exists)
+		if !exists {
+			return Invalid("rekening tujuan tidak dikenal")
+		}
+	}
+	if _, err := parsePaidAt(req.PaidAt); err != nil {
+		return err
+	}
+	return nil
+}
+
 // AddReservationPayment mencatat satu bukti uang masuk/keluar. validated=true
 // untuk pencatatan oleh admin (langsung sah), false untuk kiriman pelanggan.
 func AddReservationPayment(reservationID string, req models.ReservationPaymentRequest, actor string, validated bool, outletScope []string) (*models.ReservationPayment, error) {
@@ -293,8 +334,38 @@ func activeBankAccounts() []models.BankAccount {
 	return out
 }
 
+func allOutletActiveCharges() map[string][]models.CloudAdditionalCharge {
+	out := map[string][]models.CloudAdditionalCharge{}
+	rows, err := database.DB.Query(`
+		SELECT outlet_id, local_id, name, charge_type, value
+		FROM (
+			SELECT DISTINCT ON (outlet_id, LOWER(TRIM(name))) outlet_id, local_id, name, charge_type, value
+			FROM cloud_additional_charges
+			WHERE is_active = true AND value > 0
+			ORDER BY outlet_id, LOWER(TRIM(name)), updated_at DESC, id DESC
+		) dedup
+		ORDER BY outlet_id, name ASC`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var oid string
+		var c models.CloudAdditionalCharge
+		if rows.Scan(&oid, &c.LocalID, &c.Name, &c.ChargeType, &c.Value) == nil {
+			oid = strings.TrimSpace(oid)
+			out[oid] = append(out[oid], c)
+		}
+	}
+	return out
+}
+
 func GetReservationSettings() *models.ReservationSettings {
-	return &models.ReservationSettings{DpPercent: ReservationDpPercent(), BankAccounts: activeBankAccounts()}
+	return &models.ReservationSettings{
+		DpPercent:     ReservationDpPercent(),
+		BankAccounts:  activeBankAccounts(),
+		OutletCharges: allOutletActiveCharges(),
+	}
 }
 
 // ── Publik (tanpa auth) ─────────────────────────────────────────────────────
@@ -313,7 +384,8 @@ func PublicReservationStatus(slug, id string) (*models.PublicReservationStatus, 
 	return &models.PublicReservationStatus{
 		ID: r.ID, OutletName: outletName, CustomerName: r.CustomerName,
 		ReservationDate: r.ReservationDate, ReservationTime: r.ReservationTime, Pax: r.Pax,
-		Items: r.Items, Total: r.Total, DownPayment: r.DownPayment, PaidAmount: r.PaidAmount,
+		Items: r.Items, Charges: r.Charges, Subtotal: r.Subtotal, Total: r.Total,
+		DownPayment: r.DownPayment, PaidAmount: r.PaidAmount,
 		PendingAmount: r.PendingAmount, Remaining: r.Remaining, Status: r.Status, DpPaid: r.DpPaid,
 		Payments: r.Payments, BankAccounts: activeBankAccounts(),
 	}, nil
@@ -372,7 +444,8 @@ func ListOutletReservations(outletID, date string) ([]models.OutletReservation, 
 		out = append(out, models.OutletReservation{
 			ID: r.ID, CustomerName: r.CustomerName, CustomerPhone: r.CustomerPhone, Pax: r.Pax,
 			ReservationDate: r.ReservationDate, ReservationTime: r.ReservationTime, Items: items,
-			Total: r.Total, PaidAmount: r.PaidAmount, Remaining: r.Remaining, Status: r.Status, Notes: r.Notes,
+			Charges: r.Charges, Subtotal: r.Subtotal, Total: r.Total, PaidAmount: r.PaidAmount,
+			Remaining: r.Remaining, Status: r.Status, Notes: r.Notes,
 		})
 	}
 	return out, nil

@@ -214,3 +214,88 @@ func TestWARequesterDoesNotGetOtherRequesterEvents(t *testing.T) {
 		t.Errorf("penimpa event non-pengadaan ke role pengaju ditolak: %v", err)
 	}
 }
+
+// Persetujuan pembayaran (finance.payments.approve) punya event WA sendiri:
+// permintaan persetujuan ke pemegang finance.payments.approve, keputusan ke
+// finance.payments.pay (dan pengaju batch).
+func TestWAPaymentApprovalEventSpecsAndPreview(t *testing.T) {
+	if WARequesterOnlyRole("approver_bayar", waRoleInfo{perms: []string{"finance.payments.approve"}}) {
+		t.Error("role dengan finance.payments.approve tidak boleh dianggap pengaju-saja")
+	}
+	for _, key := range []string{"purchase.payment_approval_requested", "purchase.payment_approval_decided"} {
+		spec := waSpec(key)
+		if spec == nil {
+			t.Fatalf("event %s tidak ditemukan di waEventSpecs", key)
+		}
+		if spec.Audience != "internal" || spec.Group != "Pengadaan" {
+			t.Errorf("event %s audience/group salah: %s/%s", key, spec.Audience, spec.Group)
+		}
+		rendered := WARenderPreview(key, "")
+		if strings.TrimSpace(rendered) == "" {
+			t.Errorf("pratinjau %s kosong", key)
+		}
+		if strings.Contains(rendered, "{") || strings.Contains(rendered, "}") {
+			t.Errorf("pratinjau %s masih menyisakan placeholder: %s", key, rendered)
+		}
+	}
+}
+
+func TestWAPaymentApprovalRoutingAndRoleMetadata(t *testing.T) {
+	requireDB(t)
+	sfx := strings.ToLower(NewULID()[20:])
+	mk := func(label, phone string, perms ...string) (string, string) {
+		role := "upa" + label + sfx
+		if _, err := database.DB.Exec(`INSERT INTO roles (name, description, scope_type) VALUES ($1, 'uji', 'all')`, role); err != nil {
+			t.Fatalf("role %s: %v", role, err)
+		}
+		for _, perm := range perms {
+			database.DB.Exec(`INSERT INTO role_permissions (role, permission) VALUES ($1, $2)`, role, perm)
+		}
+		id := NewULID()
+		name := "Uji " + label + " " + sfx
+		if _, err := database.DB.Exec(`INSERT INTO cloud_admins (id, username, password_hash, name, role, wa_phone, wa_notify, is_active)
+			VALUES ($1, $2, 'x', $3, $4, $5, true, true)`, id, "uji_pa_"+label+sfx, name, role, phone); err != nil {
+			t.Fatalf("akun %s: %v", label, err)
+		}
+		t.Cleanup(func() {
+			execScratch(`DELETE FROM cloud_admins WHERE id = $1`, id)
+			execScratch(`DELETE FROM role_permissions WHERE role = $1`, role)
+			execScratch(`DELETE FROM roles WHERE name = $1`, role)
+		})
+		return id, role
+	}
+
+	approverID, approverRole := mk("a", "0815"+fmt.Sprintf("%08d", time.Now().UnixNano()%100000000), "finance.payments.view", "finance.payments.approve")
+	apID, _ := mk("f", "0816"+fmt.Sprintf("%08d", (time.Now().UnixNano()+7)%100000000), "finance.payments.view", "finance.payments.pay")
+	noPhoneID, noPhoneRole := mk("n", "", "finance.payments.approve")
+	_ = noPhoneID
+
+	reqGot := waRecipientIDs("purchase.payment_approval_requested", "")
+	if !reqGot[approverID] {
+		t.Error("purchase.payment_approval_requested harus sampai ke pemegang finance.payments.approve")
+	}
+	if reqGot[apID] {
+		t.Error("purchase.payment_approval_requested tidak boleh otomatis ke finance.payments.pay tanpa izin approve")
+	}
+
+	decGot := waRecipientIDs("purchase.payment_approval_decided", "")
+	if !decGot[apID] {
+		t.Error("purchase.payment_approval_decided harus sampai ke pemegang finance.payments.pay")
+	}
+	if decGot[approverID] {
+		t.Error("purchase.payment_approval_decided tidak boleh otomatis ke approver tanpa izin pay")
+	}
+
+	// Metadata WARoleOptions: ActiveUsers & ActiveUserNames terisi meski wa_phone kosong.
+	opts := WARoleOptions()
+	byName := map[string]models.WARoleOption{}
+	for _, o := range opts {
+		byName[o.Name] = o
+	}
+	if o, ok := byName[approverRole]; !ok || o.ActiveUsers != 1 || o.Users != 1 || len(o.ActiveUserNames) != 1 {
+		t.Errorf("metadata %s salah: %+v", approverRole, o)
+	}
+	if o, ok := byName[noPhoneRole]; !ok || o.ActiveUsers != 1 || o.Users != 0 || len(o.ActiveUserNames) != 1 {
+		t.Errorf("metadata %s tanpa nomor WA salah: %+v", noPhoneRole, o)
+	}
+}

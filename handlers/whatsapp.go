@@ -77,6 +77,7 @@ func WAGetSettings(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
 		"settings": s,
 		"events":   services.WAEventCatalog(s),
+		"roles":    services.WARoleOptions(),
 	}})
 }
 
@@ -90,7 +91,7 @@ func WAUpdateSettings(c *fiber.Ctx) error {
 	}
 	s := services.GetWASettings()
 	return c.JSON(models.APIResponse{Success: true, Message: "Pengaturan WhatsApp disimpan", Data: fiber.Map{
-		"settings": s, "events": services.WAEventCatalog(s),
+		"settings": s, "events": services.WAEventCatalog(s), "roles": services.WARoleOptions(),
 	}})
 }
 

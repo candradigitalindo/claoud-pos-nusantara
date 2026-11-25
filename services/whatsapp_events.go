@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // ── Katalog notifikasi WhatsApp ─────────────────────────────────────────────
@@ -310,6 +312,37 @@ Alasan: {reason}
 Dikembalikan oleh {actor}. Mohon perbaiki lewat Ubah Detail Pembayaran.`,
 	},
 	{
+		Key: "purchase.payment_approval_requested", Label: "Pengajuan persetujuan pembayaran", Group: "Pengadaan", Audience: "internal",
+		Permissions:  []string{"finance.payments.approve"},
+		Description:  "Finance AP mengajukan daftar tagihan atau pembayaran manual untuk disetujui Manager Keuangan / General Manager sebelum dicairkan.",
+		Placeholders: []string{"company", "batch_number", "count", "total", "actor", "notes", "items_list"},
+		Template: `🧾 *Pengajuan Persetujuan Pembayaran*
+No. Batch: {batch_number} ({count} tagihan)
+Total Tagihan: *{total}*
+Diajukan oleh: {actor}
+
+Rincian:
+{items_list}
+
+Catatan: {notes}
+
+Mohon ditinjau di menu Approval Pembayaran.`,
+	},
+	{
+		Key: "purchase.payment_approval_decided", Label: "Persetujuan pembayaran disetujui / ditolak", Group: "Pengadaan", Audience: "internal",
+		Permissions:  []string{"finance.payments.pay"},
+		Description:  "Manager Keuangan atau General Manager menyetujui atau menolak pengajuan pembayaran.",
+		Placeholders: []string{"company", "decision_icon", "decision", "batch_number", "count", "total", "actor", "reason", "items_list"},
+		Template: `{decision_icon} *Persetujuan Pembayaran {decision}*
+No. Batch: {batch_number} ({count} tagihan)
+Total Tagihan: *{total}*
+Diputuskan oleh: {actor}
+Catatan/Alasan: {reason}
+
+Rincian:
+{items_list}`,
+	},
+	{
 		Key: "purchase.paid", Label: "Pembayaran pengadaan dicairkan", Group: "Pengadaan", Audience: "internal",
 		// Pembelian, keuangan (bukti pencairan), dan pengaju.
 		Permissions: []string{"procurement.requests.purchasing", "finance.payments.pay"}, Extra: "pengaju",
@@ -326,7 +359,7 @@ Total dibayar: {paid_total} dari {total}`,
 		// tanpa harga), keuangan (menunggu pembayaran). Izin dipilih per
 		// status saat dikirim; Permissions di sini hanya bawaan untuk layar.
 		Key: "purchase.stale", Label: "Pengingat pengajuan tertahan (> 2 hari)", Group: "Pengadaan", Audience: "internal", Scheduled: true,
-		Permissions:  []string{"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing", "finance.payments.pay"},
+		Permissions:  []string{"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.purchasing", "finance.payments.approve", "finance.payments.pay"},
 		Description:  "Setiap hari pada jam pengingat: pengajuan yang belum ditindak dikirim ke pemegang tahapnya (dan pengaju) — rutin > 2 hari, prioritas > 1 hari, urgent > 4 jam.",
 		Placeholders: []string{"company", "number", "type", "requested_by", "outlet", "work_unit", "total", "status_label", "days", "next_action", "urgency", "duration"},
 		Template: `⏰ *Pengajuan {number} tertahan {duration}*{urgency}
@@ -539,6 +572,8 @@ func waSampleVars(spec *waEventSpec) map[string]string {
 		"expiring_list": "• Ayam fillet — Gudang Induk — exp 23-09 (12 kg)", "rop_list": waPpicROPNotEvaluated,
 		"count": "2", "list": "• WO-0021 Genset — servis rutin — 25-09-2026",
 		"last_seen": "21-09-2026 09:12", "minutes": "45", "pending_sync": "3", "battery": "42%",
+		"batch_number": "AJU-251126-001", "decision_icon": "✅", "decision": "Disetujui",
+		"items_list": "• #241126014 — CV Sumber Rejeki — Rp 3.000.000\n• #241126015 — Toko Makmur — Rp 1.500.000",
 	}
 	return sample
 }
@@ -706,6 +741,20 @@ func waBankAccounts() string {
 	return strings.Join(lines, "\n")
 }
 
+func waReservationItemsWithCharges(r *models.Reservation) string {
+	base := waItems(r.Items)
+	if len(r.Charges) == 0 {
+		return base
+	}
+	lines := []string{base}
+	for _, ch := range r.Charges {
+		if ch.Amount > 0 {
+			lines = append(lines, fmt.Sprintf("• %s: %s", ch.Name, waRp(ch.Amount)))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func waReservationVars(r *models.Reservation, o waOutletInfo, s models.WASettings) map[string]string {
 	source := "admin"
 	if r.Source == "public" {
@@ -715,13 +764,17 @@ func waReservationVars(r *models.Reservation, o waOutletInfo, s models.WASetting
 		"outlet": waOr(o.Name, r.OutletName), "outlet_address": o.Address, "outlet_phone": waOr(o.Phone, "-"),
 		"customer_name": waOr(r.CustomerName, "Pelanggan"), "customer_phone": waOr(r.CustomerPhone, "-"),
 		"date": waDate(r.ReservationDate), "time": waOr(r.ReservationTime, "-"), "pax": fmt.Sprintf("%d", r.Pax),
-		"items": waItems(r.Items), "total": waRp(r.Total), "down_payment": waRp(r.DownPayment),
+		"items": waReservationItemsWithCharges(r), "total": waRp(r.Total), "down_payment": waRp(r.DownPayment),
 		"paid": waRp(r.PaidAmount), "remaining": waRp(r.Remaining), "source": source,
 		"notes": waOr(r.Notes, "-"), "status_url": waStatusURL(s, o, r.ID), "bank_accounts": waBankAccounts(),
 	}
 }
 
 func NotifyReservationCreated(r *models.Reservation) {
+	NotifyReservationCreatedWithOptions(r, false)
+}
+
+func NotifyReservationCreatedWithOptions(r *models.Reservation, skipCustomer bool) {
 	if r == nil {
 		return
 	}
@@ -729,6 +782,9 @@ func NotifyReservationCreated(r *models.Reservation) {
 	o := waOutlet(r.OutletID)
 	vars := waReservationVars(r, o, s)
 	notifyWA("reservation.created", r.ID, r.OutletID, vars, "")
+	if skipCustomer {
+		return
+	}
 	if r.DownPayment > 0 {
 		notifyWA("customer.reservation_created", r.ID, r.OutletID, vars, r.CustomerPhone)
 	} else {
@@ -1191,6 +1247,151 @@ func NotifyPurchaseEvent(pr *models.PurchaseRequest, action, actor, reason strin
 	}, extra)
 }
 
+type waPaymentApprovalSummary struct {
+	batchNumber string
+	count       int
+	total       float64
+	itemsList   string
+	outletID    string
+	submitters  []string
+}
+
+func loadPaymentApprovalBatchSummary(ids []string, fallbackBatch string) (waPaymentApprovalSummary, error) {
+	out := waPaymentApprovalSummary{batchNumber: strings.TrimSpace(fallbackBatch), outletID: waCentralOutlet}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := database.DB.Query(`
+		SELECT id, request_number, COALESCE(vendor_name, ''), COALESCE(total_final, 0), COALESCE(paid_amount, 0),
+		       COALESCE(outlet_id, ''), COALESCE(work_unit_id, ''), COALESCE(payment_batch_number, ''), COALESCE(payment_submitted_by, '')
+		FROM purchase_requests
+		WHERE id = ANY($1::text[])
+		ORDER BY request_number, id`, pq.Array(ids))
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+
+	const maxLines = 15
+	lines := []string{}
+	batches := []string{}
+	seenBatch := map[string]bool{}
+	seenSubmitter := map[string]bool{}
+	firstOutlet := ""
+	sameOutlet := true
+	for rows.Next() {
+		var id, reqNum, vendor, outletID, workUnitID, batchNo, submittedBy string
+		var totalFinal, paidAmount float64
+		if err := rows.Scan(&id, &reqNum, &vendor, &totalFinal, &paidAmount, &outletID, &workUnitID, &batchNo, &submittedBy); err != nil {
+			return out, err
+		}
+		out.count++
+		remaining := totalFinal - paidAmount
+		if remaining <= 0 {
+			remaining = totalFinal
+		}
+		out.total += remaining
+		if len(lines) < maxLines {
+			vLabel := waOr(vendor, "Tanpa vendor")
+			lines = append(lines, fmt.Sprintf("• #%s — %s — %s", strings.TrimSpace(reqNum), vLabel, waRp(remaining)))
+		}
+		batchNo = strings.TrimSpace(batchNo)
+		if batchNo != "" && !seenBatch[batchNo] {
+			seenBatch[batchNo] = true
+			batches = append(batches, batchNo)
+		}
+		submittedBy = strings.TrimSpace(submittedBy)
+		if submittedBy != "" && !seenSubmitter[submittedBy] {
+			seenSubmitter[submittedBy] = true
+			out.submitters = append(out.submitters, submittedBy)
+		}
+		rowScope := waCentralOutlet
+		if o := strings.TrimSpace(outletID); o != "" {
+			rowScope = o
+		} else if wu := strings.TrimSpace(workUnitID); wu != "" {
+			rowScope = waWorkUnitPrefix + wu
+		}
+		if out.count == 1 {
+			firstOutlet = rowScope
+		} else if rowScope != firstOutlet {
+			sameOutlet = false
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	if out.count > maxLines {
+		lines = append(lines, fmt.Sprintf("• … dan %d tagihan lainnya", out.count-maxLines))
+	}
+	out.itemsList = waOr(strings.Join(lines, "\n"), "-")
+	if len(batches) > 0 {
+		out.batchNumber = strings.Join(batches, ", ")
+	}
+	if out.batchNumber == "" {
+		out.batchNumber = "-"
+	}
+	if out.count > 0 && sameOutlet {
+		out.outletID = firstOutlet
+	}
+	return out, nil
+}
+
+// NotifyPaymentApprovalRequested mengirim 1 notifikasi ringkas ke pemegang izin
+// finance.payments.approve ketika Finance AP mengajukan batch tagihan atau
+// pembayaran manual untuk disetujui.
+func NotifyPaymentApprovalRequested(batchNumber string, ids []string, actor, notes string) {
+	if len(ids) == 0 {
+		return
+	}
+	sum, err := loadPaymentApprovalBatchSummary(ids, batchNumber)
+	if err != nil || sum.count == 0 {
+		return
+	}
+	vars := map[string]string{
+		"batch_number": sum.batchNumber,
+		"count":        fmt.Sprintf("%d", sum.count),
+		"total":        waRp(sum.total),
+		"actor":        waOr(actor, "-"),
+		"notes":        waOr(notes, "-"),
+		"items_list":   sum.itemsList,
+	}
+	ref := strings.TrimSpace(batchNumber)
+	if ref == "" {
+		ref = ids[0]
+	}
+	notifyWA("purchase.payment_approval_requested", ref+":requested", sum.outletID, vars, "")
+}
+
+// NotifyPaymentApprovalDecided memberi tahu Finance AP (finance.payments.pay)
+// dan pengaju batch ketika pengajuan pembayaran disetujui atau ditolak.
+func NotifyPaymentApprovalDecided(decision string, ids []string, actor, reason string) {
+	if len(ids) == 0 {
+		return
+	}
+	sum, err := loadPaymentApprovalBatchSummary(ids, "")
+	if err != nil || sum.count == 0 {
+		return
+	}
+	decLabel, decIcon := "Disetujui", "✅"
+	if decision == "reject" {
+		decLabel, decIcon = "Ditolak", "❌"
+	}
+	vars := map[string]string{
+		"decision_icon": decIcon,
+		"decision":      decLabel,
+		"batch_number":  sum.batchNumber,
+		"count":         fmt.Sprintf("%d", sum.count),
+		"total":         waRp(sum.total),
+		"actor":         waOr(actor, "-"),
+		"reason":        waOr(reason, "-"),
+		"items_list":    sum.itemsList,
+	}
+	sortedIDs := append([]string{}, ids...)
+	sort.Strings(sortedIDs)
+	ref := fmt.Sprintf("%s:%s:%s:%d", sum.batchNumber, decision, sortedIDs[0], len(sortedIDs))
+	notifyWAMapped("purchase.payment_approval_decided", ref, sum.outletID, vars, nil, sum.submitters...)
+}
+
 // ── PPIC ────────────────────────────────────────────────────────────────────
 
 const waPpicROPNotEvaluated = "tidak dievaluasi (fitur ROP dinonaktifkan)"
@@ -1343,6 +1544,10 @@ func SendStalePurchaseReminders(now time.Time) {
 			// Detail pembayaran dikembalikan Keuangan: bolanya di Pembelian.
 			stage.perm, stage.next = "procurement.requests.purchasing",
 				"Detail pembayaran dikembalikan Keuangan ("+pr.PayTo.ReturnReason+") — mohon perbaiki lewat Ubah Detail Pembayaran."
+		} else if st.status == "payment_requested" && pr.PaymentApprovalStatus == "pending" {
+			// Menunggu persetujuan pembayaran: bolanya di penyetuju pembayaran.
+			stage.perm, stage.next = "finance.payments.approve",
+				"Menunggu persetujuan pembayaran (batch "+waOr(pr.PaymentBatchNumber, "-")+") — mohon ditinjau di Approval Pembayaran."
 		}
 		vars := waPurchaseVars(pr)
 		vars["status_label"] = purchaseStatusLabel(pr.Status)
