@@ -87,7 +87,7 @@ func ListStockItems(search string, activeOnly bool, warehouseID string, outletSc
 		       COALESCE(sl.qty_base, 0), COALESCE(sl.min_stock, 0), COALESCE(sl.avg_cost, 0), (sl.item_id IS NOT NULL)
 		FROM stock_items si
 		LEFT JOIN stock_ledger sl ON sl.item_id = si.id AND sl.warehouse_id = $1
-		%s ORDER BY si.name ASC LIMIT $%d OFFSET $%d
+		%s ORDER BY LOWER(si.name) ASC, si.name ASC, si.id ASC LIMIT $%d OFFSET $%d
 	`, totalExpr, where, i, i+1), args...)
 	if err != nil {
 		return nil, 0, err

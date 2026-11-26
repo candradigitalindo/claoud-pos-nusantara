@@ -3,6 +3,18 @@ import { apiClient as api } from './client.js'
 // ── Stock Items ───────────────────────────────────────────────
 export const stockItemsApi = {
   list: (params = {}) => api.get('/admin/stock-items', { params }),
+  // Memuat seluruh halaman katalog item stok (tidak terpotong limit per halaman).
+  async listAll(params = {}) {
+    const limit = 1000
+    const first = await api.get('/admin/stock-items', { params: { ...params, page: 1, limit } })
+    const items = [...(Array.isArray(first) ? first : first?.data || [])]
+    const totalPages = Number(first?.total_pages || 1)
+    for (let page = 2; page <= totalPages; page++) {
+      const next = await api.get('/admin/stock-items', { params: { ...params, page, limit } })
+      items.push(...(Array.isArray(next) ? next : next?.data || []))
+    }
+    return items
+  },
   // include_stock=1 adds accessible central-warehouse quantities, without costs.
   names: (params = {}) => api.get('/admin/stock-item-names', { params }),
   get: (id) => api.get(`/admin/stock-items/${id}`),

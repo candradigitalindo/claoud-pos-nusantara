@@ -347,7 +347,7 @@ async function load() {
 async function loadRefs() {
   try { outlets.value = asArray((await outletsApi.myOutlets())?.outlets ?? await outletsApi.myOutlets()) } catch { outlets.value = [] }
   try { warehouses.value = asArray(await warehousesApi.list()) } catch { warehouses.value = [] }
-  try { stockItems.value = asArray(await stockItemsApi.list({ limit: 500 })) } catch { stockItems.value = [] }
+  try { stockItems.value = asArray(await stockItemsApi.listAll()) } catch { stockItems.value = [] }
   // Kategori aset hanya bisa dibaca pemegang assets.view (izin rutenya);
   // tanpa izin itu panggilannya selalu 403.
   if (auth.hasPermission('assets.view')) {

@@ -79,13 +79,7 @@ async function loadCatalog() {
   error.value = ''
   try {
     // The catalog endpoint also permits recipes.view; F&B needs no stockitems.view.
-    const first = await stockItemsApi.list({ page: 1, limit: 1000 })
-    const catalog = [...(Array.isArray(first) ? first : first?.data || [])]
-    for (let nextPage = 2; nextPage <= (first?.total_pages || 1); nextPage++) {
-      const result = await stockItemsApi.list({ page: nextPage, limit: 1000 })
-      catalog.push(...(result?.data || []))
-    }
-    items.value = catalog
+    items.value = await stockItemsApi.listAll()
     page.value = 1
   } catch (e) {
     error.value = e?.message || 'Gagal memuat bahan formula'

@@ -2311,6 +2311,69 @@ const approvedLockMsg = "pengajuan sudah disetujui — isinya terkunci; pembelia
 // pengadaan, nama item, qty, satuan, HPS, sumber HPS, rujukan baris RAB,
 // serta jumlah baris (tambah/hapus) terkunci. Hasilnya = isi tersimpan dengan
 // harga final baru, sehingga field lain dari klien tidak pernah ikut tersimpan.
+const approverQtyLockMsg = "penyetuju hanya dapat mengubah qty pengajuan"
+
+// applyApproverQtyEdit mengizinkan penyetuju menyesuaikan qty item pada tahap
+// persetujuan (verified, atau pending urgent) sambil mengunci struktur, nama,
+// satuan, HPS, sumber HPS, dan baris RAB. Qty asli pengaju disimpan pada
+// RequestedQty agar jejak perubahannya tetap terlihat.
+func applyApproverQtyEdit(stored, incoming []models.PurchaseRequestItem) ([]models.PurchaseRequestItem, error) {
+	if len(incoming) != len(stored) {
+		return nil, Invalid("%s (jumlah pengadaan tidak boleh berubah dari %d menjadi %d)", approverQtyLockMsg, len(stored), len(incoming))
+	}
+	out := make([]models.PurchaseRequestItem, len(stored))
+	for g := range stored {
+		sg, ig := stored[g], incoming[g]
+		if strings.TrimSpace(ig.Name) != strings.TrimSpace(sg.Name) {
+			return nil, Invalid("%s (nama pengadaan %q tidak boleh diubah)", approverQtyLockMsg, sg.Name)
+		}
+		if len(ig.Items) != len(sg.Items) {
+			return nil, Invalid("%s (baris item pada %q tidak boleh ditambah atau dihapus)", approverQtyLockMsg, sg.Name)
+		}
+		og := sg
+		og.Items = make([]models.PurchaseSubItem, len(sg.Items))
+		for i := range sg.Items {
+			s, in := sg.Items[i], ig.Items[i]
+			field := ""
+			switch {
+			case strings.TrimSpace(in.Name) != strings.TrimSpace(s.Name):
+				field = "nama item"
+			case strings.TrimSpace(in.Unit) != strings.TrimSpace(s.Unit):
+				field = "satuan"
+			case math.Abs(in.HpsPrice-s.HpsPrice) > 0.005:
+				field = "HPS"
+			case strings.TrimSpace(in.HpsSource) != strings.TrimSpace(s.HpsSource):
+				field = "sumber HPS"
+			case strings.TrimSpace(in.RabItemID) != strings.TrimSpace(s.RabItemID):
+				field = "baris RAB"
+			}
+			if field != "" {
+				return nil, Invalid("%s (%s pada item %q tidak boleh diubah)", approverQtyLockMsg, field, s.Name)
+			}
+			if in.Qty <= 0 {
+				return nil, Invalid("qty item %q harus minimal 1", s.Name)
+			}
+			orig := s.Qty
+			if s.RequestedQty != nil {
+				orig = *s.RequestedQty
+			}
+			s.Qty = in.Qty
+			if s.Qty != orig {
+				origCopy := orig
+				s.RequestedQty = &origCopy
+			} else {
+				s.RequestedQty = nil
+			}
+			s.PurchasedQty = nil
+			s.FinalPrice = 0
+			s.FinalSubtotal = 0
+			og.Items[i] = s
+		}
+		out[g] = og
+	}
+	return out, nil
+}
+
 func applyApprovedPriceEdit(stored, incoming []models.PurchaseRequestItem) ([]models.PurchaseRequestItem, error) {
 	if len(incoming) != len(stored) {
 		return nil, Invalid("%s (jumlah pengadaan berubah dari %d menjadi %d)", approvedLockMsg, len(stored), len(incoming))
@@ -2390,7 +2453,9 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	case "verified":
 		// Bahan baku dan jasa tidak melalui verifikasi, jadi 'verified' baginya
 		// berarti "baru diajukan, menunggu persetujuan": pengaju masih boleh mengubah.
-		if !SkipsVerification(cur.RequestType) {
+		// Untuk barang yang sudah diverifikasi, hanya penyetuju (ApproverQtyOnly)
+		// yang boleh menyesuaikan qty.
+		if !SkipsVerification(cur.RequestType) && !input.ApproverQtyOnly {
 			return nil, Invalid("pengajuan sudah diverifikasi dan menunggu persetujuan — isinya terkunci. Batalkan lalu ajukan ulang bila perlu diubah")
 		}
 	default:
@@ -2434,6 +2499,20 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 				return nil, err
 			}
 		}
+	} else if input.ApproverQtyOnly {
+		// Penyetuju menyesuaikan qty pada tahap persetujuan (verified, atau
+		// pending urgent): hanya qty yang boleh berubah, struktur & HPS terkunci.
+		if cur.Status == "pending" && cur.Urgency != "urgent" {
+			return nil, Invalid("pengajuan rutin yang belum diverifikasi tidak dapat diubah penyetuju")
+		}
+		if err := json.Unmarshal(cur.ItemsJSON, &stored); err != nil {
+			return nil, fmt.Errorf("gagal membaca item pengajuan: %w", err)
+		}
+		merged, err := applyApproverQtyEdit(stored, input.Items)
+		if err != nil {
+			return nil, err
+		}
+		items = merged
 	} else {
 		// Pending (atau bahan baku yang menunggu persetujuan): pengaju bebas
 		// mengubah isi, tetapi harga final tetap urusan pembelian setelah
@@ -2472,7 +2551,7 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	// tersentuh. Vendor id dan nama diperlakukan satu paket supaya tidak pernah
 	// tersisa id tanpa nama atau sebaliknya.
 	var vendorID, vendorName, invoice, invoiceURL interface{}
-	if input.VendorID != nil || input.VendorName != nil {
+	if cur.Status == "approved" && (input.VendorID != nil || input.VendorName != nil) {
 		if input.VendorID != nil {
 			vendorID = nilIfEmpty(strings.TrimSpace(*input.VendorID))
 		}
@@ -2516,7 +2595,7 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 		WHERE id=$8 AND status=$12
 	`, itemsJSON, amountOf(totalHps, totalFinal), totalHps, totalFinal,
 		vendorID, vendorName, invoice, id,
-		input.VendorID != nil || input.VendorName != nil,
+		cur.Status == "approved" && (input.VendorID != nil || input.VendorName != nil),
 		goodsKind, time.Now().UTC(), cur.Status, invoiceURL)
 	if err != nil {
 		return nil, err

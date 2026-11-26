@@ -355,7 +355,7 @@
               <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="showHps">
                   <dt class="text-gray-400">HPS</dt>
-                  <dd class="font-medium text-gray-900">{{ formatRupiah(detail.status === 'pending' ? detailHpsTotal : detail.total_hps) }}</dd>
+                  <dd class="font-medium text-gray-900">{{ formatRupiah(canEditDetailQty ? detailHpsTotal : detail.total_hps) }}</dd>
                 </template>
                 <dt class="text-gray-400">{{ detail.children?.length ? 'Total' : 'Harga' }}</dt>
                 <dd class="font-semibold text-emerald-700">{{ detail.total_final ? formatRupiah(detail.total_final) : 'Belum ditentukan' }}</dd>
@@ -519,7 +519,7 @@
               <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
                 <p class="min-w-0 break-words text-sm font-semibold text-gray-900">{{ i + 1 }}. {{ item.name }}</p>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                  <span v-if="showHps" class="text-gray-500">HPS: <strong>{{ formatRupiah(detail.status === 'pending' ? calcDetailItemHps(item) : item.hps_total) }}</strong></span>
+                  <span v-if="showHps" class="text-gray-500">HPS: <strong>{{ formatRupiah(canEditDetailQty ? calcDetailItemHps(item) : item.hps_total) }}</strong></span>
                   <span class="text-emerald-700">Harga: <strong>{{ item.final_total != null && item.final_total > 0 ? formatRupiah(item.final_total) : '-' }}</strong></span>
                 </div>
               </div>
@@ -536,11 +536,12 @@
                   <dl class="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px]">
                     <dt class="text-gray-400">Qty diajukan</dt>
                     <dd class="text-gray-800">
-                      <span v-if="canEditItems" class="inline-flex items-center gap-1">
-                        <input v-model.number="sub.qty" type="number" min="1" class="w-20 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
+                      <span v-if="canEditDetailQty" class="inline-flex items-center gap-1">
+                        <input v-model.number="sub.qty" type="number" min="1" step="1" class="w-20 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
                         <span>{{ sub.unit }}</span>
                       </span>
                       <span v-else>{{ sub.qty }} {{ sub.unit }}</span>
+                      <span v-if="sub.requested_qty != null && sub.requested_qty !== sub.qty" class="ml-1 text-[10px] text-amber-700">(diajukan {{ sub.requested_qty }})</span>
                     </dd>
                     <template v-if="sub.purchased_qty != null">
                       <dt class="text-gray-400">Qty dibeli</dt>
@@ -558,7 +559,7 @@
                       <dt class="text-gray-400">HPS</dt>
                       <dd class="text-gray-700">
                         {{ formatRupiah(sub.hps_price) }}<span class="text-gray-400"> × {{ sub.qty }} = </span>
-                        <strong>{{ formatRupiah(detail.status === 'pending' ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</strong>
+                        <strong>{{ formatRupiah(canEditDetailQty ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</strong>
                       </dd>
                     </template>
                     <dt class="text-gray-400">Harga</dt>
@@ -600,13 +601,14 @@
                         <span v-if="sub.rab_item_id" class="rab-chip block w-fit">RAB · {{ rabName(sub.rab_item_id) }}</span>
                       </td>
                       <td class="py-1.5 pr-2 text-right">
-                        <input v-if="canEditItems" v-model.number="sub.qty" type="number" min="1" class="w-24 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
+                        <input v-if="canEditDetailQty" v-model.number="sub.qty" type="number" min="1" step="1" class="w-24 text-right input-sm py-0.5 px-1" @change="saveDetailQty()" />
                         <span v-else>{{ sub.qty }}</span>
+                        <span v-if="sub.requested_qty != null && sub.requested_qty !== sub.qty" class="block text-[10px] text-amber-700">diajukan {{ sub.requested_qty }}</span>
                       </td>
                       <td class="py-1.5 pr-2 text-right font-medium text-emerald-700">{{ sub.purchased_qty != null ? purchaseQuantity(sub) : '—' }}</td>
                       <td class="py-1.5 pr-2">{{ sub.unit }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(sub.hps_price) }}</td>
-                      <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(detail.status === 'pending' ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</td>
+                      <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(canEditDetailQty ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</td>
                       <td v-if="showHps" class="max-w-[14rem] py-1.5 pr-2">
                         <input v-if="canEditItems" v-model="sub.hps_source" class="input-sm w-full py-0.5 px-1"
                           placeholder="toko / link" @change="saveDetailQty()" />
@@ -625,7 +627,7 @@
 
           <!-- Totals -->
           <div class="flex flex-wrap justify-end gap-x-6 gap-y-1 mt-3 text-sm">
-            <span v-if="showHps" class="text-gray-700">Total HPS: <strong>{{ formatRupiah(detail.status === 'pending' ? detailHpsTotal : detail.total_hps) }}</strong></span>
+            <span v-if="showHps" class="text-gray-700">Total HPS: <strong>{{ formatRupiah(canEditDetailQty ? detailHpsTotal : detail.total_hps) }}</strong></span>
             <span class="text-emerald-700">Total Harga: <strong>{{ detail.total_final ? formatRupiah(detail.total_final) : '-' }}</strong></span>
           </div>
 
@@ -785,6 +787,9 @@
             <template v-else-if="detail.status === 'pending'">Diajukan oleh <strong>{{ detail.requested_by || '-' }}</strong> · {{ formatDateTime(detail.created_at) }} — pengajuan <strong>Urgent</strong> dapat langsung diputuskan penyetuju.</template>
             <template v-else>Diverifikasi oleh <strong>{{ detail.verified_by || '-' }}</strong><template v-if="detail.verified_at"> · {{ formatDateTime(detail.verified_at) }}</template><template v-if="detail.rejected_items?.length"> · {{ detail.rejected_items.length }} item ditolak saat verifikasi</template>.</template>
           </p>
+          <p v-if="canApproveEditQty" class="mb-3 rounded-lg border border-blue-200 bg-white/80 px-3 py-1.5 text-[11px] text-blue-900">
+            Penyetuju dapat menyesuaikan <strong>Qty</strong> pada daftar item di atas sebelum menyetujui — total HPS dihitung ulang otomatis dan qty awal pengaju tetap tercatat.
+          </p>
           <!-- Anggaran projek baru terpakai saat disetujui: peringatkan bila melampaui sisa baris RAB. -->
           <div v-if="approvalRabWarnings.length" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             <p class="font-semibold">Menyetujui pengajuan ini melampaui sisa anggaran RAB:</p>
@@ -810,7 +815,7 @@
                 <input v-model="approveDirectCash" type="radio" :value="true" class="mt-0.5 text-emerald-600" />
                 <div>
                   <p class="font-semibold text-gray-900">Langsung Pembayaran Kasir Outlet</p>
-                  <p class="mt-0.5 text-[11px] text-gray-500">Kirim tugas penyerahan kas senilai HPS ({{ formatRupiah(detail.total_hps) }}) langsung ke tablet kasir outlet.</p>
+                  <p class="mt-0.5 text-[11px] text-gray-500">Kirim tugas penyerahan kas senilai HPS ({{ formatRupiah(canEditDetailQty ? detailHpsTotal : detail.total_hps) }}) langsung ke tablet kasir outlet.</p>
                 </div>
               </label>
             </div>
@@ -1347,6 +1352,9 @@ function canEditStatus(st) {
   return (st === 'pending' || (isBahan.value && st === 'verified')) && authStore.hasPermission(perm('submit'))
 }
 const canEditItems = computed(() => canEditStatus(detail.value?.status))
+// Penyetuju dapat menyesuaikan qty item pada tahap persetujuan (verified, atau pending urgent).
+const canApproveEditQty = computed(() => canShowApprovePanel.value && !canEditItems.value)
+const canEditDetailQty = computed(() => canEditItems.value || canApproveEditQty.value)
 const canAdjustPurchaseQuantity = computed(() => {
   const d = detail.value
   return d?.status === 'approved' && authStore.hasPermission(perm('purchasing'))
@@ -1405,7 +1413,11 @@ function shortSource(v) {
 }
 
 function getUnsplitItems(d) {
-  return (d.items || []).map(it => ({ ...it, selected: false }))
+  return (d.items || []).map(it => ({
+    ...it,
+    selected: false,
+    items: (it.items || []).map(sub => ({ ...sub })),
+  }))
 }
 
 const detailHpsTotal = computed(() =>
@@ -1759,9 +1771,10 @@ function rabName(id) {
 // nilai item = harga final bila sudah ada, selain itu HPS (sama dengan server).
 const approvalRabWarnings = computed(() => {
   const d = detail.value
-  if (!d?.project_id || d.status !== 'verified') return []
+  if (!d?.project_id || !canShowApprovePanel.value) return []
   const byLine = {}
-  for (const g of d.items || []) {
+  const srcGroups = canEditDetailQty.value ? detailItems.value : (d.items || [])
+  for (const g of srcGroups) {
     for (const sub of g.items || []) {
       if (!sub.rab_item_id) continue
       const price = sub.final_price > 0 ? sub.final_price : (sub.hps_price || 0)
@@ -2139,26 +2152,58 @@ async function reloadDetail() {
   } catch { if (seq === detailSeq) toast.error('Gagal memuat ulang detail.') }
 }
 
-// Simpan perubahan item (qty / hapus / sumber HPS) selama pending. Berhasil
-// atau gagal, layar dimuat ulang dari server — bila server menolak, angka
-// yang tidak pernah tersimpan tidak boleh tetap tampil seolah berlaku.
-async function saveDetailQty(successMsg = 'Perubahan item tersimpan.') {
-  if (!detail.value?.id) return
-  savingDetailQty.value = true
-  try {
-    // version: bila dokumen sudah berubah (mis. baru diverifikasi), server 409.
-    await purchaseApi.updateItems(detail.value.id, { items: detailItems.value, version: detail.value.version })
-    toast.success(successMsg)
-    fetchList()
-  } catch (err) {
-    toast.error(isConflictError(err)
-      ? (err?.message || 'Pengajuan berubah') + ' — data terbaru dimuat ulang, ulangi perubahan bila masih perlu.'
-      : (err?.message ?? 'Gagal menyimpan perubahan item.'))
+let _saveDetailQtyPromise = null
+
+function hasUnsavedDetailQtyChanges() {
+  const saved = detail.value?.items || []
+  const cur = detailItems.value || []
+  if (saved.length !== cur.length) return false
+  for (let i = 0; i < saved.length; i++) {
+    const sSubs = saved[i]?.items || []
+    const cSubs = cur[i]?.items || []
+    if (sSubs.length !== cSubs.length) return false
+    for (let j = 0; j < sSubs.length; j++) {
+      if (Number(sSubs[j]?.qty) !== Number(cSubs[j]?.qty)) return true
+    }
   }
-  finally {
-    await reloadDetail()
-    savingDetailQty.value = false
+  return false
+}
+
+// Simpan perubahan item (qty / hapus / sumber HPS) selama pending atau penyesuaian
+// qty oleh penyetuju pada tahap persetujuan. Berhasil atau gagal, layar dimuat ulang
+// dari server — bila server menolak, angka yang tidak tersimpan tidak tetap tampil.
+function saveDetailQty(successMsg = 'Perubahan qty tersimpan.') {
+  if (!detail.value?.id) return Promise.resolve(false)
+  for (const g of detailItems.value || []) {
+    for (const sub of g.items || []) {
+      const q = Number(sub.qty)
+      if (!Number.isInteger(q) || q < 1) {
+        toast.error(`Qty item "${sub.name}" harus bilangan bulat minimal 1.`)
+        reloadDetail()
+        return Promise.resolve(false)
+      }
+    }
   }
+  const run = (async () => {
+    savingDetailQty.value = true
+    try {
+      await purchaseApi.updateItems(detail.value.id, { items: detailItems.value, version: detail.value.version })
+      toast.success(successMsg)
+      fetchList()
+      return true
+    } catch (err) {
+      toast.error(isConflictError(err)
+        ? (err?.message || 'Pengajuan berubah') + ' — data terbaru dimuat ulang, ulangi perubahan bila masih perlu.'
+        : (err?.message ?? 'Gagal menyimpan perubahan item.'))
+      return false
+    } finally {
+      await reloadDetail()
+      savingDetailQty.value = false
+      if (_saveDetailQtyPromise === run) _saveDetailQtyPromise = null
+    }
+  })()
+  _saveDetailQtyPromise = run
+  return run
 }
 
 // 409 = isi pengajuan berubah sejak dibuka (mis. pengaju mengubah qty):
@@ -2205,6 +2250,13 @@ async function submitDetailApprove() {
   if (approveDirectCash.value && !approvePayoutRecipient.value.trim()) {
     toast.error('Nama penerima kas wajib diisi untuk diarahkan ke Kas Kasir Outlet.')
     return
+  }
+  if (_saveDetailQtyPromise) {
+    const ok = await _saveDetailQtyPromise
+    if (!ok) return
+  } else if (canEditDetailQty.value && hasUnsavedDetailQtyChanges()) {
+    const ok = await saveDetailQty('Perubahan qty tersimpan.')
+    if (!ok) return
   }
   actionLoading.value = true
   try {

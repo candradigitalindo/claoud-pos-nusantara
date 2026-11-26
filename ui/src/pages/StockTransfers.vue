@@ -141,43 +141,57 @@
 
         <!-- Items -->
         <div>
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-medium text-gray-700">Daftar Item</span>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-gray-700">Daftar Item</span>
+              <span v-if="loadingStockItems" class="text-xs text-gray-400">Memuat stok…</span>
+              <span v-else-if="selectedFromWarehouse" class="text-xs text-gray-500">
+                ({{ availableStockCount }} berstok / {{ stockItems.length }} bahan baku)
+              </span>
+            </div>
             <button @click="addItem" class="text-xs text-emerald-600 hover:text-emerald-800 font-medium">+ Tambah Item</button>
           </div>
           <div v-if="form.items.length === 0" class="text-sm text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-lg">
             Belum ada item. Klik "+ Tambah Item".
           </div>
-          <div v-for="(it, i) in form.items" :key="i" class="flex flex-wrap sm:flex-nowrap items-end gap-2 mb-3 sm:mb-2">
-            <div class="w-full min-w-0 sm:w-auto sm:flex-1">
-              <label class="block text-xs text-gray-500 mb-1">Bahan Baku</label>
-              <SearchSelect
-                v-model="it.item_id"
-                :options="stockItemOptions"
-                placeholder="Pilih bahan baku..."
-                searchPlaceholder="Cari bahan baku..."
-                valueKey="value"
-                labelKey="label"
-                @change="onItemSelect(it)"
-              />
+          <div v-for="(it, i) in form.items" :key="i" class="mb-3 sm:mb-2 space-y-1">
+            <div class="flex flex-wrap sm:flex-nowrap items-end gap-2">
+              <div class="w-full min-w-0 sm:w-auto sm:flex-1">
+                <label class="block text-xs text-gray-500 mb-1">Bahan Baku</label>
+                <SearchSelect
+                  v-model="it.item_id"
+                  :options="stockItemOptions"
+                  placeholder="Pilih bahan baku..."
+                  searchPlaceholder="Cari bahan baku..."
+                  valueKey="value"
+                  labelKey="label"
+                  @change="onItemSelect(it)"
+                />
+              </div>
+              <div class="w-28">
+                <label class="block text-xs text-gray-500 mb-1">Jumlah</label>
+                <input v-model.number="it.qty_dist" type="number" step="0.01" min="0"
+                  class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+              </div>
+              <div class="w-28">
+                <label class="block text-xs text-gray-500 mb-1">Satuan</label>
+                <SearchableSelect v-model="it.unit_used" class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2">
+                  <option v-for="unit in stockUnitOptions(stockItemMap[it.item_id])" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
+                </SearchableSelect>
+              </div>
+              <div class="flex-1 sm:flex-none sm:w-28 text-xs text-gray-400 pb-2">
+                <span v-if="it.qty_dist && it.dist_ratio">
+                  = {{ (it.qty_dist * stockUnitRatio(stockItemMap[it.item_id], it.unit_used)).toFixed(3) }} {{ it.base_unit }}
+                </span>
+              </div>
+              <AppActionButton icon="delete" label="Hapus baris" @click="removeItem(i)" />
             </div>
-            <div class="w-28">
-              <label class="block text-xs text-gray-500 mb-1">Jumlah</label>
-              <input v-model.number="it.qty_dist" type="number" step="0.01" min="0"
-                class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-            </div>
-            <div class="w-28">
-              <label class="block text-xs text-gray-500 mb-1">Satuan</label>
-              <SearchableSelect v-model="it.unit_used" class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2">
-                <option v-for="unit in stockUnitOptions(stockItemMap[it.item_id])" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
-              </SearchableSelect>
-            </div>
-            <div class="flex-1 sm:flex-none sm:w-28 text-xs text-gray-400 pb-2">
-              <span v-if="it.qty_dist && it.dist_ratio">
-                = {{ (it.qty_dist * stockUnitRatio(stockItemMap[it.item_id], it.unit_used)).toFixed(3) }} {{ it.base_unit }}
+            <div v-if="selectedFromWarehouse && it.item_id && stockItemMap[it.item_id]" class="text-[11px] pl-0.5">
+              <span :class="itemExceedsSourceStock(it) ? 'text-amber-600 font-medium' : (Number(stockItemMap[it.item_id].warehouse_qty || 0) > 0 ? 'text-emerald-700' : 'text-gray-400')">
+                Stok di {{ selectedFromWarehouse.name }}: {{ formatSourceStock(stockItemMap[it.item_id]) }}
+                <template v-if="itemExceedsSourceStock(it)"> · Melebihi stok tersedia saat ini</template>
               </span>
             </div>
-            <AppActionButton icon="delete" label="Hapus baris" @click="removeItem(i)" />
           </div>
         </div>
       </div>
@@ -298,7 +312,7 @@
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
-import { stockUnitOptions, stockUnitRatio, preferredStockUnit } from '@/utils/stockUnits.js'
+import { stockUnitOptions, stockUnitRatio, preferredStockUnit, stockQtyText } from '@/utils/stockUnits.js'
 import { ref, computed, watch, onMounted } from 'vue'
 import { warehousesApi, stockItemsApi, stockTransfersApi } from '@/api/warehouse.js'
 import { useToastStore } from '@/stores/toast.js'
@@ -345,8 +359,9 @@ const warehouseList = ref([])
 // Pilihan gudang form buat transfer: untuk role per outlet ditambah Gudang
 // Induk aktif (?include_central=1) — daftar filter tetap gudang outletnya.
 const formWarehouseList = ref([])
-const stockItemOptions = ref([])
-const stockItemMap = ref({})
+const stockItems = ref([])
+const loadingStockItems = ref(false)
+const stockItemMap = computed(() => Object.fromEntries(stockItems.value.map(s => [s.id, s])))
 
 const showCreate = ref(false)
 const showDetail = ref(false)
@@ -486,23 +501,79 @@ async function loadFormWarehouses() {
   }
 }
 
-async function loadStockItems() {
+const fmtQtyNum = (v) => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 4 }).format(Number(v || 0))
+
+function formatSourceStock(item) {
+  if (!item) return '0'
+  const qtyBase = Number(item.warehouse_qty || 0)
+  const whType = selectedFromWarehouse.value?.type
+  const primary = stockQtyText(item, qtyBase, whType)
+  const unit = preferredStockUnit(item, whType)
+  if (unit && unit !== item.base_unit && item.base_unit && qtyBase !== 0) {
+    return `${primary} (${fmtQtyNum(qtyBase)} ${item.base_unit})`
+  }
+  return primary
+}
+
+function itemExceedsSourceStock(it) {
+  const s = stockItemMap.value[it?.item_id]
+  if (!selectedFromWarehouse.value || !s || !it?.qty_dist || it.qty_dist <= 0) return false
+  const needBase = Number(it.qty_dist) * stockUnitRatio(s, it.unit_used)
+  return needBase > Number(s.warehouse_qty || 0) + 1e-6
+}
+
+const availableStockCount = computed(() =>
+  stockItems.value.filter(s => Number(s.warehouse_qty || 0) > 0).length
+)
+
+const stockItemOptions = computed(() => {
+  const hasWh = Boolean(selectedFromWarehouse.value)
+  const list = [...stockItems.value]
+  if (hasWh) {
+    list.sort((a, b) => {
+      const aAvail = Number(a.warehouse_qty || 0) > 0 ? 1 : 0
+      const bAvail = Number(b.warehouse_qty || 0) > 0 ? 1 : 0
+      if (aAvail !== bAvail) return bAvail - aAvail
+      return String(a.name || '').localeCompare(String(b.name || ''), 'id', { sensitivity: 'base' })
+    })
+  }
+  return list.map(s => {
+    const base = `${s.code} — ${s.name}`
+    if (!hasWh) return { value: s.id, label: base }
+    const qtyBase = Number(s.warehouse_qty || 0)
+    return {
+      value: s.id,
+      label: qtyBase > 0 ? `${base} · Stok: ${formatSourceStock(s)}` : `${base} · Stok: 0 ${s.base_unit || ''}`.trim(),
+    }
+  })
+})
+
+let stockItemsSeq = 0
+async function loadStockItems(warehouseId = form.value.from_warehouse_id) {
+  const seq = ++stockItemsSeq
+  loadingStockItems.value = true
   try {
-    const data = await stockItemsApi.list({ limit: 500, active_only: 'true' })
-    const items = data.data || []
-    stockItemMap.value = Object.fromEntries(items.map(s => [s.id, s]))
-    stockItemOptions.value = items.map(s => ({
-      value: s.id, label: `${s.code} — ${s.name}`
-    }))
+    const params = { active_only: 'true' }
+    if (warehouseId) params.warehouse_id = warehouseId
+    const items = await stockItemsApi.listAll(params)
+    if (seq !== stockItemsSeq) return
+    stockItems.value = items
   } catch (e) {
-    toast.error(e?.message || 'Gagal memuat daftar bahan baku')
+    if (seq === stockItemsSeq) {
+      toast.error(e?.message || 'Gagal memuat daftar bahan baku')
+    }
+  } finally {
+    if (seq === stockItemsSeq) loadingStockItems.value = false
   }
 }
 
 watch(page, load)
-watch(() => form.value.from_warehouse_id, (nextValue) => {
+watch(() => [showCreate.value, form.value.from_warehouse_id], ([open, nextValue]) => {
   if (nextValue && nextValue === form.value.to_warehouse_id) {
     form.value.to_warehouse_id = ''
+  }
+  if (open) {
+    loadStockItems(nextValue)
   }
 })
 watch(() => form.value.to_warehouse_id, (nextValue) => {

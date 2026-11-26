@@ -4,6 +4,9 @@ package models
 type PurchaseSubItem struct {
 	Name string `json:"name"`
 	Qty  int    `json:"qty"`
+	// RequestedQty menyimpan qty awal dari pengaju bila penyetuju menyesuaikan
+	// qty pada tahap persetujuan; nil bila qty tidak pernah diubah penyetuju.
+	RequestedQty *int `json:"requested_qty,omitempty"`
 	// PurchasedQty is set by purchasing after approval. Qty remains the
 	// approved request; nil keeps legacy requests at the requested quantity.
 	PurchasedQty *int    `json:"purchased_qty,omitempty"`
@@ -584,6 +587,10 @@ type UpdatePurchaseItemsInput struct {
 	// ExpectedStatus: status yang dipakai handler memilih izin (pending →
 	// submit, approved → purchasing). Beda saat dikunci → 409.
 	ExpectedStatus string `json:"-"`
+	// ApproverQtyOnly: diisi handler (bukan JSON) saat penyetuju mengubah qty
+	// pada tahap persetujuan (verified, atau pending urgent). Hanya qty yang
+	// boleh berubah; nama, satuan, HPS, sumber, RAB, dan jumlah baris terkunci.
+	ApproverQtyOnly bool `json:"-"`
 }
 
 // PurchaseRequestListResponse wraps paginated purchase requests.

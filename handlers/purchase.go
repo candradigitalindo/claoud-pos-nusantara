@@ -484,39 +484,59 @@ func UpdatePurchaseItems(c *fiber.Ctx) error {
 	input.ActorName = purchaseActor(c).Name
 
 	// Check current status to determine required permission
-	var currentStatus, reqType string
-	if err := database.DB.QueryRow("SELECT status, request_type FROM purchase_requests WHERE id = $1", id).Scan(&currentStatus, &reqType); err != nil {
+	var currentStatus, reqType, urgency string
+	if err := database.DB.QueryRow("SELECT status, request_type, COALESCE(urgency, 'rutin') FROM purchase_requests WHERE id = $1", id).Scan(&currentStatus, &reqType, &urgency); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
 			Success: false, Error: "Pengajuan tidak ditemukan.",
 		})
 	}
 
-	var action string
+	access, err := loadPurchaseAccess(c)
+	if err != nil {
+		return permissionLoadError(c)
+	}
+
 	switch currentStatus {
 	case "pending":
-		action = "submit" // pengaju edits qty
+		if access.can(reqType, "submit") {
+			// pengaju mengubah isi pengajuan selama masih pending
+		} else if urgency == "urgent" && access.can(reqType, "approve") {
+			// pengajuan urgent dapat langsung diputuskan penyetuju: boleh sesuaikan qty
+			input.ApproverQtyOnly = true
+		} else {
+			return purchaseForbidden(c, "Anda tidak memiliki izin mengubah item pengajuan ini.")
+		}
 	case "approved":
 		// Purchasing hanya mengisi harga final, vendor, dan invoice — service
 		// menolak perubahan isi lain (T-6).
-		action = "purchasing"
-	case "verified":
-		// Bahan baku dan jasa tidak melalui verifikasi: lahir 'verified'
-		// (Menunggu Persetujuan) dan pengajunya masih boleh mengubah isi sampai
-		// disetujui. Barang yang sudah diverifikasi terkunci.
-		if !services.SkipsVerification(reqType) {
-			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
-				Success: false, Error: "Pengajuan sudah diverifikasi dan menunggu persetujuan — isinya terkunci.",
-			})
+		if ok, err := requirePurchasePerm(c, reqType, "purchasing", ""); !ok {
+			return err
 		}
-		action = "submit"
+	case "verified":
+		// Penyetuju boleh menyesuaikan qty pada tahap persetujuan untuk semua
+		// jenis (barang, bahan baku, jasa). Bahan baku & jasa juga tetap boleh
+		// diubah pengajunya selama belum disetujui.
+		if services.SkipsVerification(reqType) {
+			if access.can(reqType, "submit") {
+				// pengaju mengubah isi bahan baku / jasa yang menunggu persetujuan
+			} else if access.can(reqType, "approve") {
+				input.ApproverQtyOnly = true
+			} else {
+				return purchaseForbidden(c, "Anda tidak memiliki izin mengubah item pengajuan ini.")
+			}
+		} else {
+			if access.can(reqType, "approve") {
+				input.ApproverQtyOnly = true
+			} else {
+				return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{
+					Success: false, Error: "Pengajuan sudah diverifikasi — hanya penyetuju yang dapat mengubah qty.",
+				})
+			}
+		}
 	default:
 		return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
 			Success: false, Error: "Tidak bisa edit item pada status ini.",
 		})
-	}
-
-	if ok, err := requirePurchasePerm(c, reqType, action, ""); !ok {
-		return err
 	}
 	input.ExpectedStatus = currentStatus
 

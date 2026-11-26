@@ -281,10 +281,10 @@ onMounted(async () => {
   try {
     const [w, it] = await Promise.all([
       warehousesApi.list({ limit: 200 }),
-      stockItemsApi.list({ limit: 500, active_only: true }),
+      stockItemsApi.listAll({ active_only: true }),
     ])
     warehouses.value = w?.data ?? []
-    items.value = it?.data ?? []
+    items.value = Array.isArray(it) ? it : (it?.data ?? [])
   } catch { /* ignore */ }
   await load()
 })

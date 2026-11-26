@@ -491,8 +491,7 @@ function openProduceModal() {
 
 async function loadAllItems() {
   try {
-    const res = await stockItemsApi.list({ limit: 500, active_only: true })
-    allStockItems.value = res.data || []
+    allStockItems.value = await stockItemsApi.listAll({ active_only: true })
   } catch (e) {}
 }
 

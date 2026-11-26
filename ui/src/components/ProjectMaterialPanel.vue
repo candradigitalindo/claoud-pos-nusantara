@@ -211,7 +211,7 @@ async function loadRefs() {
   try { outlets.value = asArray((await outletsApi.myOutlets())?.outlets ?? await outletsApi.myOutlets()) } catch { outlets.value = [] }
   if (auth.hasPermission('stockledger.adjust')) {
   try { warehouses.value = asArray(await warehousesApi.list()) } catch { warehouses.value = [] }
-  try { stockItems.value = asArray(await stockItemsApi.list({ limit: 500 })) } catch { stockItems.value = [] }
+  try { stockItems.value = asArray(await stockItemsApi.listAll()) } catch { stockItems.value = [] }
   }
   try { projects.value = asArray(await projectUsageApi.projects()) } catch { projects.value = [] }
   try { categories.value = asArray(await assetCategoriesApi.list()) } catch { categories.value = [] }

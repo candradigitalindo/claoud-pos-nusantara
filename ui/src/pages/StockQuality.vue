@@ -115,7 +115,7 @@ watch(search, () => { clearTimeout(timer); timer = setTimeout(() => { if (page.v
 onUnmounted(() => { clearTimeout(timer); seq++; batchSeq++ })
 onMounted(async () => {
   load()
-  try { lookups.value = await stockQualityApi.lookups(); if (canReport.value) { const data = await stockItemsApi.list({ active_only: true, limit: 1000 }); items.value = Array.isArray(data) ? data : data.data || [] } }
+  try { lookups.value = await stockQualityApi.lookups(); if (canReport.value) { items.value = await stockItemsApi.listAll({ active_only: true }) } }
   catch (e) { error.value = e.message }
 })
 useRealtime(['stock_quality', 'stock_transfer'], async () => {

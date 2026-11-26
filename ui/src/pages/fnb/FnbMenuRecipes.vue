@@ -280,12 +280,12 @@ async function fetchAll() {
     const [resR, resO, resS] = await Promise.all([
       recipeMastersApi.list(),
       outletsApi.myOutlets(),
-      stockItemsApi.list({ limit: 1000, active_only: true })
+      stockItemsApi.listAll({ active_only: true })
     ])
     // apiClient meng-unwrap envelope {success,data} → responsnya array langsung.
     recipes.value = Array.isArray(resR) ? resR : (resR?.data || [])
     outlets.value = resO.outlets || resO || []
-    allStockItems.value = resS.data || []
+    allStockItems.value = Array.isArray(resS) ? resS : (resS?.data || [])
   } catch (e) {
     toast.error('Gagal memuat data')
   } finally {
