@@ -458,7 +458,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 
 	// File upload — dipakai untuk bukti pembayaran pengadaan
 	// stockledger.adjust: petugas gudang mengunggah foto serah terima barang dapur.
-	admin.Post("/upload", middleware.RequireAnyPermission("finance.entries.create", "finance.payments.view", "procurement.requests.view", "procurement.rawmaterials.view", "assets.create", "assets.update", "assets.usage.create", "reservations.update", "stockledger.adjust"), handlers.UploadFile)
+	admin.Post("/upload", middleware.RequireAnyPermission("finance.entries.create", "finance.payments.view", "procurement.requests.view", "procurement.rawmaterials.view", "assets.create", "assets.update", "assets.usage.create", "reservations.create", "reservations.update", "stockledger.adjust"), handlers.UploadFile)
 
 	// Bank Accounts
 	// finance.payments.pay ikut boleh membaca daftar: form bayar di halaman
@@ -572,6 +572,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// sebelum /:id supaya tidak tertangkap sebagai id.
 	admin.Get("/reservations/settings", middleware.RequirePermission("reservations.view"), handlers.GetReservationSettings)
 	admin.Put("/reservations/settings", middleware.RequirePermission("reservations.update"), handlers.UpdateReservationSettings)
+	admin.Get("/reservations/products", middleware.RequirePermission("reservations.view"), handlers.ListReservationProducts)
 	admin.Get("/reservations", middleware.RequirePermission("reservations.view"), handlers.ListReservations)
 	admin.Get("/reservations/:id", middleware.RequirePermission("reservations.view"), handlers.GetReservation)
 	admin.Post("/reservations", middleware.RequirePermission("reservations.create"), broadcastAfter(handlers.CreateReservation, "reservation"))

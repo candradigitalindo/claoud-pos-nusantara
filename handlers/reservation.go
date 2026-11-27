@@ -118,6 +118,9 @@ func GetReservationSettings(c *fiber.Ctx) error {
 }
 
 func UpdateReservationSettings(c *fiber.Ctx) error {
+	if getOutletScope(c) != nil {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Kebijakan DP global hanya dapat diubah oleh role dengan cakupan semua outlet"})
+	}
 	var body struct {
 		DpPercent float64 `json:"dp_percent"`
 	}
@@ -128,6 +131,23 @@ func UpdateReservationSettings(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: services.GetReservationSettings()})
+}
+
+// ListReservationProducts memuat daftar menu aktif sebuah outlet untuk form Reservasi
+// tanpa mewajibkan izin manajemen produk (products.view), tetap menghormati scope outlet.
+func ListReservationProducts(c *fiber.Ctx) error {
+	outletID := strings.TrimSpace(c.Query("outlet_id"))
+	if outletID == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "outlet_id wajib diisi"})
+	}
+	if !validateOutletAccess(c, outletID) {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Akses outlet tidak diizinkan"})
+	}
+	items, err := services.ListReservationProducts(outletID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Gagal memuat menu outlet: " + err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: items})
 }
 
 // ── App POS (auth API key outlet) ───────────────────────────────────────────

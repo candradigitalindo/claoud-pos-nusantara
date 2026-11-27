@@ -14,7 +14,7 @@
     <div v-else>
       <!-- capture="environment" membuka kamera belakang langsung di ponsel,
            tanpa memilih berkas dulu — ini dipakai sambil memegang barangnya. -->
-      <input ref="input" type="file" accept="image/*" capture="environment" class="hidden" @change="onPick" />
+      <input ref="input" type="file" accept="image/*" :capture="captureAttr" class="hidden" @change="onPick" />
       <button type="button" class="cap-btn" :disabled="uploading" @click="$refs.input.click()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>
@@ -37,6 +37,11 @@ const props = defineProps({
   label: { type: String, default: 'Foto Bukti' },
   hint: { type: String, default: '' },
   required: { type: Boolean, default: true },
+  capture: { type: [String, Boolean], default: 'environment' },
+})
+const captureAttr = computed(() => {
+  if (!props.capture) return undefined
+  return props.capture === true ? 'environment' : props.capture
 })
 const emit = defineEmits(['update:modelValue'])
 

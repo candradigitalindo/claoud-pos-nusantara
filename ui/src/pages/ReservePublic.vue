@@ -56,6 +56,18 @@
         </div>
       </div>
 
+      <!-- Daftar menu yang dipesan -->
+      <section v-if="status.items?.length" class="glass rp-pay">
+        <h3 class="rp-section">Menu Dipesan ({{ status.items.length }})</h3>
+        <ul class="rp-order-list">
+          <li v-for="(it, idx) in status.items" :key="idx">
+            <span class="rp-oi-name">{{ it.product_name }}</span>
+            <span class="rp-oi-qty">{{ it.qty }}×</span>
+            <span class="rp-oi-sub">{{ rupiah(it.subtotal || (it.price * it.qty)) }}</span>
+          </li>
+        </ul>
+      </section>
+
       <!-- Bayar DP / pelunasan: bukti lahir 'menunggu validasi' sampai admin mengesahkannya. -->
       <section v-if="canPay" class="glass rp-pay">
         <h3 class="rp-section">{{ status.dp_paid ? 'Pelunasan' : 'Bayar DP' }}</h3>
@@ -84,10 +96,10 @@
 
       <section v-if="status.payments?.length" class="glass rp-pay">
         <h3 class="rp-section">Riwayat Pembayaran</h3>
-        <ul class="rp-order-list">
-          <li v-for="p in status.payments" :key="p.id">
-            <span class="rp-oi-name">{{ PAY_TYPE[p.type] || p.type }} · {{ p.paid_at }}</span>
-            <span :class="['rp-badge', 'rp-badge--' + p.status]">{{ PAY_STATUS[p.status] || p.status }}</span>
+        <ul class="rp-order-list rp-pay-list">
+          <li v-for="p in status.payments" :key="p.id" class="rp-pay-row">
+            <span class="rp-pay-meta">{{ PAY_TYPE[p.type] || p.type }} · {{ p.paid_at }}</span>
+            <span :class="['rp-badge', 'rp-badge--inline', 'rp-badge--' + p.status]">{{ PAY_STATUS[p.status] || p.status }}</span>
             <span class="rp-oi-sub">{{ rupiah(p.amount) }}</span>
           </li>
         </ul>
@@ -106,9 +118,9 @@
             <div><label>Nama <span>*</span></label><input v-model="f.customer_name" placeholder="Nama Anda" /></div>
             <div><label>No. HP / WhatsApp</label><input v-model="f.customer_phone" placeholder="08xxxx" inputmode="tel" /></div>
             <div class="rp-row3">
-              <div><label>Tamu</label><input v-model.number="f.pax" type="number" min="1" /></div>
-              <div><label>Tanggal <span>*</span></label><input v-model="f.reservation_date" type="date" :min="todayStr" required /></div>
-              <div><label>Jam <span>*</span></label><input v-model="f.reservation_time" type="time" required /></div>
+              <div class="rp-field-date"><label>Tanggal <span>*</span></label><input v-model="f.reservation_date" type="date" :min="todayStr" required /></div>
+              <div class="rp-field-time"><label>Jam <span>*</span></label><input v-model="f.reservation_time" type="time" required /></div>
+              <div class="rp-field-pax"><label>Tamu</label><input v-model.number="f.pax" type="number" min="1" inputmode="numeric" /></div>
             </div>
             <div><label>Catatan</label><textarea v-model="f.notes" rows="2" placeholder="Permintaan khusus (opsional)"></textarea></div>
           </div>
@@ -162,11 +174,21 @@
           <section v-if="cartItems.length" class="glass rp-order">
             <h3 class="rp-section">Pesanan Anda</h3>
             <ul class="rp-order-list">
-              <li v-for="it in cartItems" :key="it.id">
-                <span class="rp-oi-name">{{ it.name }}</span>
-                <span class="rp-oi-qty">{{ it.qty }}×</span>
-                <span class="rp-oi-sub">{{ rupiah(it.price * it.qty) }}</span>
-                <AppActionButton icon="delete" label="Hapus baris" @click="remove(it.id)" />
+              <li v-for="it in cartItems" :key="it.id" class="rp-cart-row">
+                <div class="rp-oi-main">
+                  <span class="rp-oi-name">{{ it.name }}</span>
+                  <span class="rp-oi-sub">{{ rupiah(it.price * it.qty) }}</span>
+                </div>
+                <div class="rp-oi-ctrl">
+                  <div class="rp-mini-stepper">
+                    <button type="button" aria-label="Kurangi" @click="dec({ id: it.id })">−</button>
+                    <span>{{ it.qty }}</span>
+                    <button type="button" aria-label="Tambah" @click="inc({ id: it.id })">+</button>
+                  </div>
+                  <button type="button" class="rp-oi-del" aria-label="Hapus baris" title="Hapus" @click="remove(it.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                  </button>
+                </div>
               </li>
             </ul>
             <div v-if="chargeLines.length" class="rp-order-sub">
@@ -182,16 +204,16 @@
 
     <!-- Sticky summary bar (step 2 only) -->
     <div v-if="menu && !status && step === 2" class="rp-bar">
+      <div v-if="formError" class="rp-bar-err" role="alert">{{ formError }}</div>
       <div class="rp-bar-in">
         <div class="rp-bar-info"><span class="rp-bar-count">{{ itemCount }} item<template v-if="chargeLines.length"> · termasuk pajak</template></span><span class="rp-bar-total">{{ rupiah(grandTotal) }}</span></div>
-        <button class="rp-btn" :disabled="submitting" @click="submit">{{ submitting ? 'Mengirim…' : 'Kirim Reservasi' }}</button>
+        <button :class="['rp-btn', itemCount === 0 && 'rp-btn--empty']" :disabled="submitting" @click="submit">{{ submitting ? 'Mengirim…' : 'Kirim Reservasi' }}</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import AppActionButton from '@/components/ui/AppActionButton.vue'
 import RupiahInput from '@/components/ui/RupiahInput.vue'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
@@ -211,7 +233,8 @@ const formError = ref('')
 const status = ref(null)
 const justCreated = ref(false)
 const copied = ref(false)
-const pay = reactive({ amount: 0, bank_account_id: '', paid_at: new Date().toISOString().slice(0, 10), notes: '', file: null })
+const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+const pay = reactive({ amount: 0, bank_account_id: '', paid_at: todayStr, notes: '', file: null })
 const paySubmitting = ref(false)
 const payError = ref('')
 const payMsg = ref('')
@@ -226,7 +249,6 @@ const activeCat = ref('')
 const searchQuery = ref('')
 const step = ref(1) // 1 = isi data, 2 = pilih menu
 
-const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 const f = reactive({ customer_name: '', customer_phone: '', pax: 2, reservation_date: todayStr, reservation_time: '', notes: '' })
 
 const allProducts = computed(() => menu.value?.categories.flatMap(c => c.products) || [])
@@ -267,8 +289,14 @@ function initialStyle(name) {
 }
 
 function rupiah(v) { return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(v || 0)) }
-function fmtDate(s) { try { return new Date(s).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) } catch { return s } }
-function inc(p) { qty[p.id] = (qty[p.id] || 0) + 1 }
+function fmtDate(s) {
+  try {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '').trim())
+    const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s)
+    return isNaN(d) ? s : d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch { return s }
+}
+function inc(p) { qty[p.id] = (qty[p.id] || 0) + 1; formError.value = '' }
 function dec(p) { if (qty[p.id] > 1) qty[p.id]--; else delete qty[p.id] }
 function remove(id) { delete qty[id] }
 
@@ -351,7 +379,8 @@ function resetAll() {
   status.value = null; justCreated.value = false; payMsg.value = ''; payError.value = ''
   window.history.replaceState(null, '', `/r/${slug}`)
   Object.keys(qty).forEach(k => delete qty[k])
-  f.customer_name = ''; f.customer_phone = ''; f.pax = 2; f.reservation_date = ''; f.reservation_time = ''; f.notes = ''
+  f.customer_name = ''; f.customer_phone = ''; f.pax = 2; f.reservation_date = todayStr; f.reservation_time = ''; f.notes = ''
+  pay.paid_at = todayStr; formError.value = ''
   activeCat.value = ''; searchQuery.value = ''; step.value = 1
 }
 
@@ -366,7 +395,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.rp { position: relative; min-height: 100vh; overflow: hidden; padding-bottom: 5.5rem; color: rgba(255,255,255,.92);
+.rp { position: relative; min-height: 100vh; overflow-x: clip; color-scheme: dark; padding-bottom: 6.5rem; color: rgba(255,255,255,.92);
   background:
     radial-gradient(ellipse 110% 70% at 20% 100%, #253f2d 0%, transparent 55%),
     radial-gradient(ellipse 90% 60% at 85% 0%, #1e3427 0%, transparent 55%),
@@ -394,12 +423,12 @@ onMounted(async () => {
 .rp-logo { width: 2.6rem; height: 2.6rem; border-radius: .7rem; display: flex; align-items: center; justify-content: center; background: rgba(126,184,154,.12); border: 1px solid rgba(255,255,255,.14); }
 .rp-logo svg { width: 1.5rem; height: 1.5rem; }
 .rp-eyebrow { font-size: .66rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: rgba(168,203,191,.8); }
-.rp-title { font-size: 1.45rem; font-weight: 900; line-height: 1.1; letter-spacing: -.02em; }
+.rp-title { font-size: 1.45rem; font-weight: 900; line-height: 1.15; letter-spacing: -.02em; color: #fff; }
 .rp-state { position: relative; max-width: 760px; margin: 2rem auto; text-align: center; color: rgba(255,255,255,.6); padding: 0 1rem; }
 
 /* Category chips */
-.rp-cats { position: sticky; top: 0; z-index: 20; background: rgba(24,43,32,.72); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(255,255,255,.08); }
-.rp-cats-in { max-width: 760px; margin: 0 auto; padding: .7rem 1.1rem; display: flex; gap: .5rem; overflow-x: auto; scrollbar-width: none; }
+.rp-cats { position: sticky; top: 0; z-index: 20; background: rgba(24,43,32,.88); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid rgba(255,255,255,.1); }
+.rp-cats-in { max-width: 760px; margin: 0 auto; padding: .7rem 1.1rem; display: flex; gap: .5rem; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%); -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%); }
 .rp-cats-in::-webkit-scrollbar { display: none; }
 .rp-chip { flex-shrink: 0; display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .85rem; border-radius: 999px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.06); font-size: .82rem; font-weight: 600; color: rgba(255,255,255,.78); cursor: pointer; transition: all .15s; }
 .rp-chip--on { background: rgba(126,184,154,.9); color: #14271d; border-color: rgba(126,184,154,.9); box-shadow: 0 3px 12px rgba(126,184,154,.3); }
@@ -428,11 +457,11 @@ onMounted(async () => {
 .rp-card-body { padding: .6rem .65rem .65rem; display: flex; flex-direction: column; gap: .2rem; flex: 1; }
 .rp-name { font-size: .82rem; font-weight: 600; line-height: 1.25; color: rgba(255,255,255,.92); }
 .rp-price { font-size: .85rem; font-weight: 800; color: #9fd4ba; margin-top: auto; }
-.rp-add { margin-top: .45rem; display: flex; align-items: center; justify-content: center; gap: .25rem; padding: .42rem; border-radius: .6rem; background: rgba(126,184,154,.18); color: #cdeede; font-size: .8rem; font-weight: 700; cursor: pointer; user-select: none; }
+.rp-add { margin-top: .45rem; display: flex; align-items: center; justify-content: center; gap: .25rem; min-height: 38px; padding: .45rem; border-radius: .6rem; background: rgba(126,184,154,.18); color: #cdeede; font-size: .82rem; font-weight: 700; cursor: pointer; user-select: none; }
 .rp-add:hover { background: rgba(126,184,154,.28); }
 .rp-add svg { width: .9rem; height: .9rem; }
-.rp-stepper { margin-top: .45rem; display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,.2); border-radius: .6rem; padding: .15rem; }
-.rp-stepper button { width: 1.9rem; height: 1.9rem; border: none; background: rgba(255,255,255,.12); border-radius: .45rem; font-size: 1.1rem; font-weight: 700; color: #cdeede; cursor: pointer; }
+.rp-stepper { margin-top: .45rem; display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,.24); border-radius: .6rem; padding: .15rem; }
+.rp-stepper button { width: 2.25rem; height: 2.25rem; border: none; background: rgba(255,255,255,.14); border-radius: .45rem; font-size: 1.15rem; font-weight: 700; color: #cdeede; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .rp-stepper span { font-size: .9rem; font-weight: 700; min-width: 1.5rem; text-align: center; }
 
 /* Order summary */
@@ -442,7 +471,18 @@ onMounted(async () => {
 .rp-oi-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-oi-qty { color: rgba(255,255,255,.6); font-weight: 600; }
 .rp-oi-sub { font-weight: 700; min-width: 5rem; text-align: right; }
-.rp-oi-del { width: 1.5rem; height: 1.5rem; border: none; background: rgba(239,68,68,.22); color: #fca5a5; border-radius: 50%; font-size: 1rem; cursor: pointer; line-height: 1; }
+.rp-cart-row { flex-wrap: wrap; gap: .5rem !important; }
+.rp-oi-main { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex: 1; min-width: 160px; }
+.rp-oi-ctrl { display: inline-flex; align-items: center; gap: .45rem; margin-left: auto; }
+.rp-mini-stepper { display: inline-flex; align-items: center; gap: .2rem; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.12); border-radius: .55rem; padding: .12rem; }
+.rp-mini-stepper button { width: 1.85rem; height: 1.85rem; border: none; background: rgba(255,255,255,.1); color: #cdeede; border-radius: .4rem; font-size: 1rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.rp-mini-stepper span { min-width: 1.4rem; text-align: center; font-size: .82rem; font-weight: 700; color: #fff; }
+.rp-oi-del { width: 2.1rem; height: 2.1rem; border: 1px solid rgba(248,113,113,.3); background: rgba(239,68,68,.16); color: #fca5a5; border-radius: .55rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rp-oi-del:hover { background: rgba(239,68,68,.28); color: #fecaca; }
+.rp-oi-del svg { width: 1rem; height: 1rem; }
+.rp-pay-row { flex-wrap: wrap; justify-content: space-between; row-gap: .3rem !important; }
+.rp-pay-meta { font-size: .82rem; color: rgba(255,255,255,.88); }
+.rp-badge--inline { margin-top: 0 !important; }
 .rp-order-total { display: flex; justify-content: space-between; align-items: center; padding-top: .7rem; font-size: 1rem; }
 .rp-order-total b { font-weight: 900; color: #fff; }
 
@@ -451,15 +491,25 @@ onMounted(async () => {
 .rp-fields { display: flex; flex-direction: column; gap: .8rem; }
 .rp-fields label { display: block; font-size: .72rem; font-weight: 700; color: rgba(168,203,191,.85); margin-bottom: .25rem; }
 .rp-fields label span { color: #fca5a5; }
-.rp-fields input, .rp-fields textarea, .rp-fields :deep(.rp-currency-input) { width: 100%; padding: .65rem .75rem; border-radius: .65rem; border: 1px solid rgba(255,255,255,.16); font-size: .9rem; outline: none; background: rgba(255,255,255,.07); color: #fff; }
-.rp-fields input::placeholder, .rp-fields textarea::placeholder, .rp-fields :deep(.rp-currency-input::placeholder) { color: rgba(255,255,255,.38); }
+.rp-fields input, .rp-fields textarea, .rp-fields :deep(.rp-currency-input) { width: 100%; padding: .65rem .75rem; border-radius: .65rem; border: 1px solid rgba(255,255,255,.16); font-size: .9rem; outline: none; background: rgba(255,255,255,.07); color: #fff; color-scheme: dark; }
+.rp-fields textarea { resize: vertical; }
+.rp-fields input::placeholder, .rp-fields textarea::placeholder, .rp-fields :deep(.rp-currency-input::placeholder) { color: rgba(255,255,255,.45); }
 .rp-fields input:focus, .rp-fields textarea:focus, .rp-fields :deep(.rp-currency-input:focus) { border-color: rgba(126,184,154,.6); box-shadow: 0 0 0 3px rgba(126,184,154,.18); }
-.rp-row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+.rp-row3 { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+.rp-field-date { grid-column: 1 / -1; }
+@media (min-width: 520px) {
+  .rp-row3 { grid-template-columns: 1.3fr 1fr .8fr; }
+  .rp-field-date { grid-column: auto; }
+}
+@media (max-width: 640px) {
+  .rp-fields input, .rp-fields textarea, .rp-search input, .rp-fields :deep(.rp-currency-input) { font-size: 16px; }
+}
 .rp-err { color: #fca5a5; font-size: .8rem; margin-top: .7rem; }
 .rp-next { width: 100%; margin-top: 1rem; background: linear-gradient(145deg, #7eb89a, #5d9b78); color: #14271d; border: none; padding: .85rem; border-radius: .8rem; font-size: .95rem; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(126,184,154,.3); }
 
 /* Sticky bar */
-.rp-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: rgba(24,43,32,.82); backdrop-filter: blur(16px); border-top: 1px solid rgba(255,255,255,.1); }
+.rp-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: rgba(24,43,32,.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-top: 1px solid rgba(255,255,255,.12); }
+.rp-bar-err { max-width: 760px; margin: 0 auto; padding: .45rem 1.1rem 0; font-size: .8rem; font-weight: 600; color: #fecaca; }
 .rp-bar-in { max-width: 760px; margin: 0 auto; padding: .7rem 1.1rem; display: flex; align-items: center; gap: 1rem; }
 .rp-bar-info { display: flex; flex-direction: column; line-height: 1.1; }
 .rp-bar-count { font-size: .72rem; color: rgba(255,255,255,.6); font-weight: 600; }
@@ -468,7 +518,8 @@ onMounted(async () => {
 .rp-order-sub div { display: flex; justify-content: space-between; }
 .rp-order-dp { display: flex; justify-content: space-between; margin-top: .35rem; font-size: .82rem; color: #fde68a; }
 .rp-btn { margin-left: auto; background: linear-gradient(145deg, #7eb89a, #5d9b78); color: #14271d; border: none; padding: .75rem 1.4rem; border-radius: .75rem; font-size: .92rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(126,184,154,.3); }
-.rp-btn:disabled { opacity: .6; }
+.rp-btn--empty { opacity: .65; box-shadow: none; }
+.rp-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Status / uang muka */
 .rp-badge { display: inline-block; margin-top: .6rem; padding: .18rem .65rem; border-radius: 999px; font-size: .72rem; font-weight: 800; letter-spacing: .02em; background: rgba(255,255,255,.12); color: #fff; }

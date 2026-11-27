@@ -13,6 +13,7 @@ export const reservationsApi = {
   addPayment:      (id, data)      => apiClient.post(`/admin/reservations/${id}/payments`, data),
   validatePayment: (id, pid)       => apiClient.post(`/admin/reservations/${id}/payments/${pid}/validate`),
   rejectPayment:   (id, pid, reason) => apiClient.post(`/admin/reservations/${id}/payments/${pid}/reject`, { reason }),
+  products:        (outletId)      => apiClient.get('/admin/reservations/products', { params: { outlet_id: outletId } }),
   settings:        ()              => apiClient.get('/admin/reservations/settings'),
   updateSettings:  (data)          => apiClient.put('/admin/reservations/settings', data),
 }

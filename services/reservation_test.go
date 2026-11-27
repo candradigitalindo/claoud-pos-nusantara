@@ -342,3 +342,69 @@ func TestReservationImprovedFlowAndGuards(t *testing.T) {
 		t.Error("menurunkan total di bawah paid_amount lolos")
 	}
 }
+
+func TestReservationProductsAndCrossOutletGuard(t *testing.T) {
+	requireDB(t)
+	outletA, outletB := NewULID(), NewULID()
+	for _, o := range []struct{ id, code, name, slug string }{
+		{outletA, "RTA" + outletA[20:], "Outlet Uji Resv A", "uji-resv-a-" + outletA[20:]},
+		{outletB, "RTB" + outletB[20:], "Outlet Uji Resv B", "uji-resv-b-" + outletB[20:]},
+	} {
+		if _, err := database.DB.Exec(
+			`INSERT INTO outlets (id, code, name, slug, api_key, is_active) VALUES ($1,$2,$3,$4,$5,true)`,
+			o.id, o.code, o.name, o.slug, "key-"+o.id,
+		); err != nil {
+			t.Fatalf("insert outlet %s: %v", o.name, err)
+		}
+	}
+	t.Cleanup(func() {
+		database.DB.Exec(`DELETE FROM reservations WHERE outlet_id IN ($1,$2)`, outletA, outletB)
+		database.DB.Exec(`DELETE FROM outlets WHERE id IN ($1,$2)`, outletA, outletB)
+	})
+	prodA1 := NewULID()
+	prodA2 := NewULID()
+	prodADel := NewULID()
+	prodB := NewULID()
+	for _, row := range []struct {
+		id, outlet, name string
+		price            float64
+		del              bool
+	}{
+		{prodA1, outletA, "Zebra Latte", 35000, false},
+		{prodA2, outletA, "americano", 25000, false},
+		{prodADel, outletA, "Deleted Menu", 10000, true},
+		{prodB, outletB, "Buntut Outlet B", 95000, false},
+	} {
+		if _, err := database.DB.Exec(
+			`INSERT INTO cloud_products (id, outlet_id, local_id, name, price, category_name, is_deleted) VALUES ($1,$2,$3,$4,$5,'Kopi',$6)`,
+			row.id, row.outlet, "LOC-"+row.id[18:], row.name, row.price, row.del,
+		); err != nil {
+			t.Fatalf("insert product %s: %v", row.name, err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, id := range []string{prodA1, prodA2, prodADel, prodB} {
+			database.DB.Exec(`DELETE FROM cloud_products WHERE id = $1`, id)
+		}
+	})
+
+	list, err := ListReservationProducts(outletA)
+	if err != nil {
+		t.Fatalf("ListReservationProducts: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("want 2 active products for outletA, got %d", len(list))
+	}
+	if list[0].Name != "americano" || list[1].Name != "Zebra Latte" {
+		t.Fatalf("expected case-insensitive sort [americano, Zebra Latte], got [%s, %s]", list[0].Name, list[1].Name)
+	}
+
+	tomorrow := time.Now().In(GetTimezoneLocation()).AddDate(0, 0, 1).Format("2006-01-02")
+	if _, err := CreateReservation(models.ReservationRequest{
+		OutletID: outletA, CustomerName: "Cross Outlet", Pax: 2,
+		ReservationDate: tomorrow, ReservationTime: "18:00",
+		Items: []models.ReservationItem{{ProductID: prodB, ProductName: "Buntut Outlet B", Qty: 1, Price: 95000}},
+	}, nil); err == nil {
+		t.Fatal("expected error when submitting product from another outlet")
+	}
+}

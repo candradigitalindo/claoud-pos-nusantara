@@ -187,3 +187,12 @@ type PublicMenu struct {
 	Charges    []CloudAdditionalCharge `json:"charges"`
 	Categories []PublicCategory        `json:"categories"`
 }
+
+// ReservationProductOption adalah item menu ringan untuk pemilih menu di halaman Reservasi.
+type ReservationProductOption struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Price        float64 `json:"price"`
+	CategoryName string  `json:"category_name"`
+	PhotoURL     string  `json:"photo_url"`
+}

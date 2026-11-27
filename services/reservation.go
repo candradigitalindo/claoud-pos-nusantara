@@ -1,6 +1,7 @@
 package services
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -25,9 +26,31 @@ func resvScopeCond(alias string, outletIDs []string, idx int) (string, []interfa
 	return fmt.Sprintf(" AND %s = ANY($%d::text[])", col, idx), []interface{}{pq.Array(outletIDs)}
 }
 
+// ListReservationProducts mengembalikan seluruh produk aktif sebuah outlet untuk picker menu reservasi.
+func ListReservationProducts(outletID string) ([]models.ReservationProductOption, error) {
+	rows, err := database.DB.Query(`
+		SELECT TRIM(id), name, price, COALESCE(category_name, ''), COALESCE(photo_url, '')
+		FROM cloud_products
+		WHERE outlet_id = $1 AND is_deleted = false
+		ORDER BY LOWER(name) ASC, name ASC, id ASC`, strings.TrimSpace(outletID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.ReservationProductOption, 0)
+	for rows.Next() {
+		var p models.ReservationProductOption
+		if err := rows.Scan(&p.ID, &p.Name, &p.Price, &p.CategoryName, &p.PhotoURL); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // resolveReservationItems looks up each item's authoritative name & price from
 // cloud_products (within the outlet) to prevent tampering, returning items + subtotal.
-func resolveReservationItems(outletID string, items []models.ReservationItem) ([]models.ReservationItem, float64) {
+func resolveReservationItems(outletID string, items []models.ReservationItem) ([]models.ReservationItem, float64, error) {
 	out := make([]models.ReservationItem, 0, len(items))
 	var subtotal float64
 	for _, it := range items {
@@ -35,20 +58,30 @@ func resolveReservationItems(outletID string, items []models.ReservationItem) ([
 			continue
 		}
 		name, price := it.ProductName, it.Price
-		if it.ProductID != "" {
+		pid := strings.TrimSpace(it.ProductID)
+		if pid != "" {
 			var n string
 			var p float64
-			if err := database.DB.QueryRow(
+			err := database.DB.QueryRow(
 				`SELECT name, price FROM cloud_products WHERE id = $1 AND outlet_id = $2 AND is_deleted = false`,
-				it.ProductID, outletID).Scan(&n, &p); err == nil {
-				name, price = n, p
+				pid, outletID).Scan(&n, &p)
+			if err == sql.ErrNoRows {
+				label := strings.TrimSpace(it.ProductName)
+				if label == "" {
+					label = pid
+				}
+				return nil, 0, Invalid("menu '%s' tidak ditemukan di outlet yang dipilih — silakan pilih ulang menu", label)
 			}
+			if err != nil {
+				return nil, 0, err
+			}
+			name, price = n, p
 		}
-		line := models.ReservationItem{ProductID: it.ProductID, ProductName: name, Qty: it.Qty, Price: price, Subtotal: price * float64(it.Qty)}
+		line := models.ReservationItem{ProductID: pid, ProductName: name, Qty: it.Qty, Price: price, Subtotal: price * float64(it.Qty)}
 		subtotal += line.Subtotal
 		out = append(out, line)
 	}
-	return out, subtotal
+	return out, subtotal, nil
 }
 
 func reservationBillTarget(total, downPayment float64) float64 {
@@ -230,7 +263,10 @@ func saveReservation(id string, req models.ReservationRequest, source string, ex
 	if req.Pax <= 0 {
 		req.Pax = 1
 	}
-	items, subtotal := resolveReservationItems(req.OutletID, req.Items)
+	items, subtotal, err := resolveReservationItems(req.OutletID, req.Items)
+	if err != nil {
+		return nil, err
+	}
 	itemsJSON, _ := json.Marshal(items)
 	total, chargeLines := calculateReservationCharges(req.OutletID, subtotal)
 	chargesJSON, _ := json.Marshal(chargeLines)
@@ -320,7 +356,10 @@ func CreateReservation(req models.ReservationRequest, outletScope []string) (*mo
 		if strings.TrimSpace(cp.Type) == "" {
 			cp.Type = "dp"
 		}
-		_, subtotal := resolveReservationItems(req.OutletID, req.Items)
+		_, subtotal, rerr := resolveReservationItems(req.OutletID, req.Items)
+		if rerr != nil {
+			return nil, rerr
+		}
 		total, _ := calculateReservationCharges(req.OutletID, subtotal)
 		target := reservationBillTarget(total, req.DownPayment)
 		if err := validateReservationPaymentInput(cp, target, true); err != nil {
