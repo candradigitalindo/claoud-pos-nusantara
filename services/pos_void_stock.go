@@ -439,6 +439,9 @@ func applyOrderVoidStock(tx *sql.Tx, outletID, orderID string, req models.PushOr
 	if _, err = tx.Exec(`UPDATE stock_deduction_failures SET status='cancelled',last_error='Dialihkan ke waste akibat pembatalan' WHERE outlet_id=$1 AND transaction_id=ANY($2) AND status='pending'`, outletID, pq.Array(txnIDs)); err != nil {
 		return err
 	}
+	if err = VoidPendingBundleClaimsTx(tx, outletID, orderID, txnIDs, e.reason); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(`DELETE FROM transaction_payments WHERE outlet_id=$1 AND transaction_id=ANY($2)`, outletID, pq.Array(txnIDs)); err != nil {
 		return err
 	}

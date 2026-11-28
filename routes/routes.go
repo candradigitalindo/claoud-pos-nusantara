@@ -429,13 +429,6 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Get("/purchase-requests/:id", middleware.RequireAnyPermission("procurement.requests.view", "procurement.rawmaterials.view", "finance.payments.view"), handlers.GetPurchaseRequest)
 	admin.Get("/purchase-requests/:id/payment-histories", middleware.RequirePermission("finance.payments.view"), handlers.GetPaymentHistories)
 	admin.Post("/purchase-requests/:id/split", middleware.RequireAnyPermission("procurement.requests.purchasing", "procurement.rawmaterials.purchasing"), broadcastAfter(handlers.SplitPurchaseRequest, "procurement"))
-	// Struk pembelian (dibayar per struk) dicatat bagian pembelian atau
-	// petugas logistik; pengambilan barang dari vendor oleh petugas logistik.
-	// Izin per jenis diperiksa handler.
-	strukPerms := []string{"procurement.requests.purchasing", "procurement.rawmaterials.purchasing", "procurement.requests.pickup", "procurement.rawmaterials.pickup"}
-	admin.Post("/purchase-requests/:id/struks", middleware.RequireAnyPermission(strukPerms...), broadcastAfter(handlers.AddPurchaseStruk, "procurement", "procurement_payment"))
-	admin.Delete("/purchase-requests/:id/struks/:strukId", middleware.RequireAnyPermission(strukPerms...), broadcastAfter(handlers.DeletePurchaseStruk, "procurement", "procurement_payment"))
-	admin.Post("/purchase-requests/:id/pickups", middleware.RequireAnyPermission("procurement.requests.pickup", "procurement.rawmaterials.pickup"), broadcastAfter(handlers.AddPurchasePickup, "procurement", "procurement_receiving"))
 	// Serah Terima pengadaan → aset / stok gudang (docs/perlengkapan-aset.md §8).
 	// Penerima: pengaju jenisnya (semua baris), bagian Aset (assets.create —
 	// baris peralatan), atau petugas gudang (stockledger.adjust — baris
@@ -508,6 +501,28 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Antrean serah terima. Dua meja: "perlengkapan" (bagian Aset) dan "dapur"
 	// (Gudang Induk); izinnya sengaja longgar — yang membatasi adalah kind.
 	admin.Get("/receiving-queue", middleware.RequireAnyPermission("assets.view", "stockledger.adjust", "procurement.requests.view", "procurement.rawmaterials.view"), handlers.ListReceivingQueue)
+
+	// Sistem Pengantaran Logistik & Surat Jalan (tersinkron per item & dipisah per kelompok Purchasing).
+	logisticsViewPerms := []string{
+		"logistics.deliveries.view", "logistics.deliveries.manage",
+		"logistics.rawmaterials.view", "logistics.rawmaterials.manage",
+		"logistics.goods.view", "logistics.goods.manage",
+		"stockledger.adjust", "assets.create",
+	}
+	logisticsManagePerms := []string{"logistics.deliveries.manage", "logistics.rawmaterials.manage", "logistics.goods.manage"}
+	logisticsPhotoPerms := []string{
+		"logistics.deliveries.manage", "logistics.rawmaterials.manage", "logistics.goods.manage",
+		"stockledger.adjust", "assets.create", "procurement.requests.submit", "procurement.rawmaterials.submit",
+	}
+	logisticsRecvPerms := []string{"stockledger.adjust", "assets.create", "procurement.requests.submit", "procurement.rawmaterials.submit"}
+	admin.Get("/logistics/dispatchable-items", middleware.RequireAnyPermission(logisticsViewPerms...), handlers.ListDispatchablePRItems)
+	admin.Get("/logistics/deliveries", middleware.RequireAnyPermission(logisticsViewPerms...), handlers.ListLogisticsDeliveries)
+	admin.Get("/logistics/deliveries/:id", middleware.RequireAnyPermission(logisticsViewPerms...), handlers.GetLogisticsDelivery)
+	admin.Post("/logistics/deliveries", middleware.RequireAnyPermission(logisticsManagePerms...), broadcastAfter(handlers.CreateLogisticsDelivery, "logistics_delivery", "procurement", "procurement_receiving"))
+	admin.Put("/logistics/deliveries/:id", middleware.RequireAnyPermission(logisticsManagePerms...), broadcastAfter(handlers.UpdateLogisticsDelivery, "logistics_delivery", "procurement", "procurement_receiving"))
+	admin.Put("/logistics/deliveries/:id/status", middleware.RequireAnyPermission(logisticsManagePerms...), broadcastAfter(handlers.UpdateLogisticsDeliveryStatus, "logistics_delivery", "procurement", "procurement_receiving"))
+	admin.Put("/logistics/deliveries/:id/photos", middleware.RequireAnyPermission(logisticsPhotoPerms...), broadcastAfter(handlers.UpdateLogisticsDeliveryPhotos, "logistics_delivery", "procurement", "procurement_receiving"))
+	admin.Post("/logistics/deliveries/:id/receive", middleware.RequireAnyPermission(logisticsRecvPerms...), broadcastAfter(handlers.ReceiveLogisticsDelivery, "logistics_delivery", "procurement", "procurement_receiving", "goods_receipt", "asset_workflow"))
 	// Distribusi aset ke PIC pengaju — lanjutan setelah bagian aset menerima.
 	admin.Get("/asset-handovers", middleware.RequirePermission("assets.view"), handlers.ListAssetHandovers)
 	admin.Get("/asset-handovers/awaiting", middleware.RequirePermission("assets.view"), handlers.ListAssetsAwaitingHandover)
@@ -585,6 +600,17 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	admin.Post("/reservations/:id/payments/:pid/validate", middleware.RequirePermission("reservations.update"), broadcastAfter(handlers.ValidateReservationPayment, "reservation"))
 	admin.Post("/reservations/:id/payments/:pid/reject", middleware.RequirePermission("reservations.update"), broadcastAfter(handlers.RejectReservationPayment, "reservation"))
 
+	// Bundling Lintas Outlet (komponen produk & antrean klaim antar outlet)
+	admin.Get("/products/:id/bundle-components", middleware.RequireAnyPermission("products.view", "bundles.view"), handlers.GetProductBundleComponents)
+	admin.Put("/products/:id/bundle-components", middleware.RequireAnyPermission("products.update", "bundles.manage"), broadcastAfter(handlers.SaveProductBundleComponents, "bundle_claim"))
+	admin.Get("/cross-outlet-bundles/components", middleware.RequireAnyPermission("bundles.view", "products.view"), handlers.ListAllBundleComponents)
+	admin.Get("/cross-outlet-bundles/partner-outlets", middleware.RequireAnyPermission("bundles.view", "products.view"), handlers.ListBundlePartnerOutlets)
+	admin.Get("/cross-outlet-bundles/partner-products", middleware.RequireAnyPermission("bundles.view", "products.view"), handlers.ListBundlePartnerProducts)
+	admin.Get("/cross-outlet-bundles/claims", middleware.RequirePermission("bundles.view"), handlers.ListCrossOutletBundleClaims)
+	admin.Post("/cross-outlet-bundles/claims", middleware.RequirePermission("bundles.manage"), broadcastAfter(handlers.CreateManualBundleClaim, "bundle_claim"))
+	admin.Post("/cross-outlet-bundles/claims/:id/claim", middleware.RequirePermission("bundles.claim"), broadcastAfter(handlers.ClaimCrossOutletBundle, "bundle_claim"))
+	admin.Post("/cross-outlet-bundles/claims/:id/expire", middleware.RequireAnyPermission("bundles.manage", "bundles.claim"), broadcastAfter(handlers.ExpireCrossOutletBundleClaim, "bundle_claim"))
+
 	// Foto produk
 	admin.Post("/products/:id/photo", middleware.RequirePermission("products.update"), handlers.UploadProductPhoto)
 	admin.Delete("/products/:id/photo", middleware.RequirePermission("products.update"), handlers.DeleteProductPhoto)
@@ -632,6 +658,7 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	// Tahap transfer punya izin masing-masing (setujui / kirim / terima);
 	// pemeriksaannya per status ada di dalam handler.
 	admin.Put("/stock-transfers/:id/status", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.approve", "stocktransfers.receive"), broadcastAfter(handlers.UpdateTransferStatus, "stock_transfer"))
+	admin.Put("/stock-transfers/:id/photos", middleware.RequirePermission("stocktransfers.update"), broadcastAfter(handlers.UpdateTransferPhotos, "stock_transfer"))
 	admin.Put("/stock-transfers/:id/items/:itemId/received", middleware.RequireAnyPermission("stocktransfers.update", "stocktransfers.receive"), broadcastAfter(handlers.UpdateReceivedQty, "stock_transfer"))
 
 	// Recipes

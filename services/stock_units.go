@@ -24,9 +24,12 @@ func stockQuantityToBase(qty float64, unit, baseUnit, distUnit string, distRatio
 		return 0, "", fmt.Errorf("satuan dasar barang belum diatur")
 	}
 	ratio := 1.0
-	switch unit {
-	case baseUnit:
-	case distUnit:
+	canonicalUnit := baseUnit
+	switch {
+	case strings.EqualFold(unit, baseUnit):
+		canonicalUnit = baseUnit
+	case strings.EqualFold(unit, distUnit):
+		canonicalUnit = distUnit
 		if distRatio <= 0 || math.IsNaN(distRatio) || math.IsInf(distRatio, 0) {
 			return 0, "", fmt.Errorf("rasio konversi %s ke %s tidak valid", distUnit, baseUnit)
 		}
@@ -38,5 +41,5 @@ func stockQuantityToBase(qty float64, unit, baseUnit, distUnit string, distRatio
 	if baseQty <= 0 || math.IsNaN(baseQty) || math.IsInf(baseQty, 0) {
 		return 0, "", fmt.Errorf("hasil konversi jumlah tidak valid atau terlalu kecil")
 	}
-	return baseQty, unit, nil
+	return baseQty, canonicalUnit, nil
 }

@@ -517,13 +517,14 @@ func ratificationLabel(s string) string {
 // SubmitEmergencyProof: pengaju mengunggah foto struk & total belanja setelah
 // kas diserahkan. Bisa diganti selama belum diputus penyetuju.
 func SubmitEmergencyProof(id string, in models.EmergencyProofInput) (*models.PurchaseRequest, error) {
-	url := strings.TrimSpace(in.ProofURL)
-	if url == "" {
-		return nil, Invalid("foto struk wajib diunggah")
-	}
-	if err := validateUploadField("foto struk", url); err != nil {
+	proofURLs, err := NormalizeUploadURLs("foto struk", in.ProofURL, in.ProofURLs)
+	if err != nil {
 		return nil, err
 	}
+	if len(proofURLs) == 0 {
+		return nil, Invalid("foto struk wajib diunggah")
+	}
+	url := proofURLs[0]
 	if in.ProofTotal <= 0 || math.IsNaN(in.ProofTotal) || math.IsInf(in.ProofTotal, 0) {
 		return nil, Invalid("isi total yang tertera di struk")
 	}
@@ -553,9 +554,9 @@ func SubmitEmergencyProof(id string, in models.EmergencyProofInput) (*models.Pur
 		return nil, Invalid("Pembelian Darurat ini sudah %s — buktinya tidak bisa diubah lagi", ratificationLabel(e.ratification))
 	}
 	now := time.Now().UTC()
-	if _, err := tx.Exec(`UPDATE purchase_requests SET emergency_proof_url = $2, emergency_proof_total = $3,
-		emergency_proof_notes = $4, emergency_proof_by = $5, emergency_proof_at = $6, updated_at = $6
-		WHERE id = $1`, id, url, math.Round(in.ProofTotal*100)/100, notes, truncateRunes(in.ActorName, 100), now); err != nil {
+	if _, err := tx.Exec(`UPDATE purchase_requests SET emergency_proof_url = $2, emergency_proof_urls = $3::jsonb, emergency_proof_total = $4,
+		emergency_proof_notes = $5, emergency_proof_by = $6, emergency_proof_at = $7, updated_at = $7
+		WHERE id = $1`, id, url, MarshalUploadURLs(proofURLs), math.Round(in.ProofTotal*100)/100, notes, truncateRunes(in.ActorName, 100), now); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

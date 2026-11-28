@@ -125,6 +125,7 @@ func GetProducts(outletID string, page, limit int) ([]models.CloudProduct, int, 
 	if err := hydrateProductRecipes(products); err != nil {
 		return nil, 0, err
 	}
+	AttachProductBundleBadges(products)
 	return products, total, nil
 }
 
@@ -221,6 +222,7 @@ func GetAllProducts(outletID, search string, scopeIDs []string, page, limit int,
 	if err := hydrateProductRecipes(products); err != nil {
 		return nil, 0, err
 	}
+	AttachProductBundleBadges(products)
 	return products, total, nil
 }
 

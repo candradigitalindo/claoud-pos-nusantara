@@ -201,6 +201,12 @@
             <AppInput v-model.number="form.dist_ratio" :label="`Isi 1 ${form.dist_unit || 'kemasan'} dalam ${form.base_unit || 'satuan dasar'}`" type="number" min="0.0001" step="0.0001" placeholder="Contoh: 24" :disabled="!catalogEditable" />
             <AppInput v-model="form.dist_unit_label" label="Label Kemasan (opsional)" placeholder="Dus 24 botol" :disabled="!catalogEditable" />
             <p class="modal-span-full text-xs text-gray-500">Contoh: satuan dasar botol, kemasan dus, isi 24 berarti 1 dus = 24 botol. Satuan dan isi dapat berbeda untuk setiap barang.</p>
+            <p v-if="sameUnitRatioError" class="modal-span-full rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+              Satuan kemasan sama dengan satuan dasar (<b>{{ form.base_unit }}</b>), sehingga rasio isi harus <b>1</b>. Gunakan nama satuan berbeda bila memiliki isi lebih dari 1 (mis. <i>Pcs</i> dan <i>Pack</i>).
+            </p>
+            <p v-else-if="diffUnitRatioWarning" class="modal-span-full rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Perhatian: satuan kemasan (<b>{{ form.dist_unit }}</b>) berbeda dari satuan dasar (<b>{{ form.base_unit }}</b>), namun rasio isi masih <b>1</b>. Pastikan angka isi sudah benar (jangan ditaruh di kolom Label Kemasan).
+            </p>
             <AppInput v-model="form.notes" label="Keterangan" placeholder="Catatan opsional…" :disabled="!catalogEditable" class="modal-span-full" />
           </div>
         </div>
@@ -670,7 +676,24 @@ function confirmDelete(row) {
   showDelete.value = true
 }
 
+const sameUnitRatioError = computed(() => {
+  const b = String(form.value.base_unit || '').trim().toLowerCase()
+  const d = String(form.value.dist_unit || '').trim().toLowerCase()
+  const r = Number(form.value.dist_ratio) || 1
+  return Boolean(b && d && b === d && Math.abs(r - 1) > 0.0001)
+})
+const diffUnitRatioWarning = computed(() => {
+  const b = String(form.value.base_unit || '').trim().toLowerCase()
+  const d = String(form.value.dist_unit || '').trim().toLowerCase()
+  const r = Number(form.value.dist_ratio) || 1
+  return Boolean(b && d && b !== d && Math.abs(r - 1) < 0.0001)
+})
+
 async function submitForm() {
+  if (catalogEditable.value && sameUnitRatioError.value) {
+    toast.error('Jika satuan kemasan sama dengan satuan dasar, rasio isi harus 1. Gunakan nama satuan berbeda untuk kemasan.')
+    return
+  }
   saving.value = true
   try {
     const f = form.value

@@ -497,8 +497,9 @@ func WARoleOptions() []models.WARoleOption {
 // memegang Lihat/Buat (pengaju) tidak — setiap pengaju hanya dikabari tentang
 // pengajuannya sendiri lewat jalur "pengaju", bukan semua pengajuan.
 var waStageProcurementPerms = []string{
-	"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.approve_services", "procurement.requests.purchasing", "procurement.requests.pickup",
-	"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing", "procurement.rawmaterials.pickup",
+	"procurement.requests.verify", "procurement.requests.approve", "procurement.requests.approve_services", "procurement.requests.purchasing",
+	"procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing",
+	"logistics.deliveries.manage", "logistics.rawmaterials.manage", "logistics.goods.manage",
 	"finance.payments.approve", "finance.payments.pay", "stockledger.adjust", "assets.create",
 }
 

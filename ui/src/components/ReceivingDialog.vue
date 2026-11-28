@@ -35,24 +35,28 @@
         Semua barang pada pengajuan ini sudah dicatat. Tidak ada yang tersisa untuk diterima.
       </p>
 
-      <!-- Pengantar barang: vendor langsung, atau petugas logistik yang
-           pengambilannya masih dalam pengantaran (ditutup saat diterima). -->
-      <div v-if="pickups.length" class="rounded-xl border border-blue-200 bg-blue-50/50 p-3 text-xs">
-        <p class="mb-1.5 text-sm font-semibold text-gray-800">Diantar oleh</p>
-        <label class="flex items-start gap-2 py-1">
-          <input v-model="pickupId" type="radio" value="" class="mt-0.5" />
-          <span>Vendor langsung</span>
-        </label>
-        <label v-for="p in pickups" :key="p.id" class="flex items-start gap-2 py-1">
-          <input v-model="pickupId" type="radio" :value="p.id" class="mt-0.5" />
-          <span class="min-w-0 break-words">Petugas logistik <strong>{{ p.picked_by || '-' }}</strong> · diambil {{ formatDateTime(p.picked_at) }}<template v-if="p.notes"> — {{ p.notes }}</template></span>
-        </label>
+      <!-- Pengantaran Logistik / Surat Jalan aktif untuk pengajuan ini -->
+      <div v-if="activeDeliveries.length" class="modal-span-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-xs space-y-2">
+        <p class="font-bold text-indigo-900">
+          Ada {{ activeDeliveries.length }} Surat Jalan Logistik aktif pada pengajuan ini
+        </p>
+        <p class="text-indigo-800">
+          Item yang sedang dibawa dalam Surat Jalan di bawah hanya diterima melalui halaman <strong>Pengantaran Logistik</strong> agar tidak bentrok dengan penerimaan langsung dari vendor.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <router-link v-for="d in activeDeliveries" :key="d.id"
+            :to="{ path: '/logistics/deliveries', query: { delivery_id: d.id } }"
+            @click="$emit('update:modelValue', false)"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-2.5 py-1.5 font-mono text-xs font-semibold text-indigo-700 hover:bg-indigo-100">
+            {{ d.delivery_number }} · {{ d.courier_name || (d.dispatch_mode === 'vendor_direct' ? 'Vendor' : 'Logistik') }} ({{ d.total_received }}/{{ d.total_planned }}) →
+          </router-link>
+        </div>
       </div>
 
       <!-- Bukti barang benar-benar sampai dari tim purchasing. -->
       <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
-        <PhotoCapture v-model="photoURL" label="Foto Barang Saat Diterima"
-          hint="Ambil foto barangnya di tempat serah terima. Salinannya otomatis dikirim ke email cadangan." />
+        <PhotoCapture multiple v-model="photoURLs" label="Foto Barang Saat Diterima"
+          hint="Bisa pilih lebih dari satu foto barang di tempat serah terima sekaligus (maks 10 foto). Salinannya otomatis dikirim ke email cadangan." />
       </div>
 
       <div v-for="group in groups" :key="group.key" class="modal-span-full space-y-3">
@@ -79,13 +83,22 @@
             <p class="text-xs text-gray-500">
               {{ line.entry_name }} · {{ formatRupiah(line.unit_price) }}/{{ line.unit || 'unit' }}
               <span v-if="line.recorded"> · sudah dicatat {{ line.recorded }}</span>
+              <span v-if="line.in_delivery" class="text-indigo-700 font-semibold"> · {{ line.in_delivery }} dalam Surat Jalan</span>
             </p>
+            <div v-if="line.active_deliveries?.length" class="mt-1 flex flex-wrap gap-1">
+              <router-link v-for="ref in line.active_deliveries" :key="ref.delivery_id"
+                :to="{ path: '/logistics/deliveries', query: { delivery_id: ref.delivery_id } }"
+                @click="$emit('update:modelValue', false)"
+                class="inline-flex items-center rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-100">
+                {{ ref.delivery_number }}: {{ ref.qty_pending }} {{ line.unit || 'unit' }} ({{ ref.courier_name || 'Logistik' }})
+              </router-link>
+            </div>
           </div>
           <div class="flex items-center gap-2">
-            <label class="text-xs text-gray-400">Jumlah</label>
+            <label class="text-xs text-gray-400">{{ line.in_delivery ? 'Vendor langsung' : 'Jumlah' }}</label>
             <input v-model.number="form[line.pr_item_key].qty" type="number" inputmode="numeric" min="0"
-              :max="line.remaining" class="form-input w-20 text-right" />
-            <span class="text-xs text-gray-500">/ {{ line.remaining }}</span>
+              :max="lineMaxDirect(line)" :disabled="lineMaxDirect(line) === 0" class="form-input w-20 text-right disabled:bg-gray-100" />
+            <span class="text-xs text-gray-500">/ {{ lineMaxDirect(line) }}</span>
           </div>
         </div>
 
@@ -129,11 +142,22 @@
         <div v-else-if="form[line.pr_item_key].destination === 'stok'" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label class="lbl">Item Stok <span class="text-red-500">*</span></label>
-            <SearchSelect v-model="form[line.pr_item_key].stock_item_id" :options="stockItems" placeholder="Pilih item stok…" />
+            <SearchSelect v-model="form[line.pr_item_key].stock_item_id" :options="stockItems" placeholder="Pilih item stok…" @change="syncStockUnit(line)" />
           </div>
           <div>
             <label class="lbl">Gudang <span class="text-red-500">*</span></label>
             <SearchSelect v-model="form[line.pr_item_key].warehouse_id" :options="warehouses" placeholder="Pilih gudang…" />
+          </div>
+          <div v-if="stockItemOf(line)">
+            <label class="lbl">Satuan Terima</label>
+            <SearchableSelect v-model="form[line.pr_item_key].unit_used" class="form-input">
+              <option v-for="u in stockUnitOptions(stockItemOf(line))" :key="u.value" :value="u.value">{{ u.label }}</option>
+            </SearchableSelect>
+            <p class="mt-1 text-[11px] text-emerald-700">{{ stockConversionPreview(line) }}</p>
+          </div>
+          <div>
+            <label class="lbl">Tanggal Kedaluwarsa (opsional)</label>
+            <input v-model="form[line.pr_item_key].expiry_date" type="date" class="form-input" />
           </div>
           <!-- Gudang yang MEMBUTUHKAN vs gudang yang MENERIMA: barang dapur masuk
                Gudang Induk dulu, lalu diteruskan lewat Transfer Stok yang berfoto. -->
@@ -189,6 +213,7 @@ import { assetCategoriesApi } from '@/api/assetCategories.js'
 import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { formatRupiah, formatDateTime } from '@/utils/format.js'
+import { stockUnitOptions, stockUnitRatio } from '@/utils/stockUnits.js'
 import { procurementPerm, EXPENSE_REASON_MIN, reasonLength, grnNumbersOf, isPhysicalPurchaseType } from '@/utils/procurement.js'
 import AppModal from '@/components/ui/AppModal.vue'
 import AppAlert from '@/components/ui/AppAlert.vue'
@@ -257,11 +282,15 @@ const loading = ref(false)
 const saving = ref(false)
 const errorMsg = ref('')
 const outletId = ref('')
-const photoURL = ref('')
-// Pengambilan oleh petugas logistik yang barangnya diterima sekarang
-// ('' = diantar vendor langsung). Bawaan: pengambilan terbaru bila ada.
-const pickupId = ref('')
-const pickups = computed(() => draft.value?.pickups || [])
+const photoURLs = ref([])
+
+const activeDeliveries = computed(() =>
+  (draft.value?.deliveries || []).filter(d => ['draft', 'in_transit', 'partial_received'].includes(d.status))
+)
+function lineMaxDirect(line) {
+  if (line && typeof line.available_direct === 'number') return line.available_direct
+  return Math.max(0, (line?.remaining || 0) - (line?.in_delivery || 0))
+}
 const outlets = ref([])
 const warehouses = ref([])
 const stockItems = ref([])
@@ -322,18 +351,19 @@ async function load() {
   try {
     draft.value = asObject(await receivingApi.draft(props.purchaseRequestId))
     outletId.value = draft.value?.outlet_id || ''
-    photoURL.value = ''
-    pickupId.value = draft.value?.pickups?.[0]?.id || ''
+    photoURLs.value = []
     form.value = Object.fromEntries((draft.value?.lines || []).map(l => {
       // Usulan tujuan server dipakai bila sah untuk jenis barisnya.
       const allowed = lineDests(l).map(d => d.key)
       return [l.pr_item_key, {
-        qty: l.remaining,
+        qty: lineMaxDirect(l),
         destination: allowed.includes(l.destination) ? l.destination : (allowed[0] || l.destination),
         category: '',
         tracking_mode: l.qty === 1 || l.unit_price >= 5000000 ? 'tunggal' : 'massal',
         location: '',
         stock_item_id: l.suggested_stock_item_id || '',
+        unit_used: defaultUnitForLine(l.suggested_stock_item_id, l.unit),
+        expiry_date: '',
         // Bawaan: Gudang Induk (dari server), bukan sekadar gudang pertama di daftar.
         warehouse_id: draft.value?.receiving_warehouse_id || warehouses.value[0]?.id || '',
         reason: '',
@@ -344,9 +374,43 @@ async function load() {
   } finally { loading.value = false }
 }
 
+function stockItemOf(line) {
+  const id = form.value[line.pr_item_key]?.stock_item_id
+  return id ? stockItems.value.find(s => s.id === id) || null : null
+}
+function defaultUnitForLine(stockItemId, prUnit) {
+  const it = stockItems.value.find(s => s.id === stockItemId)
+  if (!it) return ''
+  const b = String(it.base_unit || '').trim()
+  const d = String(it.dist_unit || b).trim()
+  const u = String(prUnit || '').trim()
+  if (b && d && b.toLowerCase() === d.toLowerCase()) return b
+  if (u && b && u.toLowerCase() === b.toLowerCase()) return b
+  return d || b
+}
+function syncStockUnit(line) {
+  const row = form.value[line.pr_item_key]
+  if (!row) return
+  row.unit_used = defaultUnitForLine(row.stock_item_id, line.unit)
+}
+function stockConversionPreview(line) {
+  const it = stockItemOf(line)
+  const row = form.value[line.pr_item_key]
+  if (!it || !row) return ''
+  const qty = Number(row.qty) || 0
+  const unit = row.unit_used || defaultUnitForLine(row.stock_item_id, line.unit)
+  const ratio = stockUnitRatio(it, unit)
+  const totalBase = qty * ratio
+  const perBase = ratio > 0 ? (Number(line.unit_price) || 0) / ratio : Number(line.unit_price) || 0
+  return `Masuk gudang: ${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 4 }).format(totalBase)} ${it.base_unit} · HPP ${formatRupiah(perBase)}/${it.base_unit}`
+}
+
 async function loadRefs() {
-  try { outlets.value = asArray((await outletsApi.myOutlets())?.outlets ?? await outletsApi.myOutlets()) } catch { outlets.value = [] }
-  try { warehouses.value = asArray(await warehousesApi.list()) } catch { warehouses.value = [] }
+  try {
+    const oRes = await outletsApi.myOutlets()
+    outlets.value = asArray(oRes?.outlets ?? oRes)
+  } catch { outlets.value = [] }
+  try { warehouses.value = asArray(await warehousesApi.list({ limit: 200 })) } catch { warehouses.value = [] }
   try { stockItems.value = asArray(await stockItemsApi.listAll()) } catch { stockItems.value = [] }
   // Kategori aset hanya bisa dibaca pemegang assets.view (izin rutenya);
   // tanpa izin itu panggilannya selalu 403.
@@ -370,7 +434,7 @@ async function submit() {
     .map(l => ({ pr_item_key: l.pr_item_key, ...form.value[l.pr_item_key] }))
     .filter(l => (Number(l.qty) || 0) > 0)
   if (!lines.length) { toast.error('Isi jumlah barang yang diterima, minimal pada satu baris'); return }
-  const over = lines.find(l => l.qty > (byKey[l.pr_item_key]?.remaining ?? 0))
+  const over = lines.find(l => l.qty > lineMaxDirect(byKey[l.pr_item_key]))
   if (over) { toast.error(`Jumlah "${byKey[over.pr_item_key]?.name}" melebihi sisa yang belum diterima`); return }
   const bad = lines.find(l => l.destination === 'stok' && canStock && (!l.stock_item_id || !l.warehouse_id))
   if (bad) { toast.error('Baris bertujuan gudang perlu item stok dan gudang'); return }
@@ -382,12 +446,11 @@ async function submit() {
   if (!draft.value.outlet_id && lines.some(l => l.destination === 'aset') && !outletId.value) {
     toast.error('Pilih outlet tujuan aset'); return
   }
-  if (!photoURL.value) { toast.error('Foto barang saat diterima wajib diunggah'); return }
+  if (!photoURLs.value.length) { toast.error('Foto barang saat diterima wajib diunggah'); return }
   saving.value = true
   try {
     const res = asObject(await receivingApi.receive(props.purchaseRequestId, {
-      outlet_id: outletId.value, photo_url: photoURL.value, desk: props.kind || '', lines,
-      pickup_id: pickupId.value || undefined,
+      outlet_id: outletId.value, photo_url: photoURLs.value[0], photo_urls: photoURLs.value, desk: props.kind || '', lines,
     }))
     // Satu penerimaan bisa menerbitkan beberapa GRN (per gudang & dokumen
     // sumber): grn_numbers berupa array, grn_number gabungan dipisah koma.

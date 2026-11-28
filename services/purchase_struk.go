@@ -41,7 +41,7 @@ func ListPurchaseStruks(q rowsQuerier, prID string) ([]models.PurchaseStruk, err
 	rows, err := q.Query(`
 		SELECT s.id, s.struk_number, TO_CHAR(s.struk_date, 'YYYY-MM-DD'), s.total,
 		       COALESCE((SELECT SUM(ph.amount) FROM payment_histories ph WHERE ph.struk_id = s.id), 0),
-		       s.photo_url, s.notes, s.created_by, s.created_at
+		       s.photo_url, COALESCE(s.photo_urls,'[]'::jsonb), s.notes, s.created_by, s.created_at
 		FROM purchase_struks s WHERE s.purchase_request_id = $1
 		ORDER BY s.struk_date, s.created_at, s.id`, prID)
 	if err != nil {
@@ -51,12 +51,14 @@ func ListPurchaseStruks(q rowsQuerier, prID string) ([]models.PurchaseStruk, err
 	out := make([]models.PurchaseStruk, 0)
 	for rows.Next() {
 		var s models.PurchaseStruk
+		var photoURLsRaw []byte
 		var created time.Time
 		if err := rows.Scan(&s.ID, &s.StrukNumber, &s.StrukDate, &s.Total, &s.PaidAmount,
-			&s.PhotoURL, &s.Notes, &s.CreatedBy, &created); err != nil {
+			&s.PhotoURL, &photoURLsRaw, &s.Notes, &s.CreatedBy, &created); err != nil {
 			return nil, err
 		}
 		s.ID = strings.TrimSpace(s.ID)
+		s.PhotoURLs = DecodeUploadURLs(s.PhotoURL, photoURLsRaw)
 		s.Remaining = math.Max(0, math.Round((s.Total-s.PaidAmount)*100)/100)
 		s.CreatedAt = created.UTC().Format(time.RFC3339)
 		out = append(out, s)
@@ -89,9 +91,14 @@ func AddPurchaseStruk(prID string, in models.AddPurchaseStrukInput, actor Actor)
 	if in.Total <= 0 {
 		return nil, Invalid("total struk harus lebih dari 0")
 	}
-	if err := ValidateUploadURL(in.PhotoURL); err != nil {
+	photoURLs, err := NormalizeUploadURLs("foto struk", in.PhotoURL, in.PhotoURLs)
+	if err != nil {
+		return nil, err
+	}
+	if len(photoURLs) == 0 {
 		return nil, Invalid("foto struk wajib diunggah")
 	}
+	in.PhotoURL = photoURLs[0]
 
 	tx, err := database.DB.Begin()
 	if err != nil {
@@ -120,10 +127,10 @@ func AddPurchaseStruk(prID string, in models.AddPurchaseStrukInput, actor Actor)
 	}
 	id := NewULID()
 	if _, err := tx.Exec(`
-		INSERT INTO purchase_struks (id, purchase_request_id, struk_number, struk_date, total, photo_url, notes,
+		INSERT INTO purchase_struks (id, purchase_request_id, struk_number, struk_date, total, photo_url, photo_urls, notes,
 			created_by, created_by_id, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		id, prID, in.StrukNumber, date.Format("2006-01-02"), math.Round(in.Total*100)/100, in.PhotoURL, in.Notes,
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11)`,
+		id, prID, in.StrukNumber, date.Format("2006-01-02"), math.Round(in.Total*100)/100, in.PhotoURL, MarshalUploadURLs(photoURLs), in.Notes,
 		actor.Name, nilIfEmpty(validActorID(actor.ID)), time.Now().UTC()); err != nil {
 		if strings.Contains(err.Error(), "uq_purchase_struks_number") {
 			return nil, Invalid("struk nomor %s sudah dicatat pada pengajuan ini", in.StrukNumber)
@@ -268,7 +275,7 @@ func allocateStrukPayment(list []strukRemaining, strukID string, payCents float6
 // ListPurchasePickups: pengambilan sebuah pengajuan, terbaru dulu.
 func ListPurchasePickups(q rowsQuerier, prID string) ([]models.PurchasePickup, error) {
 	rows, err := q.Query(`
-		SELECT id, picked_by, picked_at, photo_url, notes, received_by, received_at
+		SELECT id, picked_by, picked_at, photo_url, COALESCE(photo_urls,'[]'::jsonb), notes, received_by, received_at
 		FROM purchase_pickups WHERE purchase_request_id = $1
 		ORDER BY picked_at DESC, id DESC`, prID)
 	if err != nil {
@@ -278,12 +285,14 @@ func ListPurchasePickups(q rowsQuerier, prID string) ([]models.PurchasePickup, e
 	out := make([]models.PurchasePickup, 0)
 	for rows.Next() {
 		var p models.PurchasePickup
+		var photoURLsRaw []byte
 		var picked time.Time
 		var received sql.NullTime
-		if err := rows.Scan(&p.ID, &p.PickedBy, &picked, &p.PhotoURL, &p.Notes, &p.ReceivedBy, &received); err != nil {
+		if err := rows.Scan(&p.ID, &p.PickedBy, &picked, &p.PhotoURL, &photoURLsRaw, &p.Notes, &p.ReceivedBy, &received); err != nil {
 			return nil, err
 		}
 		p.ID = strings.TrimSpace(p.ID)
+		p.PhotoURLs = DecodeUploadURLs(p.PhotoURL, photoURLsRaw)
 		p.PickedAt = picked.UTC().Format(time.RFC3339)
 		if received.Valid {
 			p.ReceivedAt = received.Time.UTC().Format(time.RFC3339)
@@ -298,9 +307,14 @@ func ListPurchasePickups(q rowsQuerier, prID string) ([]models.PurchasePickup, e
 // diterima seluruhnya. Fotonya ikut dicadangkan seperti foto serah terima.
 func AddPurchasePickup(prID string, in models.AddPurchasePickupInput, actor Actor) (*models.PurchasePickup, error) {
 	in.Notes = strings.TrimSpace(in.Notes)
-	if err := ValidateUploadURL(in.PhotoURL); err != nil {
+	photoURLs, err := NormalizeUploadURLs("foto barang saat diambil", in.PhotoURL, in.PhotoURLs)
+	if err != nil {
+		return nil, err
+	}
+	if len(photoURLs) == 0 {
 		return nil, Invalid("foto barang saat diambil wajib diunggah")
 	}
+	in.PhotoURL = photoURLs[0]
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, err
@@ -324,17 +338,19 @@ func AddPurchasePickup(prID string, in models.AddPurchasePickupInput, actor Acto
 	id := NewULID()
 	now := time.Now().UTC()
 	if _, err := tx.Exec(`
-		INSERT INTO purchase_pickups (id, purchase_request_id, picked_by, picked_by_id, picked_at, photo_url, notes, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $5)`,
-		id, prID, actor.Name, nilIfEmpty(validActorID(actor.ID)), now, in.PhotoURL, in.Notes); err != nil {
+		INSERT INTO purchase_pickups (id, purchase_request_id, picked_by, picked_by_id, picked_at, photo_url, photo_urls, notes, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $5)`,
+		id, prID, actor.Name, nilIfEmpty(validActorID(actor.ID)), now, in.PhotoURL, MarshalUploadURLs(photoURLs), in.Notes); err != nil {
 		return nil, err
 	}
 	desk := "perlengkapan"
 	if reqType == RequestTypeBahan {
 		desk = "dapur"
 	}
-	SaveHandoverPhoto(tx, "ambil", desk, "purchase_request", prID, number, in.PhotoURL,
-		"Barang diambil petugas logistik dari vendor", actor.Name)
+	for _, pu := range photoURLs {
+		SaveHandoverPhoto(tx, "ambil", desk, "purchase_request", prID, number, pu,
+			"Barang diambil petugas logistik dari vendor", actor.Name)
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}

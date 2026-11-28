@@ -2,7 +2,7 @@
   <div class="space-y-5">
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-bold text-gray-900">Gudang</h1>
-      <AppButton @click="openCreate">+ Tambah Gudang</AppButton>
+      <AppButton v-if="canCreate" @click="openCreate">+ Tambah Gudang</AppButton>
     </div>
 
     <AppAlert type="error" :message="errorMsg" />
@@ -37,8 +37,8 @@
               <p v-if="row.outlet_name" class="text-xs text-gray-500 mt-1">{{ row.outlet_name }}</p>
             </div>
             <div class="flex items-center gap-1 shrink-0">
-              <AppActionButton icon="edit" label="Edit" @click="openEdit(row)" />
-              <AppActionButton icon="delete" label="Hapus" @click="confirmDelete(row)" />
+              <AppActionButton v-if="canEdit" icon="edit" label="Edit" @click="openEdit(row)" />
+              <AppActionButton v-if="canDelete" icon="delete" label="Hapus" @click="confirmDelete(row)" />
             </div>
           </li>
         </ul>
@@ -65,8 +65,8 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-1">
-            <AppActionButton icon="edit" label="Edit" @click="openEdit(row)" />
-            <AppActionButton icon="delete" label="Hapus" @click="confirmDelete(row)" />
+            <AppActionButton v-if="canEdit" icon="edit" label="Edit" @click="openEdit(row)" />
+            <AppActionButton v-if="canDelete" icon="delete" label="Hapus" @click="confirmDelete(row)" />
           </div>
         </template>
       </AppTable>
@@ -127,10 +127,11 @@
 
 <script setup>
 import AppActionButton from '@/components/ui/AppActionButton.vue'
-import { ref, watch, onMounted } from 'vue'
+import {ref, watch, onMounted, computed } from 'vue'
 import { warehousesApi } from '@/api/warehouse.js'
 import { outletsApi } from '@/api/outlets.js'
 import { useToastStore } from '@/stores/toast.js'
+import { useAuthStore } from '@/stores/auth.js'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
 import AppTable      from '@/components/ui/AppTable.vue'
@@ -141,6 +142,10 @@ import AppPagination from '@/components/ui/AppPagination.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 
 const toast = useToastStore()
+const auth = useAuthStore()
+const canCreate = computed(() => auth.hasPermission('warehouses.create'))
+const canEdit = computed(() => auth.hasPermission('warehouses.update'))
+const canDelete = computed(() => auth.hasPermission('warehouses.delete'))
 const loading = ref(false)
 const saving = ref(false)
 const errorMsg = ref('')

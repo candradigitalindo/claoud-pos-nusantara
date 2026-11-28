@@ -127,9 +127,13 @@ type StockMovement struct {
 	WarehouseID  string  `json:"warehouse_id"`
 	WarehouseName string `json:"warehouse_name"`
 	MovementType string  `json:"movement_type"`
-	QtyBase      float64 `json:"qty_base"`
-	QtyDist      float64 `json:"qty_dist"`
-	UnitUsed     string  `json:"unit_used"`
+	QtyBase       float64 `json:"qty_base"`
+	QtyDist       float64 `json:"qty_dist"`
+	UnitUsed      string  `json:"unit_used"`
+	BaseUnit      string  `json:"base_unit,omitempty"`
+	DistUnit      string  `json:"dist_unit,omitempty"`
+	DistRatio     float64 `json:"dist_ratio,omitempty"`
+	DistUnitLabel string  `json:"dist_unit_label,omitempty"`
 	CostPerBase  float64 `json:"cost_per_base"`
 	BalanceAfter float64 `json:"balance_after"`
 	RefID        string  `json:"ref_id"`
@@ -145,6 +149,7 @@ type AdjustmentRequest struct {
 	ItemID      string  `json:"item_id"`
 	WarehouseID string  `json:"warehouse_id"`
 	QtyBase     float64 `json:"qty_base"`
+	UnitUsed    string  `json:"unit_used"`
 	CostPerBase float64 `json:"cost_per_base"`
 	MovType     string  `json:"movement_type"` // adjustment | waste | spoiled | expired | purchase_in | return_in
 	ExpiryDate  string  `json:"expiry_date"`  // YYYY-MM-DD
@@ -180,10 +185,13 @@ type StockTransfer struct {
 	// permintaan ke Gudang Induk — disetujui & dikirim role semua outlet.
 	FromWarehouseType string `json:"from_warehouse_type"`
 	ToWarehouseType   string `json:"to_warehouse_type"`
+	TargetDivision    string `json:"target_division"`
+	TransferDate      string `json:"transfer_date"`
 	Status          string              `json:"status"` // draft | pending | sent | received | cancelled
 	Notes           string              `json:"notes"`
-	// PhotoURL: bukti barang saat dikirim dari gudang asal (wajib saat 'sent').
+	// PhotoURL/PhotoURLs: bukti barang saat dikirim dari gudang asal (wajib saat 'sent').
 	PhotoURL        string              `json:"photo_url"`
+	PhotoURLs       []string            `json:"photo_urls,omitempty"`
 	Items           []StockTransferItem `json:"items"`
 	CreatedBy       string              `json:"created_by"`
 	ApprovedBy      string              `json:"approved_by"`
@@ -218,6 +226,8 @@ type StockTransferItem struct {
 type StockTransferRequest struct {
 	FromWarehouseID string                   `json:"from_warehouse_id"`
 	ToWarehouseID   string                   `json:"to_warehouse_id"`
+	TargetDivision  string                   `json:"target_division"`
+	TransferDate    string                   `json:"transfer_date"`
 	Notes           string                   `json:"notes"`
 	Items           []StockTransferItemReq   `json:"items"`
 }
@@ -372,33 +382,67 @@ type StockWasteRequest struct {
 
 // ── Warehouse Dashboard ───────────────────────────────────────
 
-type WarehouseDashboardStats struct {
-	TotalWarehouses   int                    `json:"total_warehouses"`
-	CentralWarehouses int                    `json:"central_warehouses"`
-	OutletWarehouses  int                    `json:"outlet_warehouses"`
-	TotalItems        int                    `json:"total_items"`
-	ItemsWithStock    int                    `json:"items_with_stock"`
-	LowStockCount     int                    `json:"low_stock_count"`
-	OutOfStockCount   int                    `json:"out_of_stock_count"`
-	TotalStockValue   float64                `json:"total_stock_value"`
-	PendingTransfers  int                    `json:"pending_transfers"`
-	MovementsToday    int                    `json:"movements_today"`
-	Movements7d       int                    `json:"movements_7d"`
-	WarehouseStocks   []WarehouseStockSummary `json:"warehouse_stocks"`
-	LowStockItems     []StockLedgerRow       `json:"low_stock_items"`
-	RecentMovements   []StockMovement        `json:"recent_movements"`
-	PendingTransferList []StockTransfer      `json:"pending_transfer_list"`
-	MovementTrend     []DailyMovementPoint   `json:"movement_trend"`
-}
-
-type WarehouseStockSummary struct {
+type WarehouseExpiringBatch struct {
+	BatchID       string  `json:"batch_id"`
+	ItemID        string  `json:"item_id"`
+	ItemCode      string  `json:"item_code"`
+	ItemName      string  `json:"item_name"`
+	Category      string  `json:"category"`
 	WarehouseID   string  `json:"warehouse_id"`
 	WarehouseName string  `json:"warehouse_name"`
 	WarehouseType string  `json:"warehouse_type"`
-	OutletName    string  `json:"outlet_name"`
-	TotalItems    int     `json:"total_items"`
-	TotalValue    float64 `json:"total_value"`
-	LowStockCount int     `json:"low_stock_count"`
+	BaseUnit      string  `json:"base_unit"`
+	DistUnit      string  `json:"dist_unit"`
+	DistRatio     float64 `json:"dist_ratio"`
+	DistUnitLabel string  `json:"dist_unit_label"`
+	QtyBase       float64 `json:"qty_base"`
+	CostPerBase   float64 `json:"cost_per_base"`
+	StockValue    float64 `json:"stock_value"`
+	ExpiryDate    string  `json:"expiry_date"`
+	DaysLeft      int     `json:"days_left"`
+	Status        string  `json:"status"` // expired | critical | warning
+	RefType       string  `json:"ref_type"`
+	AckBy         string  `json:"ack_by,omitempty"`
+}
+
+type WarehouseDashboardStats struct {
+	SelectedWarehouseID string                   `json:"selected_warehouse_id,omitempty"`
+	TotalWarehouses     int                      `json:"total_warehouses"`
+	CentralWarehouses   int                      `json:"central_warehouses"`
+	OutletWarehouses    int                      `json:"outlet_warehouses"`
+	TotalItems          int                      `json:"total_items"`
+	ItemsWithStock      int                      `json:"items_with_stock"`
+	LowStockCount       int                      `json:"low_stock_count"`
+	OutOfStockCount     int                      `json:"out_of_stock_count"`
+	TotalStockValue     float64                  `json:"total_stock_value"`
+	PendingTransfers    int                      `json:"pending_transfers"`
+	MovementsToday      int                      `json:"movements_today"`
+	Movements7d         int                      `json:"movements_7d"`
+	ExpiredCount        int                      `json:"expired_count"`
+	Expiring7dCount     int                      `json:"expiring_7d_count"`
+	Expiring30dCount    int                      `json:"expiring_30d_count"`
+	Expiring30dValue    float64                  `json:"expiring_30d_value"`
+	OpenQualityCases    int                      `json:"open_quality_cases"`
+	WasteCount30d       int                      `json:"waste_count_30d"`
+	WasteValue30d       float64                  `json:"waste_value_30d"`
+	IncomingDeliveries  int                      `json:"incoming_deliveries"`
+	WarehouseStocks     []WarehouseStockSummary  `json:"warehouse_stocks"`
+	ExpiringItems       []WarehouseExpiringBatch `json:"expiring_items"`
+	LowStockItems       []StockLedgerRow         `json:"low_stock_items"`
+	RecentMovements     []StockMovement          `json:"recent_movements"`
+	PendingTransferList []StockTransfer          `json:"pending_transfer_list"`
+	MovementTrend       []DailyMovementPoint     `json:"movement_trend"`
+}
+
+type WarehouseStockSummary struct {
+	WarehouseID      string  `json:"warehouse_id"`
+	WarehouseName    string  `json:"warehouse_name"`
+	WarehouseType    string  `json:"warehouse_type"`
+	OutletName       string  `json:"outlet_name"`
+	TotalItems       int     `json:"total_items"`
+	TotalValue       float64 `json:"total_value"`
+	LowStockCount    int     `json:"low_stock_count"`
+	Expiring30dCount int     `json:"expiring_30d_count"`
 }
 
 type DailyMovementPoint struct {

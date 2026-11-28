@@ -397,6 +397,7 @@ const NAV_ITEMS_DATA = [
     </svg>`,
     children: [
       { to: '/reservations', label: 'Reservasi', permission: 'reservations.view' },
+      { to: '/cross-outlet-bundles', label: 'Bundling Lintas Outlet', permission: 'bundles.view' },
       { to: '/customers', label: 'Pelanggan', permission: 'customers.view' },
     ],
   },
@@ -439,11 +440,32 @@ const NAV_ITEMS_DATA = [
     </svg>`,
     children: [
       { to: '/procurement-dashboard', label: 'Dashboard', permission: 'procurement.dashboard.view' },
-      { to: '/purchase-goods', label: 'Barang', permission: 'procurement.requests.view' },
       { to: '/purchase-materials', label: 'Bahan Baku', permission: 'procurement.rawmaterials.view' },
+      { to: '/purchase-goods', label: 'Barang & Perlengkapan', permission: 'procurement.requests.view' },
       { to: '/purchase-services', label: 'Jasa', permission: 'procurement.requests.view' },
       { to: '/projects', label: 'Projek', permission: 'procurement.projects.view' },
       { to: '/vendors', label: 'Vendor', permission: 'vendors.view' },
+    ],
+  },
+  {
+    label: 'Logistik',
+    icon: `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"
+        d="M1 3h15v13H1zM16 8h4l3 5v3h-7V8z"/>
+      <circle cx="5.5" cy="18.5" r="2" stroke-width="1.6"/>
+      <circle cx="18.5" cy="18.5" r="2" stroke-width="1.6"/>
+    </svg>`,
+    children: [
+      {
+        to: '/logistics/deliveries',
+        label: 'Pengantaran Logistik',
+        permission: [
+          'logistics.deliveries.view', 'logistics.deliveries.manage',
+          'logistics.rawmaterials.view', 'logistics.rawmaterials.manage',
+          'logistics.goods.view', 'logistics.goods.manage',
+          'stockledger.adjust', 'assets.create',
+        ],
+      },
     ],
   },
   {

@@ -39,6 +39,7 @@ func usageReportDB(t *testing.T) usagePolicyFixture {
 		`CREATE TABLE stock_deduction_failures(id CHAR(26) PRIMARY KEY,outlet_id CHAR(26),status TEXT,created_at TIMESTAMP)`,
 		`CREATE TABLE pos_stock_deductions(outlet_id CHAR(26),transaction_id VARCHAR(50),product_local_id VARCHAR(100),qty NUMERIC(15,4),PRIMARY KEY(outlet_id,transaction_id,product_local_id))`,
 		`CREATE TABLE product_recipes(id CHAR(26),product_id CHAR(26),item_id CHAR(26),qty_base NUMERIC(15,4))`,
+		`CREATE TABLE cross_outlet_bundle_claims(id CHAR(26) PRIMARY KEY,partner_outlet_id CHAR(26),status TEXT)`,
 	} {
 		usageSQL(t, q)
 	}

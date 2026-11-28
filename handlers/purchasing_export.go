@@ -25,11 +25,17 @@ func ExportPurchasing(c *fiber.Ctx) error {
 	requestType := strings.TrimSpace(c.Query("type"))
 	var allowedTypes []string
 	if requestType != "" {
-		if !services.IsValidRequestType(requestType) {
-			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "type harus 'barang', 'jasa', atau 'bahan'."})
-		}
-		if !acc.can(requestType, "view") {
-			return purchaseForbidden(c, "Anda tidak memiliki akses melihat pengadaan "+services.RequestTypeLabel(requestType)+".")
+		if requestType == services.PurchasingGroupBarangJasa {
+			if !acc.can(services.RequestTypeBarang, "view") {
+				return purchaseForbidden(c, "Anda tidak memiliki akses melihat pengadaan Barang & Jasa.")
+			}
+		} else {
+			if !services.IsValidRequestType(requestType) {
+				return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{Success: false, Error: "type harus 'barang', 'jasa', 'bahan', atau 'barang_jasa'."})
+			}
+			if !acc.can(requestType, "view") {
+				return purchaseForbidden(c, "Anda tidak memiliki akses melihat pengadaan "+services.RequestTypeLabel(requestType)+".")
+			}
 		}
 	} else {
 		allowedTypes = acc.viewableTypes()

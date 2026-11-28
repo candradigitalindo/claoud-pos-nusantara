@@ -200,7 +200,7 @@ func GetPpicUsageControl(dateFrom, dateTo, warehouseID, search, status string, s
 	// outlet. An order without payment, parked order or completed void is never
 	// promoted into the sales baseline just because a movement says "sale".
 	rows, err = tx.Query(ppicUsageScopeCTE+` SELECT m.item_id,m.warehouse_id,m.movement_type,COALESCE(m.ref_type,''),m.qty_base,m.cost_per_base,
-  (t.id IS NOT NULL AND NOT COALESCE(o.is_holding,false) AND NULLIF(o.payment_info->>'voided_at','') IS NULL AND NOT EXISTS(SELECT 1 FROM pos_void_stock_events v WHERE v.outlet_id=t.outlet_id AND v.order_id=COALESCE(o.id,t.order_id) AND v.source_type='order')) AS valid_sale,
+  ((t.id IS NOT NULL AND NOT COALESCE(o.is_holding,false) AND NULLIF(o.payment_info->>'voided_at','') IS NULL AND NOT EXISTS(SELECT 1 FROM pos_void_stock_events v WHERE v.outlet_id=t.outlet_id AND v.order_id=COALESCE(o.id,t.order_id) AND v.source_type='order')) OR (bc.id IS NOT NULL AND bc.status='claimed')) AS valid_sale,
   (wo.id IS NOT NULL AND wo.status='done' AND wo.qty_planned_base>0 AND wo.qty_actual_base>0 AND wm.item_id IS NOT NULL AND wo.finished_at>=tz_day_start($1::date) AND wo.finished_at<tz_day_start($2::date+1)) AS valid_wo,
   (b.id IS NOT NULL AND ABS(b.input_qty_base+m.qty_base)<0.0001) AS valid_breakdown,
   (EXISTS(SELECT 1 FROM stock_wastes sw WHERE sw.source_movement_id=m.id OR (m.ref_type='stock_waste' AND sw.id::text=m.ref_id))) AS waste_document
@@ -212,6 +212,7 @@ func GetPpicUsageControl(dateFrom, dateTo, warehouseID, search, status string, s
  LEFT JOIN work_orders wo ON m.ref_type='work_order' AND wo.id::text=m.ref_id AND wo.warehouse_id=m.warehouse_id
  LEFT JOIN work_order_materials wm ON wm.wo_id=wo.id AND wm.item_id=m.item_id
  LEFT JOIN stock_breakdowns b ON m.ref_type='stock_breakdown' AND b.id::text=m.ref_id AND b.warehouse_id=m.warehouse_id AND b.input_item_id=m.item_id
+ LEFT JOIN cross_outlet_bundle_claims bc ON m.ref_type='bundle_claim' AND bc.id::text=m.ref_id AND bc.partner_outlet_id=wh.outlet_id
  WHERE m.created_at>=tz_day_start($1::date) AND m.created_at<tz_day_start($2::date+1) AND m.qty_base<>0`, args...)
 	if err != nil {
 		return nil, err

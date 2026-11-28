@@ -68,11 +68,25 @@ type AccountsPayable struct {
 }
 
 // PaymentStatsResponse holds stats for the payments page.
+type PaymentGroupStat struct {
+	Count        int     `json:"count"`
+	WaitingCount int     `json:"waiting_count"`
+	TotalWaiting float64 `json:"total_waiting"`
+}
+
+type PaymentGroupBreakdown struct {
+	BahanBaku  PaymentGroupStat `json:"bahan_baku"`
+	BarangJasa PaymentGroupStat `json:"barang_jasa"`
+	Manual     PaymentGroupStat `json:"manual"`
+	Emergency  PaymentGroupStat `json:"emergency"`
+}
+
 type PaymentStatsResponse struct {
-	Waiting         int             `json:"waiting"`
-	TotalWaiting    float64         `json:"total_waiting"`
-	Paid            int             `json:"paid"`
-	TotalPaid       float64         `json:"total_paid"`
-	Received        int             `json:"received"`
-	AccountsPayable AccountsPayable `json:"accounts_payable"`
+	Waiting         int                   `json:"waiting"`
+	TotalWaiting    float64               `json:"total_waiting"`
+	Paid            int                   `json:"paid"`
+	TotalPaid       float64               `json:"total_paid"`
+	Received        int                   `json:"received"`
+	AccountsPayable AccountsPayable       `json:"accounts_payable"`
+	GroupBreakdown  PaymentGroupBreakdown `json:"group_breakdown"`
 }

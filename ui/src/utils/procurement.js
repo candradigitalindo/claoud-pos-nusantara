@@ -113,14 +113,19 @@ export function isConflictError(err) {
 // vendor juga tidak memegang item (nama grupnya ada di pecahan, yang tidak
 // ikut di respons daftar), jadi diberi keterangan alih-alih "-".
 export function purchaseDisplayNames(row) {
-  const names = (row?.items || []).map(g => String(g?.name || '').trim()).filter(Boolean)
-  if (!names.length) {
-    for (const r of row?.rejected_items || []) {
-      const g = String(r?.group || r?.name || '').trim()
-      if (g && !names.includes(g)) names.push(g)
-    }
+  const names = []
+  const push = (raw) => {
+    const s = String(raw || '').trim()
+    if (s && !names.includes(s)) names.push(s)
   }
-  if (!names.length && row?.split_status === 'master') return 'Seluruh item dipecah ke vendor — lihat detail'
+  for (const n of row?.display_names || []) push(n)
+  for (const g of row?.items || []) push(g?.name)
+  for (const ch of row?.children || []) {
+    for (const g of ch?.items || []) push(g?.name)
+  }
+  if (!names.length) {
+    for (const r of row?.rejected_items || []) push(r?.group || r?.name)
+  }
   return names.join(', ') || '-'
 }
 
@@ -369,4 +374,47 @@ export const RATIFICATION = {
 // Pembelian Darurat: kas sudah diserahkan kasir (pembayaran tercatat).
 export function emergencyCashHanded(doc) {
   return Math.round((Number(doc?.paid_amount) || 0) * 100) > 0
+}
+
+// ── Sumber HPS & Tautan Referensi Harga ────────────────────────────────────
+// Sumber HPS / catatan RAB boleh berupa tautan panjang marketplace atau teks
+// campuran ("Toko Jaya https://..."). Ringkas URL menjadi domain agar kolom
+// tabel & kartu mobile tidak melebar ke samping, sambil mempertahankan tautan asli.
+const SOURCE_URL_RE = /(https?:\/\/[^\s]+|www\.[^\s]+)/i
+const SOURCE_URL_GLOBAL_RE = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi
+
+export function isSourceLink(v) {
+  const s = String(v || '').trim()
+  if (!s || /\s/.test(s)) return false
+  return /^(https?:\/\/|www\.)/i.test(s)
+}
+
+export function extractSourceUrl(v) {
+  const s = String(v || '').trim()
+  if (!s) return ''
+  const m = s.match(SOURCE_URL_RE)
+  if (!m) return ''
+  const raw = m[1].replace(/[),.;]+$/, '')
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+}
+
+function shortenUrlToken(raw) {
+  const cleaned = raw.replace(/[),.;]+$/, '')
+  const suffix = raw.slice(cleaned.length)
+  const href = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`
+  try {
+    const u = new URL(href)
+    const host = u.hostname.replace(/^www\./, '')
+    const hasExtra = (u.pathname && u.pathname !== '/') || !!u.search || !!u.hash
+    return host + (hasExtra ? '/…' : '') + suffix
+  } catch {
+    return (cleaned.length > 36 ? cleaned.slice(0, 33) + '…' : cleaned) + suffix
+  }
+}
+
+export function formatSourceLabel(v) {
+  const s = String(v || '').trim()
+  if (!s) return ''
+  if (isSourceLink(s)) return shortenUrlToken(s)
+  return s.replace(SOURCE_URL_GLOBAL_RE, (m) => shortenUrlToken(m))
 }

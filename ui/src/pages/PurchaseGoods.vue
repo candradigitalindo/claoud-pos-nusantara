@@ -1,7 +1,14 @@
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan {{ typeLabel }}</h1>
+      <div class="flex flex-wrap items-center gap-2">
+        <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan {{ typeLabel }}</h1>
+        <span :class="isBahan ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-blue-100 text-blue-900 border-blue-300'"
+          class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold">
+          <span :class="isBahan ? 'bg-amber-500' : 'bg-blue-500'" class="h-1.5 w-1.5 rounded-full" />
+          {{ isBahan ? 'Kelompok 1 · Purchasing Bahan Baku' : 'Kelompok 2 · Purchasing Barang & Jasa' }}
+        </span>
+      </div>
       <div class="flex flex-wrap items-center gap-2">
         <AppButton variant="secondary" :loading="exportingPurchasing" @click="downloadPurchasingExcel">Excel per Vendor</AppButton>
         <AppButton v-if="authStore.hasPermission(perm('submit'))" @click="openCreate">+ Buat Pengajuan</AppButton>
@@ -56,10 +63,27 @@
               <button @click="viewDetail(row)" class="min-w-0 flex-1 text-left">
                 <p class="font-mono text-[11px] text-gray-500">{{ row.request_number || '-' }}</p>
                 <p class="mt-0.5 text-sm font-medium text-gray-900 break-words">{{ purchaseDisplayNames(row) }}</p>
-                <PurchaseUrgencyBadges :doc="row" class="mt-1" />
+                <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span v-if="row.split_status === 'master'" class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-blue-200">
+                    Pecah Vendor<template v-if="row.split_count"> ({{ row.split_count }})</template>
+                  </span>
+                  <span v-else-if="row.parent_id" class="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200">
+                    Pecah Vendor<template v-if="row.parent_number"> · {{ row.parent_number }}</template>
+                  </span>
+                  <PurchaseUrgencyBadges :doc="row" />
+                  <component v-for="d in (row.deliveries || []).slice(0, 2)" :key="`m-sj-${d.id}`"
+                    :is="canViewGroupLogistics ? 'router-link' : 'span'"
+                    :to="canViewGroupLogistics ? { path: '/logistics/deliveries', query: { delivery_id: d.id } } : undefined" @click.stop
+                    :class="['inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ring-1 ring-inset', deliveryChipClass(d.status)]">
+                    {{ d.delivery_number }} · {{ deliveryStatusLabel(d.status) }}
+                  </component>
+                  <span v-if="(row.deliveries || []).length > 2" class="text-[10px] text-indigo-700 font-semibold">+{{ row.deliveries.length - 2 }} SJ</span>
+                </div>
               </button>
               <div class="flex shrink-0 flex-col items-end gap-1">
                 <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+                <span v-if="row.receipt_status === 'received' && row.status !== 'received'" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Barang Diterima</span>
+                <span v-else-if="row.receipt_status === 'partial'" class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Diterima Sebagian</span>
                 <span v-if="payToReturned(row)" class="payto-returned-badge" title="Keuangan mengembalikan detail pembayaran — perbaiki di detail pengajuan">Detail bayar dikembalikan</span>
               </div>
             </div>
@@ -92,7 +116,15 @@
           <span class="font-mono text-xs text-gray-700">{{ row.request_number || '-' }}</span>
         </template>
         <template #cell-pengadaan_names="{ row }">
-          <span class="text-gray-800">{{ purchaseDisplayNames(row) }}</span>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-gray-800">{{ purchaseDisplayNames(row) }}</span>
+            <span v-if="row.split_status === 'master'" class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-blue-200 whitespace-nowrap">
+              Pecah Vendor<template v-if="row.split_count"> ({{ row.split_count }})</template>
+            </span>
+            <span v-else-if="row.parent_id" class="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200 whitespace-nowrap">
+              Pecah Vendor<template v-if="row.parent_number"> · {{ row.parent_number }}</template>
+            </span>
+          </div>
         </template>
         <template #cell-work_unit_name="{ row }">
           <span class="font-medium text-gray-900">{{ row.work_unit_name || '-' }}</span>
@@ -106,6 +138,22 @@
         <template #cell-status="{ row }">
           <div class="flex flex-col items-start gap-1">
             <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
+            <span v-if="row.receipt_status === 'received' && row.status !== 'received'" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">
+              Barang Diterima
+            </span>
+            <span v-else-if="row.receipt_status === 'partial'" class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 whitespace-nowrap">
+              Diterima Sebagian
+            </span>
+            <div v-if="(row.deliveries || []).length" class="flex flex-wrap gap-1">
+              <component v-for="d in row.deliveries.slice(0, 2)" :key="`d-sj-${d.id}`"
+                :is="canViewGroupLogistics ? 'router-link' : 'span'"
+                :to="canViewGroupLogistics ? { path: '/logistics/deliveries', query: { delivery_id: d.id } } : undefined" @click.stop
+                :class="['inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ring-1 ring-inset whitespace-nowrap', canViewGroupLogistics ? 'hover:opacity-80' : '', deliveryChipClass(d.status)]"
+                :title="`${d.delivery_number} (${d.total_received}/${d.total_planned} unit · ${d.destination_label})`">
+                {{ d.delivery_number }} · {{ deliveryStatusLabel(d.status) }}
+              </component>
+              <span v-if="row.deliveries.length > 2" class="text-[10px] font-semibold text-indigo-700">+{{ row.deliveries.length - 2 }} SJ</span>
+            </div>
             <PurchaseUrgencyBadges :doc="row" />
             <span v-if="payToReturned(row)" class="payto-returned-badge" title="Keuangan mengembalikan detail pembayaran — perbaiki di detail pengajuan">Detail bayar dikembalikan</span>
           </div>
@@ -168,7 +216,7 @@
         <div v-if="isBahan" class="modal-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
           Pengajuan bahan baku langsung <strong>menunggu persetujuan</strong> (tanpa verifikasi) dan masih bisa diubah sampai disetujui.
           Seluruh bahan baku diterima di <strong>Gudang Induk</strong> dan dicatat sebagai bahan (HPP).
-          Pilih bahan melalui pencarian katalog; satuan pembeliannya terisi otomatis.
+          Pilih bahan melalui pencarian katalog; satuan pembelian dan HPS (harga beli terakhir, tetap bisa diubah) terisi otomatis.
         </div>
         <div v-if="isBahan" class="modal-span-full space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -244,17 +292,18 @@
                       <div class="col-span-2 min-w-0" :data-form-error="formErrors[`sub_hps:${i}:${j}`] ? '1' : undefined">
                         <RupiahInput v-model="sub.hps_price" placeholder="HPS satuan" :error="formErrors[`sub_hps:${i}:${j}`]"
                           @update:model-value="clearFieldError(`sub_hps:${i}:${j}`)" />
+                        <p v-if="isBahan && lastPriceHint(sub)" class="mt-0.5 text-[10px] leading-tight text-amber-700">{{ lastPriceHint(sub) }}</p>
                       </div>
                       <p class="col-span-1 min-w-0 break-words self-center text-right text-xs text-gray-500 sm:col-span-2 sm:pt-2">{{ formatRupiah((sub.qty || 0) * (sub.hps_price || 0)) }}</p>
                       <AppActionButton icon="delete" label="Hapus baris" type="button" @click="removeSubItem(i, j)" :disabled="item.items.length <= 1" class="self-center justify-self-end sm:mt-0.5" />
                       <!-- Sumber HPS diberi barisnya sendiri: tautan marketplace
                            panjang dan tidak muat di deret kolom angka. -->
                       <div class="col-span-2 sm:col-span-12">
-                        <div class="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5">
+                        <div class="flex min-w-0 items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5">
                           <span class="shrink-0 text-gray-400">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg>
                           </span>
-                          <input v-model="sub.hps_source" class="input-sm w-full border-0 bg-transparent px-0"
+                          <input v-model="sub.hps_source" class="input-sm min-w-0 flex-1 w-full border-0 bg-transparent px-0"
                             placeholder="Sumber HPS — mis. Toko Jaya (telp 0812…), atau tempel link Shopee/Tokopedia" />
                         </div>
                       </div>
@@ -471,11 +520,11 @@
           </div>
 
           <!-- No. Invoice & Catatan -->
-          <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
+          <div v-if="detail.invoice_number || detailInvoiceUrls.length || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
             <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-2">
               <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
-                  <dt class="text-gray-400">No. Invoice</dt>
+                  <dt class="text-gray-400">No. Invoice / Struk</dt>
                   <dd class="font-medium font-mono text-gray-900">{{ detail.invoice_number }}</dd>
                 </template>
                 <template v-if="detail.notes">
@@ -483,9 +532,43 @@
                   <dd class="text-gray-700">{{ detail.notes }}</dd>
                 </template>
               </dl>
-              <AppActionButton v-if="safeUrl(detail.invoice_url)" icon="photo" label="Lihat Invoice Vendor" :href="safeUrl(detail.invoice_url)" target="_blank" />
+              <div v-if="detailInvoiceUrls.length" class="flex flex-wrap items-center gap-1.5">
+                <AppActionButton v-for="(u, idx) in detailInvoiceUrls" :key="`inv-${idx}`" icon="photo"
+                  :label="detailInvoiceUrls.length > 1 ? `Struk/Invoice ${idx + 1}` : 'Lihat Struk / Invoice'"
+                  :href="u" target="_blank" />
+              </div>
             </div>
           </div>
+        </div>
+
+        <!-- Sinkronisasi read-only dari modul Logistik → Pengantaran Logistik (posisi teratas agar langsung terlihat) -->
+        <div v-if="logisticsDeliveriesOfDetail.length && !detail.emergency" class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 sm:p-4 space-y-2">
+          <p class="flex items-center gap-1.5 text-sm font-semibold text-indigo-950">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1zM16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/></svg>
+            Status Pengantaran Logistik <span class="font-normal text-indigo-700/70">({{ logisticsDeliveriesOfDetail.length }})</span>
+          </p>
+          <ul class="divide-y divide-indigo-100 rounded-lg bg-white border border-indigo-100 px-3">
+            <li v-for="d in logisticsDeliveriesOfDetail" :key="d.id" class="flex flex-wrap items-center justify-between gap-2 py-2 text-xs">
+              <div class="min-w-0 flex-1">
+                <component :is="canViewGroupLogistics ? 'router-link' : 'span'"
+                  :to="canViewGroupLogistics ? { path: '/logistics/deliveries', query: { delivery_id: d.id } } : undefined"
+                  :class="['font-mono font-bold text-indigo-700', canViewGroupLogistics ? 'hover:underline' : '']">
+                  {{ d.delivery_number }}
+                </component>
+                <span class="ml-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">{{ dispatchModeLabel(d.dispatch_mode) }}</span>
+                <p class="text-gray-500 mt-0.5">
+                  {{ d.delivery_date }} · {{ d.courier_name || (d.dispatch_mode === 'vendor_direct' ? 'Vendor' : 'Logistik') }} → <strong>{{ d.destination_label }}</strong>
+                  · <strong class="text-gray-800">{{ d.total_received }}/{{ d.total_planned }} unit diterima</strong>
+                </p>
+              </div>
+              <div class="flex shrink-0 flex-wrap items-center gap-1.5">
+                <span :class="deliveryStatusClass(d.status)" class="rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                  {{ deliveryStatusLabel(d.status) }}
+                </span>
+                <AppActionButton v-if="canViewGroupLogistics" icon="print" label="Cetak SJ" @click="quickPrintDelivery(d.id)" />
+              </div>
+            </li>
+          </ul>
         </div>
 
         <div v-if="detail.children?.length" class="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
@@ -501,6 +584,21 @@
                   <p v-if="child.request_number" class="text-[10px] text-gray-500 font-mono">No. {{ child.request_number }}</p>
                 </div>
                 <span :class="statusBadge(child.status)" class="text-[10px] shrink-0">{{ statusLabel(child.status) }}</span>
+              </div>
+              <!-- Status sinkron Logistik & Penerimaan per pecahan -->
+              <div v-if="(child.deliveries || []).length || child.receipt_status" class="flex flex-wrap gap-1">
+                <component v-for="cd in child.deliveries || []" :key="`ch-sj-${child.id}-${cd.id}`"
+                  :is="canViewGroupLogistics ? 'router-link' : 'span'"
+                  :to="canViewGroupLogistics ? { path: '/logistics/deliveries', query: { delivery_id: cd.id } } : undefined"
+                  :class="['inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ring-1 ring-inset', canViewGroupLogistics ? 'hover:opacity-80' : '', deliveryChipClass(cd.status)]">
+                  {{ cd.delivery_number }} · {{ deliveryStatusLabel(cd.status) }} ({{ cd.total_received }}/{{ cd.total_planned }})
+                </component>
+                <span v-if="!(child.deliveries || []).length && child.receipt_status === 'received'" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  Barang Diterima
+                </span>
+                <span v-else-if="!(child.deliveries || []).length && child.receipt_status === 'partial'" class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                  Diterima Sebagian
+                </span>
               </div>
               <div class="flex justify-between items-end gap-2 mt-auto">
                 <p class="min-w-0 break-words text-xs font-bold text-emerald-700">{{ formatRupiah(child.total_final || child.total_amount) }}</p>
@@ -549,10 +647,10 @@
                     </template>
                     <template v-if="showHps && sub.hps_source">
                       <dt class="text-gray-400">Sumber HPS</dt>
-                      <dd class="min-w-0">
-                        <a v-if="isLink(sub.hps_source)" :href="sub.hps_source" target="_blank" rel="noopener"
-                          class="block break-all text-emerald-700 underline">{{ shortSource(sub.hps_source) }}</a>
-                        <span v-else class="block break-words text-gray-700">{{ sub.hps_source }}</span>
+                      <dd class="min-w-0 overflow-hidden">
+                        <a v-if="extractSourceUrl(sub.hps_source)" :href="extractSourceUrl(sub.hps_source)" target="_blank" rel="noopener noreferrer"
+                          class="block max-w-full truncate text-emerald-700 underline" :title="sub.hps_source">{{ formatSourceLabel(sub.hps_source) }}</a>
+                        <span v-else class="block break-words [overflow-wrap:anywhere] text-gray-700">{{ sub.hps_source }}</span>
                       </dd>
                     </template>
                     <template v-if="showHps">
@@ -609,12 +707,14 @@
                       <td class="py-1.5 pr-2">{{ sub.unit }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(sub.hps_price) }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(canEditDetailQty ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</td>
-                      <td v-if="showHps" class="max-w-[14rem] py-1.5 pr-2">
-                        <input v-if="canEditItems" v-model="sub.hps_source" class="input-sm w-full py-0.5 px-1"
-                          placeholder="toko / link" @change="saveDetailQty()" />
-                        <a v-else-if="isLink(sub.hps_source)" :href="sub.hps_source" target="_blank" rel="noopener"
-                          class="block truncate text-emerald-700 underline" :title="sub.hps_source">{{ shortSource(sub.hps_source) }}</a>
-                        <span v-else class="block truncate text-gray-600" :title="sub.hps_source">{{ sub.hps_source || '—' }}</span>
+                      <td v-if="showHps" class="w-[12rem] max-w-[12rem] py-1.5 pr-2">
+                        <div class="max-w-[12rem] min-w-0">
+                          <input v-if="canEditItems" v-model="sub.hps_source" class="input-sm w-full min-w-0 py-0.5 px-1"
+                            placeholder="toko / link" @change="saveDetailQty()" />
+                          <a v-else-if="extractSourceUrl(sub.hps_source)" :href="extractSourceUrl(sub.hps_source)" target="_blank" rel="noopener noreferrer"
+                            class="block max-w-[12rem] truncate text-emerald-700 underline" :title="sub.hps_source">{{ formatSourceLabel(sub.hps_source) }}</a>
+                          <span v-else class="block max-w-[12rem] truncate text-gray-600" :title="sub.hps_source">{{ sub.hps_source || '—' }}</span>
+                        </div>
                       </td>
                       <td class="py-1.5 pr-2 text-right">{{ sub.final_price ? formatRupiah(sub.final_price) : '-' }}</td>
                       <td class="py-1.5 text-right font-medium">{{ sub.final_price ? formatRupiah(purchaseQuantity(sub) * sub.final_price) : '-' }}</td>
@@ -720,12 +820,24 @@
           </ul>
         </div>
 
-        <!-- Struk pembelian & pengambilan barang (sejak disetujui): struk tiap
-             transaksi di vendor dibayar Keuangan per struk; pengambilan oleh
-             petugas logistik berstatus "dalam pengantaran" sampai diterima. -->
-        <!-- Pembelian Darurat punya bukti belanjanya sendiri (panel di atas). -->
-        <PurchaseStrukSection v-if="showStrukSection && !detail.emergency" :doc="detail" :can-manage="canManageStruk" @changed="reloadDetail" />
-        <PurchasePickupSection v-if="showPickupSection && !detail.emergency" :doc="detail" :can-pickup="canPickup" @changed="reloadDetail" />
+        <!-- Arsip read-only untuk data struk lama (jika ada pada transaksi terdahulu).
+             Pembelian baru cukup memakai 1 No. Invoice/Struk + Multi-Foto di form Isi Harga. -->
+        <div v-if="(detail.struks || []).length && !detail.emergency" class="rounded-xl border border-gray-200 bg-gray-50/70 p-3 space-y-1.5">
+          <p class="text-xs font-semibold text-gray-600">Arsip Lampiran Struk Lama ({{ detail.struks.length }})</p>
+          <ul class="divide-y divide-gray-200/80 text-xs">
+            <li v-for="s in detail.struks" :key="s.id" class="flex flex-wrap items-center justify-between gap-2 py-1.5">
+              <div class="min-w-0">
+                <span class="font-mono font-semibold text-gray-800">{{ s.struk_number }}</span>
+                <span class="text-gray-500 ml-1.5">· {{ s.struk_date }} · {{ formatRupiah(s.total) }}</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <AppActionButton v-for="(u, idx) in safeUrls(s.photo_url, s.photo_urls)" :key="`${s.id}-${idx}`" icon="photo"
+                  :label="safeUrls(s.photo_url, s.photo_urls).length > 1 ? `Foto ${idx + 1}` : 'Lihat Foto'" :href="u" target="_blank" />
+              </div>
+            </li>
+          </ul>
+        </div>
+
 
         <!-- Verifikasi (status pending, izin verify jenisnya): pastikan barang
              belum tersedia di outlet lain sebelum diteruskan ke penyetuju. -->
@@ -867,7 +979,7 @@
       <p class="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
         Isi jumlah aktual yang dibeli dan harga satuannya. Jumlah pengajuan tetap tersimpan sebagai pembanding.
         Nama, satuan, HPS, serta susunan item mengikuti pengajuan yang disetujui.
-        <span v-if="!canAdjustPurchaseQuantity" class="mt-1 block text-amber-700">Jumlah pembelian terkunci setelah ada penerimaan, struk, atau pembayaran.</span>
+        <span v-if="!canAdjustPurchaseQuantity" class="mt-1 block text-amber-700">Jumlah pembelian terkunci setelah ada penerimaan atau pembayaran.</span>
       </p>
       <div class="mb-4 bg-emerald-50 p-3 sm:p-4 rounded-xl border border-emerald-100">
         <label class="text-sm font-bold text-emerald-900 mb-1.5 block">Vendor / Supplier Utama</label>
@@ -877,34 +989,15 @@
           <option v-for="v in vendorList" :key="v.id" :value="v.id">{{ v.name }}</option>
         </SearchableSelect>
       </div>
-      <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="mb-4 space-y-3">
         <div>
-          <label class="text-sm font-medium text-gray-700 mb-1 block">No. Invoice Vendor</label>
-          <input v-model="editFinalInvoice" type="text" placeholder="Masukkan nomor invoice dari vendor"
+          <label class="text-sm font-medium text-gray-700 mb-1 block">No. Invoice / Struk Vendor</label>
+          <input v-model="editFinalInvoice" type="text" placeholder="Masukkan nomor struk / invoice dari vendor"
             class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
         </div>
-        <div>
-          <label class="text-sm font-medium text-gray-700 mb-1 block">File / Foto Invoice Vendor <span class="text-xs font-normal text-gray-400">(opsional)</span></label>
-          <div v-if="invoiceUploadLoading" class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
-            <svg class="w-4 h-4 animate-spin text-emerald-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-            Mengunggah invoice...
-          </div>
-          <div v-else-if="!safeUrl(editFinalInvoiceUrl)" class="relative">
-            <label class="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/70 hover:bg-gray-100 hover:border-emerald-400 cursor-pointer transition-colors px-3 py-2">
-              <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-              <span class="text-xs text-gray-600 truncate">Upload foto / PDF invoice (maks 5MB)</span>
-              <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.pdf" @change="handleInvoiceUpload" />
-            </label>
-          </div>
-          <div v-else class="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-            <a :href="safeUrl(editFinalInvoiceUrl)" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-emerald-700 hover:underline truncate">
-              Lihat Berkas Invoice ↗
-            </a>
-            <button type="button" @click="editFinalInvoiceUrl = ''" class="shrink-0 p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors" title="Hapus file invoice">
-              ✕
-            </button>
-          </div>
-        </div>
+        <PhotoCapture multiple accept="image/*,.pdf" :required="false" v-model="editFinalInvoiceUrls"
+          label="Foto / File Struk / Invoice / Kwitansi Vendor (opsional)"
+          hint="1 struk/invoice per pembelian (bisa langsung pilih banyak foto/lembar atau PDF sekaligus, maks 10 berkas, 5MB/berkas)." />
       </div>
       <p class="text-sm text-gray-500 mb-3">Contoh: diajukan 10 kotak, tersedia 8 kotak — isi jumlah dibeli 8. Total harga dan penerimaan mengikuti jumlah dibeli.</p>
       <div class="space-y-4">
@@ -1089,7 +1182,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
 import { apiClient } from '@/api/client.js'
-import { safeUrl } from '@/utils/safeUrl.js'
+import { safeUrl, safeUrls } from '@/utils/safeUrl.js'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
 import { formatRupiah, formatDateTime, formatDateStr } from '@/utils/format.js'
@@ -1107,8 +1200,9 @@ import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import { projectsApi } from '@/api/projects.js'
 import ReceivingDialog from '@/components/ReceivingDialog.vue'
-import PurchaseStrukSection from '@/components/PurchaseStrukSection.vue'
-import PurchasePickupSection from '@/components/PurchasePickupSection.vue'
+import PhotoCapture from '@/components/PhotoCapture.vue'
+import { logisticsApi } from '@/api/logistics.js'
+import { deliveryStatusLabel, deliveryStatusClass, dispatchModeLabel, printDeliveryNote } from '@/utils/logisticsPrint.js'
 import PurchasePayToForm from '@/components/PurchasePayToForm.vue'
 import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
 import PurchaseUrgencyBadges from '@/components/PurchaseUrgencyBadges.vue'
@@ -1124,25 +1218,32 @@ import {
   RECEIVABLE_PURCHASE_STATUSES, isPhysicalPurchaseType, purchaseDisplayNames,
   newPayToForm, payToFormError, payToPayload, payToReturned, payToEditState,
   urgencyLabel, URGENT_NOTES_MIN,
+  extractSourceUrl, formatSourceLabel,
 } from '@/utils/procurement.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
 
-// Struk pembelian: dicatat bagian pembelian atau petugas logistik, sejak
-// pengajuan disetujui, pada dokumen yang masih memegang item sendiri (induk
-// yang itemnya sudah habis dipecah dicatat per pecahan). Pengambilan barang:
-// petugas logistik (izin Pengambilan Barang).
-const canManageStruk = computed(() => authStore.hasPermission(perm('purchasing')) || authStore.hasPermission(perm('pickup')))
-const canPickup = computed(() => authStore.hasPermission(perm('pickup')))
-const showStrukSection = computed(() => {
-  const d = detail.value
-  return !!d && RECEIVABLE_PURCHASE_STATUSES.includes(d.status) && ((d.items || []).length > 0 || (d.struks || []).length > 0)
-})
-const showPickupSection = computed(() => {
-  const d = detail.value
-  return !!d && RECEIVABLE_PURCHASE_STATUSES.includes(d.status) && (canPickup.value || (d.pickups || []).length > 0)
-})
+
+const logisticsDeliveriesOfDetail = computed(() => detail.value?.deliveries || [])
+function deliveryChipClass(status) {
+  const map = {
+    draft: 'bg-gray-50 text-gray-700 ring-gray-200',
+    in_transit: 'bg-amber-50 text-amber-800 ring-amber-200',
+    partial_received: 'bg-blue-50 text-blue-700 ring-blue-200',
+    received: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  }
+  return map[status] || 'bg-gray-50 text-gray-600 ring-gray-200'
+}
+async function quickPrintDelivery(deliveryId) {
+  try {
+    const d = await logisticsApi.get(deliveryId)
+    const r = printDeliveryNote(d)
+    if (r?.blocked) toast.error('Jendela cetak diblokir browser. Izinkan pop-up untuk situs ini.')
+  } catch (err) {
+    toast.error(err?.message || 'Gagal mencetak Surat Jalan')
+  }
+}
 const route = useRoute()
 
 // Satu halaman, dua jenis: /purchase-goods (barang) dan /purchase-materials
@@ -1202,6 +1303,19 @@ async function loadEmergencyMax() {
 // peralatan) atau Gudang (stockledger.adjust — baris stok).
 const canReceive = computed(() => authStore.hasPermission('stockledger.adjust')
   || (!isBahan.value && authStore.hasPermission('assets.create')))
+const canViewGroupLogistics = computed(() => {
+  if (authStore.isSuperadmin || authStore.hasPermission('logistics.deliveries.view') || authStore.hasPermission('logistics.deliveries.manage')) return true
+  if (isBahan.value) {
+    return authStore.hasPermission('logistics.rawmaterials.view') ||
+      authStore.hasPermission('logistics.rawmaterials.manage') ||
+      authStore.hasPermission('procurement.rawmaterials.purchasing') ||
+      (authStore.scopeType !== 'specific' && authStore.hasPermission('stockledger.adjust'))
+  }
+  return authStore.hasPermission('logistics.goods.view') ||
+    authStore.hasPermission('logistics.goods.manage') ||
+    authStore.hasPermission('procurement.requests.purchasing') ||
+    authStore.hasPermission('assets.create')
+})
 // Tombol Serah Terima hanya tampil bila masih ada barang yang belum diterima.
 const canOpenReceiving = computed(() => {
   const d = detail.value
@@ -1263,6 +1377,17 @@ async function loadStockItemNames() {
 function applyCatalogItem(sub) {
   const it = stockItemByName.value[String(sub.name || '').trim().toLowerCase()]
   if (it?.unit) sub.unit = it.unit
+  if (it && Number(it.last_purchase_price) > 0) {
+    sub.hps_price = Math.round(Number(it.last_purchase_price))
+  }
+}
+function lastPriceHint(sub) {
+  const it = stockItemByName.value[String(sub.name || '').trim().toLowerCase()]
+  if (!it || !(Number(it.last_purchase_price) > 0)) return ''
+  const src = it.last_purchase_source
+    ? ` (${it.last_purchase_source}${it.last_purchase_date ? ' ' + it.last_purchase_date : ''})`
+    : ''
+  return `Terakhir ${formatRupiah(it.last_purchase_price)}${src}`
 }
 function stockBalanceLabel(sub) {
   const it = stockItemByName.value[String(sub.name || '').trim().toLowerCase()]
@@ -1402,15 +1527,7 @@ watch(() => detail.value ? `${detail.value.id}|${detail.value.version || detail.
 // toko". Tautan ditampilkan sebagai nama situsnya saja supaya kolom tidak
 // melebar oleh URL panjang, tapi tetap bisa diklik dan di-hover untuk melihat
 // alamat penuhnya.
-function isLink(v) { return /^https?:\/\//i.test(String(v || '').trim()) }
-function shortSource(v) {
-  const s = String(v || '').trim()
-  if (!isLink(s)) return s
-  try {
-    const u = new URL(s)
-    return u.hostname.replace(/^www\./, '') + (u.pathname.length > 1 ? '…' : '')
-  } catch { return s }
-}
+// extractSourceUrl & formatSourceLabel diimpor dari @/utils/procurement.js
 
 function getUnsplitItems(d) {
   return (d.items || []).map(it => ({
@@ -1868,7 +1985,7 @@ async function fetchList({ silent = false } = {}) {
   finally { if (seq === listSeq && !silent) loading.value = false }
 }
 
-useRealtime(['procurement', 'procurement_payment', 'procurement_receiving'], async () => {
+useRealtime(['procurement', 'procurement_payment', 'procurement_receiving', 'logistics_delivery'], async () => {
   await fetchList({ silent: true })
   if (!isBahan.value) {
     fetchProjects()
@@ -2375,33 +2492,13 @@ async function submitDelete() {
   finally { actionLoading.value = false }
 }
 
-const editFinalInvoiceUrl = ref('')
-const invoiceUploadLoading = ref(false)
-
-async function handleInvoiceUpload(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  if (file.size > 5 * 1024 * 1024) { toast.error('Ukuran file maksimal 5MB.'); e.target.value = ''; return }
-  invoiceUploadLoading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await apiClient.post('/admin/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-    const url = safeUrl(res?.url ?? res?.data?.url)
-    if (!url) throw new Error('Server tidak mengembalikan alamat berkas yang sah.')
-    editFinalInvoiceUrl.value = url
-  } catch (err) {
-    toast.error(err?.message ?? 'Gagal mengunggah file invoice.')
-  } finally {
-    invoiceUploadLoading.value = false
-    e.target.value = ''
-  }
-}
+const editFinalInvoiceUrls = ref([])
+const detailInvoiceUrls = computed(() => safeUrls(detail.value?.invoice_url, detail.value?.invoice_urls))
 
 function openEditFinal() {
   editFinalVendorId.value = detail.value?.vendor_id || ''
   editFinalInvoice.value = detail.value?.invoice_number || ''
-  editFinalInvoiceUrl.value = detail.value?.invoice_url || ''
+  editFinalInvoiceUrls.value = safeUrls(detail.value?.invoice_url, detail.value?.invoice_urls)
   // For masters, only show unsplit items for editing
   const items = getUnsplitItems(detail.value || {})
   editFinalItems.value = items.map(it => ({
@@ -2440,7 +2537,8 @@ async function submitEditFinal(andRequestPayment = false) {
       vendor_id: editFinalVendorId.value,
       vendor_name: vendor?.name || '',
       invoice_number: editFinalInvoice.value.trim(),
-      invoice_url: editFinalInvoiceUrl.value || '',
+      invoice_url: editFinalInvoiceUrls.value[0] || '',
+      invoice_urls: editFinalInvoiceUrls.value,
       version: detail.value.version,
     })
     if (andRequestPayment) {

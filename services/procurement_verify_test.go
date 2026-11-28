@@ -120,7 +120,13 @@ func TestVerifyPermissionPerRequestType(t *testing.T) {
 	if has("procurement.rawmaterials.verify") {
 		t.Error("procurement.rawmaterials.verify masih ada di AllPermissions — bahan baku tidak melalui verifikasi")
 	}
+	// Izin pickup lama sudah digantikan sistem Logistik & Surat Jalan terpisah per kelompok.
 	for _, key := range []string{"procurement.requests.pickup", "procurement.rawmaterials.pickup"} {
+		if has(key) {
+			t.Errorf("%s masih ada di AllPermissions — sudah digantikan logistics.*.manage", key)
+		}
+	}
+	for _, key := range []string{"logistics.rawmaterials.manage", "logistics.goods.manage"} {
 		if !has(key) {
 			t.Errorf("%s belum ada di AllPermissions", key)
 		}

@@ -39,6 +39,7 @@ var AllPermissions = []string{
 
 	// Penjualan
 	"reservations.view", "reservations.create", "reservations.update", "reservations.delete",
+	"bundles.view", "bundles.claim", "bundles.manage",
 	"customers.view",
 
 	// Laporan (view-only) + finance
@@ -81,10 +82,10 @@ var AllPermissions = []string{
 	// procurement_types.go). Tanpa verifikasi: Kepala Gudang Induk mengajukan,
 	// Manager Logistik menyetujui (keputusan owner 14 Okt 2026).
 	"procurement.rawmaterials.view", "procurement.rawmaterials.submit", "procurement.rawmaterials.approve", "procurement.rawmaterials.purchasing",
-	// Pengambilan barang dari vendor oleh petugas logistik (foto + waktu),
-	// sebelum diantar ke tempat penerimaan. Opsional: barang yang diantar
-	// vendor langsung diterima tanpa langkah ini.
-	"procurement.requests.pickup", "procurement.rawmaterials.pickup",
+	// Sistem Pengantaran Logistik & Surat Jalan (dipisah per kelompok Purchasing + gabungan).
+	"logistics.rawmaterials.view", "logistics.rawmaterials.manage",
+	"logistics.goods.view", "logistics.goods.manage",
+	"logistics.deliveries.view", "logistics.deliveries.manage",
 	// Pembelian Darurat (barang/jasa ≤ batas, keputusan owner 19 Nov 2026):
 	// dibeli dulu dari kas laci outlet lewat tugas Bayar Pengadaan di tablet
 	// (PIN Manager), lalu disahkan pemegang procurement.requests.approve.

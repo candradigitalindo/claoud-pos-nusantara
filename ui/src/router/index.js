@@ -51,6 +51,7 @@ const ShiftReconciliation = () => import('@/pages/ShiftReconciliation.vue')
 const ProductSalesReport  = () => import('@/pages/ProductSalesReport.vue')
 const Assets              = () => import('@/pages/Assets.vue')
 const Reservations        = () => import('@/pages/Reservations.vue')
+const CrossOutletBundles  = () => import('@/pages/CrossOutletBundles.vue')
 const Customers           = () => import('@/pages/Customers.vue')
 const OrderPublic         = () => import('@/pages/OrderPublic.vue')
 const ReservePublic       = () => import('@/pages/ReservePublic.vue')
@@ -594,6 +595,21 @@ const routes = [
         meta: { title: 'Penerimaan Peralatan — Cloud POS', requiresAuth: true, permission: 'assets.create', receivingKind: 'perlengkapan' },
       },
       {
+        path: 'logistics/deliveries',
+        name: 'LogisticsDeliveries',
+        component: () => import('@/pages/LogisticsDeliveries.vue'),
+        meta: {
+          title: 'Pengantaran Logistik — Cloud POS',
+          requiresAuth: true,
+          permission: [
+            'logistics.deliveries.view', 'logistics.deliveries.manage',
+            'logistics.rawmaterials.view', 'logistics.rawmaterials.manage',
+            'logistics.goods.view', 'logistics.goods.manage',
+            'stockledger.adjust', 'assets.create',
+          ],
+        },
+      },
+      {
         path: 'gudang/penerimaan-pengadaan',
         name: 'WarehouseReceivingQueue',
         component: () => import('@/pages/ReceivingQueue.vue'),
@@ -622,6 +638,12 @@ const routes = [
         name: 'Reservations',
         component: Reservations,
         meta: { title: 'Reservasi — Cloud POS', requiresAuth: true, permission: 'reservations.view' },
+      },
+      {
+        path: 'cross-outlet-bundles',
+        name: 'CrossOutletBundles',
+        component: CrossOutletBundles,
+        meta: { title: 'Bundling Lintas Outlet — Cloud POS', requiresAuth: true, permission: 'bundles.view' },
       },
       {
         path: 'customers',

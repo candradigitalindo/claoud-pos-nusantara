@@ -298,7 +298,7 @@ func purchaseSelectCols(totalAmount, totalHps, totalFinal string) string {
 	return fmt.Sprintf(`
 		pr.id, pr.request_number, pr.outlet_id, o.name, pr.work_unit_id, COALESCE(wu.name,''),
 		pr.request_type, pr.requested_by, pr.requested_by_id, pr.vendor_id, pr.vendor_name, pr.status,
-		pr.items, %s, %s, %s, pr.notes, pr.invoice_number, COALESCE(pr.invoice_url, ''),
+		pr.items, %s, %s, %s, pr.notes, pr.invoice_number, COALESCE(pr.invoice_url, ''), COALESCE(pr.invoice_urls, '[]'::jsonb),
 		COALESCE(pr.verified_by,''), pr.verified_by_id, pr.verified_at, COALESCE(pr.verification_notes,''),
 		pr.approved_by, pr.approved_by_id, pr.approved_at,
 		pr.rejected_reason, COALESCE(pr.rejected_by,''), pr.rejected_at, COALESCE(pr.rejected_items, '[]'::jsonb),
@@ -314,7 +314,7 @@ func purchaseSelectCols(totalAmount, totalHps, totalFinal string) string {
 		pr.pay_to_set_by, pr.pay_to_set_at, pr.pay_to_returned_at, pr.pay_to_returned_by, pr.pay_to_return_reason,
 		COALESCE(pvd.bank_name,''), COALESCE(pvd.account_number,''), COALESCE(pvd.account_holder,''),
 		pr.urgency, pr.need_by_date, pr.emergency, pr.emergency_category, pr.emergency_reason, pr.emergency_recipient,
-		pr.emergency_proof_url, pr.emergency_proof_total, pr.emergency_proof_notes, pr.emergency_proof_by, pr.emergency_proof_at,
+		pr.emergency_proof_url, COALESCE(pr.emergency_proof_urls, '[]'::jsonb), pr.emergency_proof_total, pr.emergency_proof_notes, pr.emergency_proof_by, pr.emergency_proof_at,
 		pr.ratification_status, pr.ratified_by, pr.ratified_at, pr.ratification_notes,
 		COALESCE(pr.is_manual_payment, false), COALESCE(pr.payment_approval_status, ''), COALESCE(pr.payment_batch_number, ''),
 		COALESCE(pr.payment_submitted_by, ''), pr.payment_submitted_at, COALESCE(pr.payment_submission_notes, ''),
@@ -352,11 +352,12 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 	var emergency bool
 	var em models.PurchaseEmergency
 	var proofTotal sql.NullFloat64
+	var invoiceURLsRaw, emProofURLsRaw []byte
 
 	if err := sc.Scan(
 		&r.ID, &r.RequestNumber, &r.OutletID, &r.OutletName, &r.WorkUnitID, &r.WorkUnitName,
 		&r.RequestType, &r.RequestedBy, &r.RequestedByID, &r.VendorID, &r.VendorName, &r.Status,
-		&itemsJSON, &r.TotalAmount, &r.TotalHps, &r.TotalFinal, &r.Notes, &r.InvoiceNumber, &r.InvoiceURL,
+		&itemsJSON, &r.TotalAmount, &r.TotalHps, &r.TotalFinal, &r.Notes, &r.InvoiceNumber, &r.InvoiceURL, &invoiceURLsRaw,
 		&r.VerifiedBy, &r.VerifiedByID, &verifiedAt, &r.VerificationNotes,
 		&r.ApprovedBy, &r.ApprovedByID, &approvedAt,
 		&r.RejectedReason, &r.RejectedBy, &rejectedAt, &rejectedJSON,
@@ -372,7 +373,7 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 		&st.setBy, &st.setAt, &st.returnedAt, &st.returnedBy, &st.returnReason,
 		&vendorAcct.bank, &vendorAcct.number, &vendorAcct.holder,
 		&r.Urgency, &needBy, &emergency, &em.Category, &em.Reason, &em.Recipient,
-		&em.ProofURL, &proofTotal, &em.ProofNotes, &em.ProofBy, &proofAt,
+		&em.ProofURL, &emProofURLsRaw, &proofTotal, &em.ProofNotes, &em.ProofBy, &proofAt,
 		&em.Ratification, &em.RatifiedBy, &ratifiedAt, &em.RatificationNotes,
 		&r.IsManualPayment, &r.PaymentApprovalStatus, &r.PaymentBatchNumber,
 		&r.PaymentSubmittedBy, &paySubAt, &r.PaymentSubmissionNotes,
@@ -388,6 +389,8 @@ func scanPurchaseRequest(sc interface{ Scan(...interface{}) error }) (models.Pur
 		s := needBy.Format("2006-01-02")
 		r.NeedByDate = &s
 	}
+	r.InvoiceURLs = DecodeUploadURLs(r.InvoiceURL, invoiceURLsRaw)
+	em.ProofURLs = DecodeUploadURLs(em.ProofURL, emProofURLsRaw)
 	if emergency {
 		em.CategoryLabel = EmergencyCategoryLabel(em.Category)
 		if proofTotal.Valid {
@@ -604,6 +607,78 @@ func insertWithRequestNumber(now time.Time, insert func(reqNumber string) error)
 // allowedTypes membatasi jenis pengajuan yang boleh muncul (izin per jenis,
 // lihat ViewableRequestTypes). nil = tanpa batas; slice kosong = tidak ada
 // jenis yang boleh dilihat sehingga hasilnya kosong.
+// attachSplitSummaries mengisi DisplayNames (nama pengadaan yang sebenarnya,
+// termasuk dari dokumen pecahan saat item induk sudah habis dipecah) dan
+// SplitCount (jumlah pecahan vendor) untuk baris master dalam 1 query batch.
+func attachSplitSummaries(requests []models.PurchaseRequest) {
+	if len(requests) == 0 {
+		return
+	}
+	masterIDs := make([]string, 0)
+	idxByID := make(map[string]int, len(requests))
+	for i := range requests {
+		seen := map[string]bool{}
+		names := make([]string, 0, len(requests[i].Items))
+		for _, g := range requests[i].Items {
+			n := strings.TrimSpace(g.Name)
+			if n != "" && !seen[n] {
+				seen[n] = true
+				names = append(names, n)
+			}
+		}
+		requests[i].DisplayNames = names
+		if requests[i].SplitStatus != nil && *requests[i].SplitStatus == "master" {
+			masterIDs = append(masterIDs, requests[i].ID)
+			idxByID[requests[i].ID] = i
+		}
+	}
+	if len(masterIDs) == 0 {
+		return
+	}
+	rows, err := database.DB.Query(`
+		SELECT parent_id, items
+		FROM purchase_requests
+		WHERE parent_id = ANY($1::text[])
+		ORDER BY created_at ASC, id ASC`, pq.Array(masterIDs))
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	seenByMaster := make(map[int]map[string]bool, len(masterIDs))
+	for _, idx := range idxByID {
+		m := map[string]bool{}
+		for _, n := range requests[idx].DisplayNames {
+			m[n] = true
+		}
+		seenByMaster[idx] = m
+	}
+	for rows.Next() {
+		var parentID string
+		var raw []byte
+		if err := rows.Scan(&parentID, &raw); err != nil {
+			continue
+		}
+		parentID = strings.TrimSpace(parentID)
+		idx, ok := idxByID[parentID]
+		if !ok {
+			continue
+		}
+		requests[idx].SplitCount++
+		var childItems []models.PurchaseRequestItem
+		if err := json.Unmarshal(raw, &childItems); err != nil {
+			continue
+		}
+		seen := seenByMaster[idx]
+		for _, g := range childItems {
+			n := strings.TrimSpace(g.Name)
+			if n != "" && !seen[n] {
+				seen[n] = true
+				requests[idx].DisplayNames = append(requests[idx].DisplayNames, n)
+			}
+		}
+	}
+}
+
 func ListPurchaseRequests(outletID, workUnitID, status, requestType, projectID, parentID string, excludeMasters bool, search string, scopeIDs []string, wuScopeIDs []string, allowedTypes []string, page, limit int) (*models.PurchaseRequestListResponse, error) {
 	return ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectID, parentID, excludeMasters, search,
 		scopeIDs, wuScopeIDs, allowedTypes, page, limit, PurchaseListExtra{})
@@ -616,6 +691,7 @@ type PurchaseListExtra struct {
 	Emergency       bool   // hanya Pembelian Darurat
 	PaymentApproval string // unsubmitted | pending | approved | rejected; "" = semua
 	ManualOnly      bool   // hanya Pembayaran Manual (di luar pengajuan)
+	SourceGroup     string // bahan_baku | barang_jasa | manual | emergency; "" = semua
 	// UrgentFirst: pengajuan URGENT lalu PRIORITAS yang masih berjalan
 	// (belum dibayar) tampil paling atas; sisanya terbaru dulu. Ekspor
 	// tetap kronologis.
@@ -641,7 +717,11 @@ func ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectI
 	args := []interface{}{}
 	idx := 1
 
-	if requestType != "" {
+	if requestType == PurchasingGroupBarangJasa {
+		where += " AND pr.request_type IN ('barang', 'jasa')"
+	} else if requestType == PurchasingGroupBahanBaku {
+		where += " AND pr.request_type = 'bahan'"
+	} else if requestType != "" {
 		where += fmt.Sprintf(" AND pr.request_type = $%d", idx)
 		args = append(args, requestType)
 		idx++
@@ -705,6 +785,16 @@ func ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectI
 	if extra.ManualOnly {
 		where += " AND COALESCE(pr.is_manual_payment, false)"
 	}
+	switch extra.SourceGroup {
+	case PurchasingGroupBahanBaku:
+		where += " AND pr.request_type = 'bahan' AND NOT COALESCE(pr.is_manual_payment, false) AND NOT COALESCE(pr.emergency, false)"
+	case PurchasingGroupBarangJasa:
+		where += " AND pr.request_type IN ('barang', 'jasa') AND NOT COALESCE(pr.is_manual_payment, false) AND NOT COALESCE(pr.emergency, false)"
+	case "manual":
+		where += " AND COALESCE(pr.is_manual_payment, false)"
+	case "emergency":
+		where += " AND COALESCE(pr.emergency, false) AND NOT COALESCE(pr.is_manual_payment, false)"
+	}
 	switch extra.PaymentApproval {
 	case "unsubmitted":
 		where += " AND COALESCE(pr.payment_approval_status, '') = ''"
@@ -743,7 +833,14 @@ func ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectI
 				SELECT 1 FROM jsonb_array_elements(pr.items) AS grp
 				LEFT JOIN LATERAL jsonb_array_elements(COALESCE(grp->'items', '[]'::jsonb)) AS sub ON TRUE
 				WHERE grp->>'name' ILIKE $%d OR sub->>'name' ILIKE $%d
-			))`, idx, idx, idx, idx, idx)
+			)
+			OR (pr.split_status = 'master' AND EXISTS (
+				SELECT 1 FROM purchase_requests ch
+				CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(ch.items) = 'array' THEN ch.items ELSE '[]'::jsonb END) AS cgrp
+				LEFT JOIN LATERAL jsonb_array_elements(COALESCE(cgrp->'items', '[]'::jsonb)) AS csub ON TRUE
+				WHERE ch.parent_id = pr.id
+				  AND (ch.request_number ILIKE $%d OR ch.vendor_name ILIKE $%d OR cgrp->>'name' ILIKE $%d OR csub->>'name' ILIKE $%d)
+			)))`, idx, idx, idx, idx, idx, idx, idx, idx, idx)
 		args = append(args, "%"+search+"%")
 		idx++
 	}
@@ -804,6 +901,8 @@ func ListPurchaseRequestsExt(outletID, workUnitID, status, requestType, projectI
 		return nil, err
 	}
 	attachCashPayouts(requests)
+	attachSplitSummaries(requests)
+	attachPRDeliveries(requests)
 
 	return &models.PurchaseRequestListResponse{
 		Page:       page,
@@ -999,6 +1098,7 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 	if r.SplitStatus != nil && *r.SplitStatus == "master" {
 		children, err := getPurchaseChildren(id)
 		if err == nil {
+			attachPRDeliveries(children)
 			r.Children = children
 			for _, ch := range children {
 				r.TotalAmount += ch.TotalAmount
@@ -1016,9 +1116,15 @@ func GetPurchaseRequest(id string) (*models.PurchaseRequest, error) {
 	if r.Pickups, err = ListPurchasePickups(database.DB, id); err != nil {
 		return nil, err
 	}
+	if r.Deliveries, err = ListPRDeliveries(database.DB, id); err != nil {
+		return nil, err
+	}
 	one := []models.PurchaseRequest{r}
 	attachCashPayouts(one)
+	attachSplitSummaries(one)
 	r.CashPayout = one[0].CashPayout
+	r.DisplayNames = one[0].DisplayNames
+	r.SplitCount = one[0].SplitCount
 
 	return &r, nil
 }
@@ -2575,12 +2681,26 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 	if input.InvoiceNumber != nil && cur.Status == "approved" {
 		invoice = *input.InvoiceNumber
 	}
-	if input.InvoiceURL != nil && cur.Status == "approved" {
-		u := strings.TrimSpace(*input.InvoiceURL)
-		if u != "" && ValidateUploadURL(u) != nil {
+	var invoiceURLsJSON interface{}
+	if (input.InvoiceURL != nil || input.InvoiceURLs != nil) && cur.Status == "approved" {
+		var prim string
+		var list []string
+		if input.InvoiceURL != nil {
+			prim = *input.InvoiceURL
+		}
+		if input.InvoiceURLs != nil {
+			list = *input.InvoiceURLs
+		}
+		urls, uerr := NormalizeUploadURLs("berkas invoice", prim, list)
+		if uerr != nil {
 			return nil, Invalid("tautan berkas invoice tidak valid")
 		}
-		invoiceURL = u
+		if len(urls) > 0 {
+			invoiceURL = urls[0]
+		} else {
+			invoiceURL = ""
+		}
+		invoiceURLsJSON = MarshalUploadURLs(urls)
 	}
 
 	res, err := tx.Exec(`
@@ -2590,13 +2710,14 @@ func UpdatePurchaseItems(id string, input models.UpdatePurchaseItemsInput) (*mod
 			vendor_name = CASE WHEN $9::bool THEN COALESCE($6::varchar, '') ELSE vendor_name END,
 			invoice_number = COALESCE($7::text, invoice_number),
 			invoice_url    = COALESCE($13::text, invoice_url),
+			invoice_urls   = COALESCE($14::jsonb, invoice_urls),
 			goods_kind  = CASE WHEN $10::text <> '' THEN $10::text ELSE goods_kind END,
 			updated_at=$11
 		WHERE id=$8 AND status=$12
 	`, itemsJSON, amountOf(totalHps, totalFinal), totalHps, totalFinal,
 		vendorID, vendorName, invoice, id,
 		cur.Status == "approved" && (input.VendorID != nil || input.VendorName != nil),
-		goodsKind, time.Now().UTC(), cur.Status, invoiceURL)
+		goodsKind, time.Now().UTC(), cur.Status, invoiceURL, invoiceURLsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -3032,9 +3153,13 @@ func CreateManualPayment(input models.CreateManualPaymentInput) (*models.Purchas
 		return nil, Invalid("metode tujuan pembayaran tidak valid")
 	}
 
-	invoiceURL := strings.TrimSpace(input.InvoiceURL)
-	if invoiceURL != "" && ValidateUploadURL(invoiceURL) != nil {
+	mpInvURLs, uerr := NormalizeUploadURLs("berkas invoice", input.InvoiceURL, input.InvoiceURLs)
+	if uerr != nil {
 		return nil, Invalid("tautan berkas invoice tidak valid")
+	}
+	invoiceURL := ""
+	if len(mpInvURLs) > 0 {
+		invoiceURL = mpInvURLs[0]
 	}
 
 	now := time.Now().UTC()
@@ -3057,7 +3182,7 @@ func CreateManualPayment(input models.CreateManualPaymentInput) (*models.Purchas
 			request_type, goods_kind, requested_by, requested_by_id,
 			vendor_id, vendor_name, status, items,
 			total_amount, total_hps, total_final, notes,
-			invoice_number, invoice_url,
+			invoice_number, invoice_url, invoice_urls,
 			pay_to_method, pay_to_marketplace, pay_to_order_number,
 			pay_to_bank_name, pay_to_account_number, pay_to_account_holder,
 			pay_to_text, pay_to_note, pay_to_set_by, pay_to_set_by_id, pay_to_set_at,
@@ -3069,7 +3194,7 @@ func CreateManualPayment(input models.CreateManualPaymentInput) (*models.Purchas
 			$6, $7, $8, $9,
 			$10, $11, 'payment_requested', $12,
 			$13, $14, $15, $16,
-			$17, $18,
+			$17, $18, $29::jsonb,
 			$19, $20, $21,
 			$22, $23, $24,
 			$25, $26, $8, $9, $27,
@@ -3085,7 +3210,7 @@ func CreateManualPayment(input models.CreateManualPaymentInput) (*models.Purchas
 		st.method, st.marketplace, st.orderNumber,
 		st.bank, st.number, st.holder,
 		st.text, st.note, now,
-		batchNumber,
+		batchNumber, MarshalUploadURLs(mpInvURLs),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("gagal menyimpan pembayaran manual: %w", err)

@@ -26,7 +26,10 @@ func strukAccess(c *fiber.Ctx, id string) (bool, error) {
 	if err != nil {
 		return false, permissionLoadError(c)
 	}
-	if !acc.can(reqType, "purchasing") && !acc.can(reqType, "pickup") {
+	canLogisticsStruk := acc.has("logistics.deliveries.manage") ||
+		(reqType == services.RequestTypeBahan && acc.has("logistics.rawmaterials.manage")) ||
+		(reqType != services.RequestTypeBahan && acc.has("logistics.goods.manage"))
+	if !acc.can(reqType, "purchasing") && !acc.can(reqType, "pickup") && !canLogisticsStruk {
 		return false, purchaseForbidden(c, "Struk pembelian dicatat bagian pembelian atau petugas logistik pengadaan jenis ini.")
 	}
 	return true, nil

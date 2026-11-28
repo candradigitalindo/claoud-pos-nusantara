@@ -61,6 +61,8 @@ type CloudProduct struct {
 	StockType        string              `json:"stock_type"`
 	RecipeMasterID   string              `json:"recipe_master_id"`
 	RecipeMasterName string              `json:"recipe_master_name"`
+	BundleCount      int                 `json:"bundle_count,omitempty"`
+	BundlePartners   []string            `json:"bundle_partners,omitempty"`
 	IsDeleted        bool                `json:"is_deleted"`
 	Version          int                 `json:"version"`
 	CreatedAt        time.Time           `json:"created_at"`

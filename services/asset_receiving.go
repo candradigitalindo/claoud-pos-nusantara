@@ -273,6 +273,9 @@ func BuildReceivingDraft(prID string, outletScope []string) (*models.ReceivingDr
 	if d.Pickups, err = openFamilyPickups(prID); err != nil {
 		return nil, err
 	}
+	if d.Deliveries, err = ListPRDeliveries(database.DB, prID); err != nil {
+		return nil, err
+	}
 	return d, nil
 }
 
@@ -342,6 +345,16 @@ func buildReceivingDraft(q receivingQuerier, prID string, outletScope []string) 
 			line.Remaining = line.Qty - line.Recorded
 			if line.Remaining < 0 {
 				line.Remaining = 0
+			}
+			if inDel, derr := activeDeliveryReservedQty(q, src.ID, key, ""); derr == nil {
+				line.InDelivery = inDel
+			}
+			line.AvailableDirect = line.Remaining - line.InDelivery
+			if line.AvailableDirect < 0 {
+				line.AvailableDirect = 0
+			}
+			if refs, rerr := activeDeliveryRefsForLine(q, src.ID, key); rerr == nil && len(refs) > 0 {
+				line.ActiveDeliveries = refs
 			}
 			// Usulan tujuan mengikuti jenis baris yang DIBEKUKAN saat pengajuan
 			// dibuat (lineKindOf), bukan katalog yang berlaku hari ini (T-19).
@@ -613,19 +626,47 @@ func refreshFamilyReceiptTx(tx *sql.Tx, rootID string, actor Actor) error {
 // ReceiveAccess). Tanpa hak gudang (access.Stock), baris dapur tidak dibuang
 // melainkan ditunda ke antrean gudang: barangnya memang sudah diterima secara
 // fisik, jadi status pengajuan tetap boleh maju.
+type receiveTxOpts struct {
+	alreadyLocked        bool
+	skipDirectQuotaCheck bool
+	skipLegacyPickup     bool
+	handoverNoteOverride string
+}
+
 func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, access ReceiveAccess, outletScope []string) (*models.ReceiveGoodsResult, error) {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	res, err := receiveGoodsInTx(tx, prID, req, actor, access, outletScope, receiveTxOpts{})
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	// Pengaju dan pembelian tahu barangnya sudah sampai (sebagian/lengkap).
+	if pr, err := GetPurchaseRequest(prID); err == nil {
+		go NotifyPurchaseEvent(pr, "received", actor.Name, res.Message, 0)
+	}
+	return res, nil
+}
+
+func receiveGoodsInTx(tx *sql.Tx, prID string, req models.ReceiveGoodsRequest, actor Actor, access ReceiveAccess, outletScope []string, opts receiveTxOpts) (*models.ReceiveGoodsResult, error) {
 	if !access.Any() {
 		return nil, Invalid("Anda tidak berwenang mencatat penerimaan barang")
 	}
-	if strings.TrimSpace(req.PhotoURL) == "" {
-		return nil, Invalid("foto barang saat diterima wajib diunggah — itu satu-satunya bukti bahwa barangnya benar-benar sampai")
-	}
-	if err := validateUploadField("foto barang saat diterima", req.PhotoURL); err != nil {
+	photoURLs, err := NormalizeUploadURLs("foto barang saat diterima", req.PhotoURL, req.PhotoURLs)
+	if err != nil {
 		return nil, err
 	}
-	// Kiriman tanpa barang ditolak sebelum menyentuh apa pun: dulu tetap
-	// menulis receipt_status 'partial' dan mengunci dokumen tanpa satu barang
-	// pun diterima (T-45).
+	if len(photoURLs) == 0 {
+		return nil, Invalid("foto barang saat diterima wajib diunggah — itu satu-satunya bukti bahwa barangnya benar-benar sampai")
+	}
+	req.PhotoURL = photoURLs[0]
+	req.PhotoURLs = photoURLs
 	hasQty := false
 	for _, in := range req.Lines {
 		if in.Qty < 0 {
@@ -639,28 +680,30 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 		return nil, Invalid("isi jumlah barang yang diterima, minimal pada satu baris")
 	}
 
-	tx, err := database.DB.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	// Seluruh keluarga dokumen (induk + semua pecahan) dikunci lebih dulu, baru
-	// sisa per baris dihitung — di dalam transaksi yang sama. Dulu sisa dibaca
-	// di luar transaksi tanpa kunci: dua penerimaan bersamaan sama-sama
-	// membaca sisa 3 dan stok tercatat dua kali (T-28).
-	var materialProjectID string
-	if err := tx.QueryRow(`SELECT COALESCE(project_id,'') FROM purchase_requests WHERE id=$1`, prID).Scan(&materialProjectID); err != nil {
-		return nil, err
-	}
-	if materialProjectID != "" {
-		if err := lockMaterialProject(tx, materialProjectID); err != nil {
+	var rootID string
+	if !opts.alreadyLocked {
+		var materialProjectID string
+		if err := tx.QueryRow(`SELECT COALESCE(project_id,'') FROM purchase_requests WHERE id=$1`, prID).Scan(&materialProjectID); err != nil {
 			return nil, err
 		}
-	}
-	rootID, err := lockPurchaseFamilyTx(tx, prID)
-	if err != nil {
-		return nil, err
+		if materialProjectID != "" {
+			if err := lockMaterialProject(tx, materialProjectID); err != nil {
+				return nil, err
+			}
+		}
+		rootID, err = lockPurchaseFamilyTx(tx, prID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var parent sql.NullString
+		if err := tx.QueryRow(`SELECT parent_id FROM purchase_requests WHERE id = $1`, prID).Scan(&parent); err != nil {
+			return nil, err
+		}
+		rootID = prID
+		if p := strings.TrimSpace(parent.String); p != "" {
+			rootID = p
+		}
 	}
 	draft, sources, err := buildReceivingDraft(tx, prID, outletScope)
 	if err != nil {
@@ -737,6 +780,10 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 		}
 		if in.Qty > line.Remaining {
 			return nil, Invalid("%s: jumlah (%d) melebihi sisa yang belum dicatat (%d)", line.Name, in.Qty, line.Remaining)
+		}
+		if !opts.skipDirectQuotaCheck && in.Qty > line.AvailableDirect {
+			return nil, Invalid("%s: maksimal %d unit untuk penerimaan langsung vendor (%d unit lainnya sedang dalam Pengantaran Logistik aktif — terima lewat Surat Jalan terkait)",
+				line.Name, line.AvailableDirect, line.InDelivery)
 		}
 		dest := strings.ToLower(strings.TrimSpace(in.Destination))
 		if err := validateReceivingDestination(line, draft.RequestType, draft.ProjectID, dest); err != nil {
@@ -850,22 +897,35 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 				}
 				continue
 			}
-			// Harga di pengajuan adalah harga per SATUAN BELI (mis. per kg),
-			// sedangkan GRN menyimpan harga per SATUAN DASAR (mis. per gram).
-			// Tanpa pembagian dist_ratio di sini, gula 5 kg seharga Rp 70.000
-			// tercatat sebagai Rp 70.000.000 di buku stok.
+			// Cocokkan satuan pengajuan/penerimaan terhadap base_unit & dist_unit item stok.
+			// Bila pengajuan memakai satuan dasar (mis. Botol) atau base_unit == dist_unit,
+			// jangan dikali/dibagi dist_ratio agar stok & HPP tidak meleset.
+			var baseUnit, distUnit string
 			var distRatio float64
-			if err := tx.QueryRow(`SELECT COALESCE(NULLIF(dist_ratio, 0), 1) FROM stock_items WHERE id = $1`,
-				in.StockItemID).Scan(&distRatio); err != nil {
+			if err := tx.QueryRow(`SELECT COALESCE(base_unit,''), COALESCE(dist_unit,''), COALESCE(NULLIF(dist_ratio, 0), 1) FROM stock_items WHERE id = $1`,
+				in.StockItemID).Scan(&baseUnit, &distUnit, &distRatio); err != nil {
 				return nil, Invalid("%s: item stok tidak ditemukan", line.Name)
 			}
+			baseUnit, distUnit = strings.TrimSpace(baseUnit), strings.TrimSpace(distUnit)
+			if distUnit == "" {
+				distUnit = baseUnit
+			}
+			candUnit := strings.TrimSpace(in.UnitUsed)
+			if candUnit == "" {
+				candUnit = strings.TrimSpace(line.Unit)
+			}
+			unitUsed := distUnit
+			if strings.EqualFold(baseUnit, distUnit) || (candUnit != "" && strings.EqualFold(candUnit, baseUnit)) {
+				unitUsed = baseUnit
+			}
+			unitPrice := price
 			k := grnKey{warehouse: in.WarehouseID, source: line.SourcePRID}
 			if _, seen := grnLines[k]; !seen {
 				grnOrder = append(grnOrder, k)
 			}
 			grnLines[k] = append(grnLines[k], models.GoodsReceiptItemReq{
-				ItemID: in.StockItemID, QtyDist: float64(qty),
-				CostPerBase: price / distRatio, ExpiryDate: in.ExpiryDate,
+				ItemID: in.StockItemID, QtyDist: float64(qty), UnitUsed: unitUsed,
+				CostPerUnit: &unitPrice, ExpiryDate: in.ExpiryDate,
 				PRItemKey: line.ItemKey,
 			})
 
@@ -939,25 +999,25 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 	// pengambilannya dipilih — pengambilan itu ditutup (tidak lagi "dalam
 	// pengantaran").
 	handoverNote := "Barang diterima — diantar vendor"
-	if pid := strings.TrimSpace(req.PickupID); pid != "" {
-		pickedBy, err := closePickupTx(tx, prID, pid, actor, time.Now().UTC())
-		if err != nil {
-			return nil, err
+	if opts.handoverNoteOverride != "" {
+		handoverNote = opts.handoverNoteOverride
+	} else if !opts.skipLegacyPickup {
+		if pid := strings.TrimSpace(req.PickupID); pid != "" {
+			pickedBy, err := closePickupTx(tx, prID, pid, actor, time.Now().UTC())
+			if err != nil {
+				return nil, err
+			}
+			handoverNote = "Barang diterima — diantar petugas logistik " + pickedBy
 		}
-		handoverNote = "Barang diterima — diantar petugas logistik " + pickedBy
-	}
-	// Dokumen diterima lengkap: pengambilan lain yang masih tercatat dalam
-	// pengantaran ikut ditutup (setelah pengambilan yang dipilih di atas).
-	if res.ReceiptStatus == "received" {
-		if _, err := closeRemainingPickupsTx(tx, prID, actor, time.Now().UTC()); err != nil {
-			return nil, err
+		if res.ReceiptStatus == "received" {
+			if _, err := closeRemainingPickupsTx(tx, prID, actor, time.Now().UTC()); err != nil {
+				return nil, err
+			}
 		}
 	}
-	SaveHandoverPhoto(tx, "terima", desk, "purchase_request", prID, draft.RequestNumber,
-		req.PhotoURL, handoverNote, actor.Name)
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
+	for _, pu := range photoURLs {
+		SaveHandoverPhoto(tx, "terima", desk, "purchase_request", prID, draft.RequestNumber,
+			pu, handoverNote, actor.Name)
 	}
 
 	parts := []string{}
@@ -973,9 +1033,6 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 	if res.StockLinesQueued > 0 {
 		parts = append(parts, fmt.Sprintf("%d baris menunggu penerimaan gudang", res.StockLinesQueued))
 	}
-	// Dulu baris habis pakai hanya disebut bila tidak ada hal lain yang
-	// tercatat — serah terima campuran (aset + habis pakai) cukup berbunyi
-	// "1 aset dicatat" seolah baris habis pakainya tidak diproses.
 	if res.ExpenseLines > 0 && len(parts) > 0 {
 		parts = append(parts, fmt.Sprintf("%d baris dicatat sebagai habis pakai", res.ExpenseLines))
 	}
@@ -988,10 +1045,6 @@ func ReceiveGoods(prID string, req models.ReceiveGoodsRequest, actor Actor, acce
 		parts = append(parts, "barang lengkap diterima, menunggu pembayaran")
 	}
 	res.Message = strings.Join(parts, " · ")
-	// Pengaju dan pembelian tahu barangnya sudah sampai (sebagian/lengkap).
-	if pr, err := GetPurchaseRequest(prID); err == nil {
-		go NotifyPurchaseEvent(pr, "received", actor.Name, res.Message, 0)
-	}
 	return res, nil
 }
 
@@ -1224,8 +1277,11 @@ type ReceivingQueueRow struct {
 	ReceiptStatus string  `json:"receipt_status"`
 	// Gudang yang membutuhkan barangnya (gudang run MRP, atau gudang outlet
 	// pengaju), supaya penerima tahu ke mana barang ini diteruskan.
-	TargetWarehouseName string `json:"target_warehouse_name,omitempty"`
-	TargetWarehouseType string `json:"target_warehouse_type,omitempty"`
+	TargetWarehouseName   string                     `json:"target_warehouse_name,omitempty"`
+	TargetWarehouseType   string                     `json:"target_warehouse_type,omitempty"`
+	InDeliveryUnits       int                        `json:"in_delivery_units,omitempty"`
+	ActiveDeliveriesCount int                        `json:"active_deliveries_count,omitempty"`
+	ActiveDeliveries      []models.PRDeliverySummary `json:"active_deliveries,omitempty"`
 }
 
 // ListReceivingQueue mencari pengajuan yang sudah disetujui tapi barisnya belum
@@ -1314,6 +1370,9 @@ func ListReceivingQueue(kind string, outletScope []string, allowedTypes []string
 					return nil
 				}
 			}
+			if inDel, derr := activeDeliveryReservedQty(database.DB, row.PurchaseRequestID, key, ""); derr == nil {
+				row.InDeliveryUnits += inDel
+			}
 			row.Lines++
 			row.Units += remaining
 			row.Value += effectiveUnitPrice(sub) * float64(remaining)
@@ -1324,6 +1383,14 @@ func ListReceivingQueue(kind string, outletScope []string, allowedTypes []string
 		}
 		if row.Lines > 0 {
 			_, row.TargetWarehouseName, row.TargetWarehouseType = targetWarehouseFor(database.DB, row.PurchaseRequestID)
+			if dels, derr := ListPRDeliveries(database.DB, row.PurchaseRequestID); derr == nil {
+				for _, d := range dels {
+					if d.Status == "draft" || d.Status == "in_transit" || d.Status == "partial_received" {
+						row.ActiveDeliveries = append(row.ActiveDeliveries, d)
+					}
+				}
+				row.ActiveDeliveriesCount = len(row.ActiveDeliveries)
+			}
 			out = append(out, row)
 		}
 	}

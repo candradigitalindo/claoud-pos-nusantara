@@ -91,7 +91,16 @@ export const stockTransfersApi = {
   receive: (id, data) => api.post(`/admin/stock-transfers/${id}/receive`, data),
   create: (data) => api.post('/admin/stock-transfers', data),
   // photoUrl wajib saat status 'sent' (bukti barang berangkat dari gudang asal).
-  updateStatus: (id, status, photoUrl = '') => api.put(`/admin/stock-transfers/${id}/status`, { status, photo_url: photoUrl }),
+  updateStatus: (id, status, photoOrPhotos = '') => {
+    const urls = Array.isArray(photoOrPhotos)
+      ? photoOrPhotos.filter(Boolean)
+      : (photoOrPhotos ? [photoOrPhotos] : [])
+    return api.put(`/admin/stock-transfers/${id}/status`, { status, photo_url: urls[0] || '', photo_urls: urls })
+  },
+  updatePhotos: (id, photoUrls = []) => {
+    const urls = Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : (photoUrls ? [photoUrls] : [])
+    return api.put(`/admin/stock-transfers/${id}/photos`, { photo_url: urls[0] || '', photo_urls: urls })
+  },
   updateReceivedQty: (id, itemId, qty) =>
     api.put(`/admin/stock-transfers/${id}/items/${itemId}/received`, { received_qty_base: qty }),
 }

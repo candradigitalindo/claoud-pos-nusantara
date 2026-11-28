@@ -28,7 +28,34 @@ const (
 	RequestTypeBarang = "barang"
 	RequestTypeJasa   = "jasa"
 	RequestTypeBahan  = "bahan"
+
+	// Kelompok Purchasing:
+	// 1. Purchasing Bahan Baku   → request_type = 'bahan'
+	// 2. Purchasing Barang & Jasa → request_type IN ('barang', 'jasa')
+	PurchasingGroupBahanBaku  = "bahan_baku"
+	PurchasingGroupBarangJasa = "barang_jasa"
 )
+
+func IsValidPurchasingGroup(g string) bool {
+	return g == PurchasingGroupBahanBaku || g == PurchasingGroupBarangJasa
+}
+
+func PurchasingGroupOfRequestType(requestType string) string {
+	if requestType == RequestTypeBahan {
+		return PurchasingGroupBahanBaku
+	}
+	return PurchasingGroupBarangJasa
+}
+
+func PurchasingGroupLabel(group string) string {
+	switch group {
+	case PurchasingGroupBahanBaku:
+		return "Purchasing Bahan Baku"
+	case PurchasingGroupBarangJasa:
+		return "Purchasing Barang & Jasa"
+	}
+	return group
+}
 
 // RequestTypes: seluruh jenis pengajuan yang sah, urutan tampilan.
 var RequestTypes = []string{RequestTypeBarang, RequestTypeJasa, RequestTypeBahan}

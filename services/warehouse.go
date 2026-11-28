@@ -139,14 +139,19 @@ func CreateStockItem(req models.StockItemRequest, createdBy string) (*models.Sto
 		req.Code = generateStockItemCode(req.Name)
 	}
 	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
+	req.BaseUnit = strings.TrimSpace(req.BaseUnit)
 	if req.BaseUnit == "" {
 		req.BaseUnit = "pcs"
 	}
+	req.DistUnit = strings.TrimSpace(req.DistUnit)
 	if req.DistUnit == "" {
 		req.DistUnit = req.BaseUnit
 	}
 	if req.DistRatio <= 0 {
 		req.DistRatio = 1
+	}
+	if strings.EqualFold(req.DistUnit, req.BaseUnit) && math.Abs(req.DistRatio-1) > 0.0001 {
+		return nil, fmt.Errorf("jika satuan kemasan (%s) sama dengan satuan dasar (%s), rasio isi harus 1; gunakan nama satuan berbeda untuk kemasan", req.DistUnit, req.BaseUnit)
 	}
 	id := NewULID()
 	tx, err := database.DB.Begin()
@@ -175,7 +180,7 @@ func CreateStockItem(req models.StockItemRequest, createdBy string) (*models.Sto
 			return nil, err
 		}
 		if req.OpeningStock > 0 {
-			if err := applyMovement(tx, id, req.WarehouseID, "adjustment", req.BaseUnit, "", "opening", "", "Stok awal", createdBy, req.OpeningStock, 0, req.OpeningCost, ""); err != nil {
+			if err := applyMovement(tx, id, req.WarehouseID, "adjustment", req.BaseUnit, "", "opening", "", "Stok awal", createdBy, req.OpeningStock, req.OpeningStock, req.OpeningCost, ""); err != nil {
 				tx.Rollback()
 				return nil, err
 			}
@@ -269,6 +274,10 @@ func UpdateStockItem(id string, req models.StockItemRequest, createdBy string) (
 		if cur.DistRatio <= 0 {
 			cur.DistRatio = 1
 		}
+		if (sent("base_unit") || sent("dist_unit") || sent("dist_ratio")) && strings.EqualFold(cur.DistUnit, cur.BaseUnit) && math.Abs(cur.DistRatio-1) > 0.0001 {
+			tx.Rollback()
+			return nil, fmt.Errorf("jika satuan kemasan (%s) sama dengan satuan dasar (%s), rasio isi harus 1; gunakan nama satuan berbeda untuk kemasan", cur.DistUnit, cur.BaseUnit)
+		}
 		if sent("dist_unit_label") {
 			cur.DistUnitLabel = req.DistUnitLabel
 		}
@@ -303,15 +312,19 @@ func UpdateStockItem(id string, req models.StockItemRequest, createdBy string) (
 			return nil, err
 		}
 		if req.SetStock != nil {
-			var curQty float64
-			tx.QueryRow(`SELECT qty_base FROM stock_ledger WHERE item_id=$1 AND warehouse_id=$2`, id, req.WarehouseID).Scan(&curQty)
+			var curQty, curAvgCost float64
+			tx.QueryRow(`SELECT qty_base, avg_cost FROM stock_ledger WHERE item_id=$1 AND warehouse_id=$2`, id, req.WarehouseID).Scan(&curQty, &curAvgCost)
 			delta := *req.SetStock - curQty
 			if delta > 0.0001 || delta < -0.0001 {
 				baseUnit := req.BaseUnit
 				if baseUnit == "" {
-					database.DB.QueryRow(`SELECT base_unit FROM stock_items WHERE id=$1`, id).Scan(&baseUnit)
+					tx.QueryRow(`SELECT base_unit FROM stock_items WHERE id=$1`, id).Scan(&baseUnit)
 				}
-				if err := applyMovement(tx, id, req.WarehouseID, "adjustment", baseUnit, "", "set_stock", "", "Penyesuaian stok", createdBy, delta, 0, req.OpeningCost, ""); err != nil {
+				adjCost := req.OpeningCost
+				if delta > 0 && adjCost <= 0 {
+					adjCost = curAvgCost
+				}
+				if err := applyMovement(tx, id, req.WarehouseID, "adjustment", baseUnit, "", "set_stock", "", "Penyesuaian stok", createdBy, delta, delta, adjCost, ""); err != nil {
 					tx.Rollback()
 					return nil, err
 				}
@@ -814,6 +827,7 @@ func GetStockMovements(warehouseID, itemID string, dateFrom, dateTo string, outl
 	rows, err := database.DB.Query(fmt.Sprintf(`
 		SELECT sm.id, sm.item_id, si.name, sm.warehouse_id, w.name,
 		       sm.movement_type, sm.qty_base, COALESCE(sm.qty_dist,0), sm.unit_used,
+		       COALESCE(si.base_unit,''), COALESCE(si.dist_unit,''), COALESCE(NULLIF(si.dist_ratio,0),1), COALESCE(si.dist_unit_label,''),
 		       sm.cost_per_base, sm.balance_after,
 		       COALESCE(sm.ref_id,''), sm.ref_type, sm.ref_number,
 		       sm.notes, sm.created_by,
@@ -834,6 +848,7 @@ func GetStockMovements(warehouseID, itemID string, dateFrom, dateTo string, outl
 		var expDate sql.NullString
 		if err := rows.Scan(&m.ID, &m.ItemID, &m.ItemName, &m.WarehouseID, &m.WarehouseName,
 			&m.MovementType, &m.QtyBase, &m.QtyDist, &m.UnitUsed,
+			&m.BaseUnit, &m.DistUnit, &m.DistRatio, &m.DistUnitLabel,
 			&m.CostPerBase, &m.BalanceAfter, &m.RefID, &m.RefType, &m.RefNumber,
 			&m.Notes, &m.CreatedBy, &m.CreatedAt, &expDate); err != nil {
 			return nil, 0, err
@@ -1043,10 +1058,26 @@ func CreateAdjustment(req models.AdjustmentRequest, createdBy string) error {
 	}
 	defer tx.Rollback()
 
-	qtyDist := req.QtyBase / item.DistRatio
+	unitUsed := strings.TrimSpace(item.BaseUnit)
+	qtyDist := req.QtyBase
+	reqUnit := strings.TrimSpace(req.UnitUsed)
+	if reqUnit != "" && strings.EqualFold(reqUnit, strings.TrimSpace(item.DistUnit)) && !strings.EqualFold(item.DistUnit, item.BaseUnit) && item.DistRatio > 0 {
+		unitUsed = strings.TrimSpace(item.DistUnit)
+		qtyDist = round4(req.QtyBase / item.DistRatio)
+	}
 
-	if err := applyMovement(tx, req.ItemID, req.WarehouseID, req.MovType, item.BaseUnit,
-		"", "manual", "", req.Notes, createdBy, req.QtyBase, qtyDist, req.CostPerBase, req.ExpiryDate); err != nil {
+	costPerBase := req.CostPerBase
+	if req.QtyBase > 0 && costPerBase <= 0 {
+		var whAvg float64
+		if qerr := tx.QueryRow(`SELECT avg_cost FROM stock_ledger WHERE item_id=$1 AND warehouse_id=$2`, req.ItemID, req.WarehouseID).Scan(&whAvg); qerr == nil && whAvg > 0 {
+			costPerBase = whAvg
+		} else if item.AvgCost > 0 {
+			costPerBase = item.AvgCost
+		}
+	}
+
+	if err := applyMovement(tx, req.ItemID, req.WarehouseID, req.MovType, unitUsed,
+		"", "manual", "", req.Notes, createdBy, req.QtyBase, qtyDist, costPerBase, req.ExpiryDate); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1141,7 +1172,33 @@ func generateTransferNumber(tx *sql.Tx) (string, error) {
 	return fmt.Sprintf("%s%03d", prefix, seq), nil
 }
 
+func normalizeTransferDivision(raw string) (string, error) {
+	div := strings.ToUpper(strings.TrimSpace(raw))
+	switch div {
+	case "", "BAR", "KITCHEN", "SERVER":
+		return div, nil
+	default:
+		return "", Invalid("divisi tujuan tidak valid (pilihan: BAR, KITCHEN, SERVER)")
+	}
+}
+
+func normalizeTransferDate(raw string) (string, error) {
+	d := strings.TrimSpace(raw)
+	if d == "" {
+		return time.Now().In(GetTimezoneLocation()).Format("2006-01-02"), nil
+	}
+	parsed, err := time.Parse("2006-01-02", d)
+	if err != nil {
+		return "", Invalid("tanggal transfer tidak valid (format YYYY-MM-DD)")
+	}
+	return parsed.Format("2006-01-02"), nil
+}
+
 func ListStockTransfers(status, warehouseID string, outletIDs []string, page, limit int) ([]models.StockTransfer, int, error) {
+	return ListStockTransfersFiltered(status, warehouseID, "", "", "", outletIDs, page, limit)
+}
+
+func ListStockTransfersFiltered(status, warehouseID, division, dateFrom, dateTo string, outletIDs []string, page, limit int) ([]models.StockTransfer, int, error) {
 	where := "WHERE 1=1"
 	args := []interface{}{}
 	i := 1
@@ -1155,6 +1212,21 @@ func ListStockTransfers(status, warehouseID string, outletIDs []string, page, li
 		args = append(args, warehouseID, warehouseID)
 		i += 2
 	}
+	if div := strings.ToUpper(strings.TrimSpace(division)); div != "" {
+		where += fmt.Sprintf(" AND UPPER(COALESCE(st.target_division,'')) = $%d", i)
+		args = append(args, div)
+		i++
+	}
+	if df := strings.TrimSpace(dateFrom); df != "" {
+		where += fmt.Sprintf(" AND COALESCE(st.transfer_date, tz_date(st.created_at)) >= $%d::date", i)
+		args = append(args, df)
+		i++
+	}
+	if dt := strings.TrimSpace(dateTo); dt != "" {
+		where += fmt.Sprintf(" AND COALESCE(st.transfer_date, tz_date(st.created_at)) <= $%d::date", i)
+		args = append(args, dt)
+		i++
+	}
 	if outletIDs != nil {
 		where += fmt.Sprintf(" AND (st.from_warehouse_id IN (SELECT id FROM warehouses WHERE outlet_id = ANY($%d)) OR st.to_warehouse_id IN (SELECT id FROM warehouses WHERE outlet_id = ANY($%d)))", i, i+1)
 		args = append(args, pq.Array(outletIDs), pq.Array(outletIDs))
@@ -1167,7 +1239,9 @@ func ListStockTransfers(status, warehouseID string, outletIDs []string, page, li
 	args = append(args, limit, offset)
 	rows, err := database.DB.Query(fmt.Sprintf(`
 		SELECT st.id, st.transfer_number, st.from_warehouse_id, fw.name, fw.type, st.to_warehouse_id, tw.name, tw.type,
-		       st.status, st.notes,
+		       COALESCE(st.target_division,''),
+		       TO_CHAR(COALESCE(st.transfer_date, tz_date(st.created_at)), 'YYYY-MM-DD'),
+		       st.status, st.notes, COALESCE(st.photo_url,''), COALESCE(st.photo_urls,'[]'::jsonb),
 		       COALESCE(st.approved_by,''), COALESCE(TO_CHAR(st.approved_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.sent_by,''), COALESCE(TO_CHAR(st.sent_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.received_by,''), COALESCE(TO_CHAR(st.received_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
@@ -1177,7 +1251,7 @@ func ListStockTransfers(status, warehouseID string, outletIDs []string, page, li
 		FROM stock_transfers st
 		JOIN warehouses fw ON fw.id = st.from_warehouse_id
 		JOIN warehouses tw ON tw.id = st.to_warehouse_id
-		%s ORDER BY st.created_at DESC LIMIT $%d OFFSET $%d
+		%s ORDER BY COALESCE(st.transfer_date, tz_date(st.created_at)) DESC, st.created_at DESC LIMIT $%d OFFSET $%d
 	`, where, i, i+1), args...)
 	if err != nil {
 		return nil, 0, err
@@ -1186,13 +1260,16 @@ func ListStockTransfers(status, warehouseID string, outletIDs []string, page, li
 	result := []models.StockTransfer{}
 	for rows.Next() {
 		var t models.StockTransfer
+		var photoURLsRaw []byte
 		t.Items = []models.StockTransferItem{}
 		if err := rows.Scan(&t.ID, &t.TransferNumber, &t.FromWarehouseID, &t.FromWarehouse, &t.FromWarehouseType,
-			&t.ToWarehouseID, &t.ToWarehouse, &t.ToWarehouseType, &t.Status, &t.Notes,
+			&t.ToWarehouseID, &t.ToWarehouse, &t.ToWarehouseType, &t.TargetDivision, &t.TransferDate,
+			&t.Status, &t.Notes, &t.PhotoURL, &photoURLsRaw,
 			&t.ApprovedBy, &t.ApprovedAt, &t.SentBy, &t.SentAt,
 			&t.ReceivedBy, &t.ReceivedAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
+		t.PhotoURLs = DecodeUploadURLs(t.PhotoURL, photoURLsRaw)
 		result = append(result, t)
 	}
 	return result, total, nil
@@ -1245,9 +1322,12 @@ func TransferInScope(transferID string, outletIDs []string) bool {
 
 func GetStockTransfer(id string) (*models.StockTransfer, error) {
 	var t models.StockTransfer
+	var photoURLsRaw []byte
 	err := database.DB.QueryRow(`
 		SELECT st.id, st.transfer_number, st.from_warehouse_id, fw.name, fw.type, st.to_warehouse_id, tw.name, tw.type,
-		       st.status, st.notes, COALESCE(st.photo_url,''),
+		       COALESCE(st.target_division,''),
+		       TO_CHAR(COALESCE(st.transfer_date, tz_date(st.created_at)), 'YYYY-MM-DD'),
+		       st.status, st.notes, COALESCE(st.photo_url,''), COALESCE(st.photo_urls,'[]'::jsonb),
 		       COALESCE(st.approved_by,''), COALESCE(TO_CHAR(st.approved_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.sent_by,''), COALESCE(TO_CHAR(st.sent_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		       COALESCE(st.received_by,''), COALESCE(TO_CHAR(st.received_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
@@ -1259,9 +1339,13 @@ func GetStockTransfer(id string) (*models.StockTransfer, error) {
 		JOIN warehouses tw ON tw.id = st.to_warehouse_id
 		WHERE st.id = $1`, id).Scan(
 		&t.ID, &t.TransferNumber, &t.FromWarehouseID, &t.FromWarehouse, &t.FromWarehouseType,
-		&t.ToWarehouseID, &t.ToWarehouse, &t.ToWarehouseType, &t.Status, &t.Notes, &t.PhotoURL,
+		&t.ToWarehouseID, &t.ToWarehouse, &t.ToWarehouseType, &t.TargetDivision, &t.TransferDate,
+		&t.Status, &t.Notes, &t.PhotoURL, &photoURLsRaw,
 		&t.ApprovedBy, &t.ApprovedAt, &t.SentBy, &t.SentAt,
 		&t.ReceivedBy, &t.ReceivedAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
+	if err == nil {
+		t.PhotoURLs = DecodeUploadURLs(t.PhotoURL, photoURLsRaw)
+	}
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("transfer tidak ditemukan")
 	}
@@ -1305,6 +1389,14 @@ func CreateStockTransfer(req models.StockTransferRequest, createdBy string) (*mo
 	if req.FromWarehouseID == req.ToWarehouseID {
 		return nil, fmt.Errorf("gudang asal dan tujuan tidak boleh sama")
 	}
+	targetDivision, err := normalizeTransferDivision(req.TargetDivision)
+	if err != nil {
+		return nil, err
+	}
+	transferDate, err := normalizeTransferDate(req.TransferDate)
+	if err != nil {
+		return nil, err
+	}
 
 	id := NewULID()
 	tx, err := database.DB.Begin()
@@ -1318,9 +1410,9 @@ func CreateStockTransfer(req models.StockTransferRequest, createdBy string) (*mo
 		return nil, err
 	}
 	_, err = tx.Exec(`
-		INSERT INTO stock_transfers (id, transfer_number, from_warehouse_id, to_warehouse_id, status, notes, created_by)
-		VALUES ($1,$2,$3,$4,'draft',$5,$6)`,
-		id, num, req.FromWarehouseID, req.ToWarehouseID, req.Notes, createdBy)
+		INSERT INTO stock_transfers (id, transfer_number, from_warehouse_id, to_warehouse_id, target_division, transfer_date, status, notes, created_by)
+		VALUES ($1,$2,$3,$4,$5,$6::date,'draft',$7,$8)`,
+		id, num, req.FromWarehouseID, req.ToWarehouseID, targetDivision, transferDate, req.Notes, createdBy)
 	if err != nil {
 		return nil, err
 	}
@@ -1406,12 +1498,19 @@ func UpdateTransferStatusWithPhoto(id, newStatus, photoURL, actor string) (*mode
 // Gudang Induk: hanya selagi masih draft. Tanpa cek di dalam kunci,
 // persetujuan Gudang Induk yang terjadi bersamaan bisa ikut terbatalkan.
 func UpdateTransferStatusFrom(id, newStatus, photoURL, actor, fromStatus string) (*models.StockTransfer, error) {
-	if newStatus == "sent" && strings.TrimSpace(photoURL) == "" {
-		return nil, Invalid("foto barang saat dikirim wajib diunggah")
-	}
+	return UpdateTransferStatusFromPhotos(id, newStatus, photoURL, nil, actor, fromStatus)
+}
+
+func UpdateTransferStatusFromPhotos(id, newStatus, photoURL string, photoURLs []string, actor, fromStatus string) (*models.StockTransfer, error) {
+	var urls []string
 	if newStatus == "sent" {
-		if err := validateUploadField("foto barang saat dikirim", photoURL); err != nil {
+		var err error
+		urls, err = NormalizeUploadURLs("foto barang saat dikirim", photoURL, photoURLs)
+		if err != nil {
 			return nil, err
+		}
+		if len(urls) == 0 {
+			return nil, Invalid("foto barang saat dikirim wajib diunggah")
 		}
 	}
 	t, err := updateTransferStatus(id, newStatus, actor, fromStatus)
@@ -1419,11 +1518,46 @@ func UpdateTransferStatusFrom(id, newStatus, photoURL, actor, fromStatus string)
 		return nil, err
 	}
 	if newStatus == "sent" {
-		database.DB.Exec(`UPDATE stock_transfers SET photo_url=$1 WHERE id=$2`, photoURL, id)
-		SaveHandoverPhoto(database.DB, "distribusi", "dapur", "stock_transfer", id, t.TransferNumber,
-			photoURL, "Distribusi gudang induk → "+t.ToWarehouse, actor)
+		primary := urls[0]
+		database.DB.Exec(`UPDATE stock_transfers SET photo_url=$1, photo_urls=$2::jsonb WHERE id=$3`, primary, MarshalUploadURLs(urls), id)
+		t.PhotoURL = primary
+		t.PhotoURLs = urls
+		destLabel := t.ToWarehouse
+		if t.TargetDivision != "" {
+			destLabel += " (" + t.TargetDivision + ")"
+		}
+		for _, u := range urls {
+			SaveHandoverPhoto(database.DB, "distribusi", "dapur", "stock_transfer", id, t.TransferNumber,
+				u, "Distribusi "+t.FromWarehouse+" → "+destLabel, actor)
+		}
 	}
 	return t, nil
+}
+
+// UpdateTransferSendPhotos memungkinkan menambah, menghapus per foto, atau
+// mengganti foto pengiriman transfer stok selama statusnya masih 'sent' (belum diterima).
+func UpdateTransferSendPhotos(id, photoURL string, photoURLs []string, actor string) (*models.StockTransfer, error) {
+	t, err := GetStockTransfer(id)
+	if err != nil {
+		return nil, err
+	}
+	if t.Status != "sent" {
+		return nil, fmt.Errorf("foto pengiriman hanya bisa diubah saat transfer berstatus Dikirim (belum diterima)")
+	}
+	urls, err := NormalizeUploadURLs("foto barang saat dikirim", photoURL, photoURLs)
+	if err != nil {
+		return nil, err
+	}
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("minimal 1 foto pengiriman wajib dipertahankan")
+	}
+	if _, err := database.DB.Exec(
+		`UPDATE stock_transfers SET photo_url = $2, photo_urls = $3::jsonb WHERE id = $1 AND status = 'sent'`,
+		id, urls[0], MarshalUploadURLs(urls),
+	); err != nil {
+		return nil, err
+	}
+	return GetStockTransfer(id)
 }
 
 func UpdateTransferStatus(id, newStatus, actor string) (*models.StockTransfer, error) {
@@ -1518,10 +1652,11 @@ func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.Stoc
 			// (tercatat di movement transfer_out). avg_cost live gudang asal bisa
 			// sudah berubah oleh pembelian baru di antara kirim dan terima.
 			var avgCost float64
+			var outExpiry sql.NullString
 			err := tx.QueryRow(`
-				SELECT cost_per_base FROM stock_movements
+				SELECT cost_per_base, TO_CHAR(expiry_date, 'YYYY-MM-DD') FROM stock_movements
 				WHERE ref_id=$1 AND ref_type='stock_transfer' AND item_id=$2 AND movement_type='transfer_out'
-				ORDER BY created_at DESC LIMIT 1`, id, it.ItemID).Scan(&avgCost)
+				ORDER BY created_at DESC LIMIT 1`, id, it.ItemID).Scan(&avgCost, &outExpiry)
 			if err != nil {
 				// Fallback transfer lama (dikirim sebelum cost tercatat): avg_cost gudang asal.
 				if err := tx.QueryRow(`SELECT avg_cost FROM stock_ledger WHERE item_id=$1 AND warehouse_id=$2`, it.ItemID, transfer.FromWarehouseID).Scan(&avgCost); err != nil {
@@ -1573,7 +1708,7 @@ func updateTransferStatus(id, newStatus, actor, fromStatus string) (*models.Stoc
 			recvDist := recvQty / ratio
 			if err := applyMovement(tx, it.ItemID, transfer.ToWarehouseID, "transfer_in",
 				it.UnitUsed, id, "stock_transfer", transfer.TransferNumber, "",
-				actor, recvQty, recvDist, avgCost, ""); err != nil {
+				actor, recvQty, recvDist, avgCost, outExpiry.String); err != nil {
 				return nil, fmt.Errorf("gagal tambah stok %s: %w", it.ItemName, err)
 			}
 		}
@@ -1996,6 +2131,7 @@ func ProduceStockItem(req models.ProduceRequest, createdBy string) error {
 	defer tx.Rollback()
 
 	var totalCostOfProduction float64
+	var earliestExpiry string
 
 	// Generate unique production reference for this entire production run
 	prodRef := fmt.Sprintf("PROD-%s-%s", req.ItemID[:min(len(req.ItemID), 8)], time.Now().Format("150405.000"))
@@ -2006,44 +2142,36 @@ func ProduceStockItem(req models.ProduceRequest, createdBy string) error {
 		if r.ChildItemID == req.ItemID || !fnbFinite(qtyToDeduct) || qtyToDeduct <= 0 {
 			return Invalid("resep produksi tidak valid; minta F&B memperbaiki komposisinya")
 		}
-		
+
 		// Lock and check stock first (FOR UPDATE untuk cegah race condition)
 		var available float64
-		if err := tx.QueryRow(`SELECT qty_base FROM stock_ledger WHERE item_id=$1 AND warehouse_id=$2 FOR UPDATE`, r.ChildItemID, req.WarehouseID).Scan(&available); err != nil {
+		err := tx.QueryRow(`SELECT qty_base FROM stock_ledger WHERE item_id=$1 AND warehouse_id=$2 FOR UPDATE`, r.ChildItemID, req.WarehouseID).Scan(&available)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("stok %s di gudang ini kosong (butuh %.2f %s, ada 0)", r.ChildName, qtyToDeduct, r.Unit)
+		}
+		if err != nil {
 			return fmt.Errorf("gagal membaca stok %s: %w", r.ChildName, err)
 		}
 		if available < qtyToDeduct {
-			return fmt.Errorf("stok %s tidak mencukupi (butuh %.2f, ada %.2f)", r.ChildName, qtyToDeduct, available)
+			return fmt.Errorf("stok %s tidak mencukupi (butuh %.2f %s, ada %.2f)", r.ChildName, qtyToDeduct, r.Unit, available)
 		}
 
-		// Deduction (Movement Type: 'production_out')
-
-		err := applyMovement(tx, r.ChildItemID, req.WarehouseID, "production_out", r.Unit, 
+		// Deduction (Movement Type: 'production_out') dengan nilai FIFO persis
+		out, err := applyMovementValued(tx, r.ChildItemID, req.WarehouseID, "production_out", r.Unit,
 			"", "production", prodRef, "Used to produce "+itemToProduce.Name, createdBy, -qtyToDeduct, -qtyToDeduct, 0, "")
 		if err != nil {
 			return err
 		}
-
-		// Get the actual cost from the movement record we just created
-		// applyMovement's FIFO deduction calculates actualCostPerBase from old batches
-		var movementCost float64
-		err = tx.QueryRow(`
-			SELECT cost_per_base * ABS(qty_base) 
-			FROM stock_movements 
-			WHERE item_id=$1 AND warehouse_id=$2 AND ref_type='production' AND ref_number=$3
-		`, r.ChildItemID, req.WarehouseID, prodRef).Scan(&movementCost)
-		if err != nil {
-			return fmt.Errorf("gagal membaca biaya aktual untuk %s: %w", r.ChildName, err)
+		totalCostOfProduction += out.value
+		if out.earliestExpiry != "" && (earliestExpiry == "" || out.earliestExpiry < earliestExpiry) {
+			earliestExpiry = out.earliestExpiry
 		}
-		totalCostOfProduction += movementCost
-
-
 	}
 
 	// 2. Add the Produced Item (SFG) with calculated HPP
 	costPerUnit := totalCostOfProduction / req.QtyProduce
 	err = applyMovement(tx, req.ItemID, req.WarehouseID, "production_in", itemToProduce.BaseUnit,
-		"", "production", prodRef, "Produced from components", createdBy, req.QtyProduce, req.QtyProduce, costPerUnit, "")
+		"", "production", prodRef, "Produced from components", createdBy, req.QtyProduce, req.QtyProduce, costPerUnit, earliestExpiry)
 
 	if err != nil {
 		return err
@@ -2210,47 +2338,89 @@ func CreateStockWaste(req models.StockWasteRequest, actor string) error {
 
 // GetWarehouseDashboard returns summary stats for the warehouse dashboard.
 func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats, error) {
-	stats := &models.WarehouseDashboardStats{}
+	return GetWarehouseDashboardFiltered(outletIDs, "")
+}
 
-	// Scope helper: warehouse filter clause and args
-	wFilter := ""   // filter on table aliased as w (warehouses)
-	oFilter := ""   // filter on outlet_id column directly
+// GetWarehouseDashboardFiltered mengembalikan ringkasan lengkap Dashboard Gudang,
+// termasuk daftar batch kadaluwarsa / akan kadaluwarsa dalam 1 bulan (<= 30 hari),
+// kasus mutu terbuka, waste 30 hari, pengantaran logistik masuk, dan dukungan filter per gudang.
+func GetWarehouseDashboardFiltered(outletIDs []string, warehouseID string) (*models.WarehouseDashboardStats, error) {
+	warehouseID = strings.TrimSpace(warehouseID)
+	stats := &models.WarehouseDashboardStats{
+		SelectedWarehouseID: warehouseID,
+		WarehouseStocks:     []models.WarehouseStockSummary{},
+		ExpiringItems:       []models.WarehouseExpiringBatch{},
+		LowStockItems:       []models.StockLedgerRow{},
+		RecentMovements:     []models.StockMovement{},
+		PendingTransferList: []models.StockTransfer{},
+		MovementTrend:       []models.DailyMovementPoint{},
+	}
+
+	// Scope dasar (berdasarkan outlet role) untuk daftar seluruh gudang yang bisa dipilih.
+	scopeFilter := ""
+	var scopeArgs []interface{}
+	if outletIDs != nil {
+		scopeFilter = " AND w.outlet_id = ANY($1)"
+		scopeArgs = append(scopeArgs, pq.Array(outletIDs))
+	}
+
+	// Validasi warehouseID bila diisi: pastikan berada di dalam scope pengguna.
+	if warehouseID != "" {
+		var ok bool
+		chkArgs := append([]interface{}{}, scopeArgs...)
+		chkArgs = append(chkArgs, warehouseID)
+		chkQ := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM warehouses w WHERE w.is_active = true%s AND w.id = $%d)`, scopeFilter, len(chkArgs))
+		if err := database.DB.QueryRow(chkQ, chkArgs...).Scan(&ok); err != nil || !ok {
+			warehouseID = ""
+			stats.SelectedWarehouseID = ""
+		}
+	}
+
+	// Filter aktif untuk semua metrik/list utama (scope + optional warehouseID).
+	wFilter := scopeFilter
+	oFilter := ""
 	var wArgs []interface{}
 	if outletIDs != nil {
-		wFilter = " AND (w.outlet_id = ANY($1) OR w.type = 'central')"
-		oFilter = " AND (outlet_id = ANY($1) OR type = 'central')"
+		oFilter = " AND outlet_id = ANY($1)"
 		wArgs = append(wArgs, pq.Array(outletIDs))
+	}
+	if warehouseID != "" {
+		wArgs = append(wArgs, warehouseID)
+		wFilter += fmt.Sprintf(" AND w.id = $%d", len(wArgs))
+		oFilter += fmt.Sprintf(" AND id = $%d", len(wArgs))
 	}
 
 	run := func(q string, args []interface{}, dest ...interface{}) {
-		if args != nil {
+		if len(args) > 0 {
 			database.DB.QueryRow(q, args...).Scan(dest...)
 		} else {
 			database.DB.QueryRow(q).Scan(dest...)
 		}
 	}
+	queryRows := func(q string, args []interface{}) (*sql.Rows, error) {
+		if len(args) > 0 {
+			return database.DB.Query(q, args...)
+		}
+		return database.DB.Query(q)
+	}
 
-	// ── 1. Ringkasan gudang ──────────────────────────────────
+	// ── 1. Ringkasan gudang (mengikuti filter aktif) ─────────
 	run(fmt.Sprintf(`SELECT COUNT(*), COUNT(CASE WHEN type='central' THEN 1 END), COUNT(CASE WHEN type='outlet' THEN 1 END)
-		FROM warehouses w WHERE is_active = true%s`, wFilter), wArgs,
+		FROM warehouses w WHERE w.is_active = true%s`, wFilter), wArgs,
 		&stats.TotalWarehouses, &stats.CentralWarehouses, &stats.OutletWarehouses)
 
-	// ── 2. Total item bahan baku ─────────────────────────────
+	// ── 2. Total item bahan baku aktif ───────────────────────
 	database.DB.QueryRow(`SELECT COUNT(*) FROM stock_items WHERE is_active = true`).Scan(&stats.TotalItems)
 
-	// ── 3. Item dengan stok (per warehouse scope) ────────────
-	// items_with_stock: item yang qty_base > 0 di gudang scope
-	// low_stock: item qty_base <= min_stock (dan min_stock > 0) di setidaknya satu gudang scope
-	// out_of_stock: item yang TOTAL qty_base = 0 di semua gudang scope (pernah punya stok)
-	// total_stock_value: sum(qty_base * avg_cost) semua gudang scope
+	// ── 3. Item dengan stok, stok rendah, habis, nilai aset ──
 	run(fmt.Sprintf(`
 		SELECT
 			COUNT(DISTINCT CASE WHEN sl.qty_base > 0 THEN sl.item_id END),
-			COUNT(DISTINCT CASE WHEN sl.qty_base <= %s AND %s > 0 AND sl.qty_base >= 0 THEN sl.item_id END),
+			COUNT(CASE WHEN sl.qty_base < %s AND %s > 0 THEN 1 END),
 			COUNT(DISTINCT CASE WHEN sl.qty_base <= 0 THEN sl.item_id END),
 			COALESCE(SUM(CASE WHEN sl.qty_base > 0 THEN sl.qty_base * sl.avg_cost ELSE 0 END), 0)
 		FROM stock_ledger sl
-		JOIN stock_items si ON si.id = sl.item_id
+		JOIN stock_items si ON si.id = sl.item_id AND si.is_active = true
 		JOIN warehouses w ON w.id = sl.warehouse_id
 		WHERE w.is_active = true%s`, effMinStock, effMinStock, wFilter), wArgs,
 		&stats.ItemsWithStock, &stats.LowStockCount, &stats.OutOfStockCount, &stats.TotalStockValue)
@@ -2263,9 +2433,7 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 		  OR st.to_warehouse_id   IN (SELECT id FROM warehouses WHERE is_active=true%s))`,
 		oFilter, oFilter), wArgs, &stats.PendingTransfers)
 
-	// ── 5. Pergerakan hari ini dan 7 hari ───────────────────
-	// tz_date/tz_today: kolom tersimpan UTC; `created_at AT TIME ZONE 'Asia/Jakarta'`
-	// polos arah konversinya terbalik (geser -7 jam, bukan +7).
+	// ── 5. Pergerakan hari ini dan 7 hari ────────────────────
 	run(fmt.Sprintf(`
 		SELECT
 			COUNT(CASE WHEN tz_date(sm.created_at) = tz_today() THEN 1 END),
@@ -2275,12 +2443,72 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 		WHERE w.is_active = true%s`, wFilter), wArgs,
 		&stats.MovementsToday, &stats.Movements7d)
 
-	// ── 6. Stok per gudang ───────────────────────────────────
+	// ── 5b. Ringkasan Kadaluwarsa & <= 1 Bulan (30 hari) ─────
+	run(fmt.Sprintf(`
+		SELECT
+			COUNT(CASE WHEN sb.expiry_date < tz_today() THEN 1 END),
+			COUNT(CASE WHEN sb.expiry_date >= tz_today() AND sb.expiry_date <= tz_today() + 7 THEN 1 END),
+			COUNT(*),
+			COALESCE(SUM(sb.qty_base * sb.cost_per_base), 0)
+		FROM stock_batches sb
+		JOIN stock_items si ON si.id = sb.item_id AND si.is_active = true
+		JOIN warehouses w ON w.id = sb.warehouse_id
+		WHERE w.is_active = true
+		  AND sb.qty_base > 0
+		  AND sb.expiry_date IS NOT NULL
+		  AND sb.expiry_date <= tz_today() + 30%s`, wFilter), wArgs,
+		&stats.ExpiredCount, &stats.Expiring7dCount, &stats.Expiring30dCount, &stats.Expiring30dValue)
+
+	// ── 5c. Kasus Mutu / Karantina terbuka & Waste 30 hari ───
+	run(fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM stock_quality_cases qc
+		JOIN warehouses w ON w.id = qc.warehouse_id
+		WHERE w.is_active = true
+		  AND qc.status NOT IN ('closed', 'cancelled', 'rejected')%s`, wFilter), wArgs,
+		&stats.OpenQualityCases)
+
+	run(fmt.Sprintf(`
+		SELECT COUNT(*), COALESCE(SUM(sw.total_cost), 0)
+		FROM stock_wastes sw
+		JOIN warehouses w ON w.id = sw.warehouse_id
+		WHERE w.is_active = true
+		  AND sw.created_at >= NOW() - INTERVAL '30 days'%s`, wFilter), wArgs,
+		&stats.WasteCount30d, &stats.WasteValue30d)
+
+	// ── 5d. Surat Jalan Logistik Bahan Baku sedang menuju gudang ──
+	incQ := `
+		SELECT COUNT(*)
+		FROM logistics_deliveries ld
+		LEFT JOIN warehouses w ON w.id = ld.destination_warehouse_id
+		WHERE ld.status IN ('in_transit', 'partial_received')
+		  AND COALESCE(NULLIF(ld.purchasing_group, ''), 'bahan_baku') = 'bahan_baku'`
+	var incArgs []interface{}
+	if outletIDs != nil {
+		incArgs = append(incArgs, pq.Array(outletIDs))
+		incQ += fmt.Sprintf(` AND (ld.destination_outlet_id = ANY($%d::text[]) OR w.outlet_id = ANY($%d::text[]))`, len(incArgs), len(incArgs))
+	}
+	if warehouseID != "" {
+		incArgs = append(incArgs, warehouseID)
+		incQ += fmt.Sprintf(` AND ld.destination_warehouse_id = $%d`, len(incArgs))
+	}
+	run(incQ, incArgs, &stats.IncomingDeliveries)
+
+	// ── 6. Stok per gudang (selalu seluruh gudang dalam scope untuk filter cepat) ──
 	wsQ := fmt.Sprintf(`
 		SELECT w.id, w.name, w.type, COALESCE(o.name,'—'),
-			COUNT(DISTINCT CASE WHEN sl.qty_base > 0 THEN sl.item_id END),
-			COALESCE(SUM(CASE WHEN sl.qty_base > 0 THEN sl.qty_base * sl.avg_cost ELSE 0 END), 0),
-			COUNT(DISTINCT CASE WHEN sl.qty_base <= %s AND %s > 0 AND sl.qty_base >= 0 THEN sl.item_id END)
+			COUNT(DISTINCT CASE WHEN si.is_active = true AND sl.qty_base > 0 THEN sl.item_id END),
+			COALESCE(SUM(CASE WHEN si.is_active = true AND sl.qty_base > 0 THEN sl.qty_base * sl.avg_cost ELSE 0 END), 0),
+			COUNT(DISTINCT CASE WHEN si.is_active = true AND sl.qty_base < %s AND %s > 0 THEN sl.item_id END),
+			COALESCE((
+				SELECT COUNT(*)
+				FROM stock_batches sb2
+				JOIN stock_items si2 ON si2.id = sb2.item_id AND si2.is_active = true
+				WHERE sb2.warehouse_id = w.id
+				  AND sb2.qty_base > 0
+				  AND sb2.expiry_date IS NOT NULL
+				  AND sb2.expiry_date <= tz_today() + 30
+			), 0)
 		FROM warehouses w
 		LEFT JOIN outlets o ON o.id = w.outlet_id
 		LEFT JOIN stock_ledger sl ON sl.warehouse_id = w.id
@@ -2288,26 +2516,63 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 		WHERE w.is_active = true%s
 		GROUP BY w.id, w.name, w.type, o.name
 		ORDER BY w.type DESC, SUM(COALESCE(CASE WHEN sl.qty_base > 0 THEN sl.qty_base * sl.avg_cost ELSE 0 END, 0)) DESC`,
-		effMinStock, effMinStock, wFilter)
-	stats.WarehouseStocks = []models.WarehouseStockSummary{}
-	wsRows, wsErr := func() (*sql.Rows, error) {
-		if wArgs != nil {
-			return database.DB.Query(wsQ, wArgs...)
-		}
-		return database.DB.Query(wsQ)
-	}()
-	if wsErr == nil {
+		effMinStock, effMinStock, scopeFilter)
+	if wsRows, wsErr := queryRows(wsQ, scopeArgs); wsErr == nil {
 		defer wsRows.Close()
 		for wsRows.Next() {
 			var r models.WarehouseStockSummary
 			if err := wsRows.Scan(&r.WarehouseID, &r.WarehouseName, &r.WarehouseType, &r.OutletName,
-				&r.TotalItems, &r.TotalValue, &r.LowStockCount); err == nil {
+				&r.TotalItems, &r.TotalValue, &r.LowStockCount, &r.Expiring30dCount); err == nil {
+				r.WarehouseID = strings.TrimSpace(r.WarehouseID)
 				stats.WarehouseStocks = append(stats.WarehouseStocks, r)
 			}
 		}
 	}
 
-	// ── 7. Item stok rendah / habis (maks 10) ───────────────
+	// ── 6b. Daftar Batch Kadaluwarsa & <= 1 Bulan (maks 50, paling mendesak di atas) ──
+	expQ := fmt.Sprintf(`
+		SELECT sb.id, si.id, COALESCE(si.code,''), si.name, COALESCE(si.category,''),
+			w.id, w.name, w.type,
+			COALESCE(si.base_unit,''), COALESCE(si.dist_unit,''), COALESCE(NULLIF(si.dist_ratio,0),1), COALESCE(si.dist_unit_label,''),
+			sb.qty_base, sb.cost_per_base, sb.qty_base * sb.cost_per_base,
+			TO_CHAR(sb.expiry_date, 'YYYY-MM-DD'),
+			(sb.expiry_date - tz_today())::int,
+			COALESCE(sb.ref_type,''), COALESCE(sb.ppic_ack_by,'')
+		FROM stock_batches sb
+		JOIN stock_items si ON si.id = sb.item_id AND si.is_active = true
+		JOIN warehouses w ON w.id = sb.warehouse_id
+		WHERE w.is_active = true
+		  AND sb.qty_base > 0
+		  AND sb.expiry_date IS NOT NULL
+		  AND sb.expiry_date <= tz_today() + 30%s
+		ORDER BY sb.expiry_date ASC, (sb.qty_base * sb.cost_per_base) DESC
+		LIMIT 50`, wFilter)
+	if expRows, expErr := queryRows(expQ, wArgs); expErr == nil {
+		defer expRows.Close()
+		for expRows.Next() {
+			var r models.WarehouseExpiringBatch
+			if err := expRows.Scan(&r.BatchID, &r.ItemID, &r.ItemCode, &r.ItemName, &r.Category,
+				&r.WarehouseID, &r.WarehouseName, &r.WarehouseType,
+				&r.BaseUnit, &r.DistUnit, &r.DistRatio, &r.DistUnitLabel,
+				&r.QtyBase, &r.CostPerBase, &r.StockValue,
+				&r.ExpiryDate, &r.DaysLeft, &r.RefType, &r.AckBy); err == nil {
+				r.BatchID = strings.TrimSpace(r.BatchID)
+				r.ItemID = strings.TrimSpace(r.ItemID)
+				r.WarehouseID = strings.TrimSpace(r.WarehouseID)
+				switch {
+				case r.DaysLeft < 0:
+					r.Status = "expired"
+				case r.DaysLeft <= 7:
+					r.Status = "critical"
+				default:
+					r.Status = "warning"
+				}
+				stats.ExpiringItems = append(stats.ExpiringItems, r)
+			}
+		}
+	}
+
+	// ── 7. Item stok rendah / habis (maks 15) ───────────────
 	lsQ := fmt.Sprintf(`
 		SELECT sl.item_id, si.code, si.name, si.base_unit, si.dist_unit, si.dist_ratio, si.dist_unit_label,
 			w.id, w.name, w.type,
@@ -2315,18 +2580,11 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 			ROUND(CASE WHEN si.dist_ratio > 0 THEN sl.qty_base / si.dist_ratio ELSE sl.qty_base END, 4),
 			sl.avg_cost, sl.qty_base * sl.avg_cost, %s, true
 		FROM stock_ledger sl
-		JOIN stock_items si ON si.id = sl.item_id
+		JOIN stock_items si ON si.id = sl.item_id AND si.is_active = true
 		JOIN warehouses w ON w.id = sl.warehouse_id
-		WHERE w.is_active = true AND %s > 0 AND sl.qty_base <= %s%s
-		ORDER BY sl.qty_base ASC LIMIT 10`, effMinStock, effMinStock, effMinStock, wFilter)
-	stats.LowStockItems = []models.StockLedgerRow{}
-	lsRows, lsErr := func() (*sql.Rows, error) {
-		if wArgs != nil {
-			return database.DB.Query(lsQ, wArgs...)
-		}
-		return database.DB.Query(lsQ)
-	}()
-	if lsErr == nil {
+		WHERE w.is_active = true AND %s > 0 AND sl.qty_base < %s%s
+		ORDER BY sl.qty_base ASC LIMIT 15`, effMinStock, effMinStock, effMinStock, wFilter)
+	if lsRows, lsErr := queryRows(lsQ, wArgs); lsErr == nil {
 		defer lsRows.Close()
 		for lsRows.Next() {
 			var r models.StockLedgerRow
@@ -2338,32 +2596,27 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 		}
 	}
 
-	// ── 8. Pergerakan terkini (maks 10) ─────────────────────
+	// ── 8. Pergerakan terkini (maks 15) ─────────────────────
 	rmQ := fmt.Sprintf(`
 		SELECT sm.id, sm.item_id, si.name, sm.warehouse_id, w.name,
-			sm.movement_type, sm.qty_base, sm.qty_dist, sm.unit_used,
+			sm.movement_type, sm.qty_base, COALESCE(sm.qty_dist,0), COALESCE(sm.unit_used,''),
+			COALESCE(si.base_unit,''), COALESCE(si.dist_unit,''), COALESCE(NULLIF(si.dist_ratio,0),1), COALESCE(si.dist_unit_label,''),
 			sm.cost_per_base, sm.balance_after,
 			COALESCE(sm.ref_id::text,''), COALESCE(sm.ref_type,''), COALESCE(sm.ref_number,''),
-			sm.expiry_date::text, COALESCE(sm.notes,''), COALESCE(sm.created_by,''),
-			sm.created_at::text
+			TO_CHAR(sm.expiry_date, 'YYYY-MM-DD'), COALESCE(sm.notes,''), COALESCE(sm.created_by,''),
+			TO_CHAR(sm.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM stock_movements sm
 		JOIN stock_items si ON si.id = sm.item_id
 		JOIN warehouses w ON w.id = sm.warehouse_id
 		WHERE w.is_active = true%s
-		ORDER BY sm.created_at DESC LIMIT 10`, wFilter)
-	stats.RecentMovements = []models.StockMovement{}
-	rmRows, rmErr := func() (*sql.Rows, error) {
-		if wArgs != nil {
-			return database.DB.Query(rmQ, wArgs...)
-		}
-		return database.DB.Query(rmQ)
-	}()
-	if rmErr == nil {
+		ORDER BY sm.created_at DESC LIMIT 15`, wFilter)
+	if rmRows, rmErr := queryRows(rmQ, wArgs); rmErr == nil {
 		defer rmRows.Close()
 		for rmRows.Next() {
 			var r models.StockMovement
 			if err := rmRows.Scan(&r.ID, &r.ItemID, &r.ItemName, &r.WarehouseID, &r.WarehouseName,
 				&r.MovementType, &r.QtyBase, &r.QtyDist, &r.UnitUsed,
+				&r.BaseUnit, &r.DistUnit, &r.DistRatio, &r.DistUnitLabel,
 				&r.CostPerBase, &r.BalanceAfter,
 				&r.RefID, &r.RefType, &r.RefNumber,
 				&r.ExpiryDate, &r.Notes, &r.CreatedBy, &r.CreatedAt); err == nil {
@@ -2372,14 +2625,8 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 		}
 	}
 
-	// ── 9. Trend pergerakan 14 hari (FIX: subquery scope, bukan LEFT JOIN) ──
-	// Bug sebelumnya: filter scope di LEFT JOIN tidak efektif memfilter data
-	whSubQ := "SELECT id FROM warehouses WHERE is_active = true"
-	var trendArgs []interface{}
-	if outletIDs != nil {
-		whSubQ += " AND (outlet_id = ANY($1) OR type = 'central')"
-		trendArgs = []interface{}{pq.Array(outletIDs)}
-	}
+	// ── 9. Trend pergerakan 14 hari ──────────────────────────
+	whSubQ := "SELECT id FROM warehouses WHERE is_active = true" + oFilter
 	trendQ := fmt.Sprintf(`
 		SELECT TO_CHAR(d.dt, 'YYYY-MM-DD'),
 			COUNT(CASE WHEN sm.qty_base > 0 THEN 1 END)::int,
@@ -2389,14 +2636,7 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 			ON tz_date(sm.created_at) = d.dt
 			AND sm.warehouse_id IN (%s)
 		GROUP BY d.dt ORDER BY d.dt`, whSubQ)
-	stats.MovementTrend = []models.DailyMovementPoint{}
-	trRows, trErr := func() (*sql.Rows, error) {
-		if trendArgs != nil {
-			return database.DB.Query(trendQ, trendArgs...)
-		}
-		return database.DB.Query(trendQ)
-	}()
-	if trErr == nil {
+	if trRows, trErr := queryRows(trendQ, wArgs); trErr == nil {
 		defer trRows.Close()
 		for trRows.Next() {
 			var p models.DailyMovementPoint
@@ -2406,36 +2646,43 @@ func GetWarehouseDashboard(outletIDs []string) (*models.WarehouseDashboardStats,
 		}
 	}
 
-	// ── 10. Transfer pending list (maks 5) ───────────────────
-	// Ikut scope outlet: user ber-scope hanya melihat transfer yang menyentuh
-	// gudang pusat atau gudang outlet-nya (konsisten dengan blok lain di atas).
-	stats.PendingTransferList = []models.StockTransfer{}
+	// ── 10. Transfer pending list (maks 8) ───────────────────
 	ptScope := ""
 	var ptArgs []interface{}
 	if outletIDs != nil {
-		ptScope = ` AND (fw.outlet_id = ANY($1) OR fw.type = 'central' OR tw.outlet_id = ANY($1) OR tw.type = 'central')`
+		ptScope += ` AND (fw.outlet_id = ANY($1) OR tw.outlet_id = ANY($1))`
 		ptArgs = append(ptArgs, pq.Array(outletIDs))
 	}
-	ptRows, ptErr := database.DB.Query(`
+	if warehouseID != "" {
+		ptArgs = append(ptArgs, warehouseID)
+		pIdx := len(ptArgs)
+		ptScope += fmt.Sprintf(` AND (st.from_warehouse_id = $%d OR st.to_warehouse_id = $%d)`, pIdx, pIdx)
+	}
+	if ptRows, ptErr := database.DB.Query(`
 		SELECT st.id, st.transfer_number,
 			st.from_warehouse_id, fw.name,
 			st.to_warehouse_id, tw.name,
+			COALESCE(st.target_division,''),
+			TO_CHAR(COALESCE(st.transfer_date, tz_date(st.created_at)), 'YYYY-MM-DD'),
 			st.status, COALESCE(st.notes,''), COALESCE(st.created_by,''),
 			COALESCE(st.approved_by,''), COALESCE(st.sent_by,''), COALESCE(st.received_by,''),
-			COALESCE(st.approved_at::text,''), COALESCE(st.sent_at::text,''), COALESCE(st.received_at::text,''),
-			st.created_at::text, st.updated_at::text
+			COALESCE(TO_CHAR(st.approved_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+			COALESCE(TO_CHAR(st.sent_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+			COALESCE(TO_CHAR(st.received_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+			TO_CHAR(st.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			TO_CHAR(st.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM stock_transfers st
 		JOIN warehouses fw ON fw.id = st.from_warehouse_id
 		JOIN warehouses tw ON tw.id = st.to_warehouse_id
 		WHERE st.status NOT IN ('received','received_rejected','cancelled')`+ptScope+`
-		ORDER BY st.created_at DESC LIMIT 5`, ptArgs...)
-	if ptErr == nil {
+		ORDER BY COALESCE(st.transfer_date, tz_date(st.created_at)) DESC, st.created_at DESC LIMIT 8`, ptArgs...); ptErr == nil {
 		defer ptRows.Close()
 		for ptRows.Next() {
 			var r models.StockTransfer
 			if err := ptRows.Scan(&r.ID, &r.TransferNumber,
 				&r.FromWarehouseID, &r.FromWarehouse,
 				&r.ToWarehouseID, &r.ToWarehouse,
+				&r.TargetDivision, &r.TransferDate,
 				&r.Status, &r.Notes, &r.CreatedBy,
 				&r.ApprovedBy, &r.SentBy, &r.ReceivedBy,
 				&r.ApprovedAt, &r.SentAt, &r.ReceivedAt,

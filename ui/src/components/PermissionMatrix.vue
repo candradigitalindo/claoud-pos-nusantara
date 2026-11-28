@@ -237,6 +237,14 @@ const CATEGORIES = [
     label: 'Penjualan', icon: IC.cart,
     items: [
       { type: 'crud', module: 'reservations', label: 'Reservasi', icon: IC.cart },
+      {
+        type: 'toggles', label: 'Bundling Lintas Outlet', icon: IC.transfer,
+        toggles: [
+          { key: 'bundles.view',   label: 'Lihat' },
+          { key: 'bundles.claim',  label: 'Serahkan / Klaim' },
+          { key: 'bundles.manage', label: 'Atur & Buat Kupon' },
+        ],
+      },
       { type: 'single', key: 'customers.view', label: 'Pelanggan', icon: IC.users },
     ],
   },
@@ -306,7 +314,7 @@ const CATEGORIES = [
       {
         // Alur: Barang = Buat → Verifikasi (cek ketersediaan di outlet lain) → Approval Barang → Pembelian.
         //       Jasa   = Buat → Approval Jasa (tanpa verifikasi) → Pembelian.
-        type: 'toggles', label: 'Pengadaan Barang, Perlengkapan & Jasa', icon: IC.cart,
+        type: 'toggles', label: 'Kelompok 2 · Pengadaan Barang, Perlengkapan & Jasa', icon: IC.cart,
         toggles: [
           { key: 'procurement.requests.view',             label: 'Lihat', hint: 'Melihat daftar & detail pengajuan barang, perlengkapan, dan jasa' },
           { key: 'procurement.requests.submit',           label: 'Buat/Hapus', hint: 'Membuat pengajuan, mengubah isinya selama menunggu verifikasi (barang) atau menunggu persetujuan (jasa), membatalkan sebelum diajukan bayar, dan menghapus' },
@@ -314,7 +322,6 @@ const CATEGORIES = [
           { key: 'procurement.requests.approve',          label: 'Approval Barang', hint: 'Khusus menyetujui/menolak pengajuan barang & perlengkapan (termasuk pengajuan Urgent langsung), serta mengarahkan ke Pembayaran Kasir Outlet atau Proses Melalui Umum' },
           { key: 'procurement.requests.approve_services', label: 'Approval Jasa', hint: 'Khusus menyetujui/menolak pengajuan jasa (tanpa tahap verifikasi, langsung menunggu persetujuan), serta mengarahkan ke Pembayaran Kasir Outlet atau Proses Melalui Umum' },
           { key: 'procurement.requests.purchasing',       label: 'Pembelian Barang & Jasa', hint: 'Mengisi harga final, vendor, tujuan pembayaran, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran (termasuk jasa)' },
-          { key: 'procurement.requests.pickup',           label: 'Pengambilan Barang', hint: 'Petugas logistik: mencatat pengambilan barang dari vendor (foto & waktu) sebelum diantar ke tempat penerimaan, termasuk struk yang dibawa' },
         ],
       },
       {
@@ -327,16 +334,41 @@ const CATEGORIES = [
       {
         // Pengajuan jenis 'bahan' diatur izin terpisah dari Barang, Jasa & Projek.
         // Alur: Buat (Kepala Gudang Induk) → Approval Bahan Baku → Pembelian → Pengambilan oleh logistik (opsional) — tanpa verifikasi.
-        type: 'toggles', label: 'Pengadaan Bahan Baku', icon: IC.stockitem,
+        type: 'toggles', label: 'Kelompok 1 · Pengadaan Bahan Baku', icon: IC.stockitem,
         toggles: [
           { key: 'procurement.rawmaterials.view',       label: 'Lihat', hint: 'Melihat daftar & detail pengajuan bahan baku' },
           { key: 'procurement.rawmaterials.submit',     label: 'Buat/Hapus', hint: 'Membuat pengajuan bahan baku, mengubah isinya selama menunggu persetujuan, membatalkan, dan menghapus' },
           { key: 'procurement.rawmaterials.approve',    label: 'Approval Bahan Baku', hint: 'Khusus menyetujui atau menolak pengajuan bahan baku (tanpa tahap verifikasi, terpisah dari penyetuju barang, jasa & proyek)' },
           { key: 'procurement.rawmaterials.purchasing', label: 'Pembelian Bahan Baku', hint: 'Mengisi harga final, vendor, tujuan pembayaran, invoice, dan struk pembelian, memecah vendor, serta mengajukan pembayaran bahan baku' },
-          { key: 'procurement.rawmaterials.pickup',     label: 'Pengambilan Bahan Baku', hint: 'Petugas logistik: mencatat pengambilan bahan dari vendor (foto & waktu) sebelum diantar ke Gudang Induk, termasuk struk yang dibawa' },
         ],
       },
       { type: 'crud', module: 'vendors', label: 'Vendor', icon: IC.vendor },
+    ],
+  },
+  {
+    label: 'Logistik', icon: IC.cart,
+    items: [
+      {
+        type: 'toggles', label: 'Kelompok 1 · Logistik Bahan Baku', icon: IC.stockitem,
+        toggles: [
+          { key: 'logistics.rawmaterials.view',   label: 'Lihat & Cetak SJ', hint: 'Melihat daftar Surat Jalan & barang siap antar khusus Kelompok 1 (Bahan Baku) serta mencetak Surat Jalan' },
+          { key: 'logistics.rawmaterials.manage', label: 'Kelola Pengantaran', hint: 'Membuat/mengubah Surat Jalan khusus Bahan Baku, memberangkatkan, membatalkan, serta mengelola foto sebelum diterima Gudang' },
+        ],
+      },
+      {
+        type: 'toggles', label: 'Kelompok 2 · Logistik Barang & Perlengkapan', icon: IC.warehouse,
+        toggles: [
+          { key: 'logistics.goods.view',   label: 'Lihat & Cetak SJ', hint: 'Melihat daftar Surat Jalan & barang siap antar khusus Kelompok 2 (Barang & Perlengkapan) serta mencetak Surat Jalan' },
+          { key: 'logistics.goods.manage', label: 'Kelola Pengantaran', hint: 'Membuat/mengubah Surat Jalan khusus Barang & Perlengkapan, memberangkatkan, membatalkan, serta mengelola foto sebelum diterima Aset/Outlet' },
+        ],
+      },
+      {
+        type: 'toggles', label: 'Logistik Gabungan (Semua Kelompok)', icon: IC.cart,
+        toggles: [
+          { key: 'logistics.deliveries.view',   label: 'Lihat Semua SJ', hint: 'Melihat dan mencetak Surat Jalan dari kedua kelompok Purchasing (Bahan Baku maupun Barang & Perlengkapan)' },
+          { key: 'logistics.deliveries.manage', label: 'Kelola Semua Pengantaran', hint: 'Mengelola pengantaran untuk kedua kelompok Purchasing (tetap terpisah per Surat Jalan, khusus petugas logistik gabungan / admin)' },
+        ],
+      },
     ],
   },
   {

@@ -20,7 +20,7 @@
             @change="applyFilters"
           />
         </div>
-        <div class="w-full sm:w-auto sm:min-w-[260px] sm:flex-1 sm:max-w-md">
+        <div class="w-full sm:w-auto sm:min-w-[240px] sm:flex-1 sm:max-w-sm">
           <SearchSelect
             v-model="filterWarehouse"
             :options="warehouseFilterOptions"
@@ -30,6 +30,30 @@
             labelKey="label"
             @change="applyFilters"
           />
+        </div>
+        <div class="w-full sm:w-auto sm:min-w-[165px]">
+          <SearchSelect
+            v-model="filterDivision"
+            :options="divisionFilterOptions"
+            placeholder="Semua Divisi"
+            searchPlaceholder="Cari divisi..."
+            valueKey="value"
+            labelKey="label"
+            @change="applyFilters"
+          />
+        </div>
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <input v-model="filterDateFrom" type="date" aria-label="Dari tanggal transfer" title="Dari tanggal transfer"
+            class="text-sm border border-gray-300 rounded-lg px-2.5 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            @change="applyFilters" />
+          <span class="text-xs text-gray-400">s/d</span>
+          <input v-model="filterDateTo" type="date" aria-label="Sampai tanggal transfer" title="Sampai tanggal transfer"
+            class="text-sm border border-gray-300 rounded-lg px-2.5 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            @change="applyFilters" />
+          <button v-if="filterDateFrom || filterDateTo" type="button" @click="clearDateFilter"
+            class="text-xs font-medium text-gray-500 hover:text-red-600 px-1.5 py-1">
+            Reset tanggal
+          </button>
         </div>
       </div>
 
@@ -49,8 +73,15 @@
               </div>
               <p class="mt-1 text-sm text-gray-800 break-words">
                 {{ row.from_warehouse_name }} <span class="text-gray-400">→</span> {{ row.to_warehouse_name }}
+                <span v-if="row.target_division" :class="['inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide ml-1', transferDivisionClass(row.target_division)]">
+                  {{ row.target_division }}
+                </span>
               </p>
-              <p class="mt-0.5 text-xs text-gray-500">{{ row.created_at.slice(0,10) }} · {{ row.created_by || '—' }}</p>
+              <p class="mt-0.5 text-xs text-gray-500">
+                {{ row.transfer_date || row.created_at.slice(0,10) }}
+                <span v-if="row.transfer_date && row.transfer_date !== row.created_at?.slice(0,10)" class="text-gray-400">(input {{ row.created_at.slice(0,10) }})</span>
+                · {{ row.created_by || '—' }}
+              </p>
             </button>
           </li>
         </ul>
@@ -62,10 +93,13 @@
           </button>
         </template>
         <template #cell-route="{ row }">
-          <div class="text-sm">
+          <div class="text-sm flex flex-wrap items-center gap-1">
             <span class="font-medium">{{ row.from_warehouse_name }}</span>
-            <span class="text-gray-400 mx-1.5">→</span>
+            <span class="text-gray-400 mx-0.5">→</span>
             <span class="font-medium">{{ row.to_warehouse_name }}</span>
+            <span v-if="row.target_division" :class="['inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide ml-1', transferDivisionClass(row.target_division)]">
+              {{ row.target_division }}
+            </span>
           </div>
         </template>
         <template #cell-status="{ row }">
@@ -74,7 +108,12 @@
           </span>
         </template>
         <template #cell-created_at="{ row }">
-          <span class="text-sm text-gray-500">{{ row.created_at.slice(0,10) }}</span>
+          <div class="text-sm text-gray-700">
+            <span>{{ row.transfer_date || row.created_at.slice(0,10) }}</span>
+            <span v-if="row.transfer_date && row.transfer_date !== row.created_at?.slice(0,10)" class="block text-[11px] text-gray-400">
+              input {{ row.created_at.slice(0,10) }}
+            </span>
+          </div>
         </template>
         <template #cell-actions="{ row }">
           <AppActionButton icon="view" label="Detail" @click="openDetail(row.id)" />
@@ -137,6 +176,31 @@
         <p v-else class="text-xs text-gray-500 -mt-1">
           Transfer stok mendukung antar gudang induk, gudang induk ke outlet, dan antar gudang outlet.
         </p>
+        <div class="modal-form-grid">
+          <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-700">Tanggal Transfer</label>
+            <input v-model="form.transfer_date" type="date"
+              class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            <p class="text-[11px] text-gray-500">Default hari ini — bisa diubah untuk rekap tanggal manual.</p>
+          </div>
+          <div v-if="!selectedToWarehouse || selectedToWarehouse.type === 'outlet'" class="space-y-1">
+            <label class="block text-sm font-medium text-gray-700">Divisi Outlet Tujuan</label>
+            <div class="flex flex-wrap gap-1.5 pt-0.5">
+              <button type="button" @click="form.target_division = ''"
+                :class="['px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer',
+                  !form.target_division ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50']">
+                Umum
+              </button>
+              <button v-for="div in TRANSFER_DIVISIONS" :key="div.value" type="button"
+                @click="form.target_division = div.value"
+                :class="['px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide border transition cursor-pointer',
+                  form.target_division === div.value ? divisionActiveClass(div.value) : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50']">
+                {{ div.label }}
+              </button>
+            </div>
+            <p class="text-[11px] text-gray-500">Tracking pengantaran barang per divisi di outlet tujuan (BAR / KITCHEN / SERVER).</p>
+          </div>
+        </div>
         <AppInput v-model="form.notes" label="Keterangan" placeholder="Opsional" />
 
         <!-- Items -->
@@ -170,7 +234,7 @@
               </div>
               <div class="w-28">
                 <label class="block text-xs text-gray-500 mb-1">Jumlah</label>
-                <input v-model.number="it.qty_dist" type="number" step="0.01" min="0"
+                <input v-model.number="it.qty_dist" type="number" step="any" min="0"
                   class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
               </div>
               <div class="w-28">
@@ -217,7 +281,19 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <div><span class="text-gray-500">Dari:</span> <strong>{{ detail.from_warehouse_name }}</strong></div>
-          <div><span class="text-gray-500">Ke:</span> <strong>{{ detail.to_warehouse_name }}</strong></div>
+          <div>
+            <span class="text-gray-500">Ke:</span> <strong>{{ detail.to_warehouse_name }}</strong>
+            <span v-if="detail.target_division" :class="['inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold tracking-wide ml-1.5', transferDivisionClass(detail.target_division)]">
+              Divisi {{ detail.target_division }}
+            </span>
+          </div>
+          <div>
+            <span class="text-gray-500">Tanggal Transfer:</span>
+            <strong>{{ detail.transfer_date || detail.created_at?.slice(0,10) }}</strong>
+            <span v-if="detail.transfer_date && detail.transfer_date !== detail.created_at?.slice(0,10)" class="ml-1 text-xs text-gray-400">
+              (diinput {{ detail.created_at?.slice(0,10) }})
+            </span>
+          </div>
           <div v-if="detail.approved_by"><span class="text-gray-500">Disetujui:</span> {{ detail.approved_by }} · {{ detail.approved_at?.slice(0,10) }}</div>
           <div v-if="detail.sent_by"><span class="text-gray-500">Dikirim:</span> {{ detail.sent_by }} · {{ detail.sent_at?.slice(0,10) }}</div>
           <div v-if="detail.received_by"><span class="text-gray-500">Diterima:</span> {{ detail.received_by }} · {{ detail.received_at?.slice(0,10) }}</div>
@@ -271,25 +347,49 @@
           <p class="text-xs text-gray-600">Isi jumlah yang diterima dan ditolak pada pemeriksaan ini. Sisa yang belum datang tetap menunggu penerimaan berikutnya. Barang reject masuk karantina dan tidak menambah stok siap pakai.</p>
           <AppActionButton icon="reject" label="Reject seluruh sisa barang" v-if="canReject" type="button" @click="rejectRemaining" />
           <textarea v-model="receiveNotes" rows="2" aria-label="Catatan penerimaan" placeholder="Catatan pemeriksaan / kedatangan sebagian" class="block w-full border rounded-lg p-2 text-sm"></textarea>
-          <StockEvidenceCapture v-model="receiveEvidence" :warehouse-id="detail.to_warehouse_id" label="Foto barang saat diperiksa" />
+          <StockEvidenceCapture multiple v-model="receiveEvidences" :warehouse-id="detail.to_warehouse_id" label="Foto barang saat diperiksa" />
         </div>
         <div v-for="receipt in detail.receipts || []" :key="receipt.id" class="border-t pt-3 text-sm">
-          <p class="font-semibold">Pemeriksaan {{ new Date(receipt.created_at).toLocaleString('id-ID') }} · {{ receipt.actor_name }}</p><p class="text-gray-500">{{ receipt.notes }}</p>
+          <p class="font-semibold">Pemeriksaan {{ formatDateTime(receipt.created_at) }} · {{ receipt.actor_name }}</p><p class="text-gray-500">{{ receipt.notes }}</p>
           <p v-for="item in receipt.items" :key="item.item_id" class="text-xs text-gray-600">{{ detail.items.find(i => i.item_id === item.item_id)?.item_name }}: terima {{ item.accepted_qty_base }}, reject {{ item.rejected_qty_base }} {{ detail.items.find(i => i.item_id === item.item_id)?.base_unit }} <span v-if="item.reason">· {{ item.reason }}</span></p>
-          <a :href="safeUrl(receipt.evidence.url)" target="_blank" rel="noopener noreferrer"><img :src="safeUrl(receipt.evidence.url)" alt="Bukti pemeriksaan bertimestamp" class="mt-2 w-44 rounded-lg border" /></a>
-          <p class="text-xs text-gray-500">Dicatat server: {{ new Date(receipt.evidence.recorded_at).toLocaleString('id-ID') }}</p>
+          <div class="mt-2 flex flex-wrap gap-2.5">
+            <div v-for="(ev, eidx) in receiptEvidencesOf(receipt)" :key="ev.id || eidx" class="w-36">
+              <a v-if="safeUrl(ev.url)" :href="safeUrl(ev.url)" target="_blank" rel="noopener noreferrer" class="block">
+                <img :src="safeUrl(ev.url)" :alt="`Bukti pemeriksaan ${eidx + 1} bertimestamp`" class="h-28 w-36 rounded-lg border object-cover" />
+              </a>
+              <p class="mt-1 text-[11px] text-gray-500">Server: {{ formatDateTime(ev.recorded_at) }}</p>
+            </div>
+          </div>
         </div>
 
         <!-- Bukti barang berangkat dari gudang asal. Server menolak status 'sent'
-             tanpa foto — sebelumnya tombol ini tidak pernah mengirimkannya. -->
+             tanpa foto — mendukung multi-foto sekaligus. -->
         <div v-if="isSending" class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
-          <PhotoCapture v-model="sendPhoto" label="Foto Barang Saat Dikirim"
-            hint="Potret barangnya saat dimuat/berangkat dari gudang asal." />
+          <PhotoCapture multiple v-model="sendPhotos" label="Foto Barang Saat Dikirim"
+            hint="Bisa pilih lebih dari satu foto saat barang dimuat/berangkat dari gudang asal." />
         </div>
         <!-- Alamat foto dari server disaring (T-75): hanya berkas /uploads/… yang ditampilkan. -->
-        <div v-else-if="safeUrl(detail.photo_url)" class="flex items-center gap-3">
-          <img :src="safeUrl(detail.photo_url)" alt="Bukti kirim" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
-          <p class="text-xs text-gray-500">Foto saat dikirim dari {{ detail.from_warehouse_name }}.</p>
+        <div v-else-if="detailSendPhotos.length || canEditSentPhotos" class="space-y-2 rounded-xl border border-gray-200 bg-gray-50/50 p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-xs font-medium text-gray-600">Foto saat dikirim dari {{ detail.from_warehouse_name }} ({{ detailSendPhotos.length }}):</p>
+            <button v-if="canEditSentPhotos && !editingSendPhotos" type="button" @click="startEditSendPhotos"
+              class="text-xs font-semibold text-emerald-700 hover:underline cursor-pointer">
+              Edit / Hapus / Ganti Foto
+            </button>
+          </div>
+          <div v-if="editingSendPhotos" class="space-y-2">
+            <PhotoCapture multiple v-model="draftEditSendPhotos" label="Kelola Foto Pengiriman (Sebelum Diterima)"
+              hint="Hapus foto dengan tombol × atau tambah/ganti foto baru, lalu simpan." />
+            <div class="flex justify-end gap-2">
+              <AppButton size="sm" variant="secondary" @click="editingSendPhotos = false">Batal</AppButton>
+              <AppButton size="sm" :loading="savingSendPhotos" @click="saveEditedSendPhotos">Simpan Foto</AppButton>
+            </div>
+          </div>
+          <div v-else-if="detailSendPhotos.length" class="flex flex-wrap gap-2">
+            <a v-for="(u, idx) in detailSendPhotos" :key="`snd-${idx}`" :href="u" target="_blank" rel="noopener noreferrer">
+              <img :src="u" :alt="`Bukti kirim ${idx + 1}`" class="h-20 w-20 rounded-lg border border-gray-200 object-cover hover:opacity-90" />
+            </a>
+          </div>
         </div>
 
         <!-- Actions: tombol hanya muncul bila status DAN izin memungkinkan. -->
@@ -319,7 +419,8 @@ import { useToastStore } from '@/stores/toast.js'
 import { useAuthStore } from '@/stores/auth.js'
 import PhotoCapture  from '@/components/PhotoCapture.vue'
 import StockEvidenceCapture from '@/components/StockEvidenceCapture.vue'
-import { safeUrl } from '@/utils/safeUrl.js'
+import { safeUrl, safeUrls } from '@/utils/safeUrl.js'
+import { todayDateString, formatDateTime } from '@/utils/format.js'
 import { useRealtime } from '@/utils/realtime.js'
 import AppButton     from '@/components/ui/AppButton.vue'
 import AppCard       from '@/components/ui/AppCard.vue'
@@ -329,7 +430,7 @@ import AppInput      from '@/components/ui/AppInput.vue'
 import AppAlert      from '@/components/ui/AppAlert.vue'
 import AppPagination from '@/components/ui/AppPagination.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
-import { describeWarehouse, formatWarehouseOptionLabel, TRANSFER_STATUS_LABELS, transferStatusClass, isCentralRequest, transferRowStatusLabel } from '@/utils/warehouse.js'
+import { describeWarehouse, formatWarehouseOptionLabel, TRANSFER_STATUS_LABELS, transferStatusClass, isCentralRequest, transferRowStatusLabel, TRANSFER_DIVISIONS, transferDivisionClass } from '@/utils/warehouse.js'
 
 const toast = useToastStore()
 const auth = useAuthStore()
@@ -339,13 +440,13 @@ const canApprove = auth.hasPermission('stocktransfers.approve')
 const canSend    = auth.hasPermission('stocktransfers.update')
 const canReceive = auth.hasPermission('stocktransfers.receive') || auth.hasPermission('stockquality.central.receive') || auth.hasPermission('stockquality.outlet.receive')
 const canReject = auth.hasPermission('stocktransfers.reject')
-const receiveEvidence = ref(null), receiveNotes = ref('')
+const receiveEvidences = ref([]), receiveNotes = ref('')
 // Role per outlet boleh MEMINTA stok ke Gudang Induk (asal = Gudang Induk),
 // tetapi menyetujui, mengirim, dan menerima di Gudang Induk adalah tahap milik
 // role semua outlet — server menolaknya walau izinnya ada, jadi tombolnya
 // tidak ditampilkan.
 const isOutletUser = auth.scopeType === 'specific'
-const sendPhoto = ref('')
+const sendPhotos = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const errorMsg = ref('')
@@ -355,6 +456,54 @@ const limit = 20
 const totalPages = ref(1)
 const filterStatus = ref('')
 const filterWarehouse = ref('')
+const filterDivision = ref('')
+const filterDateFrom = ref('')
+const filterDateTo = ref('')
+const divisionFilterOptions = [
+  { value: '', label: 'Semua Divisi' },
+  ...TRANSFER_DIVISIONS,
+]
+function divisionActiveClass(div) {
+  const map = {
+    BAR: 'bg-purple-600 text-white border-purple-600',
+    KITCHEN: 'bg-orange-600 text-white border-orange-600',
+    SERVER: 'bg-cyan-600 text-white border-cyan-600',
+  }
+  return map[div] || 'bg-emerald-600 text-white border-emerald-600'
+}
+function clearDateFilter() {
+  filterDateFrom.value = ''
+  filterDateTo.value = ''
+  applyFilters()
+}
+const detailSendPhotos = computed(() => safeUrls(detail.value?.photo_url, detail.value?.photo_urls))
+const editingSendPhotos = ref(false)
+const draftEditSendPhotos = ref([])
+const savingSendPhotos = ref(false)
+const canEditSentPhotos = computed(() =>
+  detail.value?.status === 'sent' && canSend && !centralStageBlocked(detail.value, 'sent')
+)
+function startEditSendPhotos() {
+  draftEditSendPhotos.value = [...detailSendPhotos.value]
+  editingSendPhotos.value = true
+}
+async function saveEditedSendPhotos() {
+  if (!draftEditSendPhotos.value.length) { toast.error('Minimal 1 foto pengiriman wajib dipertahankan'); return }
+  savingSendPhotos.value = true
+  try {
+    detail.value = await stockTransfersApi.updatePhotos(detail.value.id, draftEditSendPhotos.value)
+    editingSendPhotos.value = false
+    toast.success('Foto pengiriman diperbarui')
+  } catch (e) {
+    toast.error(e?.message || 'Gagal memperbarui foto pengiriman')
+  } finally {
+    savingSendPhotos.value = false
+  }
+}
+function receiptEvidencesOf(receipt) {
+  if (Array.isArray(receipt?.evidences) && receipt.evidences.length) return receipt.evidences
+  return receipt?.evidence?.url ? [receipt.evidence] : []
+}
 const warehouseList = ref([])
 // Pilihan gudang form buat transfer: untuk role per outlet ditambah Gudang
 // Induk aktif (?include_central=1) — daftar filter tetap gudang outletnya.
@@ -424,7 +573,7 @@ const requestNotice = computed(() => {
   return ''
 })
 
-const EMPTY_FORM = () => ({ from_warehouse_id: '', to_warehouse_id: '', notes: '', items: [] })
+const EMPTY_FORM = () => ({ from_warehouse_id: '', to_warehouse_id: '', target_division: '', transfer_date: todayDateString(), notes: '', items: [] })
 const form = ref(EMPTY_FORM())
 
 const warehouseFilterOptions = computed(() =>
@@ -466,7 +615,14 @@ async function load({ silent = false } = {}) {
     errorMsg.value = ''
   }
   try {
-    const data = await stockTransfersApi.list({ page: page.value, limit, status: filterStatus.value, warehouse_id: filterWarehouse.value })
+    const data = await stockTransfersApi.list({
+      page: page.value, limit,
+      status: filterStatus.value,
+      warehouse_id: filterWarehouse.value,
+      division: filterDivision.value,
+      date_from: filterDateFrom.value,
+      date_to: filterDateTo.value,
+    })
     if (seq !== loadSeq) return // respons lama, sudah ada request lebih baru
     transfers.value = data.data || []
     totalPages.value = data.total_pages || 1
@@ -580,6 +736,10 @@ watch(() => form.value.to_warehouse_id, (nextValue) => {
   if (nextValue && nextValue === form.value.from_warehouse_id) {
     form.value.from_warehouse_id = ''
   }
+  const wh = formWarehouseMap.value[nextValue]
+  if (wh && wh.type !== 'outlet') {
+    form.value.target_division = ''
+  }
 })
 onMounted(() => { load(); loadWarehouses(); loadFormWarehouses(); loadStockItems() })
 useRealtime(['stock_transfer', 'stock_quality'], async () => {
@@ -651,7 +811,8 @@ async function submitCreate() {
 
 async function openDetail(id) {
   detail.value = null
-  sendPhoto.value = ''
+  sendPhotos.value = []
+  editingSendPhotos.value = false
   showDetail.value = true
   try {
     const data = await stockTransfersApi.get(id)
@@ -669,28 +830,31 @@ function acceptedTotal(it) {
 }
 function remaining(it) { return Math.max(0, Number((it.qty_base - acceptedTotal(it) - (it.rejected_qty_base || 0)).toFixed(4))) }
 function initReceiptInputs() {
-  receiveEvidence.value = null; receiveNotes.value = ''
+  receiveEvidences.value = []; receiveNotes.value = ''
   detail.value.items.forEach(it => { it._received_qty = remaining(it); it._rejected_qty = 0; it._reject_reason = '' })
 }
 function rejectRemaining() { detail.value.items.forEach(it => { it._received_qty = 0; it._rejected_qty = remaining(it) }) }
 
 async function doAction() {
   if (!nextAction.value) return
-  if (nextAction.value.status === 'sent' && !sendPhoto.value) {
+  if (nextAction.value.status === 'sent' && !sendPhotos.value.length) {
     toast.error('Foto barang saat dikirim wajib diunggah')
     return
   }
-  if (nextAction.value.status === 'received' && !receiveEvidence.value?.id) return toast.error('Foto pemeriksaan bertimestamp wajib diunggah')
+  if (nextAction.value.status === 'received' && !receiveEvidences.value.length) return toast.error('Foto pemeriksaan bertimestamp wajib diunggah')
   saving.value = true
   try {
     const data = nextAction.value.status === 'received'
       ? await stockTransfersApi.receive(detail.value.id, {
-        version: detail.value.receipt_version || 0, evidence_id: receiveEvidence.value.id, notes: receiveNotes.value,
+        version: detail.value.receipt_version || 0,
+        evidence_id: receiveEvidences.value[0].id,
+        evidence_ids: receiveEvidences.value.map(e => e.id),
+        notes: receiveNotes.value,
         items: detail.value.items.map(it => ({ item_id: it.item_id, accepted_qty_base: Number(it._received_qty || 0), rejected_qty_base: Number(it._rejected_qty || 0), reason: it._reject_reason || '' })),
       })
-      : await stockTransfersApi.updateStatus(detail.value.id, nextAction.value.status, sendPhoto.value)
+      : await stockTransfersApi.updateStatus(detail.value.id, nextAction.value.status, sendPhotos.value)
     detail.value = data
-    sendPhoto.value = ''
+    sendPhotos.value = []
     initReceiptInputs()
     toast.success('Status transfer diperbarui')
     load()

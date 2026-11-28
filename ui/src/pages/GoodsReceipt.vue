@@ -92,7 +92,7 @@
             </div>
             <div class="col-span-6 lg:col-span-2">
               <label class="lbl">Jumlah</label>
-              <input v-model.number="ln.qty_dist" type="number" min="0" step="0.01" class="form-input" />
+              <input v-model.number="ln.qty_dist" type="number" min="0" step="any" class="form-input" />
               <SearchableSelect :value="ln.unit_used" @change="changeLineUnit(ln, $event.target.value)" class="form-input mt-1" aria-label="Satuan penerimaan">
                 <option v-for="unit in stockUnitOptions(itemById(ln.item_id))" :key="unit.value" :value="unit.value">{{ unit.label }}</option>
               </SearchableSelect>
@@ -263,6 +263,16 @@ async function load({ silent = false } = {}) {
   } catch (e) { if (!silent) errorMsg.value = e?.message || 'Gagal memuat penerimaan' }
   finally { if (!silent) loading.value = false }
 }
+watch(() => form.value.warehouse_id, (whId) => {
+  const whType = warehouses.value.find(w => w.id === whId)?.type
+  for (const ln of form.value.items) {
+    if (!ln.item_id || ln.qty_dist) continue
+    const it = itemById(ln.item_id)
+    if (!it) continue
+    ln.unit_used = preferredStockUnit(it, whType)
+    ln.cost_per_unit = (Number(it.avg_cost) || 0) * stockUnitRatio(it, ln.unit_used)
+  }
+})
 watch(page, load)
 
 // Ganti filter selalu mulai dari halaman 1; watch(page) yang memanggil load.

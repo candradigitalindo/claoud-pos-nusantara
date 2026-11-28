@@ -30,7 +30,15 @@
               <dt class="text-gray-400">Nilai</dt><dd class="text-gray-700 break-words">{{ formatRupiah(r.value) }}</dd>
               <dt class="text-gray-400">Dibayar</dt><dd class="text-gray-700 break-words">{{ r.paid_at || '—' }}</dd>
             </dl>
-            <AppActionButton icon="receive" label="Terima Barang" @click="open(r)" />
+            <div v-if="r.active_deliveries?.length" class="flex flex-wrap gap-1.5 pt-1">
+              <router-link v-for="d in r.active_deliveries" :key="d.id"
+                :to="{ path: '/logistics/deliveries', query: { delivery_id: d.id } }"
+                class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 font-mono text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-100">
+                Terima via {{ d.delivery_number }} →
+              </router-link>
+            </div>
+            <AppActionButton v-if="(r.units || 0) > (r.in_delivery_units || 0)" icon="receive"
+              :label="r.in_delivery_units ? 'Terima Sisa (Vendor Langsung)' : 'Terima Barang'" @click="open(r)" />
           </li>
         </ul>
 
@@ -45,11 +53,28 @@
             <p v-if="row.target_warehouse_name" class="text-[11px] text-gray-400">untuk {{ row.target_warehouse_name }}</p>
           </template>
           <template #cell-vendor="{ row }">{{ row.vendor_name || '—' }}</template>
-          <template #cell-lines="{ row }">{{ row.lines }} baris · {{ row.units }} unit</template>
+          <template #cell-lines="{ row }">
+            <p>{{ row.lines }} baris · {{ row.units }} unit</p>
+            <div v-if="row.active_deliveries?.length" class="mt-1 flex flex-wrap gap-1">
+              <router-link v-for="d in row.active_deliveries" :key="d.id"
+                :to="{ path: '/logistics/deliveries', query: { delivery_id: d.id } }"
+                class="inline-flex items-center rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-100">
+                {{ d.delivery_number }} ({{ d.total_received }}/{{ d.total_planned }})
+              </router-link>
+            </div>
+          </template>
           <template #cell-pay="{ row }"><span :class="payCls(row)">{{ payLabel(row) }}</span></template>
           <template #cell-value="{ row }">{{ formatRupiah(row.value) }}</template>
           <template #cell-actions="{ row }">
-            <AppActionButton icon="receive" label="Terima Barang" @click="open(row)" />
+            <div class="flex flex-wrap items-center justify-end gap-1.5">
+              <router-link v-if="row.active_deliveries?.length === 1"
+                :to="{ path: '/logistics/deliveries', query: { delivery_id: row.active_deliveries[0].id } }"
+                class="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 whitespace-nowrap">
+                Terima via SJ
+              </router-link>
+              <AppActionButton v-if="(row.units || 0) > (row.in_delivery_units || 0)" icon="receive"
+                :label="row.in_delivery_units ? 'Vendor Langsung' : 'Terima Barang'" @click="open(row)" />
+            </div>
           </template>
         </AppTable>
       </template>
@@ -140,7 +165,7 @@ async function onDone(res) {
 }
 
 onMounted(load)
-useRealtime(['procurement_receiving', 'procurement', 'procurement_payment'], () => load({ silent: true }))
+useRealtime(['logistics_delivery', 'procurement_receiving', 'procurement', 'procurement_payment'], () => load({ silent: true }))
 </script>
 
 <style scoped>

@@ -84,10 +84,11 @@ type StockInspectionItem struct {
 	Reason   string  `json:"reason"`
 }
 type StockInspectionRequest struct {
-	Version    int                   `json:"version"`
-	EvidenceID string                `json:"evidence_id"`
-	Notes      string                `json:"notes"`
-	Items      []StockInspectionItem `json:"items"`
+	Version     int                   `json:"version"`
+	EvidenceID  string                `json:"evidence_id"`
+	EvidenceIDs []string              `json:"evidence_ids,omitempty"`
+	Notes       string                `json:"notes"`
+	Items       []StockInspectionItem `json:"items"`
 }
 type StockTransferReceipt struct {
 	ID        string                `json:"id"`
@@ -95,5 +96,6 @@ type StockTransferReceipt struct {
 	Notes     string                `json:"notes"`
 	CreatedAt string                `json:"created_at"`
 	Evidence  StockEvidence         `json:"evidence"`
+	Evidences []StockEvidence       `json:"evidences,omitempty"`
 	Items     []StockInspectionItem `json:"items"`
 }

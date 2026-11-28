@@ -3557,5 +3557,433 @@ func RunMigrations() error {
 		}
 	}
 
+	// ── Bundling Lintas Outlet (komponen produk & kupon klaim antar outlet) ──
+	bundleDDL := []string{
+		`CREATE TABLE IF NOT EXISTS product_bundle_components (
+			id CHAR(26) PRIMARY KEY,
+			source_outlet_id CHAR(26) NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+			source_product_id CHAR(26) NOT NULL REFERENCES cloud_products(id) ON DELETE CASCADE,
+			partner_outlet_id CHAR(26) NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+			partner_product_id CHAR(26) NOT NULL REFERENCES cloud_products(id) ON DELETE CASCADE,
+			qty_per_bundle NUMERIC(12,3) NOT NULL DEFAULT 1 CHECK (qty_per_bundle > 0),
+			allocation_amount NUMERIC(15,2) NOT NULL DEFAULT 0 CHECK (allocation_amount >= 0),
+			valid_days INT NOT NULL DEFAULT 1 CHECK (valid_days >= 0),
+			notes TEXT NOT NULL DEFAULT '',
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			created_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
+			CONSTRAINT chk_pbc_diff_outlet CHECK (source_outlet_id <> partner_outlet_id),
+			UNIQUE (source_product_id, partner_product_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pbc_source_product ON product_bundle_components(source_product_id) WHERE is_active = true`,
+		`CREATE INDEX IF NOT EXISTS idx_pbc_partner_outlet ON product_bundle_components(partner_outlet_id) WHERE is_active = true`,
+		`CREATE TABLE IF NOT EXISTS cross_outlet_bundle_claims (
+			id CHAR(26) PRIMARY KEY,
+			claim_code VARCHAR(24) NOT NULL UNIQUE,
+			component_id CHAR(26) REFERENCES product_bundle_components(id) ON DELETE SET NULL,
+			source_outlet_id CHAR(26) NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+			source_transaction_id VARCHAR(60) NOT NULL DEFAULT '',
+			source_transaction_local_id VARCHAR(60) NOT NULL DEFAULT '',
+			source_order_id VARCHAR(60) NOT NULL DEFAULT '',
+			source_product_id CHAR(26) NOT NULL,
+			source_product_name VARCHAR(200) NOT NULL,
+			source_qty NUMERIC(12,3) NOT NULL DEFAULT 1,
+			partner_outlet_id CHAR(26) NOT NULL REFERENCES outlets(id) ON DELETE CASCADE,
+			partner_product_id CHAR(26) NOT NULL,
+			partner_product_local_id VARCHAR(60) NOT NULL DEFAULT '',
+			partner_product_name VARCHAR(200) NOT NULL,
+			partner_qty NUMERIC(12,3) NOT NULL DEFAULT 1,
+			claimed_qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+			allocation_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			customer_name VARCHAR(150) NOT NULL DEFAULT '',
+			cashier_name VARCHAR(100) NOT NULL DEFAULT '',
+			sale_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
+			expires_at TIMESTAMP,
+			claimed_at TIMESTAMP,
+			claimed_by VARCHAR(100) NOT NULL DEFAULT '',
+			stock_deducted BOOLEAN NOT NULL DEFAULT false,
+			stock_deduction_note TEXT NOT NULL DEFAULT '',
+			voided_at TIMESTAMP,
+			void_reason TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cobc_tx_item ON cross_outlet_bundle_claims(source_transaction_id, source_product_id, partner_product_id) WHERE source_transaction_id <> ''`,
+		`CREATE INDEX IF NOT EXISTS idx_cobc_partner_status ON cross_outlet_bundle_claims(partner_outlet_id, status, sale_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_cobc_source_status ON cross_outlet_bundle_claims(source_outlet_id, status, sale_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_cobc_claimed_at ON cross_outlet_bundle_claims(claimed_at) WHERE status = 'claimed'`,
+	}
+	for _, stmt := range bundleDDL {
+		if _, err := DB.Exec(stmt); err != nil {
+			log.Printf("migrasi bundling lintas outlet gagal: %v", err)
+			return err
+		}
+	}
+	{
+		var done bool
+		DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM app_settings WHERE key='mig_cross_outlet_bundles_v1')`).Scan(&done)
+		if !done {
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'bundles.view'
+				FROM role_permissions
+				WHERE permission IN ('reservations.view', 'products.view', 'reports.sales.view', 'finance.entries.view')
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'bundles.claim'
+				FROM role_permissions
+				WHERE permission IN ('reservations.update', 'products.update')
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT rp.role, 'bundles.manage'
+				FROM role_permissions rp
+				JOIN roles r ON r.name = rp.role
+				WHERE r.scope_type = 'all' AND rp.permission IN ('products.update', 'finance.entries.post')
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_cross_outlet_bundles_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Migrasi Bundling Lintas Outlet + izin role selesai")
+		}
+	}
+
+	// ── Transfer Stok Divisi/Tanggal Manual & Multi-Foto Penerimaan/Kwitansi ──
+	transferMultiPhotoDDL := []string{
+		`ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS target_division VARCHAR(32) NOT NULL DEFAULT ''`,
+		`ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS transfer_date DATE`,
+		`UPDATE stock_transfers SET transfer_date = tz_date(created_at) WHERE transfer_date IS NULL`,
+		`ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]'::jsonb`,
+		`ALTER TABLE stock_transfer_receipts ADD COLUMN IF NOT EXISTS evidence_ids JSONB NOT NULL DEFAULT '[]'::jsonb`,
+		`ALTER TABLE purchase_struks ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]'::jsonb`,
+		`ALTER TABLE purchase_pickups ADD COLUMN IF NOT EXISTS photo_urls JSONB NOT NULL DEFAULT '[]'::jsonb`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS invoice_urls JSONB NOT NULL DEFAULT '[]'::jsonb`,
+		`ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS emergency_proof_urls JSONB NOT NULL DEFAULT '[]'::jsonb`,
+		`CREATE INDEX IF NOT EXISTS idx_stock_transfers_date_div ON stock_transfers (transfer_date DESC, target_division)`,
+	}
+	for _, stmt := range transferMultiPhotoDDL {
+		if _, err := DB.Exec(stmt); err != nil {
+			log.Printf("migrasi transfer divisi & multi-foto gagal: %v", err)
+			return err
+		}
+	}
+
+	// ── Sistem Pengantaran Logistik & Surat Jalan (tersinkron per item dengan Purchasing) ──
+	logisticsDeliveryDDL := []string{
+		`CREATE TABLE IF NOT EXISTS logistics_deliveries (
+			id CHAR(26) PRIMARY KEY,
+			delivery_number VARCHAR(40) NOT NULL UNIQUE,
+			delivery_date DATE NOT NULL,
+			dispatch_mode VARCHAR(20) NOT NULL DEFAULT 'logistics',
+			status VARCHAR(24) NOT NULL DEFAULT 'draft',
+			courier_name VARCHAR(120) NOT NULL DEFAULT '',
+			courier_id CHAR(26),
+			vehicle_info VARCHAR(120) NOT NULL DEFAULT '',
+			origin_label VARCHAR(200) NOT NULL DEFAULT '',
+			destination_type VARCHAR(24) NOT NULL DEFAULT 'warehouse',
+			destination_warehouse_id CHAR(26) REFERENCES warehouses(id) ON DELETE SET NULL,
+			destination_outlet_id CHAR(26) REFERENCES outlets(id) ON DELETE SET NULL,
+			destination_label VARCHAR(200) NOT NULL DEFAULT '',
+			pickup_photo_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
+			receive_photo_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
+			notes TEXT NOT NULL DEFAULT '',
+			created_by VARCHAR(100) NOT NULL DEFAULT '',
+			created_by_id CHAR(26),
+			dispatched_by VARCHAR(100) NOT NULL DEFAULT '',
+			dispatched_at TIMESTAMP,
+			received_by VARCHAR(100) NOT NULL DEFAULT '',
+			received_at TIMESTAMP,
+			cancelled_by VARCHAR(100) NOT NULL DEFAULT '',
+			cancelled_at TIMESTAMP,
+			cancel_reason TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
+			updated_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+		)`,
+		`CREATE TABLE IF NOT EXISTS logistics_delivery_items (
+			id CHAR(26) PRIMARY KEY,
+			delivery_id CHAR(26) NOT NULL REFERENCES logistics_deliveries(id) ON DELETE CASCADE,
+			purchase_request_id CHAR(26) NOT NULL REFERENCES purchase_requests(id) ON DELETE CASCADE,
+			pr_number VARCHAR(60) NOT NULL DEFAULT '',
+			request_type VARCHAR(20) NOT NULL DEFAULT 'barang',
+			vendor_name VARCHAR(200) NOT NULL DEFAULT '',
+			pr_item_key VARCHAR(255) NOT NULL,
+			entry_name VARCHAR(255) NOT NULL DEFAULT '',
+			item_name VARCHAR(255) NOT NULL,
+			unit VARCHAR(40) NOT NULL DEFAULT '',
+			line_kind VARCHAR(24) NOT NULL DEFAULT 'perlengkapan',
+			qty_planned INTEGER NOT NULL CHECK (qty_planned > 0),
+			qty_received INTEGER NOT NULL DEFAULT 0 CHECK (qty_received >= 0),
+			notes TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
+			UNIQUE(delivery_id, purchase_request_id, pr_item_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ld_status_date ON logistics_deliveries(status, delivery_date DESC, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_ldi_delivery ON logistics_delivery_items(delivery_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_ldi_pr_key ON logistics_delivery_items(purchase_request_id, pr_item_key)`,
+	}
+	for _, stmt := range logisticsDeliveryDDL {
+		if _, err := DB.Exec(stmt); err != nil {
+			log.Printf("migrasi pengantaran logistik gagal: %v", err)
+			return err
+		}
+	}
+	{
+		var done bool
+		DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM app_settings WHERE key='mig_logistics_deliveries_v1')`).Scan(&done)
+		if !done {
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'logistics.deliveries.view'
+				FROM role_permissions
+				WHERE permission IN (
+					'procurement.requests.purchasing', 'procurement.rawmaterials.purchasing',
+					'procurement.requests.pickup', 'procurement.rawmaterials.pickup',
+					'stockledger.adjust', 'assets.create',
+					'procurement.requests.submit', 'procurement.rawmaterials.submit'
+				) OR role = 'admin'
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'logistics.deliveries.manage'
+				FROM role_permissions
+				WHERE permission IN (
+					'procurement.requests.purchasing', 'procurement.rawmaterials.purchasing',
+					'procurement.requests.pickup', 'procurement.rawmaterials.pickup'
+				) OR role = 'admin'
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_logistics_deliveries_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Migrasi Pengantaran Logistik + izin role selesai")
+		}
+	}
+
+	// ── Pemisahan Kelompok Purchasing (1: Bahan Baku vs 2: Barang & Jasa) & Kelengkapan Role ──
+	purchasingGroupDDL := []string{
+		`ALTER TABLE logistics_deliveries ADD COLUMN IF NOT EXISTS purchasing_group VARCHAR(24) NOT NULL DEFAULT ''`,
+		`UPDATE logistics_deliveries ld
+		 SET purchasing_group = CASE
+			WHEN EXISTS (SELECT 1 FROM logistics_delivery_items ldi WHERE ldi.delivery_id = ld.id AND ldi.request_type = 'bahan')
+			THEN 'bahan_baku'
+			ELSE 'barang_jasa'
+		 END
+		 WHERE ld.purchasing_group = ''`,
+		`CREATE INDEX IF NOT EXISTS idx_ld_group_status ON logistics_deliveries(purchasing_group, status, delivery_date DESC)`,
+	}
+	for _, stmt := range purchasingGroupDDL {
+		if _, err := DB.Exec(stmt); err != nil {
+			log.Printf("migrasi kelompok purchasing logistik gagal: %v", err)
+			return err
+		}
+	}
+	{
+		var done bool
+		DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM app_settings WHERE key='mig_purchasing_group_split_v1')`).Scan(&done)
+		if !done {
+			groupRoles := []struct {
+				name, description, redirectTo string
+				perms                         []string
+			}{
+				{
+					name:        "purchasing bahan baku",
+					description: "Kelompok 1 · Purchasing khusus pengadaan Bahan Baku (supplier, harga final, pecah vendor, Surat Jalan bahan baku & pengajuan bayar)",
+					redirectTo:  "/purchase-materials",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.rawmaterials.view", "procurement.rawmaterials.purchasing",
+						"logistics.rawmaterials.view", "logistics.rawmaterials.manage",
+						"vendors.view", "vendors.create", "vendors.update",
+					},
+				},
+				{
+					name:        "purchasing barang & jasa",
+					description: "Kelompok 2 · Purchasing khusus pengadaan Barang, Perlengkapan & Jasa (vendor, harga final, pecah vendor, Surat Jalan barang & pengajuan bayar)",
+					redirectTo:  "/purchase-goods",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view",
+						"procurement.requests.view", "procurement.requests.purchasing",
+						"procurement.projects.view",
+						"logistics.goods.view", "logistics.goods.manage",
+						"vendors.view", "vendors.create", "vendors.update",
+					},
+				},
+				{
+					name:        "logistik bahan baku",
+					description: "Petugas Logistik Kelompok 1 (Bahan Baku): kelola pengantaran, cetak Surat Jalan & sinkronisasi serah terima Gudang Induk",
+					redirectTo:  "/logistics/deliveries",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view", "procurement.rawmaterials.view",
+						"logistics.rawmaterials.view", "logistics.rawmaterials.manage",
+						"vendors.view",
+					},
+				},
+				{
+					name:        "logistik barang & perlengkapan",
+					description: "Petugas Logistik Kelompok 2 (Barang & Perlengkapan): kelola pengantaran, cetak Surat Jalan & sinkronisasi serah terima Aset/Outlet",
+					redirectTo:  "/logistics/deliveries",
+					perms: []string{
+						"dashboard", "documents.view", "documents.download",
+						"procurement.dashboard.view", "procurement.requests.view", "procurement.projects.view",
+						"logistics.goods.view", "logistics.goods.manage",
+						"vendors.view",
+					},
+				},
+			}
+			for _, gr := range groupRoles {
+				DB.Exec(`INSERT INTO roles (name, description, is_system, scope_type, redirect_to)
+					VALUES ($1, $2, false, 'all', $3) ON CONFLICT (name) DO NOTHING`,
+					gr.name, gr.description, gr.redirectTo)
+				for _, p := range gr.perms {
+					DB.Exec(`INSERT INTO role_permissions (role, permission)
+						VALUES ($1, $2) ON CONFLICT (role, permission) DO NOTHING`, gr.name, p)
+				}
+			}
+
+			// Kelompok 1: Logistik Bahan Baku
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'logistics.rawmaterials.manage'
+				FROM role_permissions
+				WHERE permission IN ('procurement.rawmaterials.purchasing', 'procurement.rawmaterials.pickup')
+				   OR role IN ('admin', 'logistik pengadaan')
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'logistics.rawmaterials.view'
+				FROM role_permissions
+				WHERE permission IN (
+					'procurement.rawmaterials.purchasing', 'procurement.rawmaterials.pickup',
+					'procurement.rawmaterials.submit', 'procurement.rawmaterials.approve',
+					'logistics.rawmaterials.manage', 'stockledger.adjust'
+				) OR role IN ('admin', 'logistik pengadaan')
+				ON CONFLICT (role, permission) DO NOTHING`)
+
+			// Kelompok 2: Logistik Barang & Perlengkapan
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'logistics.goods.manage'
+				FROM role_permissions
+				WHERE permission IN ('procurement.requests.purchasing', 'procurement.requests.pickup')
+				   OR role IN ('admin', 'logistik pengadaan')
+				ON CONFLICT (role, permission) DO NOTHING`)
+			DB.Exec(`INSERT INTO role_permissions (role, permission)
+				SELECT DISTINCT role, 'logistics.goods.view'
+				FROM role_permissions
+				WHERE permission IN (
+					'procurement.requests.purchasing', 'procurement.requests.pickup',
+					'procurement.requests.submit', 'procurement.requests.approve',
+					'procurement.requests.approve_services', 'procurement.requests.verify',
+					'logistics.goods.manage', 'assets.create'
+				) OR role IN ('admin', 'logistik pengadaan')
+				ON CONFLICT (role, permission) DO NOTHING`)
+
+			// Cabut izin logistik gabungan dari role non-admin & non-logistik-gabungan agar tidak tercampur.
+			DB.Exec(`DELETE FROM role_permissions
+				WHERE permission IN ('logistics.deliveries.view', 'logistics.deliveries.manage')
+				  AND role NOT IN ('admin', 'logistik pengadaan')`)
+
+			// Rapikan role eksisting purchasing baku yang sebelumnya sempat terbawa procurement.requests.view.
+			DB.Exec(`DELETE FROM role_permissions
+				WHERE role = 'purchasing baku'
+				  AND permission IN ('procurement.requests.view', 'logistics.goods.view', 'logistics.goods.manage')`)
+			DB.Exec(`UPDATE roles SET redirect_to = '/logistics/deliveries'
+				WHERE name = 'logistik pengadaan' AND redirect_to = '/purchase-goods'`)
+
+			// Pastikan role 'admin' memiliki seluruh izin fitur terbaru secara lengkap.
+			for _, p := range []string{
+				"bundles.view", "bundles.claim", "bundles.manage",
+				"logistics.rawmaterials.view", "logistics.rawmaterials.manage",
+				"logistics.goods.view", "logistics.goods.manage",
+				"logistics.deliveries.view", "logistics.deliveries.manage",
+				"finance.payments.approve",
+			} {
+				DB.Exec(`INSERT INTO role_permissions (role, permission)
+					SELECT 'admin', $1 WHERE EXISTS (SELECT 1 FROM roles WHERE name = 'admin')
+					ON CONFLICT (role, permission) DO NOTHING`, p)
+			}
+
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_purchasing_group_split_v1', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Migrasi pemisahan Kelompok Purchasing (Bahan Baku vs Barang & Jasa) + kelengkapan role selesai")
+		}
+	}
+
+	// Audit & perapian RBAC menyeluruh pasca perubahan fitur baru:
+	// 1) Isolasi Manager Outlet (cabut logistics.rawmaterials.view yang sempat terbawa stockledger.adjust)
+	// 2) Samakan manager teman setia dengan manager outlet lain (operasional stok/transfer/waste/resep)
+	// 3) Lengkapi izin fitur baru pada Direktur, PPIC, gudang_manager, kepala gudang induk,
+	//    gudang_induk_supervisor, finance ap, manager keuangan, dan cabut bundling dari teknisi
+	// 4) Perketat gudang_manager agar fokus gudang & bahan baku (cabut approve/purchasing/requests/refund)
+	// 5) Bersihkan izin legacy *.pickup yang sudah digantikan sistem Logistik & Surat Jalan.
+	{
+		var auditRoleDone string
+		_ = DB.QueryRow(`SELECT value FROM app_settings WHERE key = 'mig_role_audit_cleanup_v2'`).Scan(&auditRoleDone)
+		if auditRoleDone != "done" {
+			grantIfRoleExists := func(roleName string, perms ...string) {
+				for _, perm := range perms {
+					if _, err := DB.Exec(`INSERT INTO role_permissions (role, permission)
+						SELECT r.name, $2::varchar
+						FROM roles r
+						WHERE r.name = $1
+						ON CONFLICT (role, permission) DO NOTHING`, roleName, perm); err != nil {
+						log.Printf("mig_role_audit_cleanup_v2 grant %s -> %s gagal: %v", roleName, perm, err)
+					}
+				}
+			}
+			revokePerms := func(roleName string, perms ...string) {
+				for _, perm := range perms {
+					DB.Exec(`DELETE FROM role_permissions WHERE role = $1 AND permission = $2`, roleName, perm)
+				}
+			}
+
+			// 1. Isolasi role outlet spesifik: cabut logistics.rawmaterials.view jika tidak memegang izin bahan baku.
+			DB.Exec(`DELETE FROM role_permissions rp
+				USING roles r
+				WHERE rp.role = r.name
+				  AND rp.permission = 'logistics.rawmaterials.view'
+				  AND r.scope_type = 'specific'
+				  AND NOT EXISTS (
+					  SELECT 1 FROM role_permissions rp2
+					  WHERE rp2.role = rp.role
+					    AND rp2.permission IN (
+						    'procurement.rawmaterials.view', 'procurement.rawmaterials.submit',
+						    'procurement.rawmaterials.approve', 'procurement.rawmaterials.purchasing',
+						    'logistics.rawmaterials.manage', 'logistics.deliveries.view', 'logistics.deliveries.manage'
+					    )
+				  )`)
+
+			// 2. Samakan manager teman setia dengan 8 manager outlet lainnya.
+			grantIfRoleExists("manager teman setia",
+				"recipes.create", "recipes.update",
+				"stockitems.create", "stockitems.update",
+				"stockledger.adjust",
+				"stocktransfers.approve", "stocktransfers.create", "stocktransfers.receive", "stocktransfers.update",
+				"stockwastes.create",
+			)
+
+			// 3. Lengkapi izin fitur baru & perapian pemisahan tugas.
+			grantIfRoleExists("Direktur", "warehouse_dashboard.view", "logistics.rawmaterials.view")
+			grantIfRoleExists("PPIC", "warehouse_dashboard.view", "stockitems.view", "stockledger.view")
+			grantIfRoleExists("kepala gudang induk", "ppic.expiry.view")
+			grantIfRoleExists("gudang_induk_supervisor", "ppic.expiry.view", "stockwastes.create")
+			revokePerms("gudang_induk_supervisor", "stockquality.refund")
+
+			grantIfRoleExists("gudang_manager", "ppic.expiry.view", "stockwastes.create")
+			revokePerms("gudang_manager",
+				"stockquality.refund",
+				"procurement.rawmaterials.approve",
+				"procurement.rawmaterials.purchasing",
+				"procurement.requests.view",
+				"procurement.requests.submit",
+				"logistics.goods.view",
+			)
+
+			grantIfRoleExists("finance ap", "stockquality.view", "stockquality.refund")
+			grantIfRoleExists("manager keuangan", "stockquality.view", "stockquality.refund")
+			revokePerms("teknisi", "bundles.view", "bundles.claim", "bundles.manage")
+			grantIfRoleExists("manager", "logistics.goods.view")
+			grantIfRoleExists("superadmin", "bundles.manage")
+
+			// 4. Bersihkan izin legacy *.pickup yang sudah digantikan sistem Logistik & Surat Jalan.
+			DB.Exec(`DELETE FROM role_permissions WHERE permission IN ('procurement.requests.pickup', 'procurement.rawmaterials.pickup')`)
+
+			DB.Exec(`INSERT INTO app_settings (key, value) VALUES ('mig_role_audit_cleanup_v2', 'done') ON CONFLICT (key) DO NOTHING`)
+			log.Printf("Migrasi audit & perapian RBAC menyeluruh selesai")
+		}
+	}
+
 	return RunPOSIdentityMigrations()
 }

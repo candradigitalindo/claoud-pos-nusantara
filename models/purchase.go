@@ -94,6 +94,7 @@ type PurchaseRequest struct {
 	Notes         string                `json:"notes"`
 	InvoiceNumber string                `json:"invoice_number"`
 	InvoiceURL    string                `json:"invoice_url"`
+	InvoiceURLs   []string              `json:"invoice_urls,omitempty"`
 	// Verifikasi (pending → verified): pemeriksa ketersediaan sebelum owner.
 	VerifiedBy        string  `json:"verified_by"`
 	VerifiedByID      *string `json:"verified_by_id"`
@@ -132,6 +133,8 @@ type PurchaseRequest struct {
 	ParentID      *string           `json:"parent_id"`
 	ParentNumber  string            `json:"parent_number,omitempty"`
 	SplitStatus   *string           `json:"split_status"` // 'master' or nil
+	SplitCount    int               `json:"split_count,omitempty"`
+	DisplayNames  []string          `json:"display_names,omitempty"`
 	Children      []PurchaseRequest `json:"children,omitempty"`
 	CreatedAt     string            `json:"created_at"`
 	UpdatedAt     string            `json:"updated_at"`
@@ -141,7 +144,8 @@ type PurchaseRequest struct {
 	Version string `json:"version"`
 	// Struks & Pickups hanya diisi pada detail (GetPurchaseRequest).
 	Struks  []PurchaseStruk  `json:"struks,omitempty"`
-	Pickups []PurchasePickup `json:"pickups,omitempty"`
+	Pickups    []PurchasePickup    `json:"pickups,omitempty"`
+	Deliveries []PRDeliverySummary `json:"deliveries,omitempty"`
 	// Urgency: tingkat kebutuhan — rutin | prioritas | urgent. NeedByDate
 	// (YYYY-MM-DD) wajib untuk prioritas & urgent.
 	Urgency    string  `json:"urgency"`
@@ -190,6 +194,7 @@ type CreateManualPaymentInput struct {
 	PayToNote            string                   `json:"pay_to_note"`
 	InvoiceNumber        string                   `json:"invoice_number"`
 	InvoiceURL           string                   `json:"invoice_url"`
+	InvoiceURLs          []string                 `json:"invoice_urls,omitempty"`
 	Notes                string                   `json:"notes"`
 	Items                []ManualPaymentItemInput `json:"items"`
 	ActorName            string                   `json:"-"`
@@ -225,6 +230,7 @@ type PurchaseEmergency struct {
 	Recipient string `json:"recipient"`
 	// Bukti belanja: foto struk + total yang tertera di struk.
 	ProofURL   string   `json:"proof_url"`
+	ProofURLs  []string `json:"proof_urls,omitempty"`
 	ProofTotal *float64 `json:"proof_total"`
 	ProofNotes string   `json:"proof_notes"`
 	ProofBy    string   `json:"proof_by"`
@@ -262,8 +268,9 @@ type CreateEmergencyPurchaseInput struct {
 
 // EmergencyProofInput: bukti belanja Pembelian Darurat (foto struk wajib).
 type EmergencyProofInput struct {
-	ProofURL   string  `json:"proof_url"`
-	ProofTotal float64 `json:"proof_total"`
+	ProofURL   string   `json:"proof_url"`
+	ProofURLs  []string `json:"proof_urls,omitempty"`
+	ProofTotal float64  `json:"proof_total"`
 	Notes      string  `json:"notes"`
 	Version    string  `json:"version"`
 	ActorName  string  `json:"-"`
@@ -380,8 +387,9 @@ type PurchaseStruk struct {
 	StrukDate   string  `json:"struk_date"` // YYYY-MM-DD
 	Total       float64 `json:"total"`
 	PaidAmount  float64 `json:"paid_amount"`
-	Remaining   float64 `json:"remaining"`
-	PhotoURL    string  `json:"photo_url"`
+	Remaining   float64  `json:"remaining"`
+	PhotoURL    string   `json:"photo_url"`
+	PhotoURLs   []string `json:"photo_urls,omitempty"`
 	Notes       string  `json:"notes"`
 	CreatedBy   string  `json:"created_by"`
 	CreatedAt   string  `json:"created_at"`
@@ -391,9 +399,10 @@ type PurchaseStruk struct {
 type AddPurchaseStrukInput struct {
 	StrukNumber string  `json:"struk_number"`
 	StrukDate   string  `json:"struk_date"`
-	Total       float64 `json:"total"`
-	PhotoURL    string  `json:"photo_url"`
-	Notes       string  `json:"notes"`
+	Total       float64  `json:"total"`
+	PhotoURL    string   `json:"photo_url"`
+	PhotoURLs   []string `json:"photo_urls,omitempty"`
+	Notes       string   `json:"notes"`
 }
 
 // PurchasePickup: pengambilan barang dari vendor oleh petugas logistik.
@@ -401,8 +410,9 @@ type AddPurchaseStrukInput struct {
 type PurchasePickup struct {
 	ID         string `json:"id"`
 	PickedBy   string `json:"picked_by"`
-	PickedAt   string `json:"picked_at"`
-	PhotoURL   string `json:"photo_url"`
+	PickedAt   string   `json:"picked_at"`
+	PhotoURL   string   `json:"photo_url"`
+	PhotoURLs  []string `json:"photo_urls,omitempty"`
 	Notes      string `json:"notes"`
 	ReceivedBy string `json:"received_by"`
 	ReceivedAt string `json:"received_at,omitempty"`
@@ -410,7 +420,8 @@ type PurchasePickup struct {
 
 // AddPurchasePickupInput: catatan pengambilan (foto wajib).
 type AddPurchasePickupInput struct {
-	PhotoURL string `json:"photo_url"`
+	PhotoURL  string   `json:"photo_url"`
+	PhotoURLs []string `json:"photo_urls,omitempty"`
 	Notes    string `json:"notes"`
 }
 
@@ -577,8 +588,9 @@ type UpdatePurchaseItemsInput struct {
 	VendorName *string               `json:"vendor_name,omitempty"`
 	// InvoiceNumber & InvoiceURL hanya berlaku pada pengajuan yang sudah disetujui (diisi
 	// pembelian); pada pending diabaikan (T-39).
-	InvoiceNumber *string `json:"invoice_number,omitempty"`
-	InvoiceURL    *string `json:"invoice_url,omitempty"`
+	InvoiceNumber *string   `json:"invoice_number,omitempty"`
+	InvoiceURL    *string   `json:"invoice_url,omitempty"`
+	InvoiceURLs   *[]string `json:"invoice_urls,omitempty"`
 	// Version opsional (lihat UpdatePurchaseStatusInput.Version).
 	Version string `json:"version,omitempty"`
 	// ActorName: nama akun yang login — diisi handler, bukan body — untuk

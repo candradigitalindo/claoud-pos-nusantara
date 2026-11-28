@@ -38,9 +38,9 @@
           <tbody>
             <tr v-for="(r, ri) in g.rows" :key="r.key" class="border-t border-gray-100 align-top">
               <td class="px-3 py-1.5 text-gray-400">{{ ri + 1 }}</td>
-              <td class="px-2 py-1.5">
-                <input v-model.trim="r.name" :disabled="disabled" class="input-sm w-full" placeholder="mis. Pasang keramik lantai 40×40" />
-                <input v-model.trim="r.notes" :disabled="disabled" class="input-sm mt-1 w-full border-dashed text-[11px]" placeholder="Spesifikasi / catatan (opsional)" />
+              <td class="max-w-[20rem] px-2 py-1.5">
+                <input v-model.trim="r.name" :disabled="disabled" class="input-sm w-full min-w-0" placeholder="mis. Pasang keramik lantai 40×40" />
+                <input v-model.trim="r.notes" :disabled="disabled" class="input-sm mt-1 w-full min-w-0 border-dashed text-[11px]" placeholder="Spesifikasi / sumber HPS / link (opsional)" />
               </td>
               <td class="px-2 py-1.5">
                 <SearchableSelect v-model="r.kind" :disabled="disabled" class="input-sm w-full">
@@ -77,7 +77,7 @@
             <label class="fld min-w-0"><span>Volume</span><input v-model.number="r.qty" :disabled="disabled" type="number" min="0" step="any" class="input-sm w-full text-right" /></label>
             <label class="fld min-w-0"><span>Harga satuan</span><RupiahInput v-model="r.unit_price" :disabled="disabled" placeholder="0" /></label>
           </div>
-          <input v-model.trim="r.notes" :disabled="disabled" class="input-sm w-full border-dashed text-[11px]" placeholder="Spesifikasi / catatan (opsional)" />
+          <input v-model.trim="r.notes" :disabled="disabled" class="input-sm w-full min-w-0 border-dashed text-[11px]" placeholder="Spesifikasi / sumber HPS / link (opsional)" />
           <p class="text-right text-xs">Jumlah: <b class="text-gray-800">{{ formatRupiah(rowTotal(r)) }}</b></p>
         </li>
       </ul>

@@ -74,6 +74,60 @@
 
     <AppAlert type="error" :message="errorMsg" />
 
+    <!-- Filter Cepat Kelompok / Asal Pengajuan Pembayaran (Penanda untuk Finance) -->
+    <div class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
+      <span class="text-xs font-bold uppercase tracking-wide text-gray-500 mr-1">Asal Pembayaran:</span>
+      <button type="button" @click="selectSourceGroup('')"
+        :class="['inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition cursor-pointer',
+          filterSourceGroup === '' ? 'border-emerald-600 bg-emerald-600 text-white shadow-2xs' : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100']">
+        Semua Asal
+      </button>
+      <button type="button" @click="selectSourceGroup('bahan_baku')"
+        :class="['inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition cursor-pointer',
+          filterSourceGroup === 'bahan_baku' ? 'border-amber-600 bg-amber-600 text-white shadow-2xs' : 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100']">
+        <span class="h-2 w-2 rounded-full" :class="filterSourceGroup === 'bahan_baku' ? 'bg-white' : 'bg-amber-500'" />
+        1. Purchasing Bahan Baku
+        <span v-if="stats.groupBreakdown.bahan_baku.waiting_count > 0"
+          :class="filterSourceGroup === 'bahan_baku' ? 'bg-white/25 text-white' : 'bg-amber-200 text-amber-950'"
+          class="rounded-full px-1.5 py-0.2 text-[10px] font-bold">
+          {{ stats.groupBreakdown.bahan_baku.waiting_count }}
+        </span>
+      </button>
+      <button type="button" @click="selectSourceGroup('barang_jasa')"
+        :class="['inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition cursor-pointer',
+          filterSourceGroup === 'barang_jasa' ? 'border-blue-600 bg-blue-600 text-white shadow-2xs' : 'border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100']">
+        <span class="h-2 w-2 rounded-full" :class="filterSourceGroup === 'barang_jasa' ? 'bg-white' : 'bg-blue-500'" />
+        2. Purchasing Barang &amp; Jasa
+        <span v-if="stats.groupBreakdown.barang_jasa.waiting_count > 0"
+          :class="filterSourceGroup === 'barang_jasa' ? 'bg-white/25 text-white' : 'bg-blue-200 text-blue-950'"
+          class="rounded-full px-1.5 py-0.2 text-[10px] font-bold">
+          {{ stats.groupBreakdown.barang_jasa.waiting_count }}
+        </span>
+      </button>
+      <button type="button" @click="selectSourceGroup('manual')"
+        :class="['inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition cursor-pointer',
+          filterSourceGroup === 'manual' ? 'border-purple-600 bg-purple-600 text-white shadow-2xs' : 'border-purple-300 bg-purple-50 text-purple-900 hover:bg-purple-100']">
+        <span class="h-2 w-2 rounded-full" :class="filterSourceGroup === 'manual' ? 'bg-white' : 'bg-purple-500'" />
+        Manual Keuangan
+        <span v-if="stats.groupBreakdown.manual.waiting_count > 0"
+          :class="filterSourceGroup === 'manual' ? 'bg-white/25 text-white' : 'bg-purple-200 text-purple-950'"
+          class="rounded-full px-1.5 py-0.2 text-[10px] font-bold">
+          {{ stats.groupBreakdown.manual.waiting_count }}
+        </span>
+      </button>
+      <button v-if="stats.groupBreakdown.emergency.count > 0 || filterSourceGroup === 'emergency'" type="button" @click="selectSourceGroup('emergency')"
+        :class="['inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition cursor-pointer',
+          filterSourceGroup === 'emergency' ? 'border-rose-600 bg-rose-600 text-white shadow-2xs' : 'border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100']">
+        <span class="h-2 w-2 rounded-full" :class="filterSourceGroup === 'emergency' ? 'bg-white' : 'bg-rose-500'" />
+        Darurat Outlet
+        <span v-if="stats.groupBreakdown.emergency.waiting_count > 0"
+          :class="filterSourceGroup === 'emergency' ? 'bg-white/25 text-white' : 'bg-rose-200 text-rose-950'"
+          class="rounded-full px-1.5 py-0.2 text-[10px] font-bold">
+          {{ stats.groupBreakdown.emergency.waiting_count }}
+        </span>
+      </button>
+    </div>
+
     <!-- Filters -->
     <AppCard>
       <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 sm:gap-4">
@@ -211,10 +265,11 @@
                   <button type="button" @click="viewDetail(row)" class="font-mono text-xs font-semibold text-gray-800 hover:text-emerald-700">
                     {{ row.request_number || '-' }}
                   </button>
-                  <span :class="typeBadgeCls(row.request_type)">{{ purchaseTypeLabel(row.request_type) }}</span>
-                  <span v-if="row.is_manual_payment" class="inline-flex items-center rounded-full bg-purple-100 border border-purple-200 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800">
-                    Manual
+                  <span :class="originMeta(row).cls" class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold">
+                    <span :class="originMeta(row).dot" class="h-1.5 w-1.5 rounded-full" />
+                    {{ originMeta(row).label }}
                   </span>
+                  <span :class="typeBadgeCls(row.request_type)">{{ purchaseTypeLabel(row.request_type) }}</span>
                   <span v-if="row.parent_id" class="split-badge">Split</span>
                 </div>
                 <button type="button" @click="viewDetail(row)" class="mt-1 block w-full text-left text-sm font-semibold text-gray-900 break-words leading-snug">
@@ -246,6 +301,8 @@
                   📄 Lihat Invoice
                 </a>
               </dd>
+              <dt class="text-gray-400">Pengaju</dt>
+              <dd class="min-w-0 break-words text-gray-700">{{ row.requested_by || '-' }}</dd>
               <dt class="text-gray-400">Unit Kerja</dt>
               <dd class="min-w-0 break-words text-gray-700">{{ row.work_unit_name || '-' }}</dd>
               <dt class="text-gray-400">Tanggal</dt>
@@ -341,9 +398,16 @@
                   <div v-if="row.parent_number" class="text-[10px] text-gray-400 mt-0.5">Induk: {{ row.parent_number }}</div>
                 </td>
                 <td class="px-4 py-3 align-middle">
-                  <span :class="typeBadgeCls(row.request_type)">
-                    {{ purchaseTypeLabel(row.request_type) }}
-                  </span>
+                  <div class="flex flex-col items-start gap-1">
+                    <span :class="originMeta(row).cls" class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap">
+                      <span :class="originMeta(row).dot" class="h-1.5 w-1.5 rounded-full shrink-0" />
+                      {{ originMeta(row).label }}
+                    </span>
+                    <div class="flex flex-wrap items-center gap-1 text-[10px] text-gray-500">
+                      <span :class="typeBadgeCls(row.request_type)">{{ purchaseTypeLabel(row.request_type) }}</span>
+                      <span v-if="row.requested_by" class="truncate max-w-[140px]" :title="`Pengaju: ${row.requested_by}`">· {{ row.requested_by }}</span>
+                    </div>
+                  </div>
                 </td>
                 <td class="px-4 py-3 align-middle text-gray-800">
                   {{ (row.items || []).map(i => i.name).join(', ') || '-' }}
@@ -391,6 +455,17 @@
                     <span v-if="!row.is_manual_payment && isPhysicalPurchaseType(row.request_type)" :class="receiptBadgeCls(row)" :title="receiptHint(row)">
                       {{ receiptLabel(row) }}
                     </span>
+                    <div v-if="(row.deliveries || []).length" class="flex flex-wrap gap-1">
+                      <component v-for="d in row.deliveries.slice(0, 2)" :key="`fp-sj-${row.id}-${d.id}`"
+                        :is="canOpenDelivery(d, row) ? 'router-link' : 'span'"
+                        :to="canOpenDelivery(d, row) ? { path: '/logistics/deliveries', query: { delivery_id: d.id } } : undefined"
+                        @click.stop
+                        :class="['inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-indigo-700 whitespace-nowrap', canOpenDelivery(d, row) ? 'hover:bg-indigo-100' : '']"
+                        :title="`Surat Jalan ${d.delivery_number} (${d.total_received}/${d.total_planned} unit · ${d.destination_label})`">
+                        🚚 {{ d.delivery_number }}
+                      </component>
+                      <span v-if="row.deliveries.length > 2" class="text-[10px] font-semibold text-indigo-700">+{{ row.deliveries.length - 2 }} SJ</span>
+                    </div>
                     <span v-if="row.cash_payout" :class="payoutBadgeCls(row.cash_payout)" :title="payoutHint(row.cash_payout)">
                       {{ payoutLabel(row.cash_payout) }}
                     </span>
@@ -441,6 +516,10 @@
             {{ receiptLabel(detail) }}
           </span>
           <span v-if="detail.request_number" class="font-mono text-sm text-gray-600">No. {{ detail.request_number }}</span>
+          <span :class="originMeta(detail).cls" class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold">
+            <span :class="originMeta(detail).dot" class="h-1.5 w-1.5 rounded-full" />
+            {{ originMeta(detail).label }}
+          </span>
           <span :class="typeBadgeCls(detail.request_type)" class="text-xs">
             {{ purchaseTypeLabel(detail.request_type) }}
           </span>
@@ -456,6 +535,8 @@
             <div class="border-l-4 border-emerald-500 px-3 py-2.5">
               <p class="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 mb-1.5">Informasi</p>
               <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
+                <dt class="text-gray-400">Asal / Kelompok</dt>
+                <dd class="font-semibold text-gray-900">{{ originMeta(detail).label }} <span class="font-normal text-gray-500">({{ originMeta(detail).sub }})</span></dd>
                 <dt class="text-gray-400">Pengaju</dt>
                 <dd class="font-medium text-gray-900">{{ detail.requested_by }}</dd>
                 <template v-if="detail.work_unit_name">
@@ -594,7 +675,7 @@
           </div>
 
           <!-- No. Invoice & Catatan -->
-          <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
+          <div v-if="detail.invoice_number || detailInvoiceUrls.length || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
             <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-3">
               <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
@@ -606,20 +687,22 @@
                   <dd class="text-gray-700">{{ detail.notes }}</dd>
                 </template>
               </dl>
-              <div v-if="safeUrl(detail.invoice_url)" class="flex items-center gap-2">
-                <a v-if="isImageUrl(safeUrl(detail.invoice_url))" :href="safeUrl(detail.invoice_url)" target="_blank" rel="noopener noreferrer" class="shrink-0">
-                  <img :src="safeUrl(detail.invoice_url)" alt="Invoice Vendor" class="h-10 w-10 rounded border border-gray-200 object-cover" />
-                </a>
-                <AppActionButton icon="photo" label="Lihat Invoice Vendor" :href="safeUrl(detail.invoice_url)" target="_blank" />
+              <div v-if="detailInvoiceUrls.length" class="flex flex-wrap items-center gap-2">
+                <div v-for="(u, idx) in detailInvoiceUrls" :key="`pp-inv-${idx}`" class="flex items-center gap-1.5">
+                  <a v-if="isImageUrl(u)" :href="u" target="_blank" rel="noopener noreferrer" class="shrink-0">
+                    <img :src="u" :alt="`Invoice Vendor ${idx + 1}`" class="h-10 w-10 rounded border border-gray-200 object-cover" />
+                  </a>
+                  <AppActionButton icon="photo" :label="detailInvoiceUrls.length > 1 ? `Invoice ${idx + 1}` : 'Lihat Invoice Vendor'" :href="u" target="_blank" />
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Struk / Nota Pembelian dari Purchasing -->
-          <div v-if="detail.struks?.length" class="rounded-lg border border-blue-200 bg-blue-50/40 shadow-sm overflow-hidden col-span-1 sm:col-span-2">
-            <div class="border-l-4 border-blue-500 px-3 py-2.5">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-blue-700 mb-2">
-                Struk / Invoice Pembelian dari Purchasing ({{ detail.struks.length }})
+          <!-- Arsip Struk Lama (read-only bila ada pada transaksi terdahulu) -->
+          <div v-if="detail.struks?.length" class="rounded-lg border border-gray-200 bg-gray-50/70 shadow-sm overflow-hidden col-span-1 sm:col-span-2">
+            <div class="border-l-4 border-gray-400 px-3 py-2.5">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-600 mb-2">
+                Arsip Lampiran Struk Lama ({{ detail.struks.length }})
               </p>
               <ul class="divide-y divide-blue-100">
                 <li v-for="s in detail.struks" :key="s.id" class="flex flex-wrap items-center justify-between gap-2 py-1.5 text-xs">
@@ -632,7 +715,9 @@
                   <div class="flex items-center gap-2 shrink-0">
                     <span v-if="s.remaining <= 0" class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lunas</span>
                     <span v-else class="text-[11px] font-medium text-amber-700">Sisa {{ formatRupiah(s.remaining) }}</span>
-                    <AppActionButton v-if="safeUrl(s.photo_url)" icon="photo" label="Lihat Foto Invoice/Struk" :href="safeUrl(s.photo_url)" target="_blank" />
+                    <AppActionButton v-for="(u, idx) in safeUrls(s.photo_url, s.photo_urls)" :key="`${s.id}-u-${idx}`" icon="photo"
+                      :label="safeUrls(s.photo_url, s.photo_urls).length > 1 ? `Struk ${idx + 1}` : 'Lihat Foto Invoice/Struk'"
+                      :href="u" target="_blank" />
                   </div>
                 </li>
               </ul>
@@ -809,18 +894,19 @@
                     <dt class="text-gray-400">Unit Kerja</dt>
                     <dd class="font-medium text-gray-800 truncate">{{ payTargets[0]?.work_unit_name || '-' }}</dd>
                   </template>
-                  <template v-if="payTargets.length === 1 && (payTargets[0]?.invoice_number || safeUrl(payTargets[0]?.invoice_url))">
-                    <dt class="text-gray-400">Invoice</dt>
-                    <dd class="flex flex-wrap items-center gap-2">
+                  <template v-if="payTargets.length === 1 && (payTargets[0]?.invoice_number || safeUrls(payTargets[0]?.invoice_url, payTargets[0]?.invoice_urls).length)">
+                    <dt class="text-gray-400">Struk / Invoice</dt>
+                    <dd class="flex flex-wrap items-center gap-1.5">
                       <span v-if="payTargets[0]?.invoice_number" class="font-medium font-mono text-gray-800">{{ payTargets[0].invoice_number }}</span>
                       <a
-                        v-if="safeUrl(payTargets[0]?.invoice_url)"
-                        :href="safeUrl(payTargets[0].invoice_url)"
+                        v-for="(u, idx) in safeUrls(payTargets[0]?.invoice_url, payTargets[0]?.invoice_urls)"
+                        :key="`pay-inv-${idx}`"
+                        :href="u"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
                       >
-                        📄 Lihat Invoice Vendor ↗
+                        📄 {{ safeUrls(payTargets[0]?.invoice_url, payTargets[0]?.invoice_urls).length > 1 ? `Struk/Inv ${idx + 1}` : 'Lihat Struk / Invoice' }} ↗
                       </a>
                     </dd>
                   </template>
@@ -980,24 +1066,10 @@
                 <span class="text-amber-700 font-normal"> (Tagihan {{ formatRupiah(effectiveTransferAmount) }} + Biaya Bank {{ formatRupiah(payForm.bank_fee) }} · dicatat ke Beban Administrasi Bank)</span>
               </p>
             </div>
-            <!-- Bayar per struk: pengajuan yang punya struk pembelian dibayar per
-                 struk (boleh dicicil); tanpa memilih, server membagi ke struk
-                 yang belum lunas, terlama dulu. -->
-            <div v-if="payTargets.length === 1 && payStrukOptions.length" class="sm:col-span-2">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Struk yang Dibayar</label>
-              <!-- Kelas eksplisit: .input-sm hanya ada di style scoped halaman
-                   Pengadaan, di sini pilihan struk tampil tanpa bingkai. -->
-              <SearchableSelect v-model="payStrukId" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
-                <option value="">Bagi otomatis ke struk yang belum lunas (terlama dulu)</option>
-                <option v-for="st in payStrukOptions" :key="st.id" :value="st.id">
-                  {{ st.struk_number }} · {{ formatDate(st.struk_date) }} · sisa {{ formatRupiah(st.remaining) }}
-                </option>
-              </SearchableSelect>
-            </div>
             <div v-if="payTargets.length === 1">
               <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Bayar</label>
-              <RupiahInput v-model="payForm.payment_amount" :placeholder="selectedPayStruk ? `Kosongkan = lunasi struk (${formatRupiah(selectedPayStruk.remaining)})` : `Kosongkan = bayar penuh (${formatRupiah(payRemainingAmount)})`" />
-              <p class="text-[10px] text-gray-400 mt-0.5">Sisa tagihan: {{ formatRupiah(payRemainingAmount) }}<template v-if="selectedPayStruk"> · sisa struk {{ formatRupiah(selectedPayStruk.remaining) }}</template></p>
+              <RupiahInput v-model="payForm.payment_amount" :placeholder="`Kosongkan = bayar penuh (${formatRupiah(payRemainingAmount)})`" />
+              <p class="text-[10px] text-gray-400 mt-0.5">Sisa tagihan: {{ formatRupiah(payRemainingAmount) }} · bisa dibayar bertahap beberapa kali sampai lunas.</p>
             </div>
             <AppInput v-model="payForm.payment_proof" label="No. Referensi Transfer" placeholder="Contoh: TRF-20260410-001" />
             <div>
@@ -1216,21 +1288,10 @@
         </div>
 
         <!-- Upload Invoice & Catatan -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">File / Foto Invoice <span class="text-xs text-gray-400">(opsional)</span></label>
-            <div v-if="manualInvoiceUploading" class="text-xs text-gray-500 py-2">Mengunggah berkas invoice…</div>
-            <div v-else-if="!manualForm.invoice_url" class="relative">
-              <label class="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600 hover:border-emerald-400 cursor-pointer">
-                <span>📄 Pilih file / foto invoice (JPG, PNG, WEBP, PDF · maks 5MB)</span>
-                <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.pdf" @change="handleManualInvoiceUpload" />
-              </label>
-            </div>
-            <div v-else class="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
-              <a :href="safeUrl(manualForm.invoice_url)" target="_blank" rel="noopener noreferrer" class="font-medium text-emerald-800 underline truncate">📄 {{ manualInvoiceName || 'Berkas Invoice' }}</a>
-              <button type="button" @click="manualForm.invoice_url = ''; manualInvoiceName = ''" class="text-red-600 hover:underline shrink-0 cursor-pointer">Hapus</button>
-            </div>
-          </div>
+        <div class="space-y-3">
+          <PhotoCapture multiple accept="image/*,.pdf" :required="false" v-model="manualForm.invoice_urls"
+            label="File / Foto Invoice / Kwitansi (opsional)"
+            hint="Bisa langsung pilih banyak gambar atau PDF kwitansi/bon pembelian sekaligus (maks 10 berkas, 5MB/berkas)." />
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Catatan Pengajuan</label>
             <textarea v-model="manualForm.notes" rows="2" maxlength="1000" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Keterangan tambahan untuk Manager Keuangan / GM"></textarea>
@@ -1255,7 +1316,10 @@
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-1.5">
                 <span class="font-mono font-semibold text-gray-800">{{ t.request_number }}</span>
-                <span v-if="t.is_manual_payment" class="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800">Manual</span>
+                <span :class="originMeta(t).cls" class="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-bold">
+                  <span :class="originMeta(t).dot" class="h-1.5 w-1.5 rounded-full" />
+                  {{ originMeta(t).label }}
+                </span>
               </div>
               <p class="text-gray-700 break-words">{{ (t.items || []).map(i => i.name).join(', ') || '-' }}</p>
               <p class="text-[11px] text-gray-500 break-words">Vendor: {{ t.vendor_name || '-' }} <span v-if="t.work_unit_name">· {{ t.work_unit_name }}</span></p>
@@ -1330,10 +1394,25 @@ import { purchaseTypeLabel, normalizePurchaseType, isPhysicalPurchaseType, purch
 import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
 import PurchaseUrgencyBadges from '@/components/PurchaseUrgencyBadges.vue'
 import EmergencyPurchasePanel from '@/components/EmergencyPurchasePanel.vue'
-import { safeUrl, isImageUrl } from '@/utils/safeUrl.js'
+import { safeUrl, safeUrls, isImageUrl } from '@/utils/safeUrl.js'
+import PhotoCapture from '@/components/PhotoCapture.vue'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
+function canOpenDelivery(d, row) {
+  if (authStore.isSuperadmin || authStore.hasPermission('logistics.deliveries.view') || authStore.hasPermission('logistics.deliveries.manage')) return true
+  const grp = d?.purchasing_group || (row?.request_type === 'bahan' ? 'bahan_baku' : 'barang_jasa')
+  if (grp === 'bahan_baku') {
+    return authStore.hasPermission('logistics.rawmaterials.view') ||
+      authStore.hasPermission('logistics.rawmaterials.manage') ||
+      authStore.hasPermission('procurement.rawmaterials.purchasing') ||
+      (authStore.scopeType !== 'specific' && authStore.hasPermission('stockledger.adjust'))
+  }
+  return authStore.hasPermission('logistics.goods.view') ||
+    authStore.hasPermission('logistics.goods.manage') ||
+    authStore.hasPermission('procurement.requests.purchasing') ||
+    authStore.hasPermission('assets.create')
+}
 // Melihat daftar tagihan, menyetujui pengajuan bayar (Mgr Keuangan / GM), dan mencairkannya izin terpisah.
 const canPay = computed(() => authStore.hasPermission('finance.payments.pay'))
 const canApprovePayment = computed(() => {
@@ -1357,6 +1436,7 @@ const KIND_FILTERS = [
   { value: 'prioritas', label: 'Prioritas' },
   { value: 'rutin', label: 'Rutin' },
 ]
+const filterSourceGroup = ref('')
 const filterApproval = ref('')
 const APPROVAL_FILTERS = [
   { value: '', label: 'Semua Tahap Persetujuan' },
@@ -1369,6 +1449,7 @@ const APPROVAL_FILTERS = [
 // Parameter saringan jenis & persetujuan untuk daftar & ekspor (cermin PurchaseListExtra).
 function kindParams() {
   const out = {}
+  if (filterSourceGroup.value) out.source_group = filterSourceGroup.value
   const k = filterKind.value
   if (k === 'urgent' || k === 'prioritas' || k === 'rutin') out.urgency = k
   const a = filterApproval.value
@@ -1378,6 +1459,49 @@ function kindParams() {
     out.payment_approval = a
   }
   return out
+}
+
+function selectSourceGroup(grp) {
+  filterSourceGroup.value = grp
+  if (grp === 'bahan_baku' || grp === 'barang_jasa') filterType.value = ''
+  page.value = 1
+  clearSelection()
+  fetchList()
+}
+
+function originMeta(row) {
+  if (!row) return { label: '-', sub: '', cls: 'bg-gray-100 text-gray-700 border-gray-200', dot: 'bg-gray-400' }
+  if (row.is_manual_payment) {
+    return {
+      label: 'Manual Keuangan',
+      sub: `Di luar pengajuan · ${purchaseTypeLabel(row.request_type)}`,
+      cls: 'bg-purple-100 text-purple-900 border-purple-300',
+      dot: 'bg-purple-500',
+    }
+  }
+  if (row.emergency) {
+    return {
+      label: 'Darurat Outlet',
+      sub: `Kas laci outlet · ${purchaseTypeLabel(row.request_type)}`,
+      cls: 'bg-rose-100 text-rose-900 border-rose-300',
+      dot: 'bg-rose-500',
+    }
+  }
+  const t = normalizePurchaseType(row.request_type)
+  if (t === 'bahan') {
+    return {
+      label: 'Purchasing Bahan Baku',
+      sub: 'Kelompok 1 · Bahan Baku',
+      cls: 'bg-amber-100 text-amber-900 border-amber-300',
+      dot: 'bg-amber-500',
+    }
+  }
+  return {
+    label: 'Purchasing Barang & Jasa',
+    sub: `Kelompok 2 · ${purchaseTypeLabel(row.request_type)}`,
+    cls: 'bg-blue-100 text-blue-900 border-blue-300',
+    dot: 'bg-blue-500',
+  }
 }
 const filterProject = ref('')
 const projects = ref([])
@@ -1405,10 +1529,11 @@ const statusFilterOptions = [
   { value: 'received', label: 'Diterima / Selesai' },
 ]
 const typeFilterOptions = [
-  { value: '', label: 'Semua' },
-  { value: 'barang', label: 'Barang' },
-  { value: 'bahan', label: 'Bahan Baku' },
-  { value: 'jasa', label: 'Jasa' },
+  { value: '', label: 'Semua Tipe' },
+  { value: 'bahan', label: 'Kel. 1 · Bahan Baku' },
+  { value: 'barang_jasa', label: 'Kel. 2 · Barang & Jasa (Semua)' },
+  { value: 'barang', label: 'Kel. 2 · Barang saja' },
+  { value: 'jasa', label: 'Kel. 2 · Jasa saja' },
 ]
 
 const bankAccounts = ref([])
@@ -1420,7 +1545,11 @@ const bankAccountOptions = computed(() =>
   }))
 )
 
-const stats = ref({ waiting: 0, totalWaiting: 0, paid: 0, received: 0, accountsPayable: 0 })
+const emptyGroupStat = () => ({ count: 0, waiting_count: 0, total_waiting: 0 })
+const stats = ref({
+  waiting: 0, totalWaiting: 0, paid: 0, received: 0, accountsPayable: 0,
+  groupBreakdown: { bahan_baku: emptyGroupStat(), barang_jasa: emptyGroupStat(), manual: emptyGroupStat(), emergency: emptyGroupStat() },
+})
 
 const showDetail = ref(false)
 const detail = ref(null)
@@ -1560,7 +1689,7 @@ function parsedPaymentProof(proof) {
 
 const COLUMNS = [
   { key: 'request_number', label: 'Nomor' },
-  { key: 'request_type',    label: 'Tipe' },
+  { key: 'request_type',    label: 'Asal / Kelompok' },
   { key: 'pengadaan_names', label: 'Pengadaan' },
   { key: 'vendor_name',     label: 'Vendor' },
   { key: 'work_unit_name',  label: 'Unit Kerja' },
@@ -1757,7 +1886,6 @@ const payRemainingAmount = computed(() => payTargets.value.reduce((s, r) => s + 
 const payCopyAmount = computed(() => {
   if (payTargets.value.length !== 1) return payRemainingAmount.value
   if (payForm.value.payment_amount > 0) return payForm.value.payment_amount
-  if (selectedPayStruk.value) return Math.min(selectedPayStruk.value.remaining, payRemainingAmount.value)
   return payRemainingAmount.value
 })
 const effectiveTransferAmount = computed(() => Number(payCopyAmount.value) || 0)
@@ -1836,12 +1964,13 @@ function newManualForm() {
     pay_to_order_number: '',
     pay_to_text: '',
     invoice_number: '',
-    invoice_url: '',
+    invoice_urls: [],
     notes: '',
     items: [{ name: '', qty: 1, unit: 'paket', price: 0 }],
   }
 }
 const manualForm = ref(newManualForm())
+const detailInvoiceUrls = computed(() => safeUrls(detail.value?.invoice_url, detail.value?.invoice_urls))
 const manualTotalAmount = computed(() =>
   (manualForm.value.items || []).reduce((sum, it) => sum + ((Number(it.qty) || 0) * (Number(it.price) || 0)), 0)
 )
@@ -1925,7 +2054,8 @@ async function submitManualPayment() {
       pay_to_order_number: f.pay_to_order_number.trim(),
       pay_to_text: f.pay_to_text.trim(),
       invoice_number: f.invoice_number.trim(),
-      invoice_url: f.invoice_url || '',
+      invoice_url: (f.invoice_urls && f.invoice_urls[0]) || '',
+      invoice_urls: f.invoice_urls || [],
       notes: f.notes.trim(),
       items: validItems.map(it => ({
         name: it.name.trim(),
@@ -2080,7 +2210,7 @@ function adminName() { return authStore.admin?.name || 'Admin' }
 
 onMounted(() => { fetchList(); fetchStats(); fetchBankAccounts(); fetchProjects(); fetchWorkUnits(); fetchVendors() })
 
-useRealtime(['procurement_payment', 'procurement'], async () => {
+useRealtime(['procurement_payment', 'procurement', 'logistics_delivery'], async () => {
   await Promise.all([fetchList({ silent: true }), fetchStats()])
   if (selectedIds.value.size > 0) {
     const allowed = new Set(selectableRows.value.map(r => r.id))
@@ -2121,12 +2251,19 @@ async function fetchBankAccounts() {
 async function fetchStats() {
   try {
     const data = await purchaseApi.getPaymentStats()
+    const gb = data.group_breakdown || {}
     stats.value = {
       waiting: data.waiting || 0,
       totalWaiting: data.total_waiting || 0,
       paid: data.paid || 0,
       received: data.received || 0,
       accountsPayable: data.accounts_payable?.total_amount || 0,
+      groupBreakdown: {
+        bahan_baku: gb.bahan_baku || emptyGroupStat(),
+        barang_jasa: gb.barang_jasa || emptyGroupStat(),
+        manual: gb.manual || emptyGroupStat(),
+        emergency: gb.emergency || emptyGroupStat(),
+      },
     }
   } catch { /* ignore */ }
 }
@@ -2388,10 +2525,7 @@ async function submitPay() {
     toast.error(`Jumlah bayar (${formatRupiah(paymentAmount)}) melebihi sisa tagihan (${formatRupiah(payRemainingAmount.value)}).`)
     return
   }
-  if (payTargets.value.length === 1 && selectedPayStruk.value && paymentAmount > selectedPayStruk.value.remaining) {
-    toast.error(`Jumlah bayar (${formatRupiah(paymentAmount)}) melebihi sisa struk ${selectedPayStruk.value.struk_number} (${formatRupiah(selectedPayStruk.value.remaining)}).`)
-    return
-  }
+
   const selectedAccount = bankAccountOptions.value.find(a => a.id === payForm.value.payment_account_source)
   const accountSourceText = selectedAccount?.name || payForm.value.payment_account_source
   payLoading.value = true
@@ -2412,7 +2546,7 @@ async function submitPay() {
           version: target.version,
           payment_notes: payForm.value.payment_notes.trim(),
           payment_amount: payTargets.value.length === 1 ? paymentAmount : 0,
-          struk_id: payTargets.value.length === 1 && payStrukId.value ? payStrukId.value : undefined,
+
         }
         // Biaya admin bank hanya dikirim sekali pada pengajuan pertama dalam 1 transfer
         if (idx === 0 && bankFeeAmount > 0) {

@@ -520,7 +520,11 @@ func CreateStockBreakdown(req models.StockBreakdownRequest, actor string) (*mode
 
 	// Bahan keluar: biaya FIFO yang benar-benar terpotong menjadi biaya hasil,
 	// kedaluwarsa terdekat batch yang terpotong diwarisi batch hasil.
-	consumed, err := applyMovementValued(tx, req.InputItemID, req.WarehouseID, "breakdown_out", tmpl.InputBaseUnit,
+	inputMovUnit := strings.TrimSpace(tmpl.InputDistUnit)
+	if inputMovUnit == "" {
+		inputMovUnit = tmpl.InputBaseUnit
+	}
+	consumed, err := applyMovementValued(tx, req.InputItemID, req.WarehouseID, "breakdown_out", inputMovUnit,
 		id, "stock_breakdown", number, withNotes(fmt.Sprintf("Dipotong (%s) menjadi %s", pattern.Name, strings.Join(outNames, ", "))), actor,
 		-qtyBase, -req.InputQtyDist, 0, "")
 	if err != nil {

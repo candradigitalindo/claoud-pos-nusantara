@@ -1,7 +1,13 @@
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan Jasa</h1>
+      <div class="flex flex-wrap items-center gap-2">
+        <h1 class="text-lg sm:text-xl font-bold text-gray-900">Pengadaan Jasa</h1>
+        <span class="inline-flex items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-900">
+          <span class="h-1.5 w-1.5 rounded-full bg-blue-500" />
+          Kelompok 2 · Purchasing Barang &amp; Jasa
+        </span>
+      </div>
       <div class="flex flex-wrap items-center gap-2">
         <AppButton v-if="authStore.hasPermission(perm('submit'))" @click="openCreate">+ Buat Pengajuan</AppButton>
       </div>
@@ -55,7 +61,15 @@
               <button @click="viewDetail(row)" class="min-w-0 flex-1 text-left">
                 <p class="font-mono text-[11px] text-gray-500">{{ row.request_number || '-' }}</p>
                 <p class="mt-0.5 text-sm font-medium text-gray-900 break-words">{{ purchaseDisplayNames(row) }}</p>
-                <PurchaseUrgencyBadges :doc="row" class="mt-1" />
+                <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span v-if="row.split_status === 'master'" class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-blue-200">
+                    Pecah Vendor<template v-if="row.split_count"> ({{ row.split_count }})</template>
+                  </span>
+                  <span v-else-if="row.parent_id" class="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200">
+                    Pecah Vendor<template v-if="row.parent_number"> · {{ row.parent_number }}</template>
+                  </span>
+                  <PurchaseUrgencyBadges :doc="row" />
+                </div>
               </button>
               <div class="flex shrink-0 flex-col items-end gap-1">
                 <span :class="statusBadge(row.status)">{{ statusLabel(row.status) }}</span>
@@ -91,7 +105,15 @@
           <span class="font-mono text-xs text-gray-700">{{ row.request_number || '-' }}</span>
         </template>
         <template #cell-pengadaan_names="{ row }">
-          <span class="text-gray-800">{{ purchaseDisplayNames(row) }}</span>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-gray-800">{{ purchaseDisplayNames(row) }}</span>
+            <span v-if="row.split_status === 'master'" class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-blue-200 whitespace-nowrap">
+              Pecah Vendor<template v-if="row.split_count"> ({{ row.split_count }})</template>
+            </span>
+            <span v-else-if="row.parent_id" class="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200 whitespace-nowrap">
+              Pecah Vendor<template v-if="row.parent_number"> · {{ row.parent_number }}</template>
+            </span>
+          </div>
         </template>
         <template #cell-work_unit_name="{ row }">
           <span class="font-medium text-gray-900">{{ row.work_unit_name || '-' }}</span>
@@ -222,11 +244,11 @@
                       <!-- Sumber HPS diberi barisnya sendiri: tautan marketplace
                            panjang dan tidak muat di deret kolom angka. -->
                       <div class="col-span-2 sm:col-span-12">
-                        <div class="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5">
+                        <div class="flex min-w-0 items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5">
                           <span class="shrink-0 text-gray-400">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg>
                           </span>
-                          <input v-model="sub.hps_source" class="input-sm w-full border-0 bg-transparent px-0"
+                          <input v-model="sub.hps_source" class="input-sm min-w-0 flex-1 w-full border-0 bg-transparent px-0"
                             placeholder="Sumber HPS — mis. Toko Jaya (telp 0812…), atau tempel link Shopee/Tokopedia" />
                         </div>
                       </div>
@@ -435,7 +457,7 @@
           </div>
 
           <!-- No. Invoice & Catatan -->
-          <div v-if="detail.invoice_number || detail.invoice_url || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
+          <div v-if="detail.invoice_number || detailInvoiceUrls.length || detail.notes" class="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden col-span-1 sm:col-span-2">
             <div class="border-l-4 border-gray-400 px-3 py-2.5 flex flex-wrap items-start justify-between gap-2">
               <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
                 <template v-if="detail.invoice_number">
@@ -447,7 +469,11 @@
                   <dd class="text-gray-700">{{ detail.notes }}</dd>
                 </template>
               </dl>
-              <AppActionButton v-if="safeUrl(detail.invoice_url)" icon="photo" label="Lihat Invoice Vendor" :href="safeUrl(detail.invoice_url)" target="_blank" />
+              <div v-if="detailInvoiceUrls.length" class="flex flex-wrap items-center gap-1.5">
+                <AppActionButton v-for="(u, idx) in detailInvoiceUrls" :key="`inv-${idx}`" icon="photo"
+                  :label="detailInvoiceUrls.length > 1 ? `Invoice ${idx + 1}` : 'Lihat Invoice Vendor'"
+                  :href="u" target="_blank" />
+              </div>
             </div>
           </div>
         </div>
@@ -508,10 +534,10 @@
                     </dd>
                     <template v-if="showHps && sub.hps_source">
                       <dt class="text-gray-400">Sumber HPS</dt>
-                      <dd class="min-w-0">
-                        <a v-if="isLink(sub.hps_source)" :href="sub.hps_source" target="_blank" rel="noopener"
-                          class="block break-all text-emerald-700 underline">{{ shortSource(sub.hps_source) }}</a>
-                        <span v-else class="block break-words text-gray-700">{{ sub.hps_source }}</span>
+                      <dd class="min-w-0 overflow-hidden">
+                        <a v-if="extractSourceUrl(sub.hps_source)" :href="extractSourceUrl(sub.hps_source)" target="_blank" rel="noopener noreferrer"
+                          class="block max-w-full truncate text-emerald-700 underline" :title="sub.hps_source">{{ formatSourceLabel(sub.hps_source) }}</a>
+                        <span v-else class="block break-words [overflow-wrap:anywhere] text-gray-700">{{ sub.hps_source }}</span>
                       </dd>
                     </template>
                     <template v-if="showHps">
@@ -566,12 +592,14 @@
                       <td class="py-1.5 pr-2">{{ sub.unit }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(sub.hps_price) }}</td>
                       <td v-if="showHps" class="py-1.5 pr-2 text-right">{{ formatRupiah(canEditDetailQty ? (sub.qty || 0) * (sub.hps_price || 0) : sub.hps_subtotal) }}</td>
-                      <td v-if="showHps" class="max-w-[14rem] py-1.5 pr-2">
-                        <input v-if="canEditItems" v-model="sub.hps_source" class="input-sm w-full py-0.5 px-1"
-                          placeholder="toko / link" @change="saveDetailQty()" />
-                        <a v-else-if="isLink(sub.hps_source)" :href="sub.hps_source" target="_blank" rel="noopener"
-                          class="block truncate text-emerald-700 underline" :title="sub.hps_source">{{ shortSource(sub.hps_source) }}</a>
-                        <span v-else class="block truncate text-gray-600" :title="sub.hps_source">{{ sub.hps_source || '—' }}</span>
+                      <td v-if="showHps" class="w-[12rem] max-w-[12rem] py-1.5 pr-2">
+                        <div class="max-w-[12rem] min-w-0">
+                          <input v-if="canEditItems" v-model="sub.hps_source" class="input-sm w-full min-w-0 py-0.5 px-1"
+                            placeholder="toko / link" @change="saveDetailQty()" />
+                          <a v-else-if="extractSourceUrl(sub.hps_source)" :href="extractSourceUrl(sub.hps_source)" target="_blank" rel="noopener noreferrer"
+                            class="block max-w-[12rem] truncate text-emerald-700 underline" :title="sub.hps_source">{{ formatSourceLabel(sub.hps_source) }}</a>
+                          <span v-else class="block max-w-[12rem] truncate text-gray-600" :title="sub.hps_source">{{ sub.hps_source || '—' }}</span>
+                        </div>
                       </td>
                       <td class="py-1.5 pr-2 text-right">{{ sub.final_price ? formatRupiah(sub.final_price) : '-' }}</td>
                       <td class="py-1.5 text-right font-medium">{{ sub.final_price ? formatRupiah((sub.qty || 0) * sub.final_price) : '-' }}</td>
@@ -677,10 +705,22 @@
           </ul>
         </div>
 
-        <!-- Struk pembelian (sejak disetujui): struk/nota tiap transaksi di
-             vendor dibayar Keuangan per struk. Jasa tidak punya pengambilan. -->
-        <!-- Pembelian Darurat punya bukti belanjanya sendiri (panel di atas). -->
-        <PurchaseStrukSection v-if="showStrukSection && !detail.emergency" :doc="detail" :can-manage="canManageStruk" @changed="reloadDetail" />
+        <!-- Arsip read-only untuk data struk lama (jika ada pada transaksi terdahulu). -->
+        <div v-if="(detail.struks || []).length && !detail.emergency" class="rounded-xl border border-gray-200 bg-gray-50/70 p-3 space-y-1.5">
+          <p class="text-xs font-semibold text-gray-600">Arsip Lampiran Struk Lama ({{ detail.struks.length }})</p>
+          <ul class="divide-y divide-gray-200/80 text-xs">
+            <li v-for="s in detail.struks" :key="s.id" class="flex flex-wrap items-center justify-between gap-2 py-1.5">
+              <div class="min-w-0">
+                <span class="font-mono font-semibold text-gray-800">{{ s.struk_number }}</span>
+                <span class="text-gray-500 ml-1.5">· {{ s.struk_date }} · {{ formatRupiah(s.total) }}</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <AppActionButton v-for="(u, idx) in safeUrls(s.photo_url, s.photo_urls)" :key="`${s.id}-${idx}`" icon="photo"
+                  :label="safeUrls(s.photo_url, s.photo_urls).length > 1 ? `Foto ${idx + 1}` : 'Lihat Foto'" :href="u" target="_blank" />
+              </div>
+            </li>
+          </ul>
+        </div>
 
         <!-- Persetujuan: pengajuan jasa langsung menunggu persetujuan tanpa tahap verifikasi. -->
         <div v-if="canShowApprovePanel" class="rounded-xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4">
@@ -776,34 +816,15 @@
           <option v-for="v in vendorList" :key="v.id" :value="v.id">{{ v.name }}</option>
         </SearchableSelect>
       </div>
-      <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="mb-4 space-y-3">
         <div>
-          <label class="text-sm font-medium text-gray-700 mb-1 block">No. Invoice Vendor</label>
-          <input v-model="editFinalInvoice" type="text" placeholder="Masukkan nomor invoice dari vendor"
+          <label class="text-sm font-medium text-gray-700 mb-1 block">No. Invoice / Struk Vendor</label>
+          <input v-model="editFinalInvoice" type="text" placeholder="Masukkan nomor struk / invoice dari vendor"
             class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500" />
         </div>
-        <div>
-          <label class="text-sm font-medium text-gray-700 mb-1 block">File / Foto Invoice Vendor <span class="text-xs font-normal text-gray-400">(opsional)</span></label>
-          <div v-if="invoiceUploadLoading" class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
-            <svg class="w-4 h-4 animate-spin text-emerald-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-            Mengunggah invoice...
-          </div>
-          <div v-else-if="!safeUrl(editFinalInvoiceUrl)" class="relative">
-            <label class="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/70 hover:bg-gray-100 hover:border-emerald-400 cursor-pointer transition-colors px-3 py-2">
-              <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-              <span class="text-xs text-gray-600 truncate">Upload foto / PDF invoice (maks 5MB)</span>
-              <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.pdf" @change="handleInvoiceUpload" />
-            </label>
-          </div>
-          <div v-else class="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-            <a :href="safeUrl(editFinalInvoiceUrl)" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-emerald-700 hover:underline truncate">
-              Lihat Berkas Invoice ↗
-            </a>
-            <button type="button" @click="editFinalInvoiceUrl = ''" class="shrink-0 p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors" title="Hapus file invoice">
-              ✕
-            </button>
-          </div>
-        </div>
+        <PhotoCapture multiple accept="image/*,.pdf" :required="false" v-model="editFinalInvoiceUrls"
+          label="Foto / File Struk / Invoice / Kwitansi Vendor (opsional)"
+          hint="1 struk/invoice per pembelian (bisa langsung pilih banyak foto/lembar atau PDF sekaligus, maks 10 berkas, 5MB/berkas)." />
       </div>
       <p class="text-sm text-gray-500 mb-3">Masukkan harga per satuan untuk setiap item jasa.</p>
       <div class="space-y-4">
@@ -978,7 +999,8 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { purchaseApi } from '@/api/purchase.js'
 import { apiClient } from '@/api/client.js'
-import { safeUrl } from '@/utils/safeUrl.js'
+import { safeUrl, safeUrls } from '@/utils/safeUrl.js'
+import PhotoCapture from '@/components/PhotoCapture.vue'
 import { workUnitsApi } from '@/api/workUnits.js'
 import { vendorsApi } from '@/api/vendors.js'
 import { formatRupiah, formatDateTime, formatDateStr } from '@/utils/format.js'
@@ -996,7 +1018,6 @@ import AppPagination from '@/components/ui/AppPagination.vue'
 import RupiahInput   from '@/components/ui/RupiahInput.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
 import { projectsApi } from '@/api/projects.js'
-import PurchaseStrukSection from '@/components/PurchaseStrukSection.vue'
 import PurchasePayToForm from '@/components/PurchasePayToForm.vue'
 import PurchasePayToCard from '@/components/PurchasePayToCard.vue'
 import PurchaseUrgencyBadges from '@/components/PurchaseUrgencyBadges.vue'
@@ -1010,18 +1031,13 @@ import {
   requestPaymentReadiness, purchaseDisplayNames, RECEIVABLE_PURCHASE_STATUSES,
   newPayToForm, payToFormError, payToPayload, payToReturned, payToEditState,
   urgencyLabel, URGENT_NOTES_MIN,
+  extractSourceUrl, formatSourceLabel,
 } from '@/utils/procurement.js'
 
 const toast = useToastStore()
 const authStore = useAuthStore()
 
-// Struk pembelian: dicatat bagian pembelian (atau petugas logistik) sejak
-// pengajuan disetujui, pada dokumen yang masih memegang item sendiri.
-const canManageStruk = computed(() => authStore.hasPermission(perm('purchasing')) || authStore.hasPermission(perm('pickup')))
-const showStrukSection = computed(() => {
-  const d = detail.value
-  return !!d && RECEIVABLE_PURCHASE_STATUSES.includes(d.status) && ((d.items || []).length > 0 || (d.struks || []).length > 0)
-})
+
 
 const REQUEST_TYPE = 'jasa'
 
@@ -1167,15 +1183,7 @@ watch(() => detail.value ? `${detail.value.id}|${detail.value.version || detail.
 // toko". Tautan ditampilkan sebagai nama situsnya saja supaya kolom tidak
 // melebar oleh URL panjang, tapi tetap bisa diklik dan di-hover untuk melihat
 // alamat penuhnya.
-function isLink(v) { return /^https?:\/\//i.test(String(v || '').trim()) }
-function shortSource(v) {
-  const s = String(v || '').trim()
-  if (!isLink(s)) return s
-  try {
-    const u = new URL(s)
-    return u.hostname.replace(/^www\./, '') + (u.pathname.length > 1 ? '…' : '')
-  } catch { return s }
-}
+// extractSourceUrl & formatSourceLabel diimpor dari @/utils/procurement.js
 
 function getUnsplitItems(d) {
   return (d.items || []).map(it => ({
@@ -2060,33 +2068,13 @@ async function submitDelete() {
   finally { actionLoading.value = false }
 }
 
-const editFinalInvoiceUrl = ref('')
-const invoiceUploadLoading = ref(false)
-
-async function handleInvoiceUpload(e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  if (file.size > 5 * 1024 * 1024) { toast.error('Ukuran file maksimal 5MB.'); e.target.value = ''; return }
-  invoiceUploadLoading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await apiClient.post('/admin/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-    const url = safeUrl(res?.url ?? res?.data?.url)
-    if (!url) throw new Error('Server tidak mengembalikan alamat berkas yang sah.')
-    editFinalInvoiceUrl.value = url
-  } catch (err) {
-    toast.error(err?.message ?? 'Gagal mengunggah file invoice.')
-  } finally {
-    invoiceUploadLoading.value = false
-    e.target.value = ''
-  }
-}
+const editFinalInvoiceUrls = ref([])
+const detailInvoiceUrls = computed(() => safeUrls(detail.value?.invoice_url, detail.value?.invoice_urls))
 
 function openEditFinal() {
   editFinalVendorId.value = detail.value?.vendor_id || ''
   editFinalInvoice.value = detail.value?.invoice_number || ''
-  editFinalInvoiceUrl.value = detail.value?.invoice_url || ''
+  editFinalInvoiceUrls.value = safeUrls(detail.value?.invoice_url, detail.value?.invoice_urls)
   const items = getUnsplitItems(detail.value || {})
   editFinalItems.value = items.map(it => ({
     ...it,
@@ -2121,7 +2109,8 @@ async function submitEditFinal(andRequestPayment = false) {
       vendor_id: editFinalVendorId.value,
       vendor_name: vendor?.name || '',
       invoice_number: editFinalInvoice.value.trim(),
-      invoice_url: editFinalInvoiceUrl.value || '',
+      invoice_url: editFinalInvoiceUrls.value[0] || '',
+      invoice_urls: editFinalInvoiceUrls.value,
       version: detail.value.version,
     })
     if (andRequestPayment) {

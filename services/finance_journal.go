@@ -451,6 +451,24 @@ func loadFinanceJournalWithOpening(from, to, outlet string, scope []string, open
 			return nil, err
 		}
 	}
+	// Alokasi omzet bundling lintas outlet saat kupon diklaim mitra:
+	// porsi pendapatan berpindah dari outlet sumber ke outlet mitra lewat 3-200,
+	// sehingga laba rugi per outlet akurat, neraca seimbang, dan konsolidasi tetap 1x tanpa PB1 ganda.
+	for _, side := range []struct{ source, outlet, debit, credit, descSQL string }{
+		{"bundle_allocation_out", "c.source_outlet_id", glAccRevenue, "3-200", "'Alokasi bundling ke '||COALESCE(po.name,'mitra')||': '||c.source_product_name||' ('||c.claim_code||')'"},
+		{"bundle_allocation_in", "c.partner_outlet_id", "3-200", glAccRevenue, "'Alokasi bundling dari '||COALESCE(so.name,'sumber')||': '||c.partner_product_name||' ('||c.claim_code||')'"},
+	} {
+		if err := read(side.source, `SELECT c.id,c.claimed_at at,`+side.outlet+` outletid,c.claim_code reference,`+side.descSQL+` description,
+			c.notes,c.claimed_by actor,COALESCE(NULLIF(c.customer_name,''),COALESCE(so.name,'')) counterparty,c.allocation_amount amount
+			FROM cross_outlet_bundle_claims c
+			JOIN outlets so ON so.id=c.source_outlet_id
+			JOIN outlets po ON po.id=c.partner_outlet_id
+			WHERE c.status='claimed' AND c.claimed_at IS NOT NULL AND c.allocation_amount>0`, func(o *models.FinanceOperation, r financeSource) {
+			financePair(o, side.debit, side.credit, r.Amount)
+		}); err != nil {
+			return nil, err
+		}
+	}
 	if err := read("manual", `SELECT f.id,f.occurred_at at,f.outlet_id outletid,f.work_unit_id workunitid,f.number reference,f.description,f.notes,f.created_by actor,
 		f.proof_url proofurl,f.counterparty,f.method,f.period,f.status,f.amount,f.account_code kind,f.direction subtype
 		FROM finance_entries f WHERE f.posted_at IS NOT NULL`, func(o *models.FinanceOperation, r financeSource) {

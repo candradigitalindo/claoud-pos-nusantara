@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+
+	"github.com/lib/pq"
 )
 
 // ReceiveStockTransfer posts only the accepted quantities. Rejected quantities
@@ -37,10 +39,30 @@ func ReceiveStockTransfer(id string, req models.StockInspectionRequest, a StockQ
 	if _, err = qualityWarehouse(tx, to, a, "transfer_receive"); err != nil {
 		return err
 	}
-	receiptID := NewULID()
-	if err = claimStockEvidence(tx, req.EvidenceID, to, receiptID, a); err != nil {
-		return err
+	evidSeen := map[string]bool{}
+	evidIDs := make([]string, 0, len(req.EvidenceIDs)+1)
+	for _, rawID := range append([]string{req.EvidenceID}, req.EvidenceIDs...) {
+		idClean := strings.TrimSpace(rawID)
+		if idClean == "" || evidSeen[idClean] {
+			continue
+		}
+		evidSeen[idClean] = true
+		evidIDs = append(evidIDs, idClean)
 	}
+	if len(evidIDs) == 0 {
+		return Invalid("foto pemeriksaan bertimestamp wajib diunggah")
+	}
+	if len(evidIDs) > maxMultiUploadCount {
+		return Invalid("foto pemeriksaan maksimal %d berkas", maxMultiUploadCount)
+	}
+	receiptID := NewULID()
+	for _, eid := range evidIDs {
+		if err = claimStockEvidence(tx, eid, to, receiptID, a); err != nil {
+			return err
+		}
+	}
+	primaryEvidenceID := evidIDs[0]
+	evidIDsJSON, _ := json.Marshal(evidIDs)
 	seen := map[string]bool{}
 	processed := 0.0
 	for _, it := range req.Items {
@@ -84,7 +106,7 @@ func ReceiveStockTransfer(id string, req models.StockInspectionRequest, a StockQ
 			if err = insertQualityCase(tx, &c, a); err != nil {
 				return err
 			}
-			if err = qualityEvent(tx, c.ID, "reported", c.Notes, req.EvidenceID, number, rejected, 0, a); err != nil {
+			if err = qualityEvent(tx, c.ID, "reported", c.Notes, primaryEvidenceID, number, rejected, 0, a); err != nil {
 				return err
 			}
 		}
@@ -114,7 +136,7 @@ func ReceiveStockTransfer(id string, req models.StockInspectionRequest, a StockQ
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`INSERT INTO stock_transfer_receipts(id,transfer_id,evidence_id,actor_id,actor_name,notes,items) VALUES($1,$2,$3,$4,$5,$6,$7)`, receiptID, id, req.EvidenceID, a.ActorID, a.ActorName, req.Notes, items); err != nil {
+	if _, err = tx.Exec(`INSERT INTO stock_transfer_receipts(id,transfer_id,evidence_id,evidence_ids,actor_id,actor_name,notes,items) VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8)`, receiptID, id, primaryEvidenceID, string(evidIDsJSON), a.ActorID, a.ActorName, req.Notes, items); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -147,22 +169,63 @@ func loadStockTransferReceipts(t *models.StockTransfer) error {
 	if err != nil {
 		return err
 	}
-	rows, err = database.DB.Query(`SELECT r.id,r.actor_name,r.notes,r.created_at::text,r.items,p.id,p.url,p.recorded_at::text,p.actor_name FROM stock_transfer_receipts r JOIN stock_evidence p ON p.id=r.evidence_id WHERE r.transfer_id=$1 ORDER BY r.created_at,r.id`, t.ID)
+	rows, err = database.DB.Query(`SELECT r.id,r.actor_name,r.notes,TO_CHAR(r.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),r.items,COALESCE(r.evidence_ids,'[]'::jsonb),p.id,p.url,TO_CHAR(p.recorded_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),p.actor_name FROM stock_transfer_receipts r JOIN stock_evidence p ON p.id=r.evidence_id WHERE r.transfer_id=$1 ORDER BY r.created_at,r.id`, t.ID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	t.Receipts = []models.StockTransferReceipt{}
+	extraIDs := []string{}
+	receiptEvidIDs := make([][]string, 0)
 	for rows.Next() {
 		var r models.StockTransferReceipt
-		var data []byte
-		if err := rows.Scan(&r.ID, &r.ActorName, &r.Notes, &r.CreatedAt, &data, &r.Evidence.ID, &r.Evidence.URL, &r.Evidence.RecordedAt, &r.Evidence.ActorName); err != nil {
+		var raw, evRaw []byte
+		if err := rows.Scan(&r.ID, &r.ActorName, &r.Notes, &r.CreatedAt, &raw, &evRaw, &r.Evidence.ID, &r.Evidence.URL, &r.Evidence.RecordedAt, &r.Evidence.ActorName); err != nil {
 			return err
 		}
-		if err := json.Unmarshal(data, &r.Items); err != nil {
+		if err := json.Unmarshal(raw, &r.Items); err != nil {
 			return err
 		}
+		var ids []string
+		_ = json.Unmarshal(evRaw, &ids)
+		extraIDs = append(extraIDs, ids...)
+		receiptEvidIDs = append(receiptEvidIDs, ids)
 		t.Receipts = append(t.Receipts, r)
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	evidMap := map[string]models.StockEvidence{}
+	if len(extraIDs) > 0 {
+		erows, eerr := database.DB.Query(`SELECT id,url,TO_CHAR(recorded_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),actor_name FROM stock_evidence WHERE id = ANY($1)`, pq.Array(extraIDs))
+		if eerr == nil {
+			defer erows.Close()
+			for erows.Next() {
+				var ev models.StockEvidence
+				if erows.Scan(&ev.ID, &ev.URL, &ev.RecordedAt, &ev.ActorName) == nil {
+					evidMap[strings.TrimSpace(ev.ID)] = ev
+				}
+			}
+		}
+	}
+	for i := range t.Receipts {
+		seen := map[string]bool{}
+		evs := []models.StockEvidence{}
+		for _, eid := range receiptEvidIDs[i] {
+			k := strings.TrimSpace(eid)
+			if k == "" || seen[k] {
+				continue
+			}
+			if ev, ok := evidMap[k]; ok {
+				seen[k] = true
+				evs = append(evs, ev)
+			}
+		}
+		pk := strings.TrimSpace(t.Receipts[i].Evidence.ID)
+		if pk != "" && !seen[pk] {
+			evs = append([]models.StockEvidence{t.Receipts[i].Evidence}, evs...)
+		}
+		t.Receipts[i].Evidences = evs
+	}
+	return nil
 }

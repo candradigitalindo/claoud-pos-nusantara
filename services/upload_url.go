@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -188,4 +189,70 @@ func resolveUploadFileIn(dir, raw string) (string, error) {
 		return "", errors.New("berkas berada di luar folder unggahan")
 	}
 	return real, nil
+}
+
+const maxMultiUploadCount = 10
+
+// NormalizeUploadURLs menggabungkan primary + list URL berkas unggahan,
+// memvalidasi setiap URL memakai ValidateUploadURL, menghapus duplikat,
+// dan membatasi maksimal 10 berkas per dokumen.
+func NormalizeUploadURLs(label, primary string, list []string) ([]string, error) {
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(list)+1)
+	add := func(raw string) error {
+		u := strings.TrimSpace(raw)
+		if u == "" || seen[u] {
+			return nil
+		}
+		if err := validateUploadField(label, u); err != nil {
+			return err
+		}
+		seen[u] = true
+		out = append(out, u)
+		return nil
+	}
+	for _, raw := range list {
+		if err := add(raw); err != nil {
+			return nil, err
+		}
+	}
+	if err := add(primary); err != nil {
+		return nil, err
+	}
+	if len(out) > maxMultiUploadCount {
+		return nil, Invalid("%s maksimal %d berkas", label, maxMultiUploadCount)
+	}
+	return out, nil
+}
+
+func MarshalUploadURLs(urls []string) string {
+	if len(urls) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(urls)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+func DecodeUploadURLs(primary string, raw []byte) []string {
+	var parsed []string
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &parsed)
+	}
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(parsed)+1)
+	for _, u := range parsed {
+		u = strings.TrimSpace(u)
+		if u != "" && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
+		}
+	}
+	p := strings.TrimSpace(primary)
+	if p != "" && !seen[p] {
+		out = append([]string{p}, out...)
+	}
+	return out
 }

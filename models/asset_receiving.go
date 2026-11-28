@@ -36,8 +36,11 @@ type ReceivingLine struct {
 	// Recorded = qty yang sudah pernah dicatat (aset + GRN) untuk baris ini,
 	// Remaining = sisanya. Inilah dasar penerimaan bertahap dan menu
 	// "Lengkapi Penerimaan".
-	Recorded  int `json:"recorded"`
-	Remaining int `json:"remaining"`
+	Recorded         int               `json:"recorded"`
+	Remaining        int               `json:"remaining"`
+	InDelivery       int               `json:"in_delivery,omitempty"`
+	AvailableDirect  int               `json:"available_direct"`
+	ActiveDeliveries []LineDeliveryRef `json:"active_deliveries,omitempty"`
 	// SuggestedStockItemID terisi bila ada item stok bernama mirip.
 	SuggestedStockItemID   string `json:"suggested_stock_item_id,omitempty"`
 	SuggestedStockItemName string `json:"suggested_stock_item_name,omitempty"`
@@ -75,7 +78,8 @@ type ReceivingDraft struct {
 	Lines             []ReceivingLine `json:"lines"`
 	// Pickups: pengambilan oleh petugas logistik yang masih dalam pengantaran
 	// (pengajuan ini beserta induk/pecahannya), terbaru dulu.
-	Pickups []PurchasePickup `json:"pickups"`
+	Pickups    []PurchasePickup    `json:"pickups"`
+	Deliveries []PRDeliverySummary `json:"deliveries,omitempty"`
 }
 
 // ReceiveGoodsLine adalah keputusan petugas atas satu baris.
@@ -110,6 +114,7 @@ type ReceiveGoodsLine struct {
 	// Tujuan stok gudang
 	StockItemID string `json:"stock_item_id"`
 	WarehouseID string `json:"warehouse_id"`
+	UnitUsed    string `json:"unit_used"`
 	ExpiryDate  string `json:"expiry_date"`
 }
 
@@ -119,7 +124,8 @@ type ReceiveGoodsRequest struct {
 	// PhotoURL adalah bukti barang diterima dari tim purchasing. Wajib: tanpa
 	// foto, "barang sudah saya serahkan" dan "saya belum menerima apa pun"
 	// tidak bisa dibedakan saat keduanya saling mengklaim.
-	PhotoURL string `json:"photo_url"`
+	PhotoURL  string   `json:"photo_url"`
+	PhotoURLs []string `json:"photo_urls,omitempty"`
 	Desk     string `json:"desk"` // perlengkapan | dapur — meja yang menerima
 	// PickupID: pengambilan oleh petugas logistik yang barangnya diterima di
 	// sini (kosong = diantar vendor). Pengambilan itu ditandai sudah diterima.

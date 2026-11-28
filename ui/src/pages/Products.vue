@@ -84,11 +84,13 @@
               <span v-if="p.code" class="row-code">{{ p.code }}</span>
               <span v-if="p.category_name" class="tag-category">{{ p.category_name }}</span>
               <ProductKindBadge :kind="p.menu_kind || ''" />
+              <span v-if="p.bundle_count" class="tag-bundle">Bundling → {{ (p.bundle_partners || []).join(', ') || p.bundle_count + ' mitra' }}</span>
             </p>
             <p class="row-price">{{ formatRupiah(p.price) }}</p>
             <p v-if="!selectedOutlet" class="row-outlet">{{ p.outlet_name || '—' }}</p>
           </div>
           <div class="mcard-acts">
+            <button v-if="canOpenBundle" type="button" class="btn-bundle" @click="openBundleModal(p)">Bundling</button>
             <AppActionButton v-if="auth.hasPermission('products.update')" icon="edit" label="Edit" @click="openEditProd(p)" />
             <AppActionButton v-if="auth.hasPermission('products.delete')" icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
           </div>
@@ -134,6 +136,7 @@
                 </td>
                 <td>
                   <span class="row-name">{{ p.name }}</span>
+                  <span v-if="p.bundle_count" class="tag-bundle">Bundling → {{ (p.bundle_partners || []).join(', ') || p.bundle_count + ' mitra' }}</span>
                   <span class="row-desc">{{ productRecipeLabel(p) }}</span>
                   <span v-if="p.description" class="row-desc">{{ p.description }}</span>
                 </td>
@@ -153,6 +156,7 @@
                 </td>
                 <td class="td-actions">
                   <div class="action-btns">
+                    <button v-if="canOpenBundle" type="button" class="btn-bundle" @click="openBundleModal(p)">Bundling</button>
                     <AppActionButton v-if="auth.hasPermission('products.update')" icon="edit" label="Edit" @click="openEditProd(p)" />
                     <AppActionButton v-if="auth.hasPermission('products.delete')" icon="delete" label="Hapus" @click="openDelete(p, 'product')" />
                   </div>
@@ -384,6 +388,7 @@
     </Teleport>
 
     <ProductRecipePicker v-if="showProdModal && showRecipePicker" :key="formProdOutletId" :recipes="recipeOptions" :loading="loadingRecipes" :error="recipeLoadError" :outlet-id="formProdOutletId" :outlet-name="productOutletName" :product-name="formProd.name" :selected="formProd.recipes" @close="showRecipePicker = false" @retry="fetchRecipeOptions(formProdOutletId)" @select="selectProductRecipe" />
+    <ProductBundleModal v-model="showBundleModal" :product="bundleTarget" @saved="fetchProducts" />
 
     <!-- ── Category Modal ─────────────────────────────────── -->
     <Teleport to="body">
@@ -462,9 +467,23 @@ import { formatRupiah, formatDateTime } from '@/utils/format.js'
 import { PAGE_SIZE }    from '@/utils/constants.js'
 import AppPagination from '@/components/ui/AppPagination.vue'
 import SearchSelect  from '@/components/ui/SearchSelect.vue'
+import ProductBundleModal from '@/components/ProductBundleModal.vue'
 
 // ── State ────────────────────────────────────────────────────
 const auth = useAuthStore()
+const canOpenBundle = computed(() => auth.hasPermission('products.view') || auth.hasPermission('bundles.view'))
+const showBundleModal = ref(false)
+const bundleTarget = ref(null)
+function openBundleModal(p) {
+  bundleTarget.value = {
+    id: p.id,
+    outlet_id: p.outlet_id,
+    outlet_name: p.outlet_name || outlets.value.find(o => o.id === p.outlet_id)?.name || '',
+    name: p.name,
+    price: p.price,
+  }
+  showBundleModal.value = true
+}
 const menuKind = ref('')
 const showClassification = ref(false)
 const classificationScope = computed(() => selectedOutlet.value ? (outlets.value.find(outlet => outlet.id === selectedOutlet.value)?.name || 'Outlet terpilih') : 'Semua outlet yang dapat diakses')
@@ -1222,4 +1241,7 @@ watch(pageCat,  fetchCategories)
   .product-recipe-section { grid-column: 1 / -1; }
   .product-modal-footer { padding-top: 8px; padding-bottom: 8px; }
 }
+.tag-bundle { display: inline-flex; align-items: center; margin-top: .15rem; padding: .1rem .45rem; border-radius: 999px; font-size: .68rem; font-weight: 700; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; width: fit-content; }
+.btn-bundle { padding: .3rem .55rem; border-radius: .5rem; font-size: .72rem; font-weight: 600; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; cursor: pointer; white-space: nowrap; }
+.btn-bundle:hover { background: #e0e7ff; }
 </style>

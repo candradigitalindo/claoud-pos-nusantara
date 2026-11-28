@@ -106,3 +106,18 @@ export function describeWarehouse(warehouse) {
   const outletInfo = outletName ? `Outlet: ${outletName}` : 'Gudang outlet tanpa outlet terkait'
   return `Tipe: Gudang Outlet · ${outletInfo}${code ? ` · Kode: ${code}` : ''}`
 }
+
+export const TRANSFER_DIVISIONS = [
+  { value: 'BAR', label: 'BAR' },
+  { value: 'KITCHEN', label: 'KITCHEN' },
+  { value: 'SERVER', label: 'SERVER' },
+]
+
+export function transferDivisionClass(division) {
+  const map = {
+    BAR: 'bg-purple-100 text-purple-700 ring-1 ring-purple-200',
+    KITCHEN: 'bg-orange-100 text-orange-700 ring-1 ring-orange-200',
+    SERVER: 'bg-cyan-100 text-cyan-700 ring-1 ring-cyan-200',
+  }
+  return map[String(division || '').trim().toUpperCase()] || 'bg-gray-100 text-gray-600'
+}

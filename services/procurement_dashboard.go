@@ -9,9 +9,14 @@ import (
 	"github.com/lib/pq"
 )
 
-// GetProcurementDashboard returns procurement statistics.
-// If outletID is empty, returns global stats (filtered by scope if applicable).
+// GetProcurementDashboard returns procurement statistics across all types.
 func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []string) (*models.ProcurementDashboardResponse, error) {
+	return GetProcurementDashboardFiltered(outletID, scopeIDs, wuScopeIDs, nil)
+}
+
+// GetProcurementDashboardFiltered membatasi statistik Dashboard Pengadaan sesuai
+// kelompok Purchasing (allowedTypes) agar Bahan Baku dan Barang & Jasa tidak tercampur.
+func GetProcurementDashboardFiltered(outletID string, scopeIDs []string, wuScopeIDs []string, allowedTypes []string) (*models.ProcurementDashboardResponse, error) {
 	resp := &models.ProcurementDashboardResponse{
 		WorkUnits:    make([]models.ProcurementWorkUnitStat, 0),
 		MonthlyTrend: make([]models.ProcurementMonthlyTrend, 0),
@@ -74,8 +79,18 @@ func GetProcurementDashboard(outletID string, scopeIDs []string, wuScopeIDs []st
 	// hanya blok Hutang Usaha yang menyaringnya, sehingga ringkasan, split tipe,
 	// per unit kerja, dan tren menghitung master bernilai penuh sekaligus semua
 	// pecahannya — setiap pengadaan yang di-split terhitung dua kali.
-	excludeShell := "NOT " + fullySplitMasterCond("")
-	excludeShellJoin := "NOT " + fullySplitMasterCond("pr")
+	excludeShell := "NOT " + fullySplitMasterCond("") + " AND NOT COALESCE(is_manual_payment, false)"
+	excludeShellJoin := "NOT " + fullySplitMasterCond("pr") + " AND NOT COALESCE(pr.is_manual_payment, false)"
+	if allowedTypes != nil {
+		if len(allowedTypes) == 0 {
+			return resp, nil
+		}
+		typeArg := fmt.Sprintf("$%d::text[]", idx)
+		args = append(args, pq.Array(allowedTypes))
+		idx++
+		excludeShell += " AND request_type = ANY(" + typeArg + ")"
+		excludeShellJoin += " AND pr.request_type = ANY(" + typeArg + ")"
+	}
 	andWhere := func(clause, extra string) string {
 		if clause == "" {
 			return "WHERE " + extra
@@ -288,6 +303,46 @@ func GetPaymentStats(scopeIDs []string, wuScopeIDs []string) (*models.PaymentSta
 		return nil, fmt.Errorf("payment stats: %w", err)
 	}
 	resp.AccountsPayable = models.AccountsPayable{Count: apCount, TotalAmount: apTotal}
+
+	// Breakdown per kelompok / asal pengajuan pembayaran untuk penanda tab Finance.
+	gbQ := fmt.Sprintf(`
+		SELECT
+			CASE
+				WHEN COALESCE(is_manual_payment, false) THEN 'manual'
+				WHEN COALESCE(emergency, false) THEN 'emergency'
+				WHEN request_type = 'bahan' THEN 'bahan_baku'
+				ELSE 'barang_jasa'
+			END AS src_group,
+			COUNT(*) AS cnt,
+			COUNT(*) FILTER (WHERE status = 'payment_requested') AS wait_cnt,
+			COALESCE(SUM(GREATEST(total_final - paid_amount, 0)) FILTER (WHERE status = 'payment_requested'), 0) AS wait_total
+		FROM purchase_requests
+		%s `+prCommittedCond("")+` AND NOT `+fullySplitMasterCond("")+`
+		GROUP BY 1`, scopeClause)
+	gbRows, gerr := database.DB.Query(gbQ, args...)
+	if gerr != nil {
+		return nil, fmt.Errorf("payment stats group breakdown: %w", gerr)
+	}
+	if gbRows != nil {
+		defer gbRows.Close()
+		for gbRows.Next() {
+			var grp string
+			var st models.PaymentGroupStat
+			if serr := gbRows.Scan(&grp, &st.Count, &st.WaitingCount, &st.TotalWaiting); serr != nil {
+				continue
+			}
+			switch grp {
+			case PurchasingGroupBahanBaku:
+				resp.GroupBreakdown.BahanBaku = st
+			case PurchasingGroupBarangJasa:
+				resp.GroupBreakdown.BarangJasa = st
+			case "manual":
+				resp.GroupBreakdown.Manual = st
+			case "emergency":
+				resp.GroupBreakdown.Emergency = st
+			}
+		}
+	}
 
 	return resp, nil
 }

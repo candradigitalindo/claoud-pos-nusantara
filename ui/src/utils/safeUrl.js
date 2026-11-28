@@ -67,3 +67,22 @@ export function isImageUrl(url) {
 export function linkAttrs(url) {
   return url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {}
 }
+
+/**
+ * safeUrls — gabungkan URL tunggal lama + daftar URL baru menjadi array unik
+ * yang seluruh isinya sudah lolos safeUrl().
+ */
+export function safeUrls(primary, list, opts) {
+  const out = []
+  const seen = new Set()
+  const add = (raw) => {
+    const u = safeUrl(raw, opts)
+    if (u && !seen.has(u)) {
+      seen.add(u)
+      out.push(u)
+    }
+  }
+  if (Array.isArray(list)) list.forEach(add)
+  add(primary)
+  return out
+}

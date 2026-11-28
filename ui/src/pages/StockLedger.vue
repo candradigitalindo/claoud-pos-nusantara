@@ -112,7 +112,7 @@
         </template>
         <template #cell-actions="{ row }">
           <AppActionButton icon="history" label="Histori" @click="openMovements(row)" />
-          <AppActionButton icon="adjust" label="Penyesuaian" @click="openAdjust(row)" class="ml-1" />
+          <AppActionButton v-if="canAdjust" icon="adjust" label="Penyesuaian" @click="openAdjust(row)" class="ml-1" />
         </template>
       </AppTable>
       <AppPagination v-model:page="page" :total-pages="totalPages" class="px-4 py-3 border-t border-gray-100" />
@@ -143,19 +143,19 @@
             <tr v-if="movLoading"><td colspan="6" class="px-3 py-4 text-center text-gray-400">Memuat...</td></tr>
             <tr v-else-if="movements.length === 0"><td colspan="6" class="px-3 py-4 text-center text-gray-400">Tidak ada histori.</td></tr>
             <tr v-for="m in movements" :key="m.id" class="hover:bg-gray-50">
-              <td class="px-3 py-2 text-gray-500">{{ m.created_at.slice(0,16).replace('T',' ') }}</td>
+              <td class="px-3 py-2 text-gray-500 whitespace-nowrap">{{ fmtMovDateTime(m.created_at) }}</td>
               <td class="px-3 py-2">
                 <span :class="movTypeCls(m.movement_type)" class="text-xs px-2 py-0.5 rounded-full font-medium">
                   {{ MOV_LABELS[m.movement_type] || m.movement_type }}
                 </span>
               </td>
               <td :class="['px-3 py-2 text-right font-mono font-medium', m.qty_base >= 0 ? 'text-emerald-700' : 'text-red-600']">
-                {{ m.qty_base >= 0 ? '+' : '' }}{{ m.qty_base.toFixed(3) }} {{ movTarget?.base_unit }}
-                <div v-if="m.unit_used && m.unit_used !== movTarget?.base_unit" class="text-xs text-gray-400">
-                  {{ m.qty_dist }} {{ m.unit_used }}
+                {{ m.qty_base >= 0 ? '+' : '' }}{{ fmtNum(m.qty_base) }} {{ m.base_unit || movTarget?.base_unit }}
+                <div v-if="m.unit_used && (m.base_unit || movTarget?.base_unit) && m.unit_used.toLowerCase() !== (m.base_unit || movTarget?.base_unit).toLowerCase() && m.qty_dist" class="text-xs text-gray-400">
+                  {{ m.qty_dist >= 0 ? '+' : '' }}{{ fmtNum(m.qty_dist) }} {{ m.unit_used }}
                 </div>
               </td>
-              <td class="px-3 py-2 text-right font-mono text-gray-700">{{ m.balance_after.toFixed(3) }}</td>
+              <td class="px-3 py-2 text-right font-mono text-gray-700 whitespace-nowrap">{{ fmtNum(m.balance_after) }} {{ m.base_unit || movTarget?.base_unit }}</td>
               <td class="px-3 py-2 text-gray-500 text-xs">{{ m.ref_number || '—' }}</td>
               <td class="px-3 py-2 text-gray-500 text-xs">{{ m.expiry_date || '—' }}</td>
             </tr>
@@ -173,7 +173,10 @@
         <p class="modal-span-full text-sm text-gray-600">
           Item: <strong>{{ adjustTarget?.item_name }}</strong><br/>
           Gudang: <strong>{{ adjustTarget?.warehouse_name }}</strong><br/>
-          Stok saat ini: <strong>{{ adjustTarget?.qty_base?.toFixed(3) }} {{ adjustTarget?.base_unit }}</strong>
+          Stok saat ini: <strong>{{ adjustTarget ? stockQtyText(adjustTarget, adjustTarget.qty_base, adjustTarget.warehouse_type) : '—' }}</strong>
+          <span v-if="adjustTarget && adjustTarget.dist_unit && adjustTarget.dist_unit !== adjustTarget.base_unit" class="text-xs text-gray-400">
+            ({{ fmtNum(adjustTarget.qty_base) }} {{ adjustTarget.base_unit }})
+          </span>
         </p>
         <div class="modal-span-full">
           <label class="block text-sm font-medium text-gray-700 mb-1">Tipe Gerakan</label>
@@ -193,7 +196,7 @@
           </SearchableSelect>
         </div>
         <AppInput v-model.number="adjustQty" :label="`Qty (${adjustUnit})`" type="number" step="0.0001" placeholder="0" />
-        <RupiahInput v-if="adjForm.movement_type === 'purchase_in'" v-model="adjustCost"
+        <RupiahInput v-if="adjForm.movement_type === 'purchase_in' || adjForm.qty_base > 0" v-model="adjustCost"
           :label="`HPP per ${adjustUnit}`" step="0.01" placeholder="0" />
         <AppInput v-if="['purchase_in', 'adjustment', 'return_in'].includes(adjForm.movement_type)" 
           v-model="adjForm.expiry_date" label="Tanggal Kadaluarsa" type="date" />
@@ -229,7 +232,7 @@
             labelKey="label"
           />
         </div>
-        <AppInput v-model.number="produceForm.qty_produce" label="Kuantitas Hasil Produksi" type="number" step="0.001" placeholder="0" />
+        <AppInput v-model.number="produceForm.qty_produce" :label="`Kuantitas Hasil Produksi (${produceSelectedUnit})`" type="number" step="any" placeholder="0" />
         <div v-if="produceForm.item_id" class="modal-span-full p-3 bg-amber-50 rounded-lg border border-amber-100 text-xs text-amber-700">
           <strong>Info:</strong> Stok bahan baku penyusun akan otomatis terpotong sesuai resep yang telah diatur, dan HPP akan dihitung secara otomatis.
         </div>
@@ -434,6 +437,7 @@ const auth = useAuthStore()
 // Pemotongan dicatat pemegang stockledger.adjust (sama dengan penyesuaian stok).
 const canBreakdown = computed(() => auth.hasPermission('stockledger.adjust'))
 const canProduce = computed(() => auth.hasPermission('stockledger.adjust'))
+const canAdjust = computed(() => auth.hasPermission('stockledger.adjust'))
 const loading = ref(false)
 const saving = ref(false)
 const rows = ref([])
@@ -479,8 +483,19 @@ const produceForm = ref({ item_id: '', warehouse_id: '', qty_produce: 0, notes: 
 const allStockItems = ref([])
 
 const produceItemOptions = computed(() =>
-  allStockItems.value.map(i => ({ value: i.id, label: `${i.name} (${i.code})` }))
+  allStockItems.value.map(i => ({ value: i.id, label: `${i.name} (${i.code}) · ${i.base_unit}` }))
 )
+const produceSelectedUnit = computed(() => {
+  const it = allStockItems.value.find(i => i.id === produceForm.value.item_id)
+  return it?.base_unit || 'satuan dasar'
+})
+function fmtMovDateTime(s) {
+  if (!s) return '—'
+  const d = new Date(s)
+  return Number.isNaN(d.getTime())
+    ? s.slice(0, 16).replace('T', ' ')
+    : d.toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 function openProduceModal() {
   if (!canProduce.value) return
@@ -835,9 +850,10 @@ async function loadMovements() {
 }
 
 function openAdjust(row) {
+  if (!canAdjust.value) return
   adjustTarget.value = row
   adjustUnit.value = preferredStockUnit(row, row.warehouse_type)
-  adjForm.value = { movement_type: 'purchase_in', qty_base: 0, cost_per_base: 0, expiry_date: '', notes: '' }
+  adjForm.value = { movement_type: 'purchase_in', qty_base: 0, cost_per_base: Number(row.avg_cost) || 0, expiry_date: '', notes: '' }
   showAdjust.value = true
 }
 
@@ -848,6 +864,7 @@ async function submitAdjust() {
       item_id: adjustTarget.value.item_id,
       warehouse_id: adjustTarget.value.warehouse_id,
       qty_base: adjForm.value.qty_base,
+      unit_used: adjustUnit.value,
       cost_per_base: adjForm.value.cost_per_base,
       movement_type: adjForm.value.movement_type,
       expiry_date: adjForm.value.expiry_date,

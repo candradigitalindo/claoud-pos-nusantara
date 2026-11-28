@@ -38,8 +38,11 @@
           </div>
         </div>
         <BudgetBar class="mt-4" :budget="project.budget" :committed="project.committed" :paid="project.paid" :estimated="project.estimated" :pending="project.pending_amount" />
-        <p v-if="project.notes" class="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600 break-words">
-          <span class="text-gray-400">Catatan:</span> {{ project.notes }}
+        <p v-if="project.notes" class="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-600 break-words [overflow-wrap:anywhere]">
+          <span class="text-gray-400">Catatan:</span>
+          <a v-if="extractSourceUrl(project.notes)" :href="extractSourceUrl(project.notes)" target="_blank" rel="noopener noreferrer"
+            class="ml-1 text-emerald-700 underline hover:text-emerald-800" :title="project.notes">{{ formatSourceLabel(project.notes) }}</a>
+          <span v-else class="ml-1">{{ project.notes }}</span>
         </p>
       </AppCard>
 
@@ -83,7 +86,12 @@
                     <p class="min-w-0 break-words text-sm font-medium text-gray-900">{{ r.name }} <span class="text-[10px] font-semibold uppercase text-gray-400">{{ r.kind }}</span></p>
                     <p class="shrink-0 text-sm font-semibold text-gray-900">{{ formatRupiah(r.subtotal) }}</p>
                   </div>
-                  <p class="text-[11px] text-gray-500">{{ r.qty }} {{ r.unit }} × {{ formatRupiah(r.unit_price) }}<span v-if="r.notes"> · {{ r.notes }}</span></p>
+                  <p class="text-[11px] text-gray-500">{{ r.qty }} {{ r.unit }} × {{ formatRupiah(r.unit_price) }}</p>
+                  <p v-if="r.notes" class="mt-0.5 min-w-0 text-[11px] break-words [overflow-wrap:anywhere]">
+                    <a v-if="extractSourceUrl(r.notes)" :href="extractSourceUrl(r.notes)" target="_blank" rel="noopener noreferrer"
+                      class="inline-block max-w-full truncate align-bottom text-emerald-700 underline hover:text-emerald-800" :title="r.notes">{{ formatSourceLabel(r.notes) }}</a>
+                    <span v-else class="text-gray-400">{{ r.notes }}</span>
+                  </p>
                   <BudgetBar class="mt-1.5" :budget="r.subtotal" :committed="r.committed" :paid="r.paid" :estimated="r.estimated" :pending="r.pending" />
                   <p class="mt-1 text-[11px]" :class="r.remaining < 0 ? 'font-semibold text-red-600' : 'text-gray-500'">Sisa {{ formatRupiah(r.remaining) }}<span v-if="r.request_count"> · {{ r.request_count }} pengajuan disetujui</span><span v-if="r.pending_count"> · {{ r.pending_count }} menunggu persetujuan</span></p>
                 </li>
@@ -117,9 +125,13 @@
                     <td class="px-4 py-1.5 text-right" :class="g.total - g.committed < 0 ? 'text-red-600' : ''">{{ formatRupiah(g.total - g.committed) }}</td>
                   </tr>
                   <tr v-for="r in g.rows" :key="r.id" class="border-b border-gray-100">
-                    <td class="px-4 py-2">
-                      <p class="font-medium text-gray-900">{{ r.name }}</p>
-                      <p v-if="r.notes" class="text-[11px] text-gray-400">{{ r.notes }}</p>
+                    <td class="max-w-[20rem] px-4 py-2">
+                      <div class="max-w-[18rem] min-w-0">
+                        <p class="font-medium text-gray-900 break-words">{{ r.name }}</p>
+                        <a v-if="r.notes && extractSourceUrl(r.notes)" :href="extractSourceUrl(r.notes)" target="_blank" rel="noopener noreferrer"
+                          class="mt-0.5 block max-w-[18rem] truncate text-[11px] text-emerald-700 underline hover:text-emerald-800" :title="r.notes">{{ formatSourceLabel(r.notes) }}</a>
+                        <p v-else-if="r.notes" class="mt-0.5 max-w-[18rem] break-words [overflow-wrap:anywhere] text-[11px] text-gray-400" :title="r.notes">{{ r.notes }}</p>
+                      </div>
                       <div class="mt-1 h-1 w-28 overflow-hidden rounded-full bg-gray-100" :title="`${Math.round(r.absorbed_pct)}% terserap`">
                         <div class="h-full rounded-full" :class="r.over_budget ? 'bg-red-500' : 'bg-blue-400'" :style="{ width: Math.min(100, r.absorbed_pct || 0) + '%' }"></div>
                       </div>
@@ -313,7 +325,7 @@ import AppTable  from '@/components/ui/AppTable.vue'
 import AppModal  from '@/components/ui/AppModal.vue'
 import AppAlert  from '@/components/ui/AppAlert.vue'
 import BudgetBar from '@/components/BudgetBar.vue'
-import { purchaseTypeLabel, purchaseTypePath, purchaseStatusLabel, purchaseStatusBadge } from '@/utils/procurement.js'
+import { purchaseTypeLabel, purchaseTypePath, purchaseStatusLabel, purchaseStatusBadge, extractSourceUrl, formatSourceLabel } from '@/utils/procurement.js'
 
 const route = useRoute()
 const router = useRouter()

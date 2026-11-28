@@ -395,6 +395,12 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 			return "", err
 		}
 	}
+	var bundleClaimsCreated int
+	if !strings.EqualFold(strings.TrimSpace(req.PaymentMethod), "compliment") {
+		if bundleClaimsCreated, err = SyncCrossOutletBundleClaimsTx(tx, outletID, cloudID, req.LocalID, req.OrderID, req.Items, req.OrdererName, cashierName, persistedCreatedAt); err != nil {
+			return "", fmt.Errorf("kupon bundling lintas outlet: %w", err)
+		}
+	}
 	if err = refreshShiftAdjustments(tx, outletID); err != nil {
 		return "", fmt.Errorf("rekonsiliasi pembayaran: %w", err)
 	}
@@ -406,6 +412,9 @@ func SaveTransaction(outletID string, req models.PushTransactionRequest) (string
 	}
 	go logSync(outletID, "push_transaction", "transaction", 1, "success", "")
 	BroadcastSync("transaction", outletID)
+	if bundleClaimsCreated > 0 {
+		BroadcastSync("bundle_claim", "")
+	}
 	if strings.TrimSpace(req.ReservationID) != "" {
 		if serr := SettleReservation(outletID, req.ReservationID, cloudID, cashierName); serr != nil {
 			// The financial row is committed and idempotent; keep the outbox

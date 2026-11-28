@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"encoding/json"
 	"errors"
 
@@ -381,7 +382,10 @@ func ListStockTransfers(c *fiber.Ctx) error {
 	page, limit := getPagination(c)
 	status := c.Query("status")
 	warehouseID := c.Query("warehouse_id")
-	transfers, total, err := services.ListStockTransfers(status, warehouseID, getOutletScope(c), page, limit)
+	division := c.Query("division")
+	dateFrom := c.Query("date_from")
+	dateTo := c.Query("date_to")
+	transfers, total, err := services.ListStockTransfersFiltered(status, warehouseID, division, dateFrom, dateTo, getOutletScope(c), page, limit)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -436,8 +440,9 @@ func CreateStockTransfer(c *fiber.Ctx) error {
 func UpdateTransferStatus(c *fiber.Ctx) error {
 	var body struct {
 		Status string `json:"status"`
-		// PhotoURL: bukti barang saat dikirim dari gudang induk ke gudang outlet.
-		PhotoURL string `json:"photo_url"`
+		// PhotoURL / PhotoURLs: bukti barang saat dikirim dari gudang asal.
+		PhotoURL  string   `json:"photo_url"`
+		PhotoURLs []string `json:"photo_urls"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
@@ -491,7 +496,7 @@ func UpdateTransferStatus(c *fiber.Ctx) error {
 		fromStatus = "draft"
 	}
 	actor, _ := c.Locals("admin_username").(string)
-	t, err = services.UpdateTransferStatusFrom(c.Params("id"), body.Status, body.PhotoURL, actor, fromStatus)
+	t, err = services.UpdateTransferStatusFromPhotos(c.Params("id"), body.Status, body.PhotoURL, body.PhotoURLs, actor, fromStatus)
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
 	}
@@ -499,6 +504,25 @@ func UpdateTransferStatus(c *fiber.Ctx) error {
 }
 
 // UpdateReceivedQty menangani pembaruan kuantitas barang yang benar-benar diterima pada saat pengiriman stok.
+func UpdateTransferPhotos(c *fiber.Ctx) error {
+	var body struct {
+		PhotoURL  string   `json:"photo_url"`
+		PhotoURLs []string `json:"photo_urls"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Error: "body tidak valid"})
+	}
+	scope := getOutletScope(c)
+	if !services.TransferInScope(c.Params("id"), scope) {
+		return c.Status(403).JSON(models.APIResponse{Error: "Akses transfer tidak diizinkan"})
+	}
+	t, err := services.UpdateTransferSendPhotos(c.Params("id"), body.PhotoURL, body.PhotoURLs, purchaseActor(c).Name)
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Error: err.Error()})
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: t})
+}
+
 func UpdateReceivedQty(c *fiber.Ctx) error {
 	transferID := c.Params("id")
 	itemID := c.Params("itemId")
@@ -713,7 +737,8 @@ func CreateStockWaste(c *fiber.Ctx) error {
 
 func GetWarehouseDashboard(c *fiber.Ctx) error {
 	scopeIDs := getOutletScope(c)
-	data, err := services.GetWarehouseDashboard(scopeIDs)
+	warehouseID := strings.TrimSpace(c.Query("warehouse_id"))
+	data, err := services.GetWarehouseDashboardFiltered(scopeIDs, warehouseID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
 			Success: false, Error: "Gagal memuat dashboard gudang: " + err.Error(),

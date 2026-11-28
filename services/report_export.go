@@ -1135,10 +1135,36 @@ func BuildProcurementPaymentsExcel(status, requestType, projectID, search string
 	return BuildProcurementPaymentsExcelExt(status, requestType, projectID, search, scopeIDs, wuScopeIDs, PurchaseListExtra{})
 }
 
-// purchaseListExtraLabel: keterangan saringan tingkat kebutuhan di ringkasan.
+func paymentOriginLabel(r models.PurchaseRequest) string {
+	if r.IsManualPayment {
+		return "Manual Keuangan"
+	}
+	if r.Emergency != nil {
+		return "Darurat Outlet"
+	}
+	if r.RequestType == RequestTypeBahan {
+		return "Purchasing Bahan Baku"
+	}
+	return "Purchasing Barang & Jasa"
+}
+
+// purchaseListExtraLabel: keterangan saringan tingkat kebutuhan & asal di ringkasan.
 func purchaseListExtraLabel(extra PurchaseListExtra) string {
 	parts := []string{}
-	if extra.Emergency {
+	switch extra.SourceGroup {
+	case PurchasingGroupBahanBaku:
+		parts = append(parts, "Purchasing Bahan Baku")
+	case PurchasingGroupBarangJasa:
+		parts = append(parts, "Purchasing Barang & Jasa")
+	case "manual":
+		parts = append(parts, "Manual Keuangan")
+	case "emergency":
+		parts = append(parts, "Darurat Outlet")
+	}
+	if extra.ManualOnly && extra.SourceGroup != "manual" {
+		parts = append(parts, "Pembayaran Manual")
+	}
+	if extra.Emergency && extra.SourceGroup != "emergency" {
 		parts = append(parts, "Pembelian Darurat")
 	}
 	switch extra.Ratification {
@@ -1180,7 +1206,11 @@ func BuildProcurementPaymentsExcelExt(status, requestType, projectID, search str
 		statusLabel = purchaseStatusLabel(status)
 	}
 	typeLabel := "Semua Tipe"
-	if IsValidRequestType(requestType) {
+	if requestType == PurchasingGroupBarangJasa {
+		typeLabel = "Purchasing Barang & Jasa"
+	} else if requestType == PurchasingGroupBahanBaku {
+		typeLabel = "Purchasing Bahan Baku"
+	} else if IsValidRequestType(requestType) {
 		typeLabel = RequestTypeLabel(requestType)
 	}
 
@@ -1301,6 +1331,26 @@ func BuildProcurementPaymentsExcelExt(status, requestType, projectID, search str
 		}
 	}
 
+	originOrder := []string{"Purchasing Bahan Baku", "Purchasing Barang & Jasa", "Manual Keuangan", "Darurat Outlet"}
+	byOrigin := map[string]*statusAgg{}
+	for _, r := range result.Requests {
+		org := paymentOriginLabel(r)
+		a, ok := byOrigin[org]
+		if !ok {
+			a = &statusAgg{}
+			byOrigin[org] = a
+		}
+		a.count++
+		a.nominal += r.TotalFinal
+	}
+	row++
+	setSection("PER KELOMPOK / ASAL PURCHASING")
+	for _, org := range originOrder {
+		if a, ok := byOrigin[org]; ok {
+			setKV(fmt.Sprintf("%s — %d pengajuan", org, a.count), a.nominal, st.money)
+		}
+	}
+
 	// Pembelian Darurat: tahap pengesahan & selisih struk (audit Keuangan).
 	stageOrder := []string{"Menunggu kas diserahkan", "Menunggu struk", "Menunggu pengesahan", "Disahkan", "Pengesahan ditolak (temuan)"}
 	stageAgg := map[string]*statusAgg{}
@@ -1342,6 +1392,7 @@ func BuildProcurementPaymentsExcelExt(status, requestType, projectID, search str
 		"No. Invoice", "Catatan Pembayaran",
 		// Kolom tambahan (Nov 2026) di belakang supaya kolom lama tetap.
 		"Tingkat", "Tahap Darurat", "Alasan Darurat", "Total Struk", "Selisih Kas−Struk", "Disahkan/Ditolak Oleh", "Catatan Pengesahan",
+		"Kelompok / Asal", "Pengaju",
 	}, st.header)
 	f.SetColWidth(shList, "A", "A", 5)
 	f.SetColWidth(shList, "B", "C", 12)
@@ -1362,6 +1413,8 @@ func BuildProcurementPaymentsExcelExt(status, requestType, projectID, search str
 	f.SetColWidth(shList, "W", "X", 14)
 	f.SetColWidth(shList, "Y", "Y", 24)
 	f.SetColWidth(shList, "Z", "Z", 30)
+	f.SetColWidth(shList, "AA", "AA", 26)
+	f.SetColWidth(shList, "AB", "AB", 22)
 
 	fmtStamp := func(iso string) string {
 		if iso == "" {
@@ -1430,6 +1483,9 @@ func BuildProcurementPaymentsExcelExt(status, requestType, projectID, search str
 			}
 			f.SetCellValue(shList, fmt.Sprintf("Z%d", rw), e.RatificationNotes)
 		}
+		f.SetCellValue(shList, fmt.Sprintf("AA%d", rw), paymentOriginLabel(r))
+		f.SetCellValue(shList, fmt.Sprintf("AB%d", rw), r.RequestedBy)
+		f.SetCellStyle(shList, fmt.Sprintf("AA%d", rw), fmt.Sprintf("AB%d", rw), st.text)
 	}
 	if len(result.Requests) > 0 {
 		rw := len(result.Requests) + 2

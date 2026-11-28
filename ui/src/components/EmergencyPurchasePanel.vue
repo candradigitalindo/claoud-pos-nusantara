@@ -54,12 +54,12 @@
       <!-- 2. Bukti belanja -->
       <div v-if="cashHanded && !cancelled" class="rounded-lg border border-gray-200 p-2.5">
         <p class="font-semibold text-gray-800">Bukti Belanja</p>
-        <template v-if="em.proof_url">
+        <template v-if="proofUrls.length">
           <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-700">
-            <a v-if="safeUrl(em.proof_url)" :href="safeUrl(em.proof_url)" target="_blank" rel="noopener noreferrer"
+            <a v-for="(u, idx) in proofUrls" :key="`em-p-${idx}`" :href="u" target="_blank" rel="noopener noreferrer"
               class="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-              Foto struk
+              {{ proofUrls.length > 1 ? `Foto struk ${idx + 1}` : 'Foto struk' }}
             </a>
             <span>Total struk <b>{{ formatRupiah(em.proof_total) }}</b></span>
             <span class="text-gray-400">{{ em.proof_by || '-' }}<template v-if="em.proof_at"> · {{ formatDateTime(em.proof_at) }}</template></span>
@@ -79,7 +79,8 @@
             {{ em.proof_url ? 'Ganti bukti' : '+ Unggah struk' }}
           </button>
           <div v-else class="mt-2 space-y-2 rounded-lg bg-gray-50 p-2.5">
-            <PhotoCapture v-model="proof.url" label="Foto Struk" hint="Foto struk/nota dari toko atau teknisi." />
+            <PhotoCapture multiple accept="image/*,.pdf" v-model="proof.urls" label="Foto Struk / Kwitansi"
+              hint="Bisa pilih beberapa foto/PDF struk atau nota dari toko sekaligus." />
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">Total di Struk</label>
@@ -129,7 +130,7 @@ import { ref, computed, watch } from 'vue'
 import { purchaseApi } from '@/api/purchase.js'
 import { useToastStore } from '@/stores/toast.js'
 import { formatRupiah, formatDateTime } from '@/utils/format.js'
-import { safeUrl } from '@/utils/safeUrl.js'
+import { safeUrls } from '@/utils/safeUrl.js'
 import { RATIFICATION, VERIFY_REASON_MIN, reasonLength, isConflictError, emergencyCashHanded } from '@/utils/procurement.js'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppInput from '@/components/ui/AppInput.vue'
@@ -150,7 +151,7 @@ const busy = ref('')
 const cancelOpen = ref(false)
 const cancelReason = ref('')
 const proofOpen = ref(false)
-const proof = ref({ url: '', total: 0, notes: '' })
+const proof = ref({ urls: [], total: 0, notes: '' })
 const decisionNotes = ref('')
 
 watch(() => props.doc?.id, () => {
@@ -161,6 +162,7 @@ watch(() => props.doc?.id, () => {
 })
 
 const em = computed(() => props.doc?.emergency || {})
+const proofUrls = computed(() => safeUrls(em.value.proof_url, em.value.proof_urls))
 const ratification = computed(() => RATIFICATION[em.value.ratification] || null)
 const cancelled = computed(() => ['cancelled', 'rejected'].includes(props.doc?.status))
 const cashHanded = computed(() => emergencyCashHanded(props.doc))
@@ -229,17 +231,17 @@ async function cancelEmergency() {
 }
 
 function openProof() {
-  proof.value = { url: em.value.proof_url || '', total: Number(em.value.proof_total) || Number(props.doc?.paid_amount) || 0, notes: em.value.proof_notes || '' }
+  proof.value = { urls: [...proofUrls.value], total: Number(em.value.proof_total) || Number(props.doc?.paid_amount) || 0, notes: em.value.proof_notes || '' }
   proofOpen.value = true
 }
 
 async function saveProof() {
-  if (!proof.value.url) { toast.error('Foto struk wajib diunggah.'); return }
+  if (!proof.value.urls?.length) { toast.error('Foto struk wajib diunggah.'); return }
   if (!(Number(proof.value.total) > 0)) { toast.error('Isi total yang tertera di struk.'); return }
   busy.value = 'proof'
   try {
     await purchaseApi.submitEmergencyProof(props.doc.id, {
-      proof_url: proof.value.url, proof_total: Number(proof.value.total), notes: proof.value.notes.trim(), version: props.doc.version,
+      proof_url: proof.value.urls[0], proof_urls: proof.value.urls, proof_total: Number(proof.value.total), notes: proof.value.notes.trim(), version: props.doc.version,
     })
     toast.success('Bukti belanja tersimpan.')
     proofOpen.value = false

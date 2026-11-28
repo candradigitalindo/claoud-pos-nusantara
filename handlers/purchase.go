@@ -152,13 +152,19 @@ func ListPurchaseRequests(c *fiber.Ctx) error {
 	financeAll := excludeMasters && acc.has("finance.payments.view")
 	var allowedTypes []string // nil = tanpa batas jenis
 	if requestType != "" {
-		if !services.IsValidRequestType(requestType) {
-			return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
-				Success: false, Error: "type harus 'barang', 'jasa', atau 'bahan'.",
-			})
-		}
-		if !financeAll && !acc.can(requestType, "view") {
-			return purchaseForbidden(c, "Anda tidak memiliki akses melihat pengadaan "+services.RequestTypeLabel(requestType)+".")
+		if requestType == services.PurchasingGroupBarangJasa {
+			if !financeAll && !acc.can(services.RequestTypeBarang, "view") {
+				return purchaseForbidden(c, "Anda tidak memiliki akses melihat pengadaan Barang & Jasa.")
+			}
+		} else {
+			if !services.IsValidRequestType(requestType) {
+				return c.Status(fiber.StatusBadRequest).JSON(models.APIResponse{
+					Success: false, Error: "type harus 'barang', 'jasa', 'bahan', atau 'barang_jasa'.",
+				})
+			}
+			if !financeAll && !acc.can(requestType, "view") {
+				return purchaseForbidden(c, "Anda tidak memiliki akses melihat pengadaan "+services.RequestTypeLabel(requestType)+".")
+			}
 		}
 	} else if !financeAll {
 		allowedTypes = acc.viewableTypes()
@@ -193,6 +199,7 @@ func purchaseListExtraFromQuery(c *fiber.Ctx) (services.PurchaseListExtra, strin
 		Emergency:       c.Query("emergency", "") == "true",
 		PaymentApproval: strings.TrimSpace(c.Query("payment_approval", "")),
 		ManualOnly:      c.Query("manual_only", "") == "true",
+		SourceGroup:     strings.TrimSpace(c.Query("source_group", "")),
 	}
 	switch extra.Urgency {
 	case "", services.UrgencyRutin, services.UrgencyPrioritas, services.UrgencyUrgent:
@@ -208,6 +215,11 @@ func purchaseListExtraFromQuery(c *fiber.Ctx) (services.PurchaseListExtra, strin
 	case "", "unsubmitted", "pending", "approved", "rejected":
 	default:
 		return extra, "payment_approval harus 'unsubmitted', 'pending', 'approved', atau 'rejected'."
+	}
+	switch extra.SourceGroup {
+	case "", services.PurchasingGroupBahanBaku, services.PurchasingGroupBarangJasa, "manual", "emergency":
+	default:
+		return extra, "source_group harus 'bahan_baku', 'barang_jasa', 'manual', atau 'emergency'."
 	}
 	return extra, ""
 }
@@ -585,7 +597,15 @@ func GetProcurementDashboard(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(models.APIResponse{Success: false, Error: "Akses outlet tidak diizinkan"})
 	}
 
-	result, err := services.GetProcurementDashboard(outletID, nil, nil)
+	acc, aerr := loadPurchaseAccess(c)
+	if aerr != nil {
+		return permissionLoadError(c)
+	}
+	var allowedTypes []string
+	if !acc.superadmin && !acc.has("finance.payments.view") {
+		allowedTypes = acc.viewableTypes()
+	}
+	result, err := services.GetProcurementDashboardFiltered(outletID, nil, nil, allowedTypes)
 	if err != nil {
 		log.Printf("GetProcurementDashboard error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{
@@ -597,9 +617,17 @@ func GetProcurementDashboard(c *fiber.Ctx) error {
 }
 
 func GetProcurementDashboardGlobal(c *fiber.Ctx) error {
+	acc, aerr := loadPurchaseAccess(c)
+	if aerr != nil {
+		return permissionLoadError(c)
+	}
+	var allowedTypes []string
+	if !acc.superadmin && !acc.has("finance.payments.view") {
+		allowedTypes = acc.viewableTypes()
+	}
 	scopeIDs := getOutletScope(c)
 	wuScopeIDs := getWorkUnitScope(c)
-	result, err := services.GetProcurementDashboard("", scopeIDs, wuScopeIDs)
+	result, err := services.GetProcurementDashboardFiltered("", scopeIDs, wuScopeIDs, allowedTypes)
 	if err != nil {
 		log.Printf("GetProcurementDashboardGlobal error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(models.APIResponse{

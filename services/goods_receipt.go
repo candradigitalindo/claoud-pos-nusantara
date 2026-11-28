@@ -146,7 +146,7 @@ func CreateGoodsReceiptTx(tx *sql.Tx, req models.GoodsReceiptRequest, actor stri
 		costPerBase := line.CostPerBase
 		if line.CostPerUnit != nil {
 			costPerBase = *line.CostPerUnit
-			if unit != baseUnit {
+			if !strings.EqualFold(unit, baseUnit) && distRatio > 0 {
 				costPerBase /= distRatio
 			}
 		}
